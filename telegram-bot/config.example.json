@@ -1,0 +1,52 @@
+{
+  "_ghi_chu": "Copy file này thành config.json rồi điền thông tin thực tế",
+
+  "bot_token": "NHAP_BOT_TOKEN_TU_BOTFATHER",
+
+  "profiles": [
+    {
+      "name": "Harvey",
+      "telegram_id": "NHAP_TELEGRAM_ID_CUA_BAN",
+      "_ghi_chu_id": "Lấy ID: nhắn tin cho @userinfobot trên Telegram → nó trả về ID số",
+      "watched_funds": ["TCBF", "VCBFTBF", "SSISCA", "VCBFBCF", "TCFF"],
+      "_ghi_chu_portfolio": "Tùy chọn: thêm portfolio để /portfolio hiện P&L. units=số CCQ, avg_cost=giá vốn TB",
+      "portfolio": [
+        { "code": "TCBF",    "units": 10500, "avg_cost": 12500 },
+        { "code": "SSISCA",  "units": 5200,  "avg_cost": 21200 }
+      ]
+    },
+    {
+      "name": "Bạn Tôi",
+      "telegram_id": "NHAP_TELEGRAM_ID_BAN_BAN",
+      "watched_funds": ["TCBF", "SSISCA", "VCBFBCF"]
+    }
+  ],
+
+  "funds": {
+    "TCBF":    { "name": "Quỹ Trái Phiếu Techcombank",          "fmarket_id": 22 },
+    "TCFF":    { "name": "Quỹ Linh Hoạt Techcombank",             "fmarket_id": null, "tcbs": true },
+    "TCGF":    { "name": "Quỹ Tăng Trưởng Techcombank",          "fmarket_id": null, "tcbs": true },
+    "VCBFTBF": { "name": "Quỹ TPDN Có Bảo Đảm VCB Fund",        "fmarket_id": 31 },
+    "VCBFBCF": { "name": "Quỹ Trái Phiếu Bền Vững VCB Fund",    "fmarket_id": 32 },
+    "VCBFEF":  { "name": "Quỹ Cổ Phiếu Việt Nam VCB Fund",      "fmarket_id": 28 },
+    "SSISCA":  { "name": "Quỹ Tích Lũy Bền Vững SSI",           "fmarket_id": 11 },
+    "MAFPF1":  { "name": "Quỹ Tích Lũy Hưu Trí Manulife",       "fmarket_id": 45 },
+    "MAFEQI":  { "name": "Quỹ Cổ Phiếu Manulife",               "fmarket_id": 34 },
+    "MBBF":    { "name": "Quỹ Trái Phiếu MB Capital",            "fmarket_id": 40 },
+    "MBVF":    { "name": "Quỹ Cổ Phiếu MB Capital",             "fmarket_id": 35 },
+    "ESSCF":   { "name": "Quỹ Cổ Phiếu Eastspring VN",          "fmarket_id": 47 },
+    "ESBF":    { "name": "Quỹ Trái Phiếu Eastspring VN",        "fmarket_id": 46 },
+    "BVPF":    { "name": "Quỹ Tăng Trưởng Bảo Việt",            "fmarket_id": 20 },
+    "MIRAEF":  { "name": "Quỹ Cổ Phiếu Mirae Asset VN",         "fmarket_id": 38 },
+    "VNDAF":   { "name": "Quỹ Cổ Phiếu Năng Động VinaCapital",  "fmarket_id": 1  },
+    "VNDBF":   { "name": "Quỹ Trái Phiếu VinaCapital",          "fmarket_id": 2  },
+    "DCDS":    { "name": "Quỹ Tăng Trưởng Dragon Capital",       "fmarket_id": 6  },
+    "DCBF":    { "name": "Quỹ Trái Phiếu Dragon Capital",        "fmarket_id": 5  }
+  },
+
+  "schedule": {
+    "morning_report": "08:00",
+    "evening_report": "17:30",
+    "signal_check_interval_minutes": 60
+  }
+}

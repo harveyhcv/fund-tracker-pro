@@ -1,0 +1,23 @@
+# Secrets & credentials
+telegram-bot/config.json
+telegram-bot/bot.log
+telegram-bot/state.json
+
+# SQLite database files
+core_data/*.db
+core_data/*.db-shm
+core_data/*.db-wal
+core_data/.fuse_hidden*
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Backups
+*.bak
