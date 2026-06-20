@@ -9,9 +9,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy bot code
 COPY telegram-bot/ ./telegram-bot/
 
-# /data = persistent volume (config.json + state.json + bot.log)
+# /data = persistent volume (mount qua Railway Volumes UI)
 RUN mkdir -p /data
-VOLUME ["/data"]
 
 WORKDIR /app/telegram-bot
 
