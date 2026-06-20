@@ -36,6 +36,12 @@ try:
 except ImportError:
     raise SystemExit("❌ Thiếu thư viện. Chạy: pip install requests schedule")
 
+try:
+    import db as _db
+    _DB_AVAILABLE = True
+except ImportError:
+    _DB_AVAILABLE = False
+
 # ═══════════════════════════════════════
 # LOGGING
 # ═══════════════════════════════════════
@@ -1005,6 +1011,45 @@ def job_check_signals():
     state["last_signal_check"] = datetime.now().isoformat()
     save_state(state)
 
+    # Persist to PostgreSQL (no-op if DB unavailable)
+    if _DB_AVAILABLE and _db.is_available():
+        today = date.today()
+        for code, d in nav_data.items():
+            if d.get("nav") and d.get("nav_date"):
+                try:
+                    nav_date = date.fromisoformat(d["nav_date"])
+                    _db.upsert_nav(code, nav_date, d["nav"])
+                except Exception as e:
+                    log.debug("upsert_nav %s: %s", code, e)
+            sig = d.get("signal", "")
+            if "MUA" in sig or "BÁN" in sig:
+                strength_map = {
+                    "MUA MẠNH": "strong_buy", "MUA": "buy",
+                    "BÁN MẠNH": "strong_reduce", "BÁN": "reduce",
+                }
+                strength = next((v for k, v in strength_map.items() if k in sig), "hold")
+                fund_cfg = next(
+                    (f for f in config.get("funds", {}).values() if f.get("code") == code),
+                    {}
+                )
+                settle = fund_cfg.get("settlement", "T2")
+                try:
+                    _db.save_signal(
+                        fund_code=code,
+                        signal_date=today,
+                        strength=strength,
+                        score=d.get("score", 0),
+                        nav_at_signal=d.get("nav", 0),
+                        indicators={
+                            "rsi": d.get("rsi"),
+                            "bb_pct": d.get("bb_pct"),
+                            "macd_hist": d.get("macd_hist"),
+                        },
+                        settlement_rule=settle,
+                    )
+                except Exception as e:
+                    log.debug("save_signal %s: %s", code, e)
+
 
 def job_watchdog_ping():
     """Gửi ping hàng ngày lúc 00:01 — nếu không nhận được là bot đã chết."""
@@ -1314,6 +1359,11 @@ def main():
     log.info(f"  DATA_DIR: {DATA_DIR}")
 
     _ensure_config_exists()  # Tạo config từ ENV nếu chạy lần đầu trên cloud
+
+    if _DB_AVAILABLE:
+        _db.init_pool()
+    else:
+        log.warning("db.py không khả dụng — PostgreSQL bị bỏ qua")
 
     if not CONFIG_FILE.exists():
         log.error(f"Không tìm thấy {CONFIG_FILE}. Hãy copy config.example.json → config.json và điền thông tin.")

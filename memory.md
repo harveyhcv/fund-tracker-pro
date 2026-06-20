@@ -178,15 +178,44 @@ navSeries(code)  → HIST.chart + cachedNav.filter(date > lastH)  ← merge poin
 - Không commit `.env` lên git (đã thêm vào .gitignore)
 - `ADMIN_TELEGRAM_ID` trong ENV/config.json phải là chat_id số (lấy bằng /getid)
 
+## ✅ Phase 5 — PostgreSQL Architecture (2026-06-20)
+
+### Files mới
+- `schema.sql` — Full DDL PostgreSQL: 10 domains, 15 year-partitions (2013–2027), RLS, enums
+- `telegram-bot/db.py` — Connection layer: ThreadedConnectionPool, init_pool(), upsert_nav(), save_signal(), get_or_create_user()
+- `scripts/pg_init.py` — Run-once init script: `python scripts/pg_init.py`
+- `telegram-bot/requirements.txt` — Thêm psycopg2-binary>=2.9.9, cryptography>=42.0.0
+
+### Wire trong bot.py
+- Import `db as _db` (graceful: nếu thiếu psycopg2 thì `_DB_AVAILABLE = False`, bot vẫn chạy)
+- `main()` gọi `_db.init_pool()` nếu `DATABASE_URL` env set
+- `job_check_signals()` gọi `_db.upsert_nav()` cho mỗi quỹ + `_db.save_signal()` khi có MUA/BÁN
+
+### Schema highlights
+- `nav_history` partitioned by year (nav_2013 → nav_2027)
+- RLS: `SET LOCAL app.uid = '<uuid>'` → mọi query tự giới hạn data của user đó
+- `transactions` immutable: có RULE no_update_tx + no_delete_tx
+- `buy_signals` ghi indicators (rsi, bb_pct, macd_hist) + T+1/T+3 est_exec_date
+- Encrypted fields: BYTEA cols (units_enc, amount_enc, avg_cost_enc) → AES-256-GCM ở app layer
+
+### Setup trên Railway
+1. Thêm PostgreSQL service → Railway inject DATABASE_URL tự động
+2. Chạy schema: `railway run python scripts/pg_init.py`
+3. Bot tự init pool khi khởi động
+
+### Pending (next session)
+- AES-256-GCM encryption layer (cryptography lib đã có trong requirements)
+- T+1/T+3 `estimate_settlement_nav()` — backfill nav_at_settlement sau khi settlement date qua
+- DCA rebalancer engine
+- Portfolio commands via Telegram (/portfolio, /add-trade, /dca)
+- Telegram Mini App (WebApp) — cá nhân hóa dashboard
+
 ## 🔜 Có thể phát triển tiếp
 
 - Swift iOS app (khi bắt đầu: update claude.md, thêm agents iOS)
 - Inline keyboard (Reply keyboard buttons) cho UX tốt hơn
-- `/help` inline buttons thay text
 - Webhook mode thay long-polling (giảm latency)
-- P1: Dashboard hiển thị "Dữ liệu đến DD/MM" badge trong header (đã có _lastRefresh)
-- P1: Script update_hist.py khi gap > 30 ngày (bake lại HIST.chart)
 
 ---
 
-*Cập nhật: 2026-06-19 — Phase 4: Telegram Bot deployment ready, 228 tests xanh*
+*Cập nhật: 2026-06-20 — Phase 5: PostgreSQL schema + db.py + bot.py wiring*
