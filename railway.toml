@@ -4,6 +4,3 @@ builder = "dockerfile"
 [deploy]
 restartPolicyType = "always"
 restartPolicyMaxRetries = 5
-
-[[deploy.volumeMounts]]
-mountPath = "/data"
