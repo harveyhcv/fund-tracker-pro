@@ -2,6 +2,11 @@
 telegram-bot/config.json
 telegram-bot/bot.log
 telegram-bot/state.json
+.env
+*.env
+
+# Docker
+.env
 
 # SQLite database files
 core_data/*.db

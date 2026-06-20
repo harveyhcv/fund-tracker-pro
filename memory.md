@@ -107,6 +107,20 @@ navSeries(code)  → HIST.chart + cachedNav.filter(date > lastH)  ← merge poin
 - `/refresh-nav` đọc TCBS token từ `telegram-bot/config.json` (nếu file tồn tại)
 - Stale banner màu amber (`#92400e`), chuyển xanh khi refresh thành công
 
+## ✅ Sprint W16 — Token Dedup + Security + Portfolio P&L (13/04/2026)
+
+- **W16-0**: `bot.py` import `send_token_alert_once/reset_token_alert`; `job_check_jwt` dedup alerts, reset flag khi token > 2h
+- **W16-1**: `.gitignore` mới — cover `config.json`, `bot.log`, `state.json`, `core_data/*.db*`
+- **W16-2**: Xóa 13 `.fuse_hidden` files; thêm WAL mode + busy_timeout=5000 vào `collect_core_data.py` + `server.py`
+- **W16-3**: `scripts/token_manager.py` — decode JWT, check status 4 mức; `tests/test_token_manager.py` — 16 tests
+- **W16-4**: `msg_portfolio()` upgrade: P&L đầy đủ (units × nav, vốn, lãi/lỗ, tổng) khi profile có `portfolio` field; fallback 7/30 ngày nếu không có; `tests/test_portfolio_command.py` — 17 tests
+- **TCBS token mới**: exp 2026-04-14 06:42, alert flag reset
+- **Test suite: 154 → 198 ✅** (+44 tests)
+
+**Lưu ý portfolio:**
+- Thêm `portfolio: [{code, units, avg_cost}]` vào profile trong `config.json` để dùng P&L mode
+- Xem `config.example.json` để biết format
+
 ## ✅ Phase 3C — TCBS Auth Alert + HIST Script + Header Badge (10/04/2026)
 
 ### 1. _handle_tcbs_auth_error (bot.py)
@@ -128,14 +142,51 @@ navSeries(code)  → HIST.chart + cachedNav.filter(date > lastH)  ← merge poin
 - IIFE: fix typo "Cap nhat" → "Dữ liệu đến: DD/MM/YYYY"
 - refreshNAV() callback: sau khi fetch thành công hiện "Dữ liệu đến: DD/MM · Làm mới: HH:MM"
 
+## ✅ Phase 4 — Telegram Bot Deployment Ready (2026-06-19)
+
+### 4 Commands mới
+- `/funds` — liệt kê tất cả quỹ, gợi ý /watch /unwatch
+- `/watch CODE1 CODE2` — thêm quỹ vào danh mục của user
+- `/unwatch CODE` — bỏ quỹ khỏi danh mục (min 1 quỹ)
+- `/admin users|kick|broadcast` — quản lý users (chỉ ADMIN_TELEGRAM_ID)
+
+### ENV Variable Support (cloud deployment)
+- `BOT_TOKEN` → override config.json bot_token
+- `ADMIN_TELEGRAM_ID` → override admin_telegram_id
+- `LOCAL_SERVER_URL` → override local_server_url
+- `DATA_DIR` → thư mục lưu config.json + state.json (mặc định = telegram-bot/)
+- `MORNING_TIME`, `EVENING_TIME`, `SIGNAL_INTERVAL` → tùy chỉnh lịch
+
+### First-run Bootstrap
+- `_ensure_config_exists()`: tạo config.json đầy đủ từ ENV khi deploy lần đầu
+- Bot tự tạo profiles khi user /register → không cần config thủ công
+
+### Deployment Files (mới)
+- `Dockerfile` — Python 3.11-slim, VOLUME /data
+- `.env.example` — template secrets
+- `.dockerignore` — loại trừ file nhạy cảm + không cần thiết
+- `Procfile` — Railway/Heroku: `worker: cd telegram-bot && python -u bot.py`
+- `railway.toml` — Dockerfile builder + volume mount /data
+- `DEPLOY.md` — hướng dẫn deploy Railway / Render / Oracle Cloud
+
+### Test Suite
+- `tests/test_new_commands.py` — 30 tests mới cho /watch, /unwatch, /funds, /admin, ENV
+- Tổng: **228 tests** (198 cũ + 30 mới)
+
+### Lưu ý quan trọng
+- `token_alert_patch.py` cũng dùng `DATA_DIR` env để tìm state.json (đã fix)
+- Không commit `.env` lên git (đã thêm vào .gitignore)
+- `ADMIN_TELEGRAM_ID` trong ENV/config.json phải là chat_id số (lấy bằng /getid)
+
 ## 🔜 Có thể phát triển tiếp
 
 - Swift iOS app (khi bắt đầu: update claude.md, thêm agents iOS)
-- Deploy server lên VPS thay vì chạy local Mac
-- Thêm /portfolio command đầy đủ (hiện tại là stub)
+- Inline keyboard (Reply keyboard buttons) cho UX tốt hơn
+- `/help` inline buttons thay text
+- Webhook mode thay long-polling (giảm latency)
 - P1: Dashboard hiển thị "Dữ liệu đến DD/MM" badge trong header (đã có _lastRefresh)
 - P1: Script update_hist.py khi gap > 30 ngày (bake lại HIST.chart)
 
 ---
 
-*Cập nhật: 2026-04-10 — Phase 3A: /refresh-nav + bot push + stale banner, 150 tests xanh*
+*Cập nhật: 2026-06-19 — Phase 4: Telegram Bot deployment ready, 228 tests xanh*

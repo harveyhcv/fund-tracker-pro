@@ -15,6 +15,7 @@
 
 import json
 import math
+import os
 import time
 import logging
 import threading
@@ -53,9 +54,10 @@ log = logging.getLogger("quy_bot")
 # ═══════════════════════════════════════
 # PATHS & CONFIG
 # ═══════════════════════════════════════
-BASE = Path(__file__).parent          # = telegram-bot/
-CONFIG_FILE = BASE / "config.json"
-STATE_FILE  = BASE / "state.json"
+BASE     = Path(__file__).parent                                      # = telegram-bot/
+DATA_DIR = Path(os.environ.get("DATA_DIR", str(BASE)))               # /data in Docker, ./telegram-bot/ locally
+CONFIG_FILE = DATA_DIR / "config.json"
+STATE_FILE  = DATA_DIR / "state.json"
 
 # Tập hợp mã quỹ bị 401/403 trong chu kỳ fetch hiện tại.
 # Được reset trước mỗi job, kiểm tra sau fetch_all để gửi cảnh báo.
@@ -63,8 +65,64 @@ _tcbs_auth_fail_codes: set = set()
 
 
 def load_config() -> dict:
-    with open(CONFIG_FILE, encoding="utf-8") as f:
-        return json.load(f)
+    cfg = {}
+    if CONFIG_FILE.exists():
+        with open(CONFIG_FILE, encoding="utf-8") as f:
+            cfg = json.load(f)
+    # ENV override — ưu tiên hơn config.json (cho cloud deployment)
+    for env_key, cfg_key in [
+        ("BOT_TOKEN",         "bot_token"),
+        ("ADMIN_TELEGRAM_ID", "admin_telegram_id"),
+        ("LOCAL_SERVER_URL",  "local_server_url"),
+    ]:
+        val = os.environ.get(env_key)
+        if val:
+            cfg[cfg_key] = val
+    return cfg
+
+
+def _ensure_config_exists():
+    """Tạo config.json tối thiểu từ ENV nếu chưa có (first-run trên cloud)."""
+    if CONFIG_FILE.exists():
+        return
+    bot_token = os.environ.get("BOT_TOKEN", "")
+    if not bot_token:
+        return
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    cfg = {
+        "bot_token": bot_token,
+        "admin_telegram_id": os.environ.get("ADMIN_TELEGRAM_ID", ""),
+        "default_watched_funds": ["TCBF", "SSISCA", "VCBFBCF"],
+        "profiles": [],
+        "funds": {
+            "TCBF":    {"name": "Quỹ Trái Phiếu Techcombank",          "fmarket_id": 22},
+            "TCFF":    {"name": "Quỹ Linh Hoạt Techcombank",            "fmarket_id": None, "tcbs": True},
+            "TCGF":    {"name": "Quỹ Tăng Trưởng Techcombank",          "fmarket_id": None, "tcbs": True},
+            "VCBFTBF": {"name": "Quỹ TPDN Có Bảo Đảm VCB Fund",        "fmarket_id": 31},
+            "VCBFBCF": {"name": "Quỹ Trái Phiếu Bền Vững VCB Fund",    "fmarket_id": 32},
+            "VCBFEF":  {"name": "Quỹ Cổ Phiếu Việt Nam VCB Fund",      "fmarket_id": 28},
+            "SSISCA":  {"name": "Quỹ Tích Lũy Bền Vững SSI",           "fmarket_id": 11},
+            "MAFPF1":  {"name": "Quỹ Tích Lũy Hưu Trí Manulife",       "fmarket_id": 45},
+            "MAFEQI":  {"name": "Quỹ Cổ Phiếu Manulife",               "fmarket_id": 34},
+            "MBBF":    {"name": "Quỹ Trái Phiếu MB Capital",            "fmarket_id": 40},
+            "MBVF":    {"name": "Quỹ Cổ Phiếu MB Capital",             "fmarket_id": 35},
+            "ESSCF":   {"name": "Quỹ Cổ Phiếu Eastspring VN",          "fmarket_id": 47},
+            "ESBF":    {"name": "Quỹ Trái Phiếu Eastspring VN",        "fmarket_id": 46},
+            "BVPF":    {"name": "Quỹ Tăng Trưởng Bảo Việt",            "fmarket_id": 20},
+            "MIRAEF":  {"name": "Quỹ Cổ Phiếu Mirae Asset VN",         "fmarket_id": 38},
+            "VNDAF":   {"name": "Quỹ Cổ Phiếu Năng Động VinaCapital",  "fmarket_id": 1},
+            "VNDBF":   {"name": "Quỹ Trái Phiếu VinaCapital",          "fmarket_id": 2},
+            "DCDS":    {"name": "Quỹ Tăng Trưởng Dragon Capital",       "fmarket_id": 6},
+            "DCBF":    {"name": "Quỹ Trái Phiếu Dragon Capital",        "fmarket_id": 5},
+        },
+        "schedule": {
+            "morning_report":               os.environ.get("MORNING_TIME", "08:00"),
+            "evening_report":               os.environ.get("EVENING_TIME", "17:30"),
+            "signal_check_interval_minutes": int(os.environ.get("SIGNAL_INTERVAL", "60")),
+        },
+    }
+    save_config(cfg)
+    log.info(f"[BOOTSTRAP] config.json tạo từ ENV (admin={cfg['admin_telegram_id']})")
 
 
 def save_config(cfg: dict):
@@ -1032,7 +1090,30 @@ def command_handler():
 
                 if cmd in ("/start", "/help"):
                     profile_note = (f"\n\n✅ Xin chào <b>{profile['name']}</b>! Bot đã nhận diện bạn." if profile else f"\n\n👤 Bạn chưa đăng ký. Gõ:\n<code>/register Tên Của Bạn</code>\nđể tự đăng ký và nhận báo cáo tự động.")
-                    tg_send(token, chat_id, ("👋 <b>Quỹ Tracker Pro Bot</b>\n\nCác lệnh:\n📈 /nav — NAV hiện tại + tín hiệu\n🗂 /portfolio — Tổng quan danh mục (7/30 ngày)\n🔍 /explain [MÃ] — Phân tích RSI, BB, điểm kỹ thuật\n📊 /signal — Tín hiệu kỹ thuật chi tiết\n🌅 /morning — Báo cáo sáng (ngay bây giờ)\n🌆 /evening — Báo cáo chiều (ngay bây giờ)\n🪪 /getid — Xem Chat ID của bạn\n✍️ /register [tên] — Tự đăng ký nhận báo cáo\n❓ /help — Trợ giúp\n\n🔔 <b>Tự động:</b>\n• 08:00 T2–T6 → Báo cáo sáng\n• 17:30 T2–T6 → Báo cáo chiều\n• Cảnh báo ngay khi tín hiệu MUA/BÁN thay đổi\n\n<i>Bot không cung cấp khuyến nghị đầu tư.</i>") + profile_note)
+                    tg_send(token, chat_id, (
+                        "👋 <b>Quỹ Tracker Pro Bot</b>\n\n"
+                        "<b>Theo dõi NAV:</b>\n"
+                        "📈 /nav — NAV hiện tại + tín hiệu\n"
+                        "📊 /signal — Tín hiệu kỹ thuật (RSI, BB, MACD)\n"
+                        "🔍 /explain [MÃ] — Phân tích chi tiết\n"
+                        "🗂 /portfolio — Danh mục + P&amp;L\n\n"
+                        "<b>Quản lý danh mục:</b>\n"
+                        "📋 /funds — Xem tất cả quỹ có thể theo dõi\n"
+                        "➕ /watch TCBF SSISCA — Thêm quỹ vào danh mục\n"
+                        "➖ /unwatch TCBF — Bỏ quỹ khỏi danh mục\n\n"
+                        "<b>Báo cáo:</b>\n"
+                        "🌅 /morning — Báo cáo sáng (ngay bây giờ)\n"
+                        "🌆 /evening — Báo cáo chiều (ngay bây giờ)\n\n"
+                        "<b>Tài khoản:</b>\n"
+                        "🪪 /getid — Xem Chat ID của bạn\n"
+                        "✍️ /register [tên] — Tự đăng ký nhận báo cáo\n"
+                        "❓ /help — Trợ giúp\n\n"
+                        "🔔 <b>Tự động:</b>\n"
+                        "• 08:00 T2–T6 → Báo cáo sáng\n"
+                        "• 17:30 T2–T6 → Báo cáo chiều\n"
+                        "• Cảnh báo ngay khi tín hiệu MUA/BÁN thay đổi\n\n"
+                        "<i>Bot không cung cấp khuyến nghị đầu tư.</i>"
+                    ) + profile_note)
 
                 elif cmd == "/nav":
                     if not profile:
@@ -1068,6 +1149,133 @@ def command_handler():
                     nav_data = fetch_all(config, {target} if target else codes_)
                     tg_send(token, chat_id, msg_explain(profile, nav_data, target))
 
+                elif cmd == "/funds":
+                    cfg_funds = config.get("funds", {})
+                    lines = ["📋 <b>Danh Sách Quỹ Có Thể Theo Dõi</b>", LINE]
+                    for code, info in sorted(cfg_funds.items()):
+                        src = "TCBS" if info.get("tcbs") else "fmarket"
+                        lines.append(f"• <code>{code}</code> — {info.get('name', '')}  <i>({src})</i>")
+                    lines.append(LINE)
+                    if profile:
+                        lines.append(f"📌 Quỹ bạn đang theo: <code>{', '.join(profile.get('watched_funds', []))}</code>")
+                        lines.append("💡 <code>/watch TCBF SSISCA</code> — thêm · <code>/unwatch TCBF</code> — bỏ")
+                    else:
+                        lines.append("⚠️ Gõ /register để đăng ký trước khi theo dõi quỹ.")
+                    tg_send(token, chat_id, "\n".join(lines))
+
+                elif cmd == "/watch":
+                    if not profile:
+                        tg_send(token, chat_id, "⚠️ Bạn chưa đăng ký.\nGõ <code>/register Tên Của Bạn</code> để tự đăng ký.")
+                        continue
+                    parts_w = text.split()[1:]
+                    if not parts_w:
+                        tg_send(token, chat_id, "❓ Cú pháp: <code>/watch TCBF SSISCA</code>")
+                        continue
+                    cfg_funds = config.get("funds", {})
+                    current   = set(profile.get("watched_funds", []))
+                    added, invalid = [], []
+                    for code in [p.upper() for p in parts_w]:
+                        if code not in cfg_funds:
+                            invalid.append(code)
+                        elif code not in current:
+                            added.append(code)
+                            current.add(code)
+                    if added:
+                        cfg_w = load_config()
+                        for p in cfg_w.get("profiles", []):
+                            if str(p.get("telegram_id")) == chat_id:
+                                p["watched_funds"] = sorted(current)
+                                break
+                        save_config(cfg_w)
+                    lines = []
+                    if added:
+                        lines.append(f"✅ Đã thêm: <code>{', '.join(added)}</code>")
+                    if invalid:
+                        lines.append(f"⚠️ Không tìm thấy: <code>{', '.join(invalid)}</code> — Gõ /funds để xem danh sách")
+                    if not added and not invalid:
+                        lines.append("ℹ️ Các quỹ này đã có trong danh mục của bạn rồi.")
+                    lines.append(f"📋 Danh mục hiện tại: <code>{', '.join(sorted(current))}</code>")
+                    tg_send(token, chat_id, "\n".join(lines))
+
+                elif cmd == "/unwatch":
+                    if not profile:
+                        tg_send(token, chat_id, "⚠️ Bạn chưa đăng ký.\nGõ <code>/register Tên Của Bạn</code> để tự đăng ký.")
+                        continue
+                    parts_u = text.split()[1:]
+                    if not parts_u:
+                        tg_send(token, chat_id, "❓ Cú pháp: <code>/unwatch TCBF</code>")
+                        continue
+                    current    = set(profile.get("watched_funds", []))
+                    removed, not_found = [], []
+                    for code in [p.upper() for p in parts_u]:
+                        if code in current:
+                            removed.append(code)
+                            current.discard(code)
+                        else:
+                            not_found.append(code)
+                    if not current:
+                        tg_send(token, chat_id, "⚠️ Cần giữ ít nhất 1 quỹ trong danh mục.")
+                        continue
+                    if removed:
+                        cfg_w = load_config()
+                        for p in cfg_w.get("profiles", []):
+                            if str(p.get("telegram_id")) == chat_id:
+                                p["watched_funds"] = sorted(current)
+                                break
+                        save_config(cfg_w)
+                    lines = []
+                    if removed:
+                        lines.append(f"✅ Đã bỏ: <code>{', '.join(removed)}</code>")
+                    if not_found:
+                        lines.append(f"⚠️ Không có trong danh mục: <code>{', '.join(not_found)}</code>")
+                    lines.append(f"📋 Danh mục còn lại: <code>{', '.join(sorted(current))}</code>")
+                    tg_send(token, chat_id, "\n".join(lines))
+
+                elif cmd == "/admin":
+                    admin_id = str(config.get("admin_telegram_id", "")).strip()
+                    if not admin_id or chat_id != admin_id:
+                        tg_send(token, chat_id, "⛔ Lệnh chỉ dành cho admin.")
+                        continue
+                    sub = text.split()[1].lower() if len(text.split()) > 1 else ""
+                    if sub == "users":
+                        profiles_list = config.get("profiles", [])
+                        if not profiles_list:
+                            tg_send(token, chat_id, "📭 Chưa có user nào đăng ký.")
+                        else:
+                            lines = [f"👥 <b>Danh sách {len(profiles_list)} users:</b>", LINE]
+                            for i, p in enumerate(profiles_list, 1):
+                                lines.append(
+                                    f"{i}. <b>{p['name']}</b> — <code>{p.get('telegram_id','?')}</code>\n"
+                                    f"   Quỹ: {', '.join(p.get('watched_funds', []))}"
+                                )
+                            tg_send(token, chat_id, "\n".join(lines))
+                    elif sub == "kick" and len(text.split()) > 2:
+                        target_id = text.split()[2]
+                        cfg_w = load_config()
+                        before = len(cfg_w.get("profiles", []))
+                        cfg_w["profiles"] = [p for p in cfg_w.get("profiles", []) if str(p.get("telegram_id")) != target_id]
+                        if len(cfg_w["profiles"]) < before:
+                            save_config(cfg_w)
+                            tg_send(token, chat_id, f"✅ Đã xóa profile <code>{target_id}</code>")
+                        else:
+                            tg_send(token, chat_id, f"⚠️ Không tìm thấy <code>{target_id}</code>")
+                    elif sub == "broadcast" and len(text.split()) > 2:
+                        bcast_msg = " ".join(text.split()[2:])
+                        sent_count = 0
+                        for p in config.get("profiles", []):
+                            tg = str(p.get("telegram_id", ""))
+                            if tg.lstrip("-").isdigit():
+                                if tg_send(token, tg, f"📢 <b>Thông báo</b>\n\n{bcast_msg}"):
+                                    sent_count += 1
+                        tg_send(token, chat_id, f"✅ Đã gửi tới {sent_count} users")
+                    else:
+                        tg_send(token, chat_id, (
+                            "🔧 <b>Admin Commands</b>\n\n"
+                            "<code>/admin users</code> — Xem tất cả users\n"
+                            "<code>/admin kick CHATID</code> — Xóa user\n"
+                            "<code>/admin broadcast TIN NHẮN</code> — Broadcast tới tất cả\n"
+                        ))
+
                 elif cmd == "/morning":
                     if not profile:
                         tg_send(token, chat_id, "⚠️ Bạn chưa đăng ký.\nGõ <code>/register Tên Của Bạn</code> để tự đăng ký.")
@@ -1101,11 +1309,15 @@ def command_handler():
 
 def main():
     log.info("══════════════════════════════════")
-    log.info("  Quỹ Tracker Bot v1.0  —  Start ")
+    log.info("  Quỹ Tracker Bot v2.0  —  Start ")
     log.info("══════════════════════════════════")
+    log.info(f"  DATA_DIR: {DATA_DIR}")
+
+    _ensure_config_exists()  # Tạo config từ ENV nếu chạy lần đầu trên cloud
 
     if not CONFIG_FILE.exists():
         log.error(f"Không tìm thấy {CONFIG_FILE}. Hãy copy config.example.json → config.json và điền thông tin.")
+        log.error("Hoặc set ENV: BOT_TOKEN=... để tự tạo config khi deploy lên cloud.")
         return
 
     config = load_config()
