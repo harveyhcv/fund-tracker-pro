@@ -100,54 +100,59 @@ def ensure_schema(conn) -> None:
     log("✅ Schema sẵn sàng (funds_master)")
 
 
-# ── Known fund registry ────────────────────────────────────────────────────────
-# Danh sách đầy đủ các quỹ mở Việt Nam đã biết.
-# fmarket_id=None → TCBS-only hoặc chưa xác nhận.
-# Sau khi chạy --discover, các fmarket_id sẽ được điền tự động.
+# ── TCinvest confirmed fund list (từ screenshot 2026-06-21, "Toàn thị trường") ─
+# Đây là danh sách CHÍNH XÁC 31 quỹ có trên tài khoản TCinvest của Harvey.
+# source = "tcinvest" → dùng JWT để fetch (--tcinvest mode)
+# source = "tcbs"     → TCBS-managed, fetch qua public nav-history endpoint
+# Tất cả 31 quỹ này có thể fetch qua TCBS API với hoặc không có JWT.
 
+TCINVEST_FUNDS: dict[str, dict] = {
+    # Mã       Tên đầy đủ                                        Loại         NAV hiện tại
+    "TCFF":    {"name": "Quỹ Cân Bằng Techcombank",              "category": "BALANCE"},    # 15,605
+    "TCSME":   {"name": "Quỹ Cổ Phiếu SME Techcombank",         "category": "STOCK"},      # 14,169
+    "VDEF":    {"name": "Quỹ Đầu Tư Tăng Trưởng VietFund",      "category": "STOCK"},      # 12,264
+    "VCBFFIF": {"name": "Quỹ Thu Nhập Cố Định VCB Fund",         "category": "BOND"},       # 15,901
+    "TCBF":    {"name": "Quỹ Trái Phiếu Techcombank",            "category": "BOND"},       # 20,728
+    "VMEEF":   {"name": "Quỹ Cổ Phiếu VietFund Emerging",        "category": "STOCK"},      # 16,736
+    "VCBFMGF": {"name": "Quỹ Tăng Trưởng VCB Fund",             "category": "STOCK"},      # 14,628
+    "LHCDF":   {"name": "Quỹ Cổ Phiếu Lion Holdings",            "category": "STOCK"},      # 11,819
+    "DFIX":    {"name": "Quỹ Trái Phiếu Dragon Capital Fixed",   "category": "BOND"},       # 12,152
+    "VCBFTBF": {"name": "Quỹ Cân Bằng VCB Fund",                "category": "BALANCE"},    # 38,928
+    "VESAF":   {"name": "Quỹ Cổ Phiếu VietFund Equity",          "category": "STOCK"},      # 33,818
+    "VCBFAIF": {"name": "Quỹ Cổ Phiếu AI VCB Fund",             "category": "STOCK"},      # 11,595
+    "VCAMDF":  {"name": "Quỹ Đầu Tư Năng Động VCAM",            "category": "STOCK"},      # 11,062
+    "VIBF":    {"name": "Quỹ Cân Bằng VIB",                      "category": "BALANCE"},    # 19,909
+    "UVDIF":   {"name": "Quỹ Cân Bằng UOB Vietnam",              "category": "BALANCE"},    # 11,087
+    "VCBFBCF": {"name": "Quỹ Cổ Phiếu VCB Fund",                "category": "STOCK"},      # 43,686
+    "NTPPF":   {"name": "Quỹ Cổ Phiếu NTP",                      "category": "STOCK"},      # 10,584
+    "VCAMBF":  {"name": "Quỹ Cân Bằng VCAM",                     "category": "BALANCE"},    # 21,568
+    "VEOF":    {"name": "Quỹ Cổ Phiếu VietFund Equity Opport.",  "category": "STOCK"},      # 34,760
+    "DCAF":    {"name": "Quỹ Cổ Phiếu Dragon Capital",           "category": "STOCK"},      # 17,306
+    "TCEF":    {"name": "Quỹ Cổ Phiếu Techcombank Equity",       "category": "STOCK"},      # 20,640
+    "MAGEF":   {"name": "Quỹ Cổ Phiếu Tăng Trưởng Manulife",   "category": "STOCK"},      # 21,598
+    "TCGF":    {"name": "Quỹ Tăng Trưởng Techcombank TCGF",     "category": "STOCK"},      # 11,702
+    "PHVSF":   {"name": "Quỹ Cổ Phiếu Phú Hưng",                "category": "STOCK"},      # 12,979
+    "TCRES":   {"name": "Quỹ Bất Động Sản Techcombank",          "category": "REAL_ESTATE"},# 12,988
+    "SSISCA":  {"name": "Quỹ Cổ Phiếu SSI",                     "category": "STOCK"},      # 43,535
+    "UVEEF":   {"name": "Quỹ Cổ Phiếu UOB Vietnam Emerging",     "category": "STOCK"},      # 17,180
+    "DCDS":    {"name": "Quỹ Cổ Phiếu Dragon Capital DS",        "category": "STOCK"},      # 99,846 — MỚI, chưa có trong KNOWN_FUNDS
+    "TCFIN":   {"name": "Quỹ Tài Chính Techcombank",             "category": "STOCK"},      # 13,924
+    "DCDE":    {"name": "Quỹ Cổ Phiếu Việt Nam Dragon Capital",  "category": "STOCK"},      # 28,702
+    "KDEF":    {"name": "Quỹ Cổ Phiếu KIM Định Hướng DN",        "category": "STOCK"},      # 11,824
+}
+
+# KNOWN_FUNDS = TCINVEST_FUNDS + các quỹ khác không có trên TCinvest
+# (fmarket-only: MAFPF1, MBBF, ESSCF, ESBF, VNDAF, VCBFEF, TCCF)
 KNOWN_FUNDS: dict[str, dict] = {
-    # ── Techcombank Asset Management (TCBS platform) ─────────────────────────
-    "TCBF":    {"name": "Quỹ Trái Phiếu Techcombank",           "tcbs": True,  "fmarket_id": None, "category": "BOND"},
-    "TCFF":    {"name": "Quỹ Cân Bằng Techcombank",              "tcbs": True,  "fmarket_id": None, "category": "BALANCE"},
-    "TCGF":    {"name": "Quỹ Tăng Trưởng Techcombank TCGF",     "tcbs": True,  "fmarket_id": None, "category": "STOCK"},
-    "TCEF":    {"name": "Quỹ Cổ Phiếu Techcombank Equity",       "tcbs": True,  "fmarket_id": None, "category": "STOCK"},
-    "TCSME":   {"name": "Quỹ Cổ Phiếu SME Techcombank",         "tcbs": True,  "fmarket_id": None, "category": "STOCK"},
-    "TCRES":   {"name": "Quỹ Bất Động Sản Techcombank",          "tcbs": True,  "fmarket_id": None, "category": "REAL_ESTATE"},
-    "TCFIN":   {"name": "Quỹ Tài Chính Techcombank",             "tcbs": True,  "fmarket_id": None, "category": "STOCK"},
-    "TCCF":    {"name": "Quỹ Tiền Tệ Techcombank",              "tcbs": True,  "fmarket_id": None, "category": "BOND"},
-
-    # ── fmarket funds (IDs đã xác nhận) ─────────────────────────────────────
-    "SSISCA":  {"name": "Quỹ Cổ Phiếu SSI",                     "tcbs": False, "fmarket_id": 11,   "category": "STOCK"},
-    "VCBFTBF": {"name": "Quỹ Trái Phiếu VCB",                   "tcbs": False, "fmarket_id": 27,   "category": "BOND"},
-    "VCBFBCF": {"name": "Quỹ Cổ Phiếu VCB",                     "tcbs": False, "fmarket_id": 32,   "category": "STOCK"},
-    "MAFPF1":  {"name": "Quỹ Tiết Kiệm Manulife",               "tcbs": False, "fmarket_id": 45,   "category": "BOND"},
-
-    # ── fmarket funds (IDs chưa xác nhận — --discover sẽ tìm) ───────────────
-    "VDEF":    {"name": "Quỹ Đầu Tư Tăng Trưởng VietFund",      "tcbs": False, "fmarket_id": None, "category": "STOCK"},
-    "VMEEF":   {"name": "Quỹ Cổ Phiếu VietFund Emerging",        "tcbs": False, "fmarket_id": None, "category": "STOCK"},
-    "VESAF":   {"name": "Quỹ Cổ Phiếu VietFund Equity",          "tcbs": False, "fmarket_id": None, "category": "STOCK"},
-    "VEOF":    {"name": "Quỹ Cổ Phiếu VietFund Equity Opport.",  "tcbs": False, "fmarket_id": None, "category": "STOCK"},
-    "VCBFMGF": {"name": "Quỹ Tăng Trưởng VCB Fund",             "tcbs": False, "fmarket_id": None, "category": "STOCK"},
-    "VCBFFIF": {"name": "Quỹ Thu Nhập Cố Định VCB Fund",         "tcbs": False, "fmarket_id": None, "category": "BOND"},
-    "VCBFAIF": {"name": "Quỹ Cổ Phiếu AI VCB Fund",             "tcbs": False, "fmarket_id": None, "category": "STOCK"},
-    "VCBFEF":  {"name": "Quỹ Cổ Phiếu VCB Fund",                "tcbs": False, "fmarket_id": None, "category": "STOCK"},
-    "DCAF":    {"name": "Quỹ Cân Bằng Dragon Capital",           "tcbs": False, "fmarket_id": None, "category": "BALANCE"},
-    "DFIX":    {"name": "Quỹ Trái Phiếu Dragon Capital Fixed",   "tcbs": False, "fmarket_id": None, "category": "BOND"},
-    "DCDE":    {"name": "Quỹ Cổ Phiếu Việt Nam Dragon Capital",  "tcbs": False, "fmarket_id": None, "category": "STOCK"},
-    "LHCDF":   {"name": "Quỹ Cân Bằng Lion Holdings",            "tcbs": False, "fmarket_id": None, "category": "BALANCE"},
-    "VIBF":    {"name": "Quỹ Cân Bằng VIB",                      "tcbs": False, "fmarket_id": None, "category": "BALANCE"},
-    "VCAMDF":  {"name": "Quỹ Đầu Tư Năng Động VCAM",            "tcbs": False, "fmarket_id": None, "category": "STOCK"},
-    "VCAMBF":  {"name": "Quỹ Cân Bằng VCAM",                     "tcbs": False, "fmarket_id": None, "category": "BALANCE"},
-    "UVDIF":   {"name": "Quỹ Cân Bằng UOB Vietnam",              "tcbs": False, "fmarket_id": None, "category": "BALANCE"},
-    "UVEEF":   {"name": "Quỹ Cổ Phiếu UOB Vietnam Emerging",     "tcbs": False, "fmarket_id": None, "category": "STOCK"},
-    "MAGEF":   {"name": "Quỹ Cổ Phiếu Tăng Trưởng Manulife",   "tcbs": False, "fmarket_id": None, "category": "STOCK"},
-    "NTPPF":   {"name": "Quỹ Cổ Phiếu NTP",                      "tcbs": False, "fmarket_id": None, "category": "STOCK"},
-    "PHVSF":   {"name": "Quỹ Cổ Phiếu Phú Hưng",                "tcbs": False, "fmarket_id": None, "category": "STOCK"},
-    "KDEF":    {"name": "Quỹ Cổ Phiếu KIM Định Hướng DN",        "tcbs": False, "fmarket_id": None, "category": "STOCK"},
-    "MBBF":    {"name": "Quỹ Trái Phiếu MB",                     "tcbs": False, "fmarket_id": None, "category": "BOND"},
-    "ESSCF":   {"name": "Quỹ Cổ Phiếu Eastspring",               "tcbs": False, "fmarket_id": None, "category": "STOCK"},
-    "ESBF":    {"name": "Quỹ Trái Phiếu Eastspring",             "tcbs": False, "fmarket_id": None, "category": "BOND"},
-    "VNDAF":   {"name": "Quỹ VND Anh Minh",                      "tcbs": False, "fmarket_id": None, "category": "STOCK"},
+    **TCINVEST_FUNDS,
+    # ── Có trên fmarket nhưng KHÔNG có trên TCinvest ─────────────────────────
+    "MAFPF1":  {"name": "Quỹ Tiết Kiệm Manulife",               "category": "BOND"},
+    "VCBFEF":  {"name": "Quỹ Cổ Phiếu VCB (cũ)",               "category": "STOCK"},
+    "TCCF":    {"name": "Quỹ Tiền Tệ Techcombank",              "category": "BOND"},
+    "MBBF":    {"name": "Quỹ Trái Phiếu MB",                    "category": "BOND"},
+    "ESSCF":   {"name": "Quỹ Cổ Phiếu Eastspring",              "category": "STOCK"},
+    "ESBF":    {"name": "Quỹ Trái Phiếu Eastspring",            "category": "BOND"},
+    "VNDAF":   {"name": "Quỹ VND Anh Minh",                     "category": "STOCK"},
 }
 
 # TCBS public NAV endpoint — không cần token, lấy được ~3000 điểm (~12 năm)
@@ -714,58 +719,75 @@ def tcinvest_fetch_nav_hist(code: str, jwt: str) -> list[dict]:
 
 def cmd_tcinvest(conn, jwt: str) -> None:
     """
-    One-time bulk fetch toàn bộ quỹ từ TCinvest dùng JWT.
+    One-time bulk fetch 31 quỹ từ TCinvest dùng JWT.
 
     Quy trình:
-    1. Lấy catalog tất cả quỹ trên TCinvest
-    2. Seed funds_master với các quỹ mới tìm thấy
-    3. Fetch full NAV history mỗi quỹ
-    4. Insert vào nav_history (idempotent)
+    1. Seed TCINVEST_FUNDS (31 quỹ xác nhận từ screenshot 2026-06-21) vào funds_master
+    2. Thử lấy catalog từ TCinvest API để bổ sung quỹ mới (nếu có)
+    3. Fetch full NAV history mỗi quỹ qua TCBS API
+    4. Insert vào nav_history (ON CONFLICT DO NOTHING — idempotent)
 
     Chạy một lần để build core database.
     Sau đó dùng --daily cho cập nhật hàng ngày.
     """
     log("=" * 60)
-    log("🏦 TCINVEST BULK FETCH — One-time core database")
+    log(f"TCINVEST BULK FETCH — {len(TCINVEST_FUNDS)} quy xac nhan")
     log("=" * 60)
 
-    # Step 1: Lấy catalog
+    # Step 1: Seed 31 quỹ xác nhận vào funds_master
+    new_seeded = 0
+    with conn.cursor() as cur:
+        for code, info in TCINVEST_FUNDS.items():
+            cur.execute("""
+                INSERT INTO funds_master (code, name, source, category)
+                VALUES (%s, %s, 'tcinvest', %s)
+                ON CONFLICT (code) DO UPDATE SET
+                    name       = COALESCE(funds_master.name, EXCLUDED.name),
+                    source     = CASE WHEN funds_master.source IS NULL
+                                      THEN 'tcinvest' ELSE funds_master.source END,
+                    updated_at = NOW()
+            """, (code, info.get("name", code), info.get("category", "")))
+            if cur.rowcount > 0:
+                new_seeded += 1
+    conn.commit()
+    log(f"Seed: {len(TCINVEST_FUNDS)} quy vao funds_master ({new_seeded} moi)")
+
+    # Step 2: Thử catalog API — bổ sung nếu có quỹ mới
     catalog_items = tcinvest_get_catalog(jwt)
-
-    codes_to_fetch: list[str] = []
-
+    extra = 0
     if catalog_items:
-        new_funds = 0
         with conn.cursor() as cur:
             for item in catalog_items:
                 code = (
                     item.get("fundCode") or item.get("code") or
                     item.get("shortName") or item.get("symbol") or ""
                 ).upper().strip()
-                name = item.get("fundName") or item.get("name") or code
-                cat  = item.get("fundType") or item.get("type") or item.get("category") or ""
-
-                if not code:
+                if not code or code in TCINVEST_FUNDS:
                     continue
-                codes_to_fetch.append(code)
-
+                name = item.get("fundName") or item.get("name") or code
+                cat  = item.get("fundType") or item.get("type") or ""
                 cur.execute("""
                     INSERT INTO funds_master (code, name, source, category)
                     VALUES (%s, %s, 'tcinvest', %s)
-                    ON CONFLICT (code) DO UPDATE SET
-                        name       = COALESCE(funds_master.name, EXCLUDED.name),
-                        updated_at = NOW()
+                    ON CONFLICT DO NOTHING
                 """, (code, name, cat))
                 if cur.rowcount > 0:
-                    new_funds += 1
+                    extra += 1
         conn.commit()
-        log(f"✅ Catalog: {len(codes_to_fetch)} quỹ, {new_funds} mới seed vào funds_master")
-    else:
-        # Fallback: dùng KNOWN_FUNDS + những gì đã có trong DB
+        if extra:
+            log(f"Catalog API: them {extra} quy moi ngoai danh sach 31")
+
+    # Danh sách cuối cùng cần fetch
+    codes_to_fetch = list(TCINVEST_FUNDS.keys())
+    if extra:
         with conn.cursor() as cur:
-            cur.execute("SELECT code FROM funds_master WHERE active = true")
+            cur.execute(
+                "SELECT code FROM funds_master WHERE source='tcinvest' AND active=true"
+            )
             codes_to_fetch = [r[0] for r in cur.fetchall()]
-        log(f"  → Dùng {len(codes_to_fetch)} quỹ từ funds_master")
+
+    log(f"\nBat dau fetch NAV history cho {len(codes_to_fetch)} quy...")
+    log("(Moi quy ~1-3s, tong ~2-5 phut)\n")
 
     log(f"\n📥 Bắt đầu fetch NAV history cho {len(codes_to_fetch)} quỹ...")
     log("   (Mỗi quỹ ~1-3s. Tổng ước tính: ~2-10 phút)\n")
