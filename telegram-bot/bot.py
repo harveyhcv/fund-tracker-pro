@@ -79,8 +79,13 @@ _tcbs_auth_fail_codes: set = set()
 def load_config() -> dict:
     cfg = {}
     if CONFIG_FILE.exists():
-        with open(CONFIG_FILE, encoding="utf-8") as f:
-            cfg = json.load(f)
+        try:
+            with open(CONFIG_FILE, encoding="utf-8") as f:
+                cfg = json.load(f)
+        except json.JSONDecodeError:
+            # File bị corrupt (truncated write) — log và trả {} để bot vẫn chạy
+            log.error("[load_config] config.json bị lỗi JSON — bỏ qua, dùng config rỗng")
+            cfg = {}
     # ENV override — ưu tiên hơn config.json (cho cloud deployment)
     for env_key, cfg_key in [
         ("BOT_TOKEN",         "bot_token"),
@@ -138,20 +143,30 @@ def _ensure_config_exists():
 
 
 def save_config(cfg: dict):
-    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+    """Atomic write: ghi vào file tạm rồi rename để tránh corrupted JSON khi crash."""
+    import tempfile
+    tmp = CONFIG_FILE.parent / (CONFIG_FILE.name + ".tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump(cfg, f, indent=2, ensure_ascii=False)
+    tmp.replace(CONFIG_FILE)
 
 
 def load_state() -> dict:
     if STATE_FILE.exists():
-        with open(STATE_FILE) as f:
-            return json.load(f)
+        try:
+            with open(STATE_FILE, encoding="utf-8") as f:
+                return json.load(f)
+        except json.JSONDecodeError:
+            log.error("[load_state] state.json bị lỗi JSON — reset state")
     return {}
 
 
 def save_state(state: dict):
-    with open(STATE_FILE, "w") as f:
+    import tempfile
+    tmp = STATE_FILE.parent / (STATE_FILE.name + ".tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump(state, f, indent=2, ensure_ascii=False)
+    tmp.replace(STATE_FILE)
 
 
 # ═══════════════════════════════════════
