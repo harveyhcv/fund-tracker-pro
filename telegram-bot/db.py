@@ -377,6 +377,46 @@ def get_nav_on_or_after(fund_code: str, target_date: date) -> "float | None":
             return float(row[0]) if row else None
 
 
+# ─── FUNDS MASTER ────────────────────────────────────────────────────────────
+
+def get_all_active_funds() -> "list[dict]":
+    """
+    Trả về tất cả quỹ đang active trong funds_master.
+    Returns: [{code, name, fmarket_id, tcbs, source}]
+    Dùng cho harvest jobs và /navall command.
+    """
+    if not is_available():
+        return []
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT code, name, fmarket_id, tcbs, source
+                FROM funds_master
+                WHERE active = true
+                ORDER BY code
+            """)
+            return [dict(r) for r in cur.fetchall()]
+
+
+def get_nav_latest(fund_code: str) -> "dict | None":
+    """Trả về NAV mới nhất của 1 quỹ: {nav_date, nav}"""
+    if not is_available():
+        return None
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT nav_date, nav
+                FROM nav_history
+                WHERE fund_code = %s
+                ORDER BY nav_date DESC
+                LIMIT 1
+            """, (fund_code,))
+            row = cur.fetchone()
+            return dict(row) if row else None
+
+
+# ─── POOL ────────────────────────────────────────────────────────────────────
+
 def close_pool() -> None:
     global _pool
     if _pool:

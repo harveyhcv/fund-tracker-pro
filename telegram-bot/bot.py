@@ -1203,6 +1203,49 @@ def job_dca_reminder():
 
 
 # ═══════════════════════════════════════
+# MASTER NAV HARVEST JOB
+# ═══════════════════════════════════════
+
+def job_harvest_nav():
+    """
+    Chạy daily lúc 18:30 — fetch NAV mới nhất cho TẤT CẢ quỹ trong funds_master.
+    Không giới hạn ở watched_funds — đây là master data pipeline.
+    """
+    if not (_DB_AVAILABLE and _db.is_available()):
+        log.debug("[harvest] DB không khả dụng — bỏ qua")
+        return
+
+    log.info("══ JOB: Daily NAV Harvest ══")
+
+    # Chạy harvest_nav.py --daily qua subprocess để tận dụng toàn bộ logic ở đó.
+    # Dùng sys.executable để đảm bảo đúng Python environment (Railway virtualenv).
+    import subprocess
+    script = Path(__file__).parent.parent / "scripts" / "harvest_nav.py"
+    if not script.exists():
+        log.error("[harvest] scripts/harvest_nav.py không tìm thấy")
+        return
+
+    try:
+        result = subprocess.run(
+            [sys.executable, str(script), "--daily"],
+            capture_output=True, text=True, timeout=300,
+            env={**__import__("os").environ},  # kế thừa DATABASE_URL
+        )
+        output = (result.stdout or "").strip()
+        if result.returncode == 0:
+            # Lấy dòng cuối (summary line) để log ngắn gọn
+            summary = output.splitlines()[-1] if output else "OK"
+            log.info("[harvest] %s", summary)
+        else:
+            log.error("[harvest] exit=%d stderr=%s", result.returncode,
+                      (result.stderr or "")[:500])
+    except subprocess.TimeoutExpired:
+        log.error("[harvest] Timeout sau 300s")
+    except Exception as e:
+        log.error("[harvest] %s", e)
+
+
+# ═══════════════════════════════════════
 # DB USER HELPERS
 # ═══════════════════════════════════════
 
@@ -2205,6 +2248,7 @@ def main():
     schedule.every(30).minutes.do(job_check_jwt)
     schedule.every().day.at("09:00").do(job_backfill_settlement)
     schedule.every().day.at("09:00").do(job_dca_reminder)
+    schedule.every().day.at("18:30").do(job_harvest_nav)
     schedule.every().day.at("00:01").do(job_watchdog_ping)
 
     log.info("Chạy signal check khởi động...")
