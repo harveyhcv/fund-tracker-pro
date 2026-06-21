@@ -42,6 +42,12 @@ try:
 except ImportError:
     _DB_AVAILABLE = False
 
+try:
+    import crypto as _crypto
+    _CRYPTO_AVAILABLE = True
+except ImportError:
+    _CRYPTO_AVAILABLE = False
+
 # ═══════════════════════════════════════
 # LOGGING
 # ═══════════════════════════════════════
@@ -1051,6 +1057,41 @@ def job_check_signals():
                     log.debug("save_signal %s: %s", code, e)
 
 
+def job_backfill_settlement():
+    """Điền nav_at_settlement cho buy_signals đã qua est_exec_date.
+
+    Chạy hàng ngày lúc 09:00 (sau job_morning). Tra cứu từ nav_history;
+    nếu chưa có dữ liệu (NAV chưa được fetch vào DB) thì bỏ qua — ngày hôm sau tự điền.
+    """
+    log.info("══ JOB: Backfill Settlement NAV ══")
+    if not (_DB_AVAILABLE and _db.is_available()):
+        log.debug("[backfill] DB unavailable — skip")
+        return
+    today   = date.today()
+    pending = _db.get_pending_backfill(today)
+    if not pending:
+        log.info("[backfill] Không có signal nào cần backfill")
+        return
+    filled  = 0
+    skipped = 0
+    for row in pending:
+        fund_code    = row["fund_code"]
+        signal_date  = row["signal_date"]
+        est_exec     = row["est_exec_date"]
+        nav = _db.get_nav_on_or_after(fund_code, est_exec)
+        if nav is not None:
+            try:
+                _db.backfill_settlement_nav(fund_code, signal_date, nav)
+                log.info("[backfill] ✓ %s signal=%s nav_settle=%.4f", fund_code, signal_date, nav)
+                filled += 1
+            except Exception as e:
+                log.warning("[backfill] %s %s: %s", fund_code, signal_date, e)
+        else:
+            log.debug("[backfill] %s %s: NAV chưa có cho %s — bỏ qua", fund_code, signal_date, est_exec)
+            skipped += 1
+    log.info("[backfill] ✅ Filled=%d  Skipped=%d/%d", filled, skipped, len(pending))
+
+
 def job_watchdog_ping():
     """Gửi ping hàng ngày lúc 00:01 — nếu không nhận được là bot đã chết."""
     cfg = load_config()
@@ -1069,6 +1110,536 @@ def job_watchdog_ping():
             f"Đang theo dõi: {', '.join(profile.get('watched_funds', []))}",
         )
         log.info(f"  → {profile['name']} ({tg}): {'OK' if ok else 'FAILED'}")
+
+
+# ═══════════════════════════════════════
+# NAV CHANGE ALERT JOB
+# ═══════════════════════════════════════
+
+def job_nav_change_alert():
+    """Gửi thông báo khi có NAV mới được công bố (nav_date thay đổi so với lần trước).
+    Chạy theo interval signal_check. Chỉ gửi khi có thay đổi thực sự — không spam.
+    """
+    config = load_config()
+    token  = config.get("bot_token", "")
+    if not token or token.startswith("NHAP"):
+        return
+    codes    = all_watched_codes(config)
+    if not codes:
+        return
+    nav_data = fetch_all(config, codes)
+    state      = load_state()
+    last_dates = state.get("last_nav_dates", {})
+
+    newly_published = {c: d for c, d in nav_data.items() if d and d.get("nav_date") and d["nav_date"] != last_dates.get(c, "")}
+    if not newly_published:
+        log.debug("[nav-alert] Không có NAV mới")
+        return
+
+    log.info(f"[nav-alert] NAV mới: {sorted(newly_published.keys())}")
+    for profile in config.get("profiles", []):
+        tg = str(profile.get("telegram_id", ""))
+        if not tg.lstrip("-").isdigit():
+            continue
+        watched   = set(profile.get("watched_funds", []))
+        relevant  = {c: d for c, d in newly_published.items() if c in watched}
+        if not relevant:
+            continue
+        lines = [
+            f"📢 <b>NAV Mới — {date.today().strftime('%d/%m/%Y')}</b>",
+            LINE,
+        ]
+        for code_na, d_na in sorted(relevant.items()):
+            sig_na  = d_na.get("signal", "—")
+            chg_na  = d_na.get("chg_pct", 0) or 0
+            emoji   = "🟢" if "MUA" in sig_na else "🔴" if "BÁN" in sig_na else "⚪"
+            chg_s   = f"{'+' if chg_na >= 0 else ''}{chg_na:.2f}%"
+            lines.append(
+                f"{emoji} <code>{code_na}</code>  <b>{fmt_nav(d_na['nav'])}</b>  "
+                f"<i>{chg_s}</i>  {sig_na}"
+            )
+        lines += [LINE, "<i>Quỹ Tracker Pro · Tự động</i>"]
+        tg_send(token, tg, "\n".join(lines))
+
+    state["last_nav_dates"] = {**last_dates, **{c: d.get("nav_date", "") for c, d in nav_data.items() if d}}
+    save_state(state)
+
+
+def job_dca_reminder():
+    """Gửi gợi ý DCA vào ngày 1 mỗi tháng cho các profile đã setup monthly_dca."""
+    if date.today().day != 1:
+        return
+    config = load_config()
+    token  = config.get("bot_token", "")
+    if not token or token.startswith("NHAP"):
+        return
+    log.info("══ JOB: DCA Monthly Reminder ══")
+    for profile in config.get("profiles", []):
+        budget = profile.get("monthly_dca", 0)
+        if not budget:
+            continue
+        tg = str(profile.get("telegram_id", ""))
+        if not tg.lstrip("-").isdigit():
+            continue
+        codes    = set(profile.get("watched_funds", []))
+        nav_data = fetch_all(config, codes)
+        tg_send(token, tg, msg_dca_suggest(profile, nav_data, float(budget)))
+        log.info(f"  → DCA reminder: {profile['name']} ngân sách {int(budget):,}đ")
+
+
+# ═══════════════════════════════════════
+# DB USER HELPERS
+# ═══════════════════════════════════════
+
+def _ensure_db_user(
+    telegram_id: int,
+    profile_name: str,
+) -> "tuple[str, str, bytes] | None":
+    """Get-or-create DB user + default portfolio. Returns (user_uuid, portfolio_id, user_key).
+
+    Returns None if DB, crypto, or ENCRYPTION_KEY is unavailable.
+    Idempotent — safe to call on every command.
+    """
+    if not (_DB_AVAILABLE and _db.is_available() and _CRYPTO_AVAILABLE and _crypto.is_available()):
+        return None
+    master_key = _crypto.get_master_key()
+    if not master_key:
+        return None
+
+    info = _db.get_user_info(telegram_id)
+    if info:
+        user_uuid = info["id"]
+        user_key  = _crypto.derive_user_key(master_key, info["enc_salt"])
+    else:
+        enc_salt   = os.urandom(32)
+        auth_hash  = _crypto.make_auth_hash(telegram_id, master_key)
+        user_uuid  = _db.get_or_create_user(telegram_id, enc_salt, auth_hash)
+        user_key   = _crypto.derive_user_key(master_key, enc_salt)
+
+    name_enc     = _crypto.encrypt_str(profile_name or "Danh mục của tôi", user_key)
+    portfolio_id = _db.get_or_create_portfolio(user_uuid, name_enc)
+    return user_uuid, portfolio_id, user_key
+
+
+def _get_db_user(telegram_id: int) -> "tuple[str, str, bytes] | None":
+    """Read-only: returns (user_uuid, portfolio_id, user_key) only if user already exists in DB.
+
+    Used by /portfolio so it doesn't create empty records for every viewer.
+    """
+    if not (_DB_AVAILABLE and _db.is_available() and _CRYPTO_AVAILABLE and _crypto.is_available()):
+        return None
+    master_key = _crypto.get_master_key()
+    if not master_key:
+        return None
+    info = _db.get_user_info(telegram_id)
+    if not info:
+        return None
+    user_uuid    = info["id"]
+    user_key     = _crypto.derive_user_key(master_key, info["enc_salt"])
+    portfolio_id = _db.get_portfolio_id(user_uuid)
+    if not portfolio_id:
+        return None
+    return user_uuid, portfolio_id, user_key
+
+
+def _msg_portfolio_from_db(
+    profile: dict,
+    raw_holdings: list,
+    nav_data: dict,
+    user_key: bytes,
+) -> str:
+    """Build portfolio P&L message from decrypted DB holdings."""
+    now = datetime.now()
+    lines = [
+        f"📊 <b>DANH MỤC — {profile['name']}</b>",
+        f"📅 {now.strftime('%d/%m/%Y %H:%M')}",
+        LINE,
+    ]
+    total_value = 0.0
+    total_cost  = 0.0
+
+    for h in raw_holdings:
+        fund_code = h["fund_code"]
+        try:
+            units    = _crypto.decrypt_decimal(h["units_enc"],    user_key)
+            avg_cost = _crypto.decrypt_decimal(h["avg_cost_enc"], user_key)
+        except Exception:
+            lines.append(f"⚠️ <code>{fund_code}</code>  Lỗi giải mã")
+            continue
+        if units <= 0:
+            continue
+        d = nav_data.get(fund_code)
+        if not d or d["nav"] == 0:
+            lines.append(f"⚠️ <code>{fund_code}</code>  N/A (chưa có NAV)")
+            continue
+        nav_now   = d["nav"]
+        cost_val  = units * avg_cost
+        cur_val   = units * nav_now
+        pnl       = cur_val - cost_val
+        pnl_pct   = (nav_now - avg_cost) / avg_cost * 100 if avg_cost > 0 else 0
+        emoji     = "🟢" if "MUA" in d["signal"] else "🔴" if "BÁN" in d["signal"] else "⚪"
+        pnl_emoji = "📈" if pnl >= 0 else "📉"
+        pnl_sign  = "+" if pnl >= 0 else ""
+        pct_sign  = "+" if pnl_pct >= 0 else ""
+        lines.append(
+            f"{emoji} <b><code>{fund_code}</code></b>  {units:,.3f} CCQ\n"
+            f"   Giá vốn: {int(avg_cost):,}đ → Hiện: {int(nav_now):,}đ "
+            f"({pct_sign}{pnl_pct:.2f}%)  {d['signal']}\n"
+            f"   {pnl_emoji} Giá trị: {int(cur_val):,}đ  |  "
+            f"{'Lãi' if pnl >= 0 else 'Lỗ'}: <b>{pnl_sign}{int(pnl):,}đ</b>"
+        )
+        total_value += cur_val
+        total_cost  += cost_val
+
+    if total_cost > 0:
+        total_pnl     = total_value - total_cost
+        total_pnl_pct = total_pnl / total_cost * 100
+        pnl_sign      = "+" if total_pnl >= 0 else ""
+        pct_sign      = "+" if total_pnl_pct >= 0 else ""
+        lines.append(LINE)
+        lines.append(
+            f"💰 <b>Tổng: {int(total_value):,}đ</b>  |  "
+            f"{'Lãi' if total_pnl >= 0 else 'Lỗ'}: "
+            f"<b>{pnl_sign}{int(total_pnl):,}đ ({pct_sign}{total_pnl_pct:.2f}%)</b>"
+        )
+    lines.append("<i>Bot không cung cấp khuyến nghị đầu tư.</i>")
+    return "\n".join(lines)
+
+
+# ═══════════════════════════════════════
+# RESEARCH ANALYSIS HELPERS
+# ═══════════════════════════════════════
+
+def compute_research_stats(pts: list) -> dict:
+    """Extended stats from NAV series for /research command."""
+    import math
+    import statistics as _stats_mod
+    if len(pts) < 10:
+        return {}
+    navs    = [p["nav"] for p in pts]
+    nav_now = navs[-1]
+    today   = date.today()
+    cutoff_1y = f"{today.year - 1}-{today.month:02d}-{today.day:02d}"
+
+    idx_1y  = next((i for i, p in enumerate(pts) if p["date"] >= cutoff_1y), 0)
+    navs_1y = navs[idx_1y:] if idx_1y < len(navs) else navs
+    nav_52w_high = max(navs_1y)
+    nav_52w_low  = min(navs_1y)
+    range_52w    = nav_52w_high - nav_52w_low
+
+    chg365        = round((nav_now / navs[idx_1y] - 1) * 100, 2) if navs[idx_1y] > 0 else None
+    pct_from_high = round((nav_now - nav_52w_high) / nav_52w_high * 100, 2) if nav_52w_high > 0 else 0.0
+    pct_from_low  = round((nav_now - nav_52w_low)  / nav_52w_low  * 100, 2) if nav_52w_low  > 0 else 0.0
+    pos_in_range  = round((nav_now - nav_52w_low)  / range_52w    * 100, 1) if range_52w    > 0 else 50.0
+
+    vol_30d = None
+    if len(navs) >= 31:
+        recent = navs[-31:]
+        rets = [(recent[i] / recent[i - 1] - 1) for i in range(1, len(recent)) if recent[i - 1] > 0]
+        try:
+            vol_30d = round(_stats_mod.stdev(rets) * math.sqrt(252) * 100, 2)
+        except Exception:
+            pass
+
+    peak   = navs_1y[0] if navs_1y else nav_now
+    max_dd = 0.0
+    for n in navs_1y:
+        peak = max(peak, n)
+        if peak > 0:
+            max_dd = min(max_dd, (n - peak) / peak * 100)
+
+    return {
+        "nav_52w_high":  nav_52w_high,
+        "nav_52w_low":   nav_52w_low,
+        "chg365":        chg365,
+        "pct_from_high": pct_from_high,
+        "pct_from_low":  pct_from_low,
+        "pos_in_range":  pos_in_range,
+        "vol_30d":       vol_30d,
+        "max_drawdown":  round(max_dd, 2),
+    }
+
+
+def msg_research(code: str, d: dict, stats: dict, fund_name: str = "") -> str:
+    """Multi-school deep analysis message for /research command."""
+    now       = datetime.now()
+    nav       = d.get("nav", 0)
+    rsi       = d.get("rsi")
+    bb        = d.get("bb_pct")
+    ma20      = d.get("ma20") or 0.0
+    ma50      = d.get("ma50") or 0.0
+    score     = d.get("score", 0)
+    sig       = d.get("signal", "—")
+    chg_pct   = d.get("chg_pct", 0) or 0
+    chg30     = d.get("chg30")
+    macd_hist = d.get("macd_hist")
+
+    nav_52w_high  = stats.get("nav_52w_high", nav)
+    nav_52w_low   = stats.get("nav_52w_low",  nav)
+    pct_from_high = stats.get("pct_from_high", 0.0)
+    pct_from_low  = stats.get("pct_from_low",  0.0)
+    pos_in_range  = stats.get("pos_in_range",  50.0)
+    chg365        = stats.get("chg365")
+    vol_30d       = stats.get("vol_30d")
+    max_dd        = stats.get("max_drawdown", 0.0)
+
+    # ─── 1. Technical ─────────────────────────────────────────
+    if score >= 6:    ta_v = "🟢🟢 MUA MẠNH"
+    elif score >= 3:  ta_v = "🟢 MUA"
+    elif score <= -6: ta_v = "🔴🔴 BÁN MẠNH"
+    elif score <= -3: ta_v = "🔴 BÁN"
+    else:             ta_v = "⚪ TRUNG TÍNH"
+
+    if rsi is None:   rsi_note = "—"
+    elif rsi < 30:    rsi_note = f"{rsi:.1f} — Quá bán mạnh 🟢🟢"
+    elif rsi < 40:    rsi_note = f"{rsi:.1f} — Vùng quá bán 🟢"
+    elif rsi > 75:    rsi_note = f"{rsi:.1f} — Quá mua mạnh 🔴🔴"
+    elif rsi > 65:    rsi_note = f"{rsi:.1f} — Vùng quá mua 🔴"
+    else:             rsi_note = f"{rsi:.1f} — Trung tính ⚪"
+
+    if bb is None: bb_note = "—"
+    elif bb < 10:  bb_note = f"{bb:.0f}% — Đáy dải 🟢🟢"
+    elif bb < 20:  bb_note = f"{bb:.0f}% — Gần đáy 🟢"
+    elif bb > 90:  bb_note = f"{bb:.0f}% — Đỉnh dải 🔴🔴"
+    elif bb > 80:  bb_note = f"{bb:.0f}% — Gần đỉnh 🔴"
+    else:          bb_note = f"{bb:.0f}% — Vùng giữa ⚪"
+
+    macd_note = "—"
+    if macd_hist is not None:
+        macd_note = f"{'Dương (+)' if macd_hist > 0 else 'Âm (-)'} — {'Đà tăng 🟢' if macd_hist > 0 else 'Đà giảm ⚠️'}"
+
+    ma_note = "—"
+    if ma20 and ma50:
+        ma_note = f"MA20 {'>' if ma20 > ma50 else '<'} MA50 → {'Xu hướng tăng ↑' if ma20 > ma50 else 'Xu hướng giảm ↓'}"
+
+    # ─── 2. Value ─────────────────────────────────────────────
+    if pct_from_low < 5:     val_v = "🟢🟢 RẤT RẺ — Gần đáy 52 tuần"
+    elif pct_from_low < 15:  val_v = "🟢 RẺ — Vùng tích lũy tốt"
+    elif pct_from_high > -5: val_v = "🔴 ĐẮT — Gần đỉnh 52 tuần"
+    elif pos_in_range > 70:  val_v = "⚠️ TRUNG BÌNH CAO"
+    else:                    val_v = "⚪ TRUNG BÌNH"
+
+    filled  = max(0, min(10, int(pos_in_range / 10)))
+    pos_bar = "█" * filled + "░" * (10 - filled)
+
+    # ─── 3. Momentum ──────────────────────────────────────────
+    up_trend = bool(ma20 and ma50 and ma20 > ma50)
+    if chg30 is not None and ma20 and ma50:
+        if chg30 > 2 and up_trend:      mom_v = "🟢 TĂNG MẠNH — Đà và xu hướng tốt"
+        elif chg30 < -2 and not up_trend: mom_v = "🔴 GIẢM — Không bắt đáy vội"
+        elif up_trend:                   mom_v = "⚪ TĂNG NHẸ — Xu hướng tích cực"
+        else:                            mom_v = "⚠️ PHÂN KỲ — Đà ngắn hạn suy yếu"
+    else:
+        mom_v = "⚪ Không đủ dữ liệu"
+
+    # ─── 4. DCA ───────────────────────────────────────────────
+    below_ma50 = bool(ma50 and nav < ma50)
+    oversold   = rsi is not None and rsi < 45
+    if below_ma50 and oversold:   dca_v = "🟢🟢 TỐT NHẤT — Dưới MA50 + RSI quá bán"
+    elif below_ma50 or oversold:  dca_v = "🟢 PHÙ HỢP — Giá hợp lý để tích lũy dần"
+    elif pct_from_high > -5:      dca_v = "⚠️ NÊN CHỜ — NAV gần đỉnh 52 tuần"
+    else:                         dca_v = "⚪ TRUNG TÍNH — Theo kế hoạch DCA"
+
+    # ─── 5. Risk ──────────────────────────────────────────────
+    if vol_30d is not None:
+        if vol_30d < 4:    risk_v = "🟢 THẤP"
+        elif vol_30d < 10: risk_v = "🟡 TRUNG BÌNH"
+        else:              risk_v = "🔴 CAO"
+    else:
+        risk_v = "⚪ Không đủ dữ liệu"
+
+    chg_s   = f"{'+' if chg_pct >= 0 else ''}{chg_pct:.2f}%"
+    chg30_s = f"{'+' if chg30 >= 0 else ''}{chg30:.1f}%" if chg30 is not None else "—"
+    yr_s    = f"{'+' if chg365 >= 0 else ''}{chg365:.1f}%" if chg365 is not None else "N/A"
+    dd_s    = f"{max_dd:.1f}%" if max_dd else "—"
+
+    lines = [f"🔬 <b>PHÂN TÍCH — <code>{code}</code></b>"]
+    if fund_name:
+        lines.append(f"<i>{fund_name}</i>")
+    lines += [
+        f"📅 {now.strftime('%d/%m/%Y')}  💰 <b>{fmt_nav(nav)}</b>  {chg_s}  {sig}",
+        LINE,
+        f"<b>1️⃣ KỸ THUẬT (Technical Analysis)</b>",
+        f"   RSI(14):   {rsi_note}",
+        f"   Bollinger: {bb_note}",
+        f"   MACD:      {macd_note}",
+        f"   {ma_note}",
+        f"   <b>→ {ta_v}</b>",
+        LINE,
+        f"<b>2️⃣ GIÁ TRỊ (Value Investing)</b>",
+        f"   52T: {int(nav_52w_low):,} – {int(nav_52w_high):,}đ",
+        f"   Vị trí: [{pos_bar}] {pos_in_range:.0f}%",
+        f"   Cách đỉnh: {pct_from_high:+.1f}%  |  Cách đáy: +{pct_from_low:.1f}%",
+        f"   1 năm: {yr_s}",
+        f"   <b>→ {val_v}</b>",
+        LINE,
+        f"<b>3️⃣ XU HƯỚNG (Momentum / Trend)</b>",
+        f"   30 ngày: {chg30_s}  |  {ma_note}",
+        f"   <b>→ {mom_v}</b>",
+        LINE,
+        f"<b>4️⃣ ĐẦU TƯ ĐỊNH KỲ (DCA)</b>",
+        f"   NAV vs MA50: {'Dưới ✅' if below_ma50 else 'Trên ⚠️'}  |  RSI: {'Quá bán ✅' if oversold else 'Bình thường'}",
+        f"   <b>→ {dca_v}</b>",
+        LINE,
+        f"<b>5️⃣ RỦI RO (Risk Management)</b>",
+        (f"   Biến động 30 ngày (năm hóa): {vol_30d:.1f}%  → {risk_v}" if vol_30d else f"   Biến động: {risk_v}"),
+        f"   Max drawdown 1 năm: {dd_s}",
+        f"   <b>→ Mức rủi ro: {risk_v}</b>",
+        LINE,
+        f"<b>📋 TỔNG KẾT</b>",
+        f"   TA: {ta_v}   Value: {val_v.split('—')[0].strip()}",
+        f"   Trend: {mom_v.split('—')[0].strip()}   DCA: {dca_v.split('—')[0].strip()}",
+        LINE,
+        f"<i>⚠️ Tham khảo — không phải khuyến nghị đầu tư cá nhân.</i>",
+    ]
+    return "\n".join(lines)
+
+
+# ═══════════════════════════════════════
+# DCA HELPER
+# ═══════════════════════════════════════
+
+def msg_dca_suggest(profile: dict, nav_data: dict, budget: float) -> str:
+    """Gợi ý phân bổ DCA dựa trên signals. Weight = max(0, score + 6).
+    Funds BÁN MẠNH (score ≤ -6) nhận 0%, còn lại theo tỉ lệ score.
+    """
+    now   = datetime.now()
+    funds = profile.get("watched_funds", [])
+    scored = []
+    for code in funds:
+        d = nav_data.get(code)
+        if d and d.get("nav", 0) > 0:
+            scored.append((code, d, d.get("score", 0)))
+
+    if not scored:
+        return "⚠️ Không có dữ liệu NAV để gợi ý DCA."
+
+    # Weight: max(0, score + 6) — HOLD=6, MUA=9, MUA MẠNH=12, BÁN=3, BÁN MẠNH=0
+    weighted = [(c, d, max(0.0, s + 6.0)) for c, d, s in scored]
+    total_w  = sum(w for _, _, w in weighted)
+
+    lines = [
+        f"💰 <b>GỢI Ý DCA THÁNG {now.month}/{now.year}</b>",
+        f"👤 {profile['name']}  |  Ngân sách: <b>{int(budget):,}đ</b>",
+        LINE,
+    ]
+
+    if total_w == 0:
+        lines += [
+            "⚠️ <b>Tất cả quỹ đang có tín hiệu xấu.</b>",
+            "Gợi ý: Giữ tiền mặt, chờ tín hiệu cải thiện.",
+            LINE,
+            "Tín hiệu hiện tại:",
+        ]
+        for c, d, _ in scored:
+            lines.append(f"   🔴 <code>{c}</code>  {d['signal']}  (score {d.get('score',0):+})")
+    else:
+        allocs = []
+        for c, d, w in weighted:
+            pct    = w / total_w
+            amount = round(pct * budget / 1_000) * 1_000
+            allocs.append((c, d, pct, amount))
+
+        for c, d, pct, amount in sorted(allocs, key=lambda x: -x[2]):
+            emoji = "🟢" if "MUA" in d["signal"] else "🔴" if "BÁN" in d["signal"] else "⚪"
+            skip  = "  <i>(bỏ qua tháng này)</i>" if amount == 0 else ""
+            score_s = f"{d.get('score', 0):+}"
+            lines.append(
+                f"{emoji} <code>{c:<10}</code>  {pct*100:4.0f}%  →  <b>{int(amount):>12,}đ</b>"
+                f"  [{score_s}]{skip}"
+            )
+
+        total_alloc = sum(a for _, _, _, a in allocs)
+        remainder   = int(budget) - total_alloc
+        lines += [
+            LINE,
+            f"💵 Tổng phân bổ: <b>{total_alloc:,}đ</b>" +
+            (f"  |  Dư: {remainder:,}đ" if remainder else ""),
+        ]
+
+    lines += [
+        LINE,
+        "📌 <i>Weight = max(0, score + 6). BÁN MẠNH → bỏ qua.</i>",
+        "💡 Lưu ngân sách: <code>/dca setup [số_tiền]</code>",
+    ]
+    return "\n".join(lines)
+
+
+# ═══════════════════════════════════════
+# TRADE HELPER (shared by /add-trade, /buy, /sell)
+# ═══════════════════════════════════════
+
+def _cmd_add_trade(
+    token: str,
+    chat_id: str,
+    profile: dict,
+    fund_code: str,
+    tx_type: str,
+    units: float,
+    amount: float,
+    order_date: "date",
+) -> None:
+    """Lưu giao dịch vào DB + cập nhật holding. Gửi confirm/error về Telegram."""
+    if not (_DB_AVAILABLE and _db.is_available()):
+        tg_send(token, chat_id, "⚠️ Database chưa kết nối. Liên hệ admin.")
+        return
+    if not (_CRYPTO_AVAILABLE and _crypto.is_available() and _crypto.get_master_key()):
+        tg_send(token, chat_id, "⚠️ Encryption chưa được cấu hình (ENCRYPTION_KEY). Liên hệ admin.")
+        return
+    db_ctx = _ensure_db_user(int(chat_id), profile.get("name", "User"))
+    if not db_ctx:
+        tg_send(token, chat_id, "❌ Không thể khởi tạo tài khoản DB. Liên hệ admin.")
+        return
+    user_uuid, portfolio_id, user_key = db_ctx
+    nav_at_order = round(amount / units, 4)
+    try:
+        _db.add_transaction(
+            user_uuid    = user_uuid,
+            portfolio_id = portfolio_id,
+            fund_code    = fund_code,
+            tx_type      = tx_type,
+            order_date   = order_date,
+            units_enc    = _crypto.encrypt_decimal(units,  user_key),
+            amount_enc   = _crypto.encrypt_decimal(amount, user_key),
+            nav_at_order = nav_at_order,
+        )
+    except Exception as e:
+        log.error("[add-trade] add_transaction failed: %s", e)
+        tg_send(token, chat_id, "❌ Lỗi khi lưu giao dịch. Vui lòng thử lại.")
+        return
+    try:
+        existing_h = _db.get_holdings_raw(user_uuid, portfolio_id)
+        prev_h     = next((h for h in existing_h if h["fund_code"] == fund_code), None)
+        if prev_h:
+            prev_units = _crypto.decrypt_decimal(prev_h["units_enc"],    user_key)
+            prev_avg   = _crypto.decrypt_decimal(prev_h["avg_cost_enc"], user_key)
+        else:
+            prev_units, prev_avg = 0.0, 0.0
+        if tx_type == "buy":
+            new_units = prev_units + units
+            new_avg   = ((prev_units * prev_avg) + (units * nav_at_order)) / new_units
+        else:
+            new_units = max(0.0, prev_units - units)
+            new_avg   = prev_avg
+        _db.upsert_holding(
+            user_uuid    = user_uuid,
+            portfolio_id = portfolio_id,
+            fund_code    = fund_code,
+            units_enc    = _crypto.encrypt_decimal(new_units, user_key),
+            avg_cost_enc = _crypto.encrypt_decimal(new_avg,   user_key),
+        )
+    except Exception as e:
+        log.error("[add-trade] upsert_holding failed: %s", e)
+    action = "Mua" if tx_type == "buy" else "Bán"
+    tg_send(token, chat_id, (
+        f"✅ <b>Đã ghi giao dịch {action}</b>\n\n"
+        f"📌 Quỹ: <code>{fund_code}</code>\n"
+        f"📦 Số CCQ: <b>{units:,.3f}</b>\n"
+        f"💰 Tổng tiền: <b>{int(amount):,}đ</b>\n"
+        f"📊 NAV thực hiện: ~{int(nav_at_order):,}đ/CCQ\n"
+        f"📅 Ngày lệnh: {order_date.strftime('%d/%m/%Y')}\n\n"
+        f"Gõ /portfolio để xem danh mục cập nhật."
+    ))
 
 
 # ═══════════════════════════════════════
@@ -1108,238 +1679,466 @@ def command_handler():
                 log.info(f"[CMD] {cmd!r} from chat {chat_id}")
                 profile = find_profile_by_chat(config, chat_id)
 
-                if cmd == "/getid":
-                    tg_name = msg.get("chat", {}).get("first_name", "") or msg.get("chat", {}).get("title", "")
-                    status = f"✅ Đã liên kết với profile <b>{profile['name']}</b>" if profile else "⚠️ Chưa đăng ký — dùng /register để tự đăng ký"
-                    tg_send(token, chat_id, (f"🪪 <b>Thông tin chat của bạn</b>\n\nTên Telegram: {tg_name}\nChat ID: <code>{chat_id}</code>\nTrạng thái: {status}"))
-                    continue
-
-                if cmd == "/register":
-                    if profile:
-                        tg_send(token, chat_id, f"✅ Bạn đã đăng ký rồi — profile: <b>{profile['name']}</b>\nChat ID: <code>{chat_id}</code>")
+                try:
+                    if cmd == "/getid":
+                        tg_name = msg.get("chat", {}).get("first_name", "") or msg.get("chat", {}).get("title", "")
+                        status = f"✅ Đã liên kết với profile <b>{profile['name']}</b>" if profile else "⚠️ Chưa đăng ký — dùng /register để tự đăng ký"
+                        tg_send(token, chat_id, (f"🪪 <b>Thông tin chat của bạn</b>\n\nTên Telegram: {tg_name}\nChat ID: <code>{chat_id}</code>\nTrạng thái: {status}"))
                         continue
-                    parts = text.split(maxsplit=1)
-                    tg_name = msg.get("chat", {}).get("first_name", "")
-                    reg_name = parts[1].strip() if len(parts) > 1 else tg_name or f"User_{chat_id[-4:]}"
-                    cfg_w = load_config()
-                    default_funds = cfg_w.get("default_watched_funds", ["TCBF", "SSISCA", "VCBFBCF"])
-                    new_p = {"name": reg_name, "telegram_id": chat_id, "watched_funds": default_funds}
-                    cfg_w.setdefault("profiles", []).append(new_p)
-                    save_config(cfg_w)
-                    log.info(f"[REGISTER] New profile: {reg_name} ({chat_id})")
-                    tg_send(token, chat_id, (f"✅ <b>Đăng ký thành công!</b>\n\nTên: <b>{reg_name}</b>\nChat ID: <code>{chat_id}</code>\nQuỹ theo dõi mặc định: {', '.join(default_funds)}\n\nDùng /nav để xem NAV ngay, hoặc /help để xem tất cả lệnh."))
-                    admin_id = cfg_w.get("admin_telegram_id", "")
-                    if admin_id and admin_id != chat_id:
-                        tg_send(token, admin_id, (f"🔔 <b>User mới đăng ký</b>\nTên: <b>{reg_name}</b>\nChat ID: <code>{chat_id}</code>\nTổng profiles: {len(cfg_w.get('profiles', []))}"))
-                    continue
 
-                if cmd in ("/start", "/help"):
-                    profile_note = (f"\n\n✅ Xin chào <b>{profile['name']}</b>! Bot đã nhận diện bạn." if profile else f"\n\n👤 Bạn chưa đăng ký. Gõ:\n<code>/register Tên Của Bạn</code>\nđể tự đăng ký và nhận báo cáo tự động.")
-                    tg_send(token, chat_id, (
-                        "👋 <b>Quỹ Tracker Pro Bot</b>\n\n"
-                        "<b>Theo dõi NAV:</b>\n"
-                        "📈 /nav — NAV hiện tại + tín hiệu\n"
-                        "📊 /signal — Tín hiệu kỹ thuật (RSI, BB, MACD)\n"
-                        "🔍 /explain [MÃ] — Phân tích chi tiết\n"
-                        "🗂 /portfolio — Danh mục + P&amp;L\n\n"
-                        "<b>Quản lý danh mục:</b>\n"
-                        "📋 /funds — Xem tất cả quỹ có thể theo dõi\n"
-                        "➕ /watch TCBF SSISCA — Thêm quỹ vào danh mục\n"
-                        "➖ /unwatch TCBF — Bỏ quỹ khỏi danh mục\n\n"
-                        "<b>Báo cáo:</b>\n"
-                        "🌅 /morning — Báo cáo sáng (ngay bây giờ)\n"
-                        "🌆 /evening — Báo cáo chiều (ngay bây giờ)\n\n"
-                        "<b>Tài khoản:</b>\n"
-                        "🪪 /getid — Xem Chat ID của bạn\n"
-                        "✍️ /register [tên] — Tự đăng ký nhận báo cáo\n"
-                        "❓ /help — Trợ giúp\n\n"
-                        "🔔 <b>Tự động:</b>\n"
-                        "• 08:00 T2–T6 → Báo cáo sáng\n"
-                        "• 17:30 T2–T6 → Báo cáo chiều\n"
-                        "• Cảnh báo ngay khi tín hiệu MUA/BÁN thay đổi\n\n"
-                        "<i>Bot không cung cấp khuyến nghị đầu tư.</i>"
-                    ) + profile_note)
-
-                elif cmd == "/nav":
-                    if not profile:
-                        tg_send(token, chat_id, "⚠️ Bạn chưa đăng ký.\nGõ <code>/register Tên Của Bạn</code> để tự đăng ký.")
-                        continue
-                    nav_data = fetch_all(config, set(profile.get("watched_funds", [])))
-                    tg_send(token, chat_id, msg_nav_query(profile, nav_data))
-
-                elif cmd == "/signal":
-                    if not profile:
-                        tg_send(token, chat_id, "⚠️ Bạn chưa đăng ký.\nGõ <code>/register Tên Của Bạn</code> để tự đăng ký.")
-                        continue
-                    nav_data = fetch_all(config, set(profile.get("watched_funds", [])))
-                    tg_send(token, chat_id, msg_signal_summary(profile, nav_data))
-
-                elif cmd == "/portfolio":
-                    if not profile:
-                        tg_send(token, chat_id, "⚠️ Bạn chưa đăng ký.\nGõ <code>/register Tên Của Bạn</code> để tự đăng ký.")
-                        continue
-                    nav_data = fetch_all(config, set(profile.get("watched_funds", [])))
-                    tg_send(token, chat_id, msg_portfolio(profile, nav_data))
-
-                elif cmd == "/explain":
-                    if not profile:
-                        tg_send(token, chat_id, "⚠️ Bạn chưa đăng ký.\nGõ <code>/register Tên Của Bạn</code> để tự đăng ký.")
-                        continue
-                    parts  = text.split()
-                    target = parts[1].upper() if len(parts) > 1 else None
-                    codes_ = set(profile.get("watched_funds", []))
-                    if target and target not in codes_:
-                        tg_send(token, chat_id, f"⚠️ Quỹ <code>{target}</code> không có trong danh mục.\nDanh mục hiện tại: {', '.join(sorted(codes_))}")
-                        continue
-                    nav_data = fetch_all(config, {target} if target else codes_)
-                    tg_send(token, chat_id, msg_explain(profile, nav_data, target))
-
-                elif cmd == "/funds":
-                    cfg_funds = config.get("funds", {})
-                    lines = ["📋 <b>Danh Sách Quỹ Có Thể Theo Dõi</b>", LINE]
-                    for code, info in sorted(cfg_funds.items()):
-                        src = "TCBS" if info.get("tcbs") else "fmarket"
-                        lines.append(f"• <code>{code}</code> — {info.get('name', '')}  <i>({src})</i>")
-                    lines.append(LINE)
-                    if profile:
-                        lines.append(f"📌 Quỹ bạn đang theo: <code>{', '.join(profile.get('watched_funds', []))}</code>")
-                        lines.append("💡 <code>/watch TCBF SSISCA</code> — thêm · <code>/unwatch TCBF</code> — bỏ")
-                    else:
-                        lines.append("⚠️ Gõ /register để đăng ký trước khi theo dõi quỹ.")
-                    tg_send(token, chat_id, "\n".join(lines))
-
-                elif cmd == "/watch":
-                    if not profile:
-                        tg_send(token, chat_id, "⚠️ Bạn chưa đăng ký.\nGõ <code>/register Tên Của Bạn</code> để tự đăng ký.")
-                        continue
-                    parts_w = text.split()[1:]
-                    if not parts_w:
-                        tg_send(token, chat_id, "❓ Cú pháp: <code>/watch TCBF SSISCA</code>")
-                        continue
-                    cfg_funds = config.get("funds", {})
-                    current   = set(profile.get("watched_funds", []))
-                    added, invalid = [], []
-                    for code in [p.upper() for p in parts_w]:
-                        if code not in cfg_funds:
-                            invalid.append(code)
-                        elif code not in current:
-                            added.append(code)
-                            current.add(code)
-                    if added:
+                    if cmd == "/register":
+                        if profile:
+                            tg_send(token, chat_id, f"✅ Bạn đã đăng ký rồi — profile: <b>{profile['name']}</b>\nChat ID: <code>{chat_id}</code>")
+                            continue
+                        parts = text.split(maxsplit=1)
+                        tg_name = msg.get("chat", {}).get("first_name", "")
+                        reg_name = parts[1].strip() if len(parts) > 1 else tg_name or f"User_{chat_id[-4:]}"
                         cfg_w = load_config()
-                        for p in cfg_w.get("profiles", []):
-                            if str(p.get("telegram_id")) == chat_id:
-                                p["watched_funds"] = sorted(current)
-                                break
+                        default_funds = cfg_w.get("default_watched_funds", ["TCBF", "SSISCA", "VCBFBCF"])
+                        new_p = {"name": reg_name, "telegram_id": chat_id, "watched_funds": default_funds}
+                        cfg_w.setdefault("profiles", []).append(new_p)
                         save_config(cfg_w)
-                    lines = []
-                    if added:
-                        lines.append(f"✅ Đã thêm: <code>{', '.join(added)}</code>")
-                    if invalid:
-                        lines.append(f"⚠️ Không tìm thấy: <code>{', '.join(invalid)}</code> — Gõ /funds để xem danh sách")
-                    if not added and not invalid:
-                        lines.append("ℹ️ Các quỹ này đã có trong danh mục của bạn rồi.")
-                    lines.append(f"📋 Danh mục hiện tại: <code>{', '.join(sorted(current))}</code>")
-                    tg_send(token, chat_id, "\n".join(lines))
+                        log.info(f"[REGISTER] New profile: {reg_name} ({chat_id})")
+                        tg_send(token, chat_id, (f"✅ <b>Đăng ký thành công!</b>\n\nTên: <b>{reg_name}</b>\nChat ID: <code>{chat_id}</code>\nQuỹ theo dõi mặc định: {', '.join(default_funds)}\n\nDùng /nav để xem NAV ngay, hoặc /help để xem tất cả lệnh."))
+                        admin_id = cfg_w.get("admin_telegram_id", "")
+                        if admin_id and admin_id != chat_id:
+                            tg_send(token, admin_id, (f"🔔 <b>User mới đăng ký</b>\nTên: <b>{reg_name}</b>\nChat ID: <code>{chat_id}</code>\nTổng profiles: {len(cfg_w.get('profiles', []))}"))
+                        continue
 
-                elif cmd == "/unwatch":
-                    if not profile:
-                        tg_send(token, chat_id, "⚠️ Bạn chưa đăng ký.\nGõ <code>/register Tên Của Bạn</code> để tự đăng ký.")
-                        continue
-                    parts_u = text.split()[1:]
-                    if not parts_u:
-                        tg_send(token, chat_id, "❓ Cú pháp: <code>/unwatch TCBF</code>")
-                        continue
-                    current    = set(profile.get("watched_funds", []))
-                    removed, not_found = [], []
-                    for code in [p.upper() for p in parts_u]:
-                        if code in current:
-                            removed.append(code)
-                            current.discard(code)
-                        else:
-                            not_found.append(code)
-                    if not current:
-                        tg_send(token, chat_id, "⚠️ Cần giữ ít nhất 1 quỹ trong danh mục.")
-                        continue
-                    if removed:
-                        cfg_w = load_config()
-                        for p in cfg_w.get("profiles", []):
-                            if str(p.get("telegram_id")) == chat_id:
-                                p["watched_funds"] = sorted(current)
-                                break
-                        save_config(cfg_w)
-                    lines = []
-                    if removed:
-                        lines.append(f"✅ Đã bỏ: <code>{', '.join(removed)}</code>")
-                    if not_found:
-                        lines.append(f"⚠️ Không có trong danh mục: <code>{', '.join(not_found)}</code>")
-                    lines.append(f"📋 Danh mục còn lại: <code>{', '.join(sorted(current))}</code>")
-                    tg_send(token, chat_id, "\n".join(lines))
-
-                elif cmd == "/admin":
-                    admin_id = str(config.get("admin_telegram_id", "")).strip()
-                    if not admin_id or chat_id != admin_id:
-                        tg_send(token, chat_id, "⛔ Lệnh chỉ dành cho admin.")
-                        continue
-                    sub = text.split()[1].lower() if len(text.split()) > 1 else ""
-                    if sub == "users":
-                        profiles_list = config.get("profiles", [])
-                        if not profiles_list:
-                            tg_send(token, chat_id, "📭 Chưa có user nào đăng ký.")
-                        else:
-                            lines = [f"👥 <b>Danh sách {len(profiles_list)} users:</b>", LINE]
-                            for i, p in enumerate(profiles_list, 1):
-                                lines.append(
-                                    f"{i}. <b>{p['name']}</b> — <code>{p.get('telegram_id','?')}</code>\n"
-                                    f"   Quỹ: {', '.join(p.get('watched_funds', []))}"
-                                )
-                            tg_send(token, chat_id, "\n".join(lines))
-                    elif sub == "kick" and len(text.split()) > 2:
-                        target_id = text.split()[2]
-                        cfg_w = load_config()
-                        before = len(cfg_w.get("profiles", []))
-                        cfg_w["profiles"] = [p for p in cfg_w.get("profiles", []) if str(p.get("telegram_id")) != target_id]
-                        if len(cfg_w["profiles"]) < before:
-                            save_config(cfg_w)
-                            tg_send(token, chat_id, f"✅ Đã xóa profile <code>{target_id}</code>")
-                        else:
-                            tg_send(token, chat_id, f"⚠️ Không tìm thấy <code>{target_id}</code>")
-                    elif sub == "broadcast" and len(text.split()) > 2:
-                        bcast_msg = " ".join(text.split()[2:])
-                        sent_count = 0
-                        for p in config.get("profiles", []):
-                            tg = str(p.get("telegram_id", ""))
-                            if tg.lstrip("-").isdigit():
-                                if tg_send(token, tg, f"📢 <b>Thông báo</b>\n\n{bcast_msg}"):
-                                    sent_count += 1
-                        tg_send(token, chat_id, f"✅ Đã gửi tới {sent_count} users")
-                    else:
+                    if cmd in ("/start", "/help"):
+                        profile_note = (f"\n\n✅ Xin chào <b>{profile['name']}</b>! Bot đã nhận diện bạn." if profile else f"\n\n👤 Bạn chưa đăng ký. Gõ:\n<code>/register Tên Của Bạn</code>\nđể tự đăng ký và nhận báo cáo tự động.")
                         tg_send(token, chat_id, (
-                            "🔧 <b>Admin Commands</b>\n\n"
-                            "<code>/admin users</code> — Xem tất cả users\n"
-                            "<code>/admin kick CHATID</code> — Xóa user\n"
-                            "<code>/admin broadcast TIN NHẮN</code> — Broadcast tới tất cả\n"
-                        ))
+                            "👋 <b>Quỹ Tracker Pro Bot</b>\n\n"
+                            "<b>Theo dõi NAV:</b>\n"
+                            "📈 /nav — NAV quỹ của bạn + tín hiệu\n"
+                            "🌐 /navall — NAV tất cả 19 quỹ trong hệ thống\n"
+                            "📊 /signal — Tín hiệu kỹ thuật (RSI, BB, MACD)\n"
+                            "🔍 /explain [MÃ] — Phân tích chi tiết\n"
+                            "🔬 /research MÃ — Phân tích chuyên sâu 5 trường phái\n\n"
+                            "<b>Danh mục &amp; Giao dịch:</b>\n"
+                            "🗂 /portfolio — Xem danh mục + P&amp;L\n"
+                            "🟢 /buy MÃ số_CCQ tổng_tiền [ngày] — Ghi lệnh mua\n"
+                            "🔴 /sell MÃ số_CCQ tổng_tiền [ngày] — Ghi lệnh bán\n"
+                            "➕ /add-trade MÃ buy/sell CCQ tiền [ngày] — Ghi giao dịch\n"
+                            "💰 /dca [số_tiền] — Gợi ý phân bổ DCA theo tín hiệu\n"
+                            "💰 /dca setup [số_tiền] — Lưu ngân sách DCA hàng tháng\n\n"
+                            "<b>Quản lý danh mục:</b>\n"
+                            "📋 /funds — Xem tất cả quỹ có thể theo dõi\n"
+                            "👁 /watch TCBF SSISCA — Thêm quỹ vào danh mục\n"
+                            "🚫 /unwatch TCBF — Bỏ quỹ khỏi danh mục\n\n"
+                            "<b>Báo cáo tự động:</b>\n"
+                            "🌅 /morning — Báo cáo sáng (ngay bây giờ)\n"
+                            "🌆 /evening — Báo cáo chiều (ngay bây giờ)\n"
+                            "📢 Auto: Thông báo khi có NAV mới hàng ngày\n\n"
+                            "<b>Tài khoản:</b>\n"
+                            "🪪 /getid — Xem Chat ID của bạn\n"
+                            "✍️ /register [tên] — Tự đăng ký nhận báo cáo\n"
+                            "❓ /help — Trợ giúp\n\n"
+                            "🔔 <b>Tự động:</b>\n"
+                            "• 08:00 T2–T6 → Báo cáo sáng\n"
+                            "• 17:30 T2–T6 → Báo cáo chiều\n"
+                            "• Cảnh báo ngay khi tín hiệu MUA/BÁN thay đổi\n\n"
+                            "<i>Bot không cung cấp khuyến nghị đầu tư.</i>"
+                        ) + profile_note)
 
-                elif cmd == "/morning":
-                    if not profile:
-                        tg_send(token, chat_id, "⚠️ Bạn chưa đăng ký.\nGõ <code>/register Tên Của Bạn</code> để tự đăng ký.")
-                        continue
-                    nav_data = fetch_all(config, set(profile.get("watched_funds", [])))
-                    tg_send(token, chat_id, msg_morning(profile, nav_data))
+                    elif cmd == "/nav":
+                        if not profile:
+                            tg_send(token, chat_id, "⚠️ Bạn chưa đăng ký.\nGõ <code>/register Tên Của Bạn</code> để tự đăng ký.")
+                            continue
+                        nav_data = fetch_all(config, set(profile.get("watched_funds", [])))
+                        tg_send(token, chat_id, msg_nav_query(profile, nav_data))
 
-                elif cmd == "/evening":
-                    if not profile:
-                        tg_send(token, chat_id, "⚠️ Bạn chưa đăng ký.\nGõ <code>/register Tên Của Bạn</code> để tự đăng ký.")
-                        continue
-                    nav_data = fetch_all(config, set(profile.get("watched_funds", [])))
-                    state    = load_state()
-                    tg_send(token, chat_id, msg_evening(profile, nav_data, state.get("morning_nav", {})))
+                    elif cmd == "/navall":
+                        all_codes = set(config.get("funds", {}).keys())
+                        if not all_codes:
+                            tg_send(token, chat_id, "⚠️ Không có quỹ nào trong config.")
+                            continue
+                        nav_data_all = fetch_all(config, all_codes)
+                        now_na = datetime.now()
+                        lines_na = [
+                            f"📈 <b>NAV TẤT CẢ QUỸ — {now_na.strftime('%d/%m/%Y %H:%M')}</b>",
+                            LINE,
+                        ]
+                        for code_na in sorted(nav_data_all.keys()):
+                            d_na = nav_data_all[code_na]
+                            if not d_na or d_na.get("nav", 0) == 0:
+                                lines_na.append(f"⚠️ <code>{code_na}</code>  N/A")
+                                continue
+                            sig_na  = d_na.get("signal", "—")
+                            chg_na  = d_na.get("chg_pct", 0) or 0
+                            chg_s   = f"{'+' if chg_na >= 0 else ''}{chg_na:.2f}%"
+                            emoji   = "🟢" if "MUA" in sig_na else "🔴" if "BÁN" in sig_na else "⚪"
+                            lines_na.append(
+                                f"{emoji} <code>{code_na:<10}</code>  {fmt_nav(d_na['nav']):>13}  "
+                                f"<i>{chg_s}</i>  {sig_na}"
+                            )
+                        lines_na.append(LINE)
+                        lines_na.append(f"<i>{len(nav_data_all)} quỹ · {now_na.strftime('%H:%M')}</i>")
+                        tg_send(token, chat_id, "\n".join(lines_na))
 
-                else:
-                    if text.startswith("/"):
-                        tg_send(token, chat_id, f"❓ Lệnh <code>{cmd}</code> không tồn tại. Gõ /help để xem danh sách.")
+                    elif cmd == "/signal":
+                        if not profile:
+                            tg_send(token, chat_id, "⚠️ Bạn chưa đăng ký.\nGõ <code>/register Tên Của Bạn</code> để tự đăng ký.")
+                            continue
+                        nav_data = fetch_all(config, set(profile.get("watched_funds", [])))
+                        tg_send(token, chat_id, msg_signal_summary(profile, nav_data))
 
+                    elif cmd == "/portfolio":
+                        if not profile:
+                            tg_send(token, chat_id, "⚠️ Bạn chưa đăng ký.\nGõ <code>/register Tên Của Bạn</code> để tự đăng ký.")
+                            continue
+                        db_ctx = _get_db_user(int(chat_id))
+                        if db_ctx:
+                            user_uuid, portfolio_id, user_key = db_ctx
+                            raw = _db.get_holdings_raw(user_uuid, portfolio_id)
+                            if raw:
+                                held_codes = {h["fund_code"] for h in raw}
+                                nav_data = fetch_all(config, held_codes)
+                                tg_send(token, chat_id, _msg_portfolio_from_db(profile, raw, nav_data, user_key))
+                                continue
+                        # Fallback: config.json portfolio (watched_funds + P&L if portfolio field present)
+                        nav_data = fetch_all(config, set(profile.get("watched_funds", [])))
+                        tg_send(token, chat_id, msg_portfolio(profile, nav_data))
+
+                    elif cmd == "/add-trade":
+                        if not profile:
+                            tg_send(token, chat_id, "⚠️ Bạn chưa đăng ký.\nGõ <code>/register Tên Của Bạn</code> để tự đăng ký.")
+                            continue
+                        parts_tr = text.split()
+                        if len(parts_tr) < 5:
+                            tg_send(token, chat_id, (
+                                "❓ <b>Cú pháp /add-trade:</b>\n\n"
+                                "<code>/add-trade MÃ loại số_CCQ tổng_tiền [ngày]</code>\n\n"
+                                "Ví dụ:\n"
+                                "<code>/add-trade TCBF buy 1000.5 15000000</code>\n"
+                                "<code>/add-trade SSISCA sell 200 3200000 2026-06-15</code>\n\n"
+                                "• <b>loại</b>: <code>buy</code> hoặc <code>sell</code>\n"
+                                "• <b>số_CCQ</b>: số chứng chỉ quỹ nhận được\n"
+                                "• <b>tổng_tiền</b>: số VND thực tế thanh toán\n"
+                                "• <b>ngày</b>: ngày lệnh (YYYY-MM-DD), mặc định hôm nay"
+                            ))
+                            continue
+                        tr_fund = parts_tr[1].upper()
+                        tr_type = parts_tr[2].lower()
+                        if tr_type not in ("buy", "sell"):
+                            tg_send(token, chat_id, "⚠️ Loại giao dịch phải là <code>buy</code> hoặc <code>sell</code>.")
+                            continue
+                        if tr_fund not in config.get("funds", {}):
+                            tg_send(token, chat_id, f"⚠️ Không tìm thấy quỹ <code>{tr_fund}</code>.\nGõ /funds để xem danh sách.")
+                            continue
+                        try:
+                            tr_units  = float(parts_tr[3])
+                            tr_amount = float(parts_tr[4])
+                            if tr_units <= 0 or tr_amount <= 0:
+                                raise ValueError("non-positive")
+                        except (ValueError, IndexError):
+                            tg_send(token, chat_id, "⚠️ Số CCQ và số tiền phải là số dương.")
+                            continue
+                        tr_date_str = parts_tr[5] if len(parts_tr) > 5 else date.today().isoformat()
+                        try:
+                            tr_order_date = date.fromisoformat(tr_date_str)
+                        except ValueError:
+                            tg_send(token, chat_id, f"⚠️ Ngày không hợp lệ: <code>{tr_date_str}</code>\nDùng định dạng YYYY-MM-DD.")
+                            continue
+                        _cmd_add_trade(token, chat_id, profile, tr_fund, tr_type, tr_units, tr_amount, tr_order_date)
+
+                    elif cmd in ("/buy", "/sell"):
+                        if not profile:
+                            tg_send(token, chat_id, "⚠️ Bạn chưa đăng ký.\nGõ <code>/register Tên Của Bạn</code> để tự đăng ký.")
+                            continue
+                        tx_type_bs = "buy" if cmd == "/buy" else "sell"
+                        action_bs  = "Mua" if tx_type_bs == "buy" else "Bán"
+                        parts_bs   = text.split()
+                        # Format: /buy MÃ số_CCQ tổng_tiền [ngày]
+                        if len(parts_bs) < 4:
+                            tg_send(token, chat_id, (
+                                f"❓ <b>Cú pháp /{action_bs.lower()}:</b>\n\n"
+                                f"<code>/{action_bs.lower()} MÃ số_CCQ tổng_tiền [ngày]</code>\n\n"
+                                f"Ví dụ:\n"
+                                f"<code>/{action_bs.lower()} TCBF 1000.5 15000000</code>\n"
+                                f"<code>/{action_bs.lower()} SSISCA 200 3200000 2026-06-15</code>"
+                            ))
+                            continue
+                        bs_fund = parts_bs[1].upper()
+                        if bs_fund not in config.get("funds", {}):
+                            tg_send(token, chat_id, f"⚠️ Không tìm thấy quỹ <code>{bs_fund}</code>.\nGõ /funds để xem danh sách.")
+                            continue
+                        try:
+                            bs_units  = float(parts_bs[2])
+                            bs_amount = float(parts_bs[3])
+                            if bs_units <= 0 or bs_amount <= 0:
+                                raise ValueError("non-positive")
+                        except (ValueError, IndexError):
+                            tg_send(token, chat_id, (
+                                f"⚠️ Cú pháp: <code>/{action_bs.lower()} MÃ số_CCQ tổng_tiền [ngày]</code>\n"
+                                f"Số CCQ và số tiền phải là số dương."
+                            ))
+                            continue
+                        bs_date_str = parts_bs[4] if len(parts_bs) > 4 else date.today().isoformat()
+                        try:
+                            bs_order_date = date.fromisoformat(bs_date_str)
+                        except ValueError:
+                            tg_send(token, chat_id, f"⚠️ Ngày không hợp lệ: <code>{bs_date_str}</code>\nDùng định dạng YYYY-MM-DD.")
+                            continue
+                        _cmd_add_trade(token, chat_id, profile, bs_fund, tx_type_bs, bs_units, bs_amount, bs_order_date)
+
+                    elif cmd == "/explain":
+                        if not profile:
+                            tg_send(token, chat_id, "⚠️ Bạn chưa đăng ký.\nGõ <code>/register Tên Của Bạn</code> để tự đăng ký.")
+                            continue
+                        parts  = text.split()
+                        target = parts[1].upper() if len(parts) > 1 else None
+                        codes_ = set(profile.get("watched_funds", []))
+                        if target and target not in codes_:
+                            tg_send(token, chat_id, f"⚠️ Quỹ <code>{target}</code> không có trong danh mục.\nDanh mục hiện tại: {', '.join(sorted(codes_))}")
+                            continue
+                        nav_data = fetch_all(config, {target} if target else codes_)
+                        tg_send(token, chat_id, msg_explain(profile, nav_data, target))
+
+                    elif cmd == "/research":
+                        parts_rs = text.split()
+                        if len(parts_rs) < 2:
+                            tg_send(token, chat_id, (
+                                "❓ Cú pháp: <code>/research MÃ_QUỸ</code>\n"
+                                "Ví dụ: <code>/research TCBF</code>\n\n"
+                                "Phân tích chuyên sâu theo 5 trường phái đầu tư:\n"
+                                "1️⃣ Kỹ thuật  2️⃣ Giá trị  3️⃣ Xu hướng  4️⃣ DCA  5️⃣ Rủi ro"
+                            ))
+                            continue
+                        rs_code    = parts_rs[1].upper()
+                        cfg_funds  = config.get("funds", {})
+                        if rs_code not in cfg_funds:
+                            tg_send(token, chat_id, f"⚠️ Không tìm thấy quỹ <code>{rs_code}</code>.\nGõ /funds để xem danh sách.")
+                            continue
+                        rs_pts = get_nav_series(rs_code, cfg_funds[rs_code], config)
+                        if not rs_pts or len(rs_pts) < 60:
+                            tg_send(token, chat_id, f"⚠️ Không đủ dữ liệu cho <code>{rs_code}</code> (cần ≥60 điểm NAV).")
+                            continue
+                        rs_d     = calc_signal(rs_code, rs_pts)
+                        rs_stats = compute_research_stats(rs_pts)
+                        tg_send(token, chat_id, msg_research(rs_code, rs_d, rs_stats, cfg_funds[rs_code].get("name", "")))
+
+                    elif cmd == "/dca":
+                        if not profile:
+                            tg_send(token, chat_id, "⚠️ Bạn chưa đăng ký.\nGõ <code>/register Tên Của Bạn</code> để tự đăng ký.")
+                            continue
+                        parts_dca = text.split()
+                        sub = parts_dca[1].lower() if len(parts_dca) > 1 else ""
+
+                        if sub == "setup":
+                            # /dca setup 10000000
+                            if len(parts_dca) < 3:
+                                tg_send(token, chat_id, (
+                                    "❓ Cú pháp: <code>/dca setup [ngân_sách_tháng]</code>\n"
+                                    "Ví dụ: <code>/dca setup 10000000</code>\n\n"
+                                    "Bot sẽ nhắc phân bổ DCA vào ngày 1 mỗi tháng."
+                                ))
+                                continue
+                            try:
+                                dca_budget = float(parts_dca[2].replace(",", "").replace(".", ""))
+                                if dca_budget <= 0:
+                                    raise ValueError
+                            except ValueError:
+                                tg_send(token, chat_id, "⚠️ Ngân sách phải là số dương. Ví dụ: <code>/dca setup 10000000</code>")
+                                continue
+                            cfg_dca = load_config()
+                            for p in cfg_dca.get("profiles", []):
+                                if str(p.get("telegram_id")) == chat_id:
+                                    p["monthly_dca"] = int(dca_budget)
+                                    break
+                            save_config(cfg_dca)
+                            tg_send(token, chat_id, (
+                                f"✅ Đã lưu ngân sách DCA: <b>{int(dca_budget):,}đ/tháng</b>\n\n"
+                                f"Bot sẽ gửi gợi ý phân bổ vào ngày 1 mỗi tháng.\n"
+                                f"Gõ <code>/dca</code> để xem gợi ý ngay."
+                            ))
+
+                        elif sub == "off":
+                            cfg_dca = load_config()
+                            for p in cfg_dca.get("profiles", []):
+                                if str(p.get("telegram_id")) == chat_id:
+                                    p.pop("monthly_dca", None)
+                                    break
+                            save_config(cfg_dca)
+                            tg_send(token, chat_id, "✅ Đã tắt nhắc nhở DCA hàng tháng.")
+
+                        else:
+                            # /dca [AMOUNT] hoặc /dca (dùng monthly_dca)
+                            dca_budget = None
+                            if sub and sub.replace(",", "").replace(".", "").isdigit():
+                                dca_budget = float(sub.replace(",", "").replace(".", ""))
+                            elif len(parts_dca) > 1:
+                                try:
+                                    dca_budget = float(parts_dca[1].replace(",", "").replace(".", ""))
+                                except ValueError:
+                                    pass
+                            if not dca_budget:
+                                dca_budget = float(profile.get("monthly_dca", 0))
+                            if not dca_budget:
+                                tg_send(token, chat_id, (
+                                    "❓ <b>DCA — Đầu tư định kỳ theo tín hiệu</b>\n\n"
+                                    "Gõ <code>/dca [số_tiền]</code> để xem gợi ý phân bổ ngay.\n"
+                                    "Gõ <code>/dca setup 10000000</code> để lưu ngân sách tháng.\n\n"
+                                    "Ví dụ: <code>/dca 5000000</code>\n"
+                                    "Gợi ý: <code>/dca off</code> — tắt nhắc nhở hàng tháng"
+                                ))
+                                continue
+                            codes_dca = set(profile.get("watched_funds", []))
+                            nav_data_dca = fetch_all(config, codes_dca)
+                            tg_send(token, chat_id, msg_dca_suggest(profile, nav_data_dca, dca_budget))
+
+                    elif cmd == "/funds":
+                        cfg_funds = config.get("funds", {})
+                        lines = ["📋 <b>Danh Sách Quỹ Có Thể Theo Dõi</b>", LINE]
+                        for code, info in sorted(cfg_funds.items()):
+                            src = "TCBS" if info.get("tcbs") else "fmarket"
+                            lines.append(f"• <code>{code}</code> — {info.get('name', '')}  <i>({src})</i>")
+                        lines.append(LINE)
+                        if profile:
+                            lines.append(f"📌 Quỹ bạn đang theo: <code>{', '.join(profile.get('watched_funds', []))}</code>")
+                            lines.append("💡 <code>/watch TCBF SSISCA</code> — thêm · <code>/unwatch TCBF</code> — bỏ")
+                        else:
+                            lines.append("⚠️ Gõ /register để đăng ký trước khi theo dõi quỹ.")
+                        tg_send(token, chat_id, "\n".join(lines))
+
+                    elif cmd == "/watch":
+                        if not profile:
+                            tg_send(token, chat_id, "⚠️ Bạn chưa đăng ký.\nGõ <code>/register Tên Của Bạn</code> để tự đăng ký.")
+                            continue
+                        parts_w = text.split()[1:]
+                        if not parts_w:
+                            tg_send(token, chat_id, "❓ Cú pháp: <code>/watch TCBF SSISCA</code>")
+                            continue
+                        cfg_funds = config.get("funds", {})
+                        current   = set(profile.get("watched_funds", []))
+                        added, invalid = [], []
+                        for code in [p.upper() for p in parts_w]:
+                            if code not in cfg_funds:
+                                invalid.append(code)
+                            elif code not in current:
+                                added.append(code)
+                                current.add(code)
+                        if added:
+                            cfg_w = load_config()
+                            for p in cfg_w.get("profiles", []):
+                                if str(p.get("telegram_id")) == chat_id:
+                                    p["watched_funds"] = sorted(current)
+                                    break
+                            save_config(cfg_w)
+                        lines = []
+                        if added:
+                            lines.append(f"✅ Đã thêm: <code>{', '.join(added)}</code>")
+                        if invalid:
+                            lines.append(f"⚠️ Không tìm thấy: <code>{', '.join(invalid)}</code> — Gõ /funds để xem danh sách")
+                        if not added and not invalid:
+                            lines.append("ℹ️ Các quỹ này đã có trong danh mục của bạn rồi.")
+                        lines.append(f"📋 Danh mục hiện tại: <code>{', '.join(sorted(current))}</code>")
+                        tg_send(token, chat_id, "\n".join(lines))
+
+                    elif cmd == "/unwatch":
+                        if not profile:
+                            tg_send(token, chat_id, "⚠️ Bạn chưa đăng ký.\nGõ <code>/register Tên Của Bạn</code> để tự đăng ký.")
+                            continue
+                        parts_u = text.split()[1:]
+                        if not parts_u:
+                            tg_send(token, chat_id, "❓ Cú pháp: <code>/unwatch TCBF</code>")
+                            continue
+                        current    = set(profile.get("watched_funds", []))
+                        removed, not_found = [], []
+                        for code in [p.upper() for p in parts_u]:
+                            if code in current:
+                                removed.append(code)
+                                current.discard(code)
+                            else:
+                                not_found.append(code)
+                        if not current:
+                            tg_send(token, chat_id, "⚠️ Cần giữ ít nhất 1 quỹ trong danh mục.")
+                            continue
+                        if removed:
+                            cfg_w = load_config()
+                            for p in cfg_w.get("profiles", []):
+                                if str(p.get("telegram_id")) == chat_id:
+                                    p["watched_funds"] = sorted(current)
+                                    break
+                            save_config(cfg_w)
+                        lines = []
+                        if removed:
+                            lines.append(f"✅ Đã bỏ: <code>{', '.join(removed)}</code>")
+                        if not_found:
+                            lines.append(f"⚠️ Không có trong danh mục: <code>{', '.join(not_found)}</code>")
+                        lines.append(f"📋 Danh mục còn lại: <code>{', '.join(sorted(current))}</code>")
+                        tg_send(token, chat_id, "\n".join(lines))
+
+                    elif cmd == "/admin":
+                        admin_id = str(config.get("admin_telegram_id", "")).strip()
+                        if not admin_id or chat_id != admin_id:
+                            tg_send(token, chat_id, "⛔ Lệnh chỉ dành cho admin.")
+                            continue
+                        sub = text.split()[1].lower() if len(text.split()) > 1 else ""
+                        if sub == "users":
+                            profiles_list = config.get("profiles", [])
+                            if not profiles_list:
+                                tg_send(token, chat_id, "📭 Chưa có user nào đăng ký.")
+                            else:
+                                lines = [f"👥 <b>Danh sách {len(profiles_list)} users:</b>", LINE]
+                                for i, p in enumerate(profiles_list, 1):
+                                    lines.append(
+                                        f"{i}. <b>{p['name']}</b> — <code>{p.get('telegram_id','?')}</code>\n"
+                                        f"   Quỹ: {', '.join(p.get('watched_funds', []))}"
+                                    )
+                                tg_send(token, chat_id, "\n".join(lines))
+                        elif sub == "kick" and len(text.split()) > 2:
+                            target_id = text.split()[2]
+                            cfg_w = load_config()
+                            before = len(cfg_w.get("profiles", []))
+                            cfg_w["profiles"] = [p for p in cfg_w.get("profiles", []) if str(p.get("telegram_id")) != target_id]
+                            if len(cfg_w["profiles"]) < before:
+                                save_config(cfg_w)
+                                tg_send(token, chat_id, f"✅ Đã xóa profile <code>{target_id}</code>")
+                            else:
+                                tg_send(token, chat_id, f"⚠️ Không tìm thấy <code>{target_id}</code>")
+                        elif sub == "broadcast" and len(text.split()) > 2:
+                            bcast_msg = " ".join(text.split()[2:])
+                            sent_count = 0
+                            for p in config.get("profiles", []):
+                                tg = str(p.get("telegram_id", ""))
+                                if tg.lstrip("-").isdigit():
+                                    if tg_send(token, tg, f"📢 <b>Thông báo</b>\n\n{bcast_msg}"):
+                                        sent_count += 1
+                            tg_send(token, chat_id, f"✅ Đã gửi tới {sent_count} users")
+                        else:
+                            tg_send(token, chat_id, (
+                                "🔧 <b>Admin Commands</b>\n\n"
+                                "<code>/admin users</code> — Xem tất cả users\n"
+                                "<code>/admin kick CHATID</code> — Xóa user\n"
+                                "<code>/admin broadcast TIN NHẮN</code> — Broadcast tới tất cả\n"
+                            ))
+
+                    elif cmd == "/morning":
+                        if not profile:
+                            tg_send(token, chat_id, "⚠️ Bạn chưa đăng ký.\nGõ <code>/register Tên Của Bạn</code> để tự đăng ký.")
+                            continue
+                        nav_data = fetch_all(config, set(profile.get("watched_funds", [])))
+                        tg_send(token, chat_id, msg_morning(profile, nav_data))
+
+                    elif cmd == "/evening":
+                        if not profile:
+                            tg_send(token, chat_id, "⚠️ Bạn chưa đăng ký.\nGõ <code>/register Tên Của Bạn</code> để tự đăng ký.")
+                            continue
+                        nav_data = fetch_all(config, set(profile.get("watched_funds", [])))
+                        state    = load_state()
+                        tg_send(token, chat_id, msg_evening(profile, nav_data, state.get("morning_nav", {})))
+
+                    else:
+                        if text.startswith("/"):
+                            tg_send(token, chat_id, f"❓ Lệnh <code>{cmd}</code> không tồn tại. Gõ /help để xem danh sách.")
+
+                except Exception as _cmd_exc:
+                    log.error("[CMD ERROR] %r %s: %s", cmd, chat_id, _cmd_exc, exc_info=True)
+                    try:
+                        tg_send(token, chat_id, f"⚠ Lỗi xử lý lệnh <code>{cmd}</code>. Vui lòng thử lại sau.")
+                    except Exception:
+                        pass
         except KeyboardInterrupt:
             log.info("Command handler stopped.")
             break
@@ -1387,7 +2186,10 @@ def main():
         day.at(t_eve).do(job_evening)
 
     schedule.every(t_int).minutes.do(job_check_signals)
+    schedule.every(t_int).minutes.do(job_nav_change_alert)
     schedule.every(30).minutes.do(job_check_jwt)
+    schedule.every().day.at("09:00").do(job_backfill_settlement)
+    schedule.every().day.at("09:00").do(job_dca_reminder)
     schedule.every().day.at("00:01").do(job_watchdog_ping)
 
     log.info("Chạy signal check khởi động...")

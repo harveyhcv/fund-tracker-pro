@@ -203,12 +203,83 @@ navSeries(code)  → HIST.chart + cachedNav.filter(date > lastH)  ← merge poin
 2. Chạy schema: `railway run python scripts/pg_init.py`
 3. Bot tự init pool khi khởi động
 
-### Pending (next session)
-- AES-256-GCM encryption layer (cryptography lib đã có trong requirements)
-- T+1/T+3 `estimate_settlement_nav()` — backfill nav_at_settlement sau khi settlement date qua
-- DCA rebalancer engine
-- Portfolio commands via Telegram (/portfolio, /add-trade, /dca)
-- Telegram Mini App (WebApp) — cá nhân hóa dashboard
+### Phase 5B hoàn thiện (2026-06-20) — Encryption + /add-trade + Backfill
+
+#### telegram-bot/crypto.py (MỚI)
+- AES-256-GCM via `cryptography` lib
+- `get_master_key()` — đọc `ENCRYPTION_KEY` env → SHA-256 → 32 bytes
+- `derive_user_key(master_key, enc_salt)` — HKDF-SHA256, per-user key
+- `make_auth_hash(telegram_id, master_key)` — HMAC-SHA256 cho users table
+- `encrypt/decrypt(data, key)` — 12-byte nonce ‖ ciphertext+tag
+- `encrypt_decimal/decrypt_decimal`, `encrypt_str/decrypt_str`
+
+#### db.py (bổ sung)
+- `get_user_info(telegram_id)` → {id, enc_salt} — read-only, không tạo mới
+- `get_or_create_portfolio(user_uuid, name_enc)` → portfolio_id
+- `get_portfolio_id(user_uuid)` → portfolio_id | None (không tạo)
+- `add_transaction(...)` → tx UUID (immutable ledger INSERT)
+- `upsert_holding(...)` — units_enc + avg_cost_enc
+- `get_holdings_raw(user_uuid, portfolio_id)` → [{fund_code, units_enc, avg_cost_enc}]
+- `get_pending_backfill(as_of)` → signals cần điền nav_at_settlement
+- `get_nav_on_or_after(fund_code, target_date)` → nav từ nav_history (trong 7 ngày)
+
+#### bot.py (bổ sung)
+- `_CRYPTO_AVAILABLE` flag + `import crypto as _crypto`
+- `_ensure_db_user(telegram_id, profile_name)` → (uuid, portfolio_id, user_key) — tạo nếu chưa có
+- `_get_db_user(telegram_id)` → (uuid, portfolio_id, user_key) | None — chỉ đọc
+- `_msg_portfolio_from_db(profile, raw_holdings, nav_data, user_key)` → message string
+- `/portfolio` handler: thử DB path → decrypt holdings → P&L; fallback về config.json
+- `/add-trade MÃ buy/sell CCQ tổng_tiền [ngày]` — ghi transaction + upsert holding
+  - Tính nav_at_order = amount / units
+  - Weighted avg cost khi buy: (prev_units × prev_avg + buy_units × nav) / new_units
+  - Sell: giữ nguyên avg_cost (average cost method)
+- `job_backfill_settlement()` — chạy 09:00 hàng ngày, tra nav_history → backfill_settlement_nav
+- Schedule: `schedule.every().day.at("09:00").do(job_backfill_settlement)`
+
+#### ENV cần thêm (Railway)
+- `ENCRYPTION_KEY` — bất kỳ string nào (ít nhất 32 ký tự ngẫu nhiên)
+
+#### Test suite sau Phase 5B: **280 tests** ✅
+- `tests/test_phase5b.py` — 51 tests mới:
+  - TestCrypto (18): get_master_key, derive_user_key, make_auth_hash, encrypt/decrypt, decimal/str roundtrip, tamper detection
+  - TestAddTradeCommand (18): validation, DB unavailable, crypto missing, buy/sell success, holding upsert, weighted avg, date handling
+  - TestPortfolioDbPath (6): DB path, P&L display, fallback cases
+  - TestBackfillJob (9): DB flag, pending signals, fill/skip logic, error handling, multi-signal
+
+### Phase 5C — Quick Trade + /navall + /research + Auto NAV Alert (2026-06-21)
+
+#### bot.py (bổ sung — Phase 5C)
+- `/buy MÃ số_CCQ tổng_tiền [ngày]` — shortcut cho `/add-trade MÃ buy ...` (không cần gõ "buy")
+- `/sell MÃ số_CCQ tổng_tiền [ngày]` — tương tự cho sell
+- `_cmd_add_trade(token, chat_id, profile, fund_code, tx_type, units, amount, order_date)` — helper
+  - Tách ra từ `/add-trade` handler → dùng chung bởi /add-trade, /buy, /sell
+- `/navall` — NAV tất cả quỹ trong config (không giới hạn watched_funds)
+  - Format compact: emoji + mã + NAV + chg_pct + signal
+- `/research MÃ` — phân tích chuyên sâu 5 trường phái (~1271 chars)
+  - Gọi `get_nav_series()` + `calc_signal()` + `compute_research_stats()` + `msg_research()`
+- `compute_research_stats(pts)` — tính thêm: 52w high/low, 1yr return, 30d vol (annualized), max drawdown
+- `msg_research(code, d, stats, fund_name)` — format 5 trường phái: Technical / Value / Momentum / DCA / Risk
+- `job_nav_change_alert()` — auto notification khi nav_date thay đổi (fired mỗi t_int phút)
+  - Dùng `state["last_nav_dates"]` để track thay đổi, chỉ gửi khi có quỹ mới
+  - Scheduled: `schedule.every(t_int).minutes.do(job_nav_change_alert)` (cùng interval với signal check)
+
+#### Test suite: 280/280 ✅ (không cần test mới — logic _cmd_add_trade covered bởi test_phase5b.py)
+
+### Phase 5D — /dca Rebalancer (2026-06-21)
+
+- `msg_dca_suggest(profile, nav_data, budget)` — phân bổ theo weight = max(0, score + 6)
+  - MUA MẠNH(12) > MUA(9) > HOLD(6) > BÁN(3) > BÁN MẠNH(0 = bỏ qua)
+  - Làm tròn 1000đ, hiển thị % + amount + [score]
+- `/dca [AMOUNT]` — gợi ý phân bổ ngay với số tiền tùy chọn
+- `/dca setup AMOUNT` — lưu `monthly_dca` vào profile trong config.json
+- `/dca off` — xóa monthly_dca
+- `job_dca_reminder()` — chạy 09:00 hàng ngày, chỉ gửi khi day==1; gửi cho profile có monthly_dca
+- Schedule: `schedule.every().day.at("09:00").do(job_dca_reminder)`
+- Test suite: 280/280 ✅ (unchanged)
+
+#### Pending (Phase 6)
+- Webhook mode thay long-polling (giảm latency, cần public URL trên Railway)
+- Telegram Mini App (WebApp) — cá nhân hóa dashboard trực tiếp trong Telegram
 
 ## 🔜 Có thể phát triển tiếp
 
@@ -218,4 +289,4 @@ navSeries(code)  → HIST.chart + cachedNav.filter(date > lastH)  ← merge poin
 
 ---
 
-*Cập nhật: 2026-06-20 — Phase 5: PostgreSQL schema + db.py + bot.py wiring*
+*Cập nhật: 2026-06-21 — Phase 5C: /buy /sell /navall /research + job_nav_change_alert*

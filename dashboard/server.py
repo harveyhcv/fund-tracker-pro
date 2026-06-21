@@ -308,6 +308,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self._handle_tcbs_verify(data)
         elif path == "/save-core-data":
             self._handle_save_core_data(data)
+        elif path == "/import-nav-excel":
+            self._handle_import_nav_excel(data)
         elif path == "/core/nav":
             self._core_post_nav(data)
         elif path == "/core/verify":
@@ -575,6 +577,49 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             flush=True,
         )
         return {"funds": list(incremental.keys()), "latest_date": latest, "new_points": total_pts}
+
+    # ── /import-nav-excel POST ─────────────────────────────────
+    def _handle_import_nav_excel(self, data: dict):
+        """Import NAV từ file Excel upload (base64 encoded).
+        Input: {"code": "TCFF", "file_b64": "<base64>", "filename": "xxx.xlsx", "cutoff": "2026-04-02"}
+        """
+        try:
+            import sys as _sys
+            _sys.path.insert(0, str(ROOT / "scripts"))
+            from import_nav_excel import parse_from_base64, update_nav_data_json, upsert_core_db
+        except ImportError as e:
+            _json_resp(self, {"ok": False, "error": f"import_nav_excel.py: {e}"}, 500)
+            return
+
+        b64 = data.get("file_b64", "")
+        if not b64:
+            _json_resp(self, {"ok": False, "error": "Thiếu file_b64"}, 400)
+            return
+
+        code_override = (data.get("code") or "").upper() or None
+        cutoff = data.get("cutoff") or "2026-04-02"
+        filename = data.get("filename", "upload.xlsx")
+
+        try:
+            result = parse_from_base64(b64, code_override=code_override)
+            code   = result["code"]
+            pts    = result["data"]
+            if not pts:
+                _json_resp(self, {"ok": False, "error": "Không parse được điểm NAV nào"}, 400)
+                return
+            n_nav  = update_nav_data_json(code, pts, hist_cutoff=cutoff)
+            n_core = upsert_core_db(code, pts)
+            print(f"[import-excel] ✓ {filename} → {code}: +{n_nav} nav_data, +{n_core} core DB", flush=True)
+            _json_resp(self, {
+                "ok": True, "fund_code": code,
+                "total_parsed": len(pts),
+                "nav_data_added": n_nav,
+                "core_db_added": n_core,
+                "date_range": {"from": pts[0]["date"], "to": pts[-1]["date"]},
+            })
+        except Exception as e:
+            print(f"[import-excel] ERROR: {e}", flush=True)
+            _json_resp(self, {"ok": False, "error": str(e)}, 500)
 
     # ── /save-core-data POST ─────────────────────────────────────
     def _handle_save_core_data(self, data: dict):
