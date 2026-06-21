@@ -153,6 +153,12 @@ KNOWN_FUNDS: dict[str, dict] = {
 # TCBS public NAV endpoint — không cần token, lấy được ~3000 điểm (~12 năm)
 TCBS_NAV_URL = "https://apipubaws.tcbs.com.vn/fund/v1/nav-history/{code}?page=0&size=3000"
 
+# TCinvest authenticated endpoints (cần JWT từ /otp)
+# Dùng để fetch TẤT CẢ quỹ trên platform (không chỉ TCBS-managed)
+TCINVEST_CATALOG_URL = "https://apipubaws.tcbs.com.vn/fund/v1/fund-product/list?page=0&size=200"
+TCINVEST_NAV_AUTH_URL = "https://apipubaws.tcbs.com.vn/fund/v1/fund-nav/{code}?startDate={from_date}&endDate={to_date}"
+TCINVEST_NAV_HIST_URL = "https://apipubaws.tcbs.com.vn/fund/v1/nav-history/{code}?page=0&size=5000"
+
 # fmarket NAV endpoint (confirmed working từ api_docs.md)
 FMARKET_NAV_URL = "https://api.fmarket.vn/res/product/get-nav-history"
 
@@ -210,12 +216,13 @@ def fetch_fmarket_nav(fmarket_id: int, from_date: str = FROM_EVER) -> list[dict]
         return []
 
     # Parse 3 response shapes (theo api_docs.md)
-    rows = (
-        (resp.get("data") or {}).get("navHistories")
-        or resp.get("data")
-        or resp.get("navHistories")
-        or []
-    )
+    data = resp.get("data")
+    if isinstance(data, dict):
+        rows = data.get("navHistories") or data.get("rows") or []
+    elif isinstance(data, list):
+        rows = data
+    else:
+        rows = resp.get("navHistories") or resp.get("rows") or []
     if not isinstance(rows, list):
         return []
 
@@ -385,8 +392,13 @@ def _scan_fmarket_ids(conn, id_start: int, id_end: int, delay: float) -> None:
         resp = _fmarket_post(FMARKET_NAV_URL, body, timeout=8)
 
         if resp:
-            rows = ((resp.get("data") or {}).get("navHistories")
-                    or resp.get("data") or [])
+            data = resp.get("data")
+            if isinstance(data, dict):
+                rows = data.get("navHistories") or data.get("rows") or []
+            elif isinstance(data, list):
+                rows = data
+            else:
+                rows = resp.get("navHistories") or []
             if isinstance(rows, list) and rows:
                 temp_code = f"FMKT_{pid}"
                 with conn.cursor() as cur:
@@ -618,6 +630,203 @@ def _insert_nav_points(conn, fund_code: str, pts: list[dict], source: str) -> in
     return inserted
 
 
+# ── Mode: TCINVEST BULK FETCH (dùng JWT từ /otp) ──────────────────────────────
+
+def _tcinvest_headers(jwt: str) -> dict:
+    return {
+        "Accept":        "application/json",
+        "Authorization": f"Bearer {jwt}",
+        "User-Agent":    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+        "Referer":       "https://tcinvest.tcbs.com.vn/",
+    }
+
+
+def _tcinvest_get(url: str, jwt: str, timeout: int = 15) -> Optional[dict]:
+    req = urllib.request.Request(url, headers=_tcinvest_headers(jwt))
+    try:
+        resp = urllib.request.urlopen(req, timeout=timeout)
+        return json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        if e.code == 401:
+            log("  ❌ JWT hết hạn hoặc không hợp lệ. Chạy /otp trong Telegram để làm mới.")
+            return None
+        log(f"  ⚠ HTTP {e.code}: {url}")
+        return None
+    except Exception as e:
+        log(f"  ⚠ {e}")
+        return None
+
+
+def tcinvest_get_catalog(jwt: str) -> list[dict]:
+    """
+    Lấy danh sách TẤT CẢ quỹ trên TCinvest platform (không chỉ TCBS-managed).
+    Returns: [{code, name, category, ...}]
+    """
+    log("  Đang lấy catalog quỹ từ TCinvest...")
+    # Thử các endpoint catalog candidates
+    catalog_urls = [
+        TCINVEST_CATALOG_URL,
+        "https://apipubaws.tcbs.com.vn/fund/v1/fund-product/list?page=0&size=500&type=OPEN_END",
+        "https://apipubaws.tcbs.com.vn/fund/v1/list?page=0&size=500",
+        "https://apipubaws.tcbs.com.vn/fund/v1/products?page=0&size=500",
+    ]
+    for url in catalog_urls:
+        resp = _tcinvest_get(url, jwt)
+        if not resp:
+            continue
+        data = resp.get("data") or resp
+        items = (
+            data.get("content") or data.get("data") or data.get("rows")
+            or (data if isinstance(data, list) else [])
+        )
+        if items and isinstance(items, list) and len(items) > 0:
+            log(f"  ✅ Catalog: {len(items)} quỹ từ {url.split('?')[0]}")
+            return items
+    log("  ⚠ Không lấy được catalog — sẽ dùng danh sách KNOWN_FUNDS")
+    return []
+
+
+def tcinvest_fetch_nav_hist(code: str, jwt: str) -> list[dict]:
+    """Fetch full NAV history của 1 quỹ qua TCinvest JWT."""
+    url = TCINVEST_NAV_HIST_URL.format(code=code)
+    resp = _tcinvest_get(url, jwt)
+    if not resp:
+        # Fallback về public endpoint (không cần token)
+        return fetch_tcbs_nav(code)
+
+    data = resp.get("data") or []
+    if isinstance(data, dict):
+        data = data.get("data") or data.get("navHistories") or []
+
+    result = []
+    for r in (data if isinstance(data, list) else []):
+        d = r.get("navDate") or r.get("date") or r.get("tradingDate") or ""
+        v = r.get("nav") or r.get("navValue") or r.get("ccqNav")
+        if d and v:
+            result.append({"date": str(d)[:10], "nav": float(v)})
+
+    # Nếu auth endpoint không trả về data, thử public endpoint
+    if not result:
+        result = fetch_tcbs_nav(code)
+
+    return sorted(result, key=lambda x: x["date"])
+
+
+def cmd_tcinvest(conn, jwt: str) -> None:
+    """
+    One-time bulk fetch toàn bộ quỹ từ TCinvest dùng JWT.
+
+    Quy trình:
+    1. Lấy catalog tất cả quỹ trên TCinvest
+    2. Seed funds_master với các quỹ mới tìm thấy
+    3. Fetch full NAV history mỗi quỹ
+    4. Insert vào nav_history (idempotent)
+
+    Chạy một lần để build core database.
+    Sau đó dùng --daily cho cập nhật hàng ngày.
+    """
+    log("=" * 60)
+    log("🏦 TCINVEST BULK FETCH — One-time core database")
+    log("=" * 60)
+
+    # Step 1: Lấy catalog
+    catalog_items = tcinvest_get_catalog(jwt)
+
+    codes_to_fetch: list[str] = []
+
+    if catalog_items:
+        new_funds = 0
+        with conn.cursor() as cur:
+            for item in catalog_items:
+                code = (
+                    item.get("fundCode") or item.get("code") or
+                    item.get("shortName") or item.get("symbol") or ""
+                ).upper().strip()
+                name = item.get("fundName") or item.get("name") or code
+                cat  = item.get("fundType") or item.get("type") or item.get("category") or ""
+
+                if not code:
+                    continue
+                codes_to_fetch.append(code)
+
+                cur.execute("""
+                    INSERT INTO funds_master (code, name, source, category)
+                    VALUES (%s, %s, 'tcinvest', %s)
+                    ON CONFLICT (code) DO UPDATE SET
+                        name       = COALESCE(funds_master.name, EXCLUDED.name),
+                        updated_at = NOW()
+                """, (code, name, cat))
+                if cur.rowcount > 0:
+                    new_funds += 1
+        conn.commit()
+        log(f"✅ Catalog: {len(codes_to_fetch)} quỹ, {new_funds} mới seed vào funds_master")
+    else:
+        # Fallback: dùng KNOWN_FUNDS + những gì đã có trong DB
+        with conn.cursor() as cur:
+            cur.execute("SELECT code FROM funds_master WHERE active = true")
+            codes_to_fetch = [r[0] for r in cur.fetchall()]
+        log(f"  → Dùng {len(codes_to_fetch)} quỹ từ funds_master")
+
+    log(f"\n📥 Bắt đầu fetch NAV history cho {len(codes_to_fetch)} quỹ...")
+    log("   (Mỗi quỹ ~1-3s. Tổng ước tính: ~2-10 phút)\n")
+
+    total_new   = 0
+    ok_funds    = []
+    skip_funds  = []
+
+    for i, code in enumerate(sorted(codes_to_fetch), 1):
+        # Skip quỹ temp (từ scan)
+        if code.startswith("FMKT_"):
+            skip_funds.append(code)
+            continue
+
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT MAX(nav_date) FROM nav_history WHERE fund_code = %s", (code,)
+            )
+            last = cur.fetchone()[0]
+
+        if last is not None:
+            log(f"  [{i:3d}/{len(codes_to_fetch)}] {code:10} đã có đến {last} — skip")
+            continue
+
+        log(f"  [{i:3d}/{len(codes_to_fetch)}] {code:10} fetching...")
+        pts = tcinvest_fetch_nav_hist(code, jwt)
+
+        if not pts:
+            log(f"    → 0 điểm")
+            skip_funds.append(code)
+            time.sleep(0.3)
+            continue
+
+        new_rows = _insert_nav_points(conn, code, pts, source="tcinvest")
+        total_new += new_rows
+        ok_funds.append(code)
+        log(f"    → {len(pts):>5} điểm, +{new_rows} mới | {pts[0]['date']} → {pts[-1]['date']}")
+        time.sleep(0.5)  # gentle rate limiting
+
+    log(f"\n{'=' * 60}")
+    log(f"✅ TCinvest bulk fetch hoàn tất!")
+    log(f"   +{total_new:,} records mới vào nav_history")
+    log(f"   {len(ok_funds)} quỹ có data: {', '.join(ok_funds[:20])}")
+    if len(ok_funds) > 20:
+        log(f"   ... và {len(ok_funds) - 20} quỹ khác")
+    if skip_funds:
+        log(f"   {len(skip_funds)} quỹ không có data: {', '.join(skip_funds[:10])}")
+
+
+def _load_jwt_from_config() -> str:
+    """Đọc TCBS JWT từ config.json. Returns "" nếu không có."""
+    cfg_path = ROOT / "telegram-bot" / "config.json"
+    if cfg_path.exists():
+        try:
+            cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+            return cfg.get("tcbs_token", "")
+        except Exception:
+            pass
+    return ""
+
+
 # ── Logging ────────────────────────────────────────────────────────────────────
 
 def log(msg: str) -> None:
@@ -632,7 +841,11 @@ def main() -> None:
         description="Master NAV Data Pipeline — Fund Tracker Pro",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Lần đầu:
+Lần đầu (one-time core database từ TCinvest):
+  python3 scripts/harvest_nav.py --tcinvest
+  python3 scripts/harvest_nav.py --tcinvest --jwt eyJhbGci...  (nếu config.json không có token)
+
+Khám phá + backfill từ fmarket:
   python3 scripts/harvest_nav.py --discover
   python3 scripts/harvest_nav.py --backfill
 
@@ -643,17 +856,20 @@ Kiểm tra:
   python3 scripts/harvest_nav.py --status
         """
     )
-    parser.add_argument("--discover",  action="store_true", help="Build/update fund registry")
-    parser.add_argument("--backfill",  action="store_true", help="Fetch full history từ ngày thành lập")
-    parser.add_argument("--daily",     action="store_true", help="Fetch NAV mới nhất (daily job)")
-    parser.add_argument("--status",    action="store_true", help="Tổng quan DB")
-    parser.add_argument("--code",      type=str, default=None, metavar="CODE",
+    parser.add_argument("--discover",   action="store_true", help="Build/update fund registry từ fmarket")
+    parser.add_argument("--backfill",   action="store_true", help="Fetch full history từ fmarket")
+    parser.add_argument("--tcinvest",   action="store_true", help="One-time bulk fetch từ TCinvest (dùng JWT)")
+    parser.add_argument("--daily",      action="store_true", help="Fetch NAV mới nhất (daily job)")
+    parser.add_argument("--status",     action="store_true", help="Tổng quan DB")
+    parser.add_argument("--code",       type=str, default=None, metavar="CODE",
                         help="Giới hạn 1 quỹ (dùng với --backfill hoặc --daily)")
-    parser.add_argument("--id-start",  type=int, default=1,   help="ID scan start (default: 1)")
-    parser.add_argument("--id-end",    type=int, default=200,  help="ID scan end (default: 200)")
+    parser.add_argument("--jwt",        type=str, default=None, metavar="TOKEN",
+                        help="TCBS JWT token (mặc định đọc từ telegram-bot/config.json)")
+    parser.add_argument("--id-start",   type=int, default=1,   help="ID scan start (default: 1)")
+    parser.add_argument("--id-end",     type=int, default=200,  help="ID scan end (default: 200)")
     args = parser.parse_args()
 
-    if not any([args.discover, args.backfill, args.daily, args.status]):
+    if not any([args.discover, args.backfill, args.tcinvest, args.daily, args.status]):
         parser.print_help()
         return
 
@@ -665,6 +881,16 @@ Kiểm tra:
             cmd_status(conn)
         if args.discover:
             cmd_discover(conn, args.id_start, args.id_end)
+        if args.tcinvest:
+            jwt = args.jwt or _load_jwt_from_config()
+            if not jwt:
+                sys.exit(
+                    "❌ Cần TCBS JWT token.\n"
+                    "Cách lấy: Gõ /otp trong Telegram bot để refresh token,\n"
+                    "hoặc truyền trực tiếp: --jwt eyJhbGci...\n"
+                    "Hoặc đảm bảo telegram-bot/config.json có 'tcbs_token'."
+                )
+            cmd_tcinvest(conn, jwt)
         if args.backfill:
             cmd_backfill(conn, only_code=args.code)
         if args.daily:
