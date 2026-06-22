@@ -32,6 +32,8 @@ ROOT          = BASE.parent                                # = Fund Tracker Pro/
 BOT_CFG       = ROOT / "telegram-bot" / "config.json"
 NAV_DATA_FILE = BASE / "nav_data.json"                     # NAV cache tách ra khỏi HTML
 CORE_DB       = ROOT / "core_data" / "nav.db"             # Core NAV database
+TCINVEST_JSON = ROOT / "scripts" / "tcinvest_nav_2026-06-21.json"  # Master NAV database
+TRANSACTIONS_FILE = BASE / "transactions.json"            # Portfolio transactions
 
 # Số điểm NAV giữ lại mỗi quỹ
 NAV_KEEP_POINTS = 500
@@ -248,6 +250,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self._get_bot_config()
         elif path == "/nav-data":
             self._get_nav_data()
+        elif path == "/nav-json":
+            self._get_nav_json()
+        elif path == "/transactions":
+            self._get_transactions()
         elif path == "/core/status":
             self._core_status()
         elif path == "/core/gaps":
@@ -272,6 +278,48 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 safe["tcbs_token"] = ""
             _json_resp(self, {"ok": True, "config": safe})
         except Exception as e:
+            _json_resp(self, {"ok": False, "error": str(e)}, 500)
+
+    def _get_nav_json(self):
+        """GET /nav-json — trả về tcinvest master NAV JSON (83K datapoints)."""
+        if not TCINVEST_JSON.exists():
+            _json_resp(self, {"error": "tcinvest_nav JSON chưa tồn tại. Chạy: python scripts/harvest_nav.py --no-db"}, 404)
+            return
+        try:
+            data = json.loads(TCINVEST_JSON.read_text(encoding="utf-8"))
+            _json_resp(self, data)
+        except Exception as e:
+            _json_resp(self, {"error": str(e)}, 500)
+
+    def _get_transactions(self):
+        """GET /transactions — trả về lịch sử giao dịch."""
+        if not TRANSACTIONS_FILE.exists():
+            _json_resp(self, {"ok": True, "transactions": []})
+            return
+        try:
+            data = json.loads(TRANSACTIONS_FILE.read_text(encoding="utf-8"))
+            _json_resp(self, {"ok": True, "transactions": data})
+        except Exception as e:
+            _json_resp(self, {"error": str(e)}, 500)
+
+    def _handle_save_transaction(self, data: dict):
+        """POST /transactions — thêm giao dịch mới vào transactions.json."""
+        try:
+            existing = []
+            if TRANSACTIONS_FILE.exists():
+                existing = json.loads(TRANSACTIONS_FILE.read_text(encoding="utf-8"))
+            if isinstance(data, list):
+                existing = data  # Full replace
+            else:
+                existing.append(data)
+            TRANSACTIONS_FILE.write_text(
+                json.dumps(existing, ensure_ascii=False, indent=2),
+                encoding="utf-8"
+            )
+            print(f"[transactions] ✓ Saved {len(existing)} transactions", flush=True)
+            _json_resp(self, {"ok": True, "count": len(existing)})
+        except Exception as e:
+            print(f"[transactions] ERROR: {e}", flush=True)
             _json_resp(self, {"ok": False, "error": str(e)}, 500)
 
     def _get_nav_data(self):
@@ -302,6 +350,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self._handle_refresh_nav(data)
         elif path == "/bot-config":
             self._handle_save_bot_config(data)
+        elif path == "/transactions":
+            self._handle_save_transaction(data)
         elif path == "/tcbs-auth/otp":
             self._handle_tcbs_otp(data)
         elif path == "/tcbs-auth/verify":

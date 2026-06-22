@@ -117,15 +117,50 @@ def _ensure_config_exists():
         "default_watched_funds": ["TCBF", "SSISCA", "VCBFBCF"],
         "profiles": [],
         "funds": {
-            "TCBF":    {"name": "Quỹ Trái Phiếu Techcombank",          "fmarket_id": 22},
-            "TCFF":    {"name": "Quỹ Linh Hoạt Techcombank",            "fmarket_id": None, "tcbs": True},
-            "TCGF":    {"name": "Quỹ Tăng Trưởng Techcombank",          "fmarket_id": None, "tcbs": True},
-            "VCBFTBF": {"name": "Quỹ TPDN Có Bảo Đảm VCB Fund",        "fmarket_id": 31},
-            "VCBFBCF": {"name": "Quỹ Trái Phiếu Bền Vững VCB Fund",    "fmarket_id": 32},
-            "VCBFEF":  {"name": "Quỹ Cổ Phiếu Việt Nam VCB Fund",      "fmarket_id": 28},
-            "SSISCA":  {"name": "Quỹ Tích Lũy Bền Vững SSI",           "fmarket_id": 11},
+            # ── Techcom Capital (TCinvest only) ──
+            "TCBF":    {"name": "Quỹ Trái Phiếu Techcombank",           "fmarket_id": 22,   "tcbs": True},
+            "TCFF":    {"name": "Quỹ Tăng Trưởng Techcombank",          "fmarket_id": None, "tcbs": True},
+            "TCGF":    {"name": "Quỹ Tăng Trưởng Toàn Cầu Techcombank","fmarket_id": None, "tcbs": True},
+            "TCSME":   {"name": "Quỹ Cổ Phiếu SME Techcombank",         "fmarket_id": None, "tcbs": True},
+            "TCEF":    {"name": "Quỹ Cổ Phiếu Techcombank",             "fmarket_id": None, "tcbs": True},
+            "TCRES":   {"name": "Quỹ Bất Động Sản Techcombank",         "fmarket_id": None, "tcbs": True},
+            "TCFIN":   {"name": "Quỹ Tài Chính Techcombank",            "fmarket_id": None, "tcbs": True},
+            # ── VCB Fund ──
+            "VCBFTBF": {"name": "Quỹ TPDN Có Bảo Đảm VCB Fund",        "fmarket_id": 31,   "tcbs": True},
+            "VCBFBCF": {"name": "Quỹ Trái Phiếu Bền Vững VCB Fund",    "fmarket_id": 32,   "tcbs": True},
+            "VCBFFIF": {"name": "Quỹ Thu Nhập Cố Định VCB Fund",        "fmarket_id": None, "tcbs": True},
+            "VCBFMGF": {"name": "Quỹ Tăng Trưởng VCB Fund",            "fmarket_id": None, "tcbs": True},
+            "VCBFAIF": {"name": "Quỹ Cổ Phiếu VCB Fund",               "fmarket_id": None, "tcbs": True},
+            # ── VinaCapital ──
+            "VCAMDF":  {"name": "Quỹ Cân Bằng VinaCapital",            "fmarket_id": None, "tcbs": True},
+            "VCAMBF":  {"name": "Quỹ Trái Phiếu VinaCapital",          "fmarket_id": None, "tcbs": True},
+            # ── SSIAM ──
+            "SSISCA":  {"name": "Quỹ Tích Lũy Bền Vững SSI",           "fmarket_id": 11,   "tcbs": True},
+            # ── VietFund Management ──
+            "VDEF":    {"name": "Quỹ Đầu Tư Tăng Trưởng VietFund",     "fmarket_id": None, "tcbs": True},
+            "VEOF":    {"name": "Quỹ Cổ Phiếu Tăng Trưởng VietFund",   "fmarket_id": None, "tcbs": True},
+            "VESAF":   {"name": "Quỹ Cổ Phiếu VietFund",               "fmarket_id": None, "tcbs": True},
+            "VIBF":    {"name": "Quỹ Trái Phiếu VietFund",             "fmarket_id": None, "tcbs": True},
+            "VMEEF":   {"name": "Quỹ Cổ Phiếu VietFund Emerging",      "fmarket_id": None, "tcbs": True},
+            "VMPF":    {"name": "Quỹ Cổ Phiếu VietFund Emerging (mã cũ)", "fmarket_id": None, "tcbs": True},
+            # ── UOB ──
+            "UVDIF":   {"name": "Quỹ Đầu Tư Cổ Phiếu UOB",            "fmarket_id": None, "tcbs": True},
+            "UVEEF":   {"name": "Quỹ Cổ Phiếu Tăng Trưởng UOB",       "fmarket_id": None, "tcbs": True},
+            # ── Dragon Capital ──
+            "DCAF":    {"name": "Quỹ Cân Bằng Dragon Capital",          "fmarket_id": None, "tcbs": True},
+            "DCDE":    {"name": "Quỹ Cổ Phiếu Dragon Capital",          "fmarket_id": None, "tcbs": True},
+            "DCDS":    {"name": "Quỹ Tăng Trưởng Dragon Capital",       "fmarket_id": 6,    "tcbs": True},
+            "DFIX":    {"name": "Quỹ Trái Phiếu Dragon Capital",        "fmarket_id": None, "tcbs": True},
+            # ── KIM Vietnam ──
+            "KDEF":    {"name": "Quỹ Cổ Phiếu KIM",                    "fmarket_id": None, "tcbs": True},
+            # ── Others ──
+            "LHCDF":   {"name": "Quỹ Cân Bằng Liên Hiệp",              "fmarket_id": None, "tcbs": True},
+            "MAGEF":   {"name": "Quỹ Cổ Phiếu Manulife",               "fmarket_id": 34,   "tcbs": True},
+            "PHVSF":   {"name": "Quỹ Cổ Phiếu Phú Hưng",              "fmarket_id": None, "tcbs": True},
+            "NTPPF":   {"name": "Quỹ Cổ Phiếu NTP",                    "fmarket_id": None, "tcbs": True},
+            "TVPF":    {"name": "Quỹ Cổ Phiếu NTP (mã cũ)",           "fmarket_id": None, "tcbs": True},
+            # ── Non-TCinvest (fmarket only) ──
             "MAFPF1":  {"name": "Quỹ Tích Lũy Hưu Trí Manulife",       "fmarket_id": 45},
-            "MAFEQI":  {"name": "Quỹ Cổ Phiếu Manulife",               "fmarket_id": 34},
             "MBBF":    {"name": "Quỹ Trái Phiếu MB Capital",            "fmarket_id": 40},
             "MBVF":    {"name": "Quỹ Cổ Phiếu MB Capital",             "fmarket_id": 35},
             "ESSCF":   {"name": "Quỹ Cổ Phiếu Eastspring VN",          "fmarket_id": 47},
@@ -134,8 +169,6 @@ def _ensure_config_exists():
             "MIRAEF":  {"name": "Quỹ Cổ Phiếu Mirae Asset VN",         "fmarket_id": 38},
             "VNDAF":   {"name": "Quỹ Cổ Phiếu Năng Động VinaCapital",  "fmarket_id": 1},
             "VNDBF":   {"name": "Quỹ Trái Phiếu VinaCapital",          "fmarket_id": 2},
-            "DCDS":    {"name": "Quỹ Tăng Trưởng Dragon Capital",       "fmarket_id": 6},
-            "DCBF":    {"name": "Quỹ Trái Phiếu Dragon Capital",        "fmarket_id": 5},
         },
         "schedule": {
             "morning_report":               os.environ.get("MORNING_TIME", "08:00"),
@@ -225,11 +258,83 @@ def fetch_fmarket(fund_id: int, from_date: str = None) -> list:
         return []
 
 
-def fetch_tcbs(code: str, token: str = "", from_date: str = None) -> list:
-    """Fetch lịch sử NAV từ TCBS.
-    from_date: "yyyy-mm-dd" — nếu không truyền, mặc định 2023-01-01 (lấy toàn bộ).
-               Truyền HIST cutoff để chỉ lấy delta mới hơn → tiết kiệm băng thông.
+_TCINVEST_URL = "https://apiextaws.tcbs.com.vn/visionary-port/v1/chart-nav?code={code}&timeline=ALL"
+_TCINVEST_HEADERS_BASE = {
+    "Content-Type":    "application/json",
+    "Accept":          "application/json",
+    "Accept-language": "vi",
+    "Origin":          "https://tcinvest.tcbs.com.vn",
+    "Referer":         "https://tcinvest.tcbs.com.vn/",
+    "User-Agent":      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+}
+# Các mã alias: TCinvest đôi khi dùng mã khác với fmarket
+_TCINVEST_ALIASES: dict[str, list[str]] = {
+    "VMEEF": ["VMPF"],   # VietFund Emerging — TCinvest dùng VMPF
+    "NTPPF": ["TVPF"],   # NTP Fund — TCinvest dùng TVPF
+    "VMPF":  ["VMEEF"],  # reverse alias
+    "TVPF":  ["NTPPF"],  # reverse alias
+}
+
+
+def fetch_tcinvest(code: str, token: str = "", from_date: str = None) -> list:
+    """Fetch NAV từ TCinvest API (endpoint đúng được xác nhận bằng Network tab).
+
+    URL:  https://apiextaws.tcbs.com.vn/visionary-port/v1/chart-nav?code={CODE}&timeline=ALL
+    Response: list trực tiếp [{fundCode, navCurrent, matchedDate}, ...]
     """
+    hdrs = dict(_TCINVEST_HEADERS_BASE)
+    if token:
+        hdrs["Authorization"] = f"Bearer {token}"
+
+    codes_to_try = [code] + _TCINVEST_ALIASES.get(code, [])
+    for try_code in codes_to_try:
+        url = _TCINVEST_URL.format(code=try_code)
+        try:
+            r = requests.get(url, headers=hdrs, timeout=15)
+            if r.status_code in (401, 403):
+                log.warning(f"[TCinvest] {try_code} HTTP {r.status_code} — Token hết hạn")
+                _tcbs_auth_fail_codes.add(code)
+                return []
+            if not r.ok:
+                log.warning(f"[TCinvest] {try_code} HTTP {r.status_code}")
+                continue
+            raw = r.json()
+            rows = raw if isinstance(raw, list) else (raw.get("data") or [])
+            pts = []
+            for row in rows:
+                d = (row.get("matchedDate") or row.get("navDate") or row.get("date") or "")[:10]
+                v_raw = row.get("navCurrent") or row.get("nav") or row.get("navValue") or 0
+                try:
+                    v = float(v_raw)
+                except (TypeError, ValueError):
+                    continue
+                if d and v > 0:
+                    if from_date and d <= from_date:
+                        continue
+                    pts.append({"date": d, "nav": v})
+            if pts:
+                pts = sorted(pts, key=lambda x: x["date"])
+                if try_code != code:
+                    log.info(f"[TCinvest] {code} → alias {try_code}: {len(pts)} pts, last={pts[-1]['date']}")
+                else:
+                    log.info(f"[TCinvest] {code}: {len(pts)} pts, last={pts[-1]['date']}")
+                return pts
+        except Exception as e:
+            log.warning(f"[TCinvest] {try_code}: {e}")
+    return []
+
+
+def fetch_tcbs(code: str, token: str = "", from_date: str = None) -> list:
+    """Wrapper: thử TCinvest API mới trước, fallback về endpoint cũ.
+
+    from_date: "yyyy-mm-dd" — nếu không truyền thì lấy toàn bộ history.
+    """
+    # Thử TCinvest API (endpoint đúng được confirm 2026-06-21)
+    pts = fetch_tcinvest(code, token, from_date)
+    if pts:
+        return pts
+
+    # Fallback: old TCBS endpoints (cho các quỹ không nằm trong TCinvest)
     today = date.today().isoformat()
     start = from_date or "2023-01-01"
     hdrs = {"Accept": "application/json"}
@@ -243,27 +348,23 @@ def fetch_tcbs(code: str, token: str = "", from_date: str = None) -> list:
         try:
             r = requests.get(url, headers=hdrs, timeout=12)
             if r.status_code in (401, 403):
-                # Token hết hạn — đánh dấu để job gửi cảnh báo, không thử URL thứ 2
-                log.warning(f"[TCBS] {code} HTTP {r.status_code} — Token hết hạn hoặc không hợp lệ")
+                log.warning(f"[TCBS-old] {code} HTTP {r.status_code} — Token hết hạn")
                 _tcbs_auth_fail_codes.add(code)
                 break
-            elif not r.ok:
-                log.warning(f"[TCBS] {code} HTTP {r.status_code}")
+            if not r.ok:
                 continue
             data = r.json()
             navs = data.get("data") or data.get("navHistory") or data.get("list") or []
-            pts = []
+            pts2 = []
             for n in navs:
                 d = (n.get("navDate") or n.get("tradingDate") or n.get("date") or "")[:10]
                 v = float(n.get("nav") or n.get("navValue") or n.get("close") or 0)
-                if d and v > 0:
-                    pts.append({"date": d, "nav": v})
-            if pts:
-                last = sorted(pts, key=lambda x: x["date"])[-1]
-                log.info(f"[TCBS] ✓ {code}: {len(pts)} pts, last={last['date']}")
-                return sorted(pts, key=lambda x: x["date"])
+                if d and v > 0 and (not from_date or d > from_date):
+                    pts2.append({"date": d, "nav": v})
+            if pts2:
+                return sorted(pts2, key=lambda x: x["date"])
         except Exception as e:
-            log.warning(f"[TCBS] {code} {url}: {e}")
+            log.warning(f"[TCBS-old] {code} {url}: {e}")
     return []
 
 
@@ -272,10 +373,10 @@ def get_nav_series(code: str, fund_cfg: dict, config: dict = None) -> list:
     pts = fetch_fmarket(fid) if fid else []
     if not pts and fund_cfg.get("tcbs"):
         tcbs_token = (config or {}).get("tcbs_token", "")
-        # Truyền from_date để chỉ fetch từ HIST cutoff → tiết kiệm băng thông
-        cutoff = _HIST_CUTOFF.get(code, None)
-        log.info(f"[TCBS fallback] {code} from_date={cutoff} (token={'yes' if tcbs_token else 'no'})")
-        pts = fetch_tcbs(code, tcbs_token, from_date=cutoff)
+        # Không truyền from_date → full history → đủ điểm cho RSI/MACD/BB
+        # fetch_tcbs() sẽ thử TCinvest endpoint mới trước, fallback về old nếu cần
+        log.info(f"[Nav] {code} fetch full history (token={'yes' if tcbs_token else 'no'})")
+        pts = fetch_tcbs(code, tcbs_token)
     return pts
 
 
@@ -1888,6 +1989,65 @@ def find_profile_by_chat(config: dict, chat_id: str) -> Optional[dict]:
     return None
 
 
+# Seed profile cho admin (Harvey) — dùng để reconcile config trên /data (Railway).
+# Khi Harvey tự /register, profile chỉ có default_watched_funds (3 quỹ) và không có
+# portfolio → /portfolio rơi vào fallback 7/30 ngày. Reconcile lúc startup đảm bảo
+# admin luôn có đủ 5 quỹ theo dõi + portfolio để hiển thị P&L all-time.
+_ADMIN_PROFILE_SEED = {
+    "watched_funds": ["TCBF", "VCBFTBF", "SSISCA", "VCBFBCF", "TCFF"],
+    "portfolio": [
+        {"code": "TCBF",    "units": 487.21,  "avg_cost": 20525},
+        {"code": "SSISCA",  "units": 713.57,  "avg_cost": 42042},
+        {"code": "VCBFBCF", "units": 839.29,  "avg_cost": 35744},
+        {"code": "VCBFTBF", "units": 449.41,  "avg_cost": 33377},
+        {"code": "TCFF",    "units": 1832.66, "avg_cost": 13641},
+    ],
+}
+
+
+def reconcile_admin_profile(config: dict) -> bool:
+    """Đảm bảo profile admin có đủ watched_funds + portfolio (seed).
+
+    Trả về True nếu config bị thay đổi (cần save). An toàn idempotent — chỉ bổ sung
+    quỹ thiếu và thêm portfolio nếu chưa có, KHÔNG ghi đè dữ liệu user đã nhập.
+    """
+    admin_id = str(config.get("admin_telegram_id", "")).strip()
+    if not admin_id or admin_id.startswith("NHAP"):
+        return False
+
+    profiles = config.setdefault("profiles", [])
+    admin = None
+    for p in profiles:
+        if str(p.get("telegram_id", "")).strip() == admin_id:
+            admin = p
+            break
+
+    changed = False
+    if admin is None:
+        admin = {"name": "Harvey", "telegram_id": admin_id}
+        profiles.append(admin)
+        changed = True
+        log.info(f"[reconcile] Tạo profile admin Harvey ({admin_id})")
+
+    # Bổ sung watched_funds còn thiếu (giữ thứ tự seed, không xoá quỹ user thêm)
+    cur_watched = admin.get("watched_funds") or []
+    merged = list(cur_watched)
+    for code in _ADMIN_PROFILE_SEED["watched_funds"]:
+        if code not in merged:
+            merged.append(code)
+            changed = True
+    if merged != cur_watched:
+        admin["watched_funds"] = merged
+
+    # Thêm portfolio nếu chưa có (không ghi đè nếu user đã có dữ liệu)
+    if not admin.get("portfolio"):
+        admin["portfolio"] = [dict(h) for h in _ADMIN_PROFILE_SEED["portfolio"]]
+        changed = True
+        log.info("[reconcile] Thêm portfolio seed cho admin")
+
+    return changed
+
+
 def command_handler():
     offset = 0
     while True:
@@ -1909,7 +2069,8 @@ def command_handler():
                     continue
                 chat_id = str(msg["chat"]["id"])
                 text    = msg.get("text", "").strip()
-                cmd     = text.split()[0].lower().split("@")[0] if text else ""
+                parts   = text.split()  # luôn định nghĩa sẵn, tránh NameError
+                cmd     = parts[0].lower().split("@")[0] if parts else ""
                 log.info(f"[CMD] {cmd!r} from chat {chat_id}")
                 profile = find_profile_by_chat(config, chat_id)
 
@@ -1941,11 +2102,12 @@ def command_handler():
 
                     if cmd in ("/start", "/help"):
                         profile_note = (f"\n\n✅ Xin chào <b>{profile['name']}</b>! Bot đã nhận diện bạn." if profile else f"\n\n👤 Bạn chưa đăng ký. Gõ:\n<code>/register Tên Của Bạn</code>\nđể tự đăng ký và nhận báo cáo tự động.")
+                        n_funds = len(config.get("funds", {}))
                         tg_send(token, chat_id, (
                             "👋 <b>Quỹ Tracker Pro Bot</b>\n\n"
                             "<b>Theo dõi NAV:</b>\n"
                             "📈 /nav — NAV quỹ của bạn + tín hiệu\n"
-                            "🌐 /navall — NAV tất cả 19 quỹ trong hệ thống\n"
+                            f"🌐 /navall — NAV tất cả {n_funds} quỹ trong hệ thống\n"
                             "📊 /signal — Tín hiệu kỹ thuật (RSI, BB, MACD)\n"
                             "🔍 /explain [MÃ] — Phân tích chi tiết\n"
                             "🔬 /research MÃ — Phân tích chuyên sâu 5 trường phái\n\n"
@@ -1964,9 +2126,12 @@ def command_handler():
                             "🌅 /morning — Báo cáo sáng (ngay bây giờ)\n"
                             "🌆 /evening — Báo cáo chiều (ngay bây giờ)\n"
                             "📢 Auto: Thông báo khi có NAV mới hàng ngày\n\n"
-                            "<b>Tài khoản:</b>\n"
+                            "<b>Tài khoản &amp; TCBS:</b>\n"
                             "🪪 /getid — Xem Chat ID của bạn\n"
                             "✍️ /register [tên] — Tự đăng ký nhận báo cáo\n"
+                            "🔐 /otp — Gửi OTP làm mới TCBS token\n"
+                            "🔐 /otp 123456 — Xác nhận OTP (sau khi nhận SMS)\n"
+                            "🔐 /otp setup 0901... — Đăng ký SĐT TCBS lần đầu\n"
                             "❓ /help — Trợ giúp\n\n"
                             "🔔 <b>Tự động:</b>\n"
                             "• 08:00 T2–T6 → Báo cáo sáng\n"
@@ -2410,6 +2575,10 @@ def main():
         return
 
     config = load_config()
+    # Reconcile profile admin (Harvey): đảm bảo đủ 5 quỹ + portfolio trên /data volume
+    if reconcile_admin_profile(config):
+        save_config(config)
+        log.info("[reconcile] config.json đã cập nhật profile admin")
     sched  = config.get("schedule", {})
     t_morn = sched.get("morning_report", "08:00")
     t_eve  = sched.get("evening_report", "17:30")

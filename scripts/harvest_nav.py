@@ -113,7 +113,8 @@ TCINVEST_FUNDS: dict[str, dict] = {
     "VDEF":    {"name": "Quỹ Đầu Tư Tăng Trưởng VietFund",      "category": "STOCK"},      # 12,264
     "VCBFFIF": {"name": "Quỹ Thu Nhập Cố Định VCB Fund",         "category": "BOND"},       # 15,901
     "TCBF":    {"name": "Quỹ Trái Phiếu Techcombank",            "category": "BOND"},       # 20,728
-    "VMEEF":   {"name": "Quỹ Cổ Phiếu VietFund Emerging",        "category": "STOCK"},      # 16,736
+    "VMPF":    {"name": "Quỹ Cổ Phiếu VietFund Emerging",        "category": "STOCK"},      # 16,736 (code thực: VMPF, alias VMEEF)
+    "VMEEF":   {"name": "Quỹ Cổ Phiếu VietFund Emerging",        "category": "STOCK"},      # alias — fallback
     "VCBFMGF": {"name": "Quỹ Tăng Trưởng VCB Fund",             "category": "STOCK"},      # 14,628
     "LHCDF":   {"name": "Quỹ Cổ Phiếu Lion Holdings",            "category": "STOCK"},      # 11,819
     "DFIX":    {"name": "Quỹ Trái Phiếu Dragon Capital Fixed",   "category": "BOND"},       # 12,152
@@ -124,7 +125,8 @@ TCINVEST_FUNDS: dict[str, dict] = {
     "VIBF":    {"name": "Quỹ Cân Bằng VIB",                      "category": "BALANCE"},    # 19,909
     "UVDIF":   {"name": "Quỹ Cân Bằng UOB Vietnam",              "category": "BALANCE"},    # 11,087
     "VCBFBCF": {"name": "Quỹ Cổ Phiếu VCB Fund",                "category": "STOCK"},      # 43,686
-    "NTPPF":   {"name": "Quỹ Cổ Phiếu NTP",                      "category": "STOCK"},      # 10,584
+    "TVPF":    {"name": "Quỹ Cổ Phiếu NTP",                      "category": "STOCK"},      # 10,584 (code thực: TVPF, alias NTPPF)
+    "NTPPF":   {"name": "Quỹ Cổ Phiếu NTP",                      "category": "STOCK"},      # alias — fallback
     "VCAMBF":  {"name": "Quỹ Cân Bằng VCAM",                     "category": "BALANCE"},    # 21,568
     "VEOF":    {"name": "Quỹ Cổ Phiếu VietFund Equity Opport.",  "category": "STOCK"},      # 34,760
     "DCAF":    {"name": "Quỹ Cổ Phiếu Dragon Capital",           "category": "STOCK"},      # 17,306
@@ -160,9 +162,16 @@ TCBS_NAV_URL = "https://apipubaws.tcbs.com.vn/fund/v1/nav-history/{code}?page=0&
 
 # TCinvest authenticated endpoints (cần JWT từ /otp)
 # Dùng để fetch TẤT CẢ quỹ trên platform (không chỉ TCBS-managed)
-TCINVEST_CATALOG_URL = "https://apipubaws.tcbs.com.vn/fund/v1/fund-product/list?page=0&size=200"
-TCINVEST_NAV_AUTH_URL = "https://apipubaws.tcbs.com.vn/fund/v1/fund-nav/{code}?startDate={from_date}&endDate={to_date}"
-TCINVEST_NAV_HIST_URL = "https://apipubaws.tcbs.com.vn/fund/v1/nav-history/{code}?page=0&size=5000"
+TCINVEST_CATALOG_URL = "https://apiextaws.tcbs.com.vn/visionary-port/v1/market/fund"
+TCINVEST_NAV_AUTH_URL = "https://apiextaws.tcbs.com.vn/visionary-port/v1/chart-nav?code={code}&timeline=ALL"
+TCINVEST_NAV_HIST_URL = "https://apiextaws.tcbs.com.vn/visionary-port/v1/chart-nav?code={code}&timeline=ALL"
+
+# Alias: mã cũ ↔ mã mới trên TCinvest (thử cả hai khi fetch)
+# Format: canonical_code -> [alt_code, ...] để thử lần lượt khi canonical trả về 0 điểm
+TCINVEST_CODE_ALIASES: dict[str, list[str]] = {
+    "VMEEF": ["VMPF"],   # VietFund Emerging — TCinvest hiện dùng VMPF
+    "NTPPF": ["TVPF"],   # NTP Fund — TCinvest hiện dùng TVPF
+}
 
 # fmarket NAV endpoint (confirmed working từ api_docs.md)
 FMARKET_NAV_URL = "https://api.fmarket.vn/res/product/get-nav-history"
@@ -639,10 +648,13 @@ def _insert_nav_points(conn, fund_code: str, pts: list[dict], source: str) -> in
 
 def _tcinvest_headers(jwt: str) -> dict:
     return {
-        "Accept":        "application/json",
-        "Authorization": f"Bearer {jwt}",
-        "User-Agent":    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-        "Referer":       "https://tcinvest.tcbs.com.vn/",
+        "Authorization":   f"Bearer {jwt}",
+        "Content-Type":    "application/json",
+        "Accept":          "application/json",
+        "Accept-language": "vi",
+        "Origin":          "https://tcinvest.tcbs.com.vn",
+        "Referer":         "https://tcinvest.tcbs.com.vn/",
+        "User-Agent":      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
     }
 
 
@@ -691,30 +703,44 @@ def tcinvest_get_catalog(jwt: str) -> list[dict]:
     return []
 
 
-def tcinvest_fetch_nav_hist(code: str, jwt: str) -> list[dict]:
-    """Fetch full NAV history của 1 quỹ qua TCinvest JWT."""
-    url = TCINVEST_NAV_HIST_URL.format(code=code)
-    resp = _tcinvest_get(url, jwt)
-    if not resp:
-        # Fallback về public endpoint (không cần token)
-        return fetch_tcbs_nav(code)
-
-    data = resp.get("data") or []
-    if isinstance(data, dict):
-        data = data.get("data") or data.get("navHistories") or []
-
+def _parse_chart_nav_response(resp) -> list[dict]:
+    """Parse chart-nav response: list hoặc {"data": [...]}"""
+    if isinstance(resp, list):
+        rows = resp
+    elif isinstance(resp, dict):
+        rows = resp.get("data") or []
+        if not isinstance(rows, list):
+            rows = []
+    else:
+        return []
     result = []
-    for r in (data if isinstance(data, list) else []):
-        d = r.get("navDate") or r.get("date") or r.get("tradingDate") or ""
-        v = r.get("nav") or r.get("navValue") or r.get("ccqNav")
+    for r in rows:
+        d = (r.get("matchedDate") or r.get("t") or r.get("navDate")
+             or r.get("date") or r.get("tradingDate") or "")
+        v = (r.get("navCurrent") or r.get("v") or r.get("nav")
+             or r.get("navValue") or r.get("ccqNav"))
         if d and v:
             result.append({"date": str(d)[:10], "nav": float(v)})
-
-    # Nếu auth endpoint không trả về data, thử public endpoint
-    if not result:
-        result = fetch_tcbs_nav(code)
-
     return sorted(result, key=lambda x: x["date"])
+
+
+def tcinvest_fetch_nav_hist(code: str, jwt: str) -> list[dict]:
+    """
+    Fetch full NAV history qua TCinvest JWT.
+    Thử code chính trước, sau đó thử alias trong TCINVEST_CODE_ALIASES nếu 0 điểm.
+    """
+    codes_to_try = [code] + TCINVEST_CODE_ALIASES.get(code, [])
+    for try_code in codes_to_try:
+        url = TCINVEST_NAV_HIST_URL.format(code=try_code)
+        resp = _tcinvest_get(url, jwt)
+        if not resp:
+            continue
+        result = _parse_chart_nav_response(resp)
+        if result:
+            if try_code != code:
+                log(f"    (dùng alias {try_code} thay cho {code})")
+            return result
+    return []
 
 
 def cmd_tcinvest(conn, jwt: str) -> None:
@@ -837,6 +863,59 @@ def cmd_tcinvest(conn, jwt: str) -> None:
         log(f"   {len(skip_funds)} quỹ không có data: {', '.join(skip_funds[:10])}")
 
 
+def cmd_tcinvest_nodb(jwt: str, out_path: Optional[str] = None) -> None:
+    """
+    Fetch NAV history toàn bộ 31 TCinvest funds mà KHÔNG cần database.
+    Lưu kết quả ra file JSON local để import sau.
+    """
+    log("=" * 60)
+    log(f"TCINVEST BULK FETCH (no-db mode) — {len(TCINVEST_FUNDS)} quy")
+    log("=" * 60)
+
+    result: dict[str, list] = {}
+    ok_funds: list[str] = []
+    skip_funds: list[str] = []
+    total_pts = 0
+
+    codes = sorted(TCINVEST_FUNDS.keys())
+    for i, code in enumerate(codes, 1):
+        log(f"  [{i:3d}/{len(codes)}] {code:10} fetching...")
+        pts = tcinvest_fetch_nav_hist(code, jwt)
+        if not pts:
+            log(f"    → 0 điểm — skip")
+            skip_funds.append(code)
+            time.sleep(0.3)
+            continue
+        result[code] = pts
+        ok_funds.append(code)
+        total_pts += len(pts)
+        log(f"    → {len(pts):>5} điểm | {pts[0]['date']} → {pts[-1]['date']}")
+        time.sleep(0.5)
+
+    # Save JSON
+    if out_path is None:
+        out_path = str(ROOT / "scripts" / f"tcinvest_nav_{date.today().isoformat()}.json")
+
+    export = {
+        "_exported_at":  time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "_source":       "TCinvest bulk fetch (--no-db)",
+        "_total_funds":  len(ok_funds),
+        "_total_points": total_pts,
+        "_ok_funds":     ok_funds,
+        "_skip_funds":   skip_funds,
+        "funds": result,
+    }
+    Path(out_path).write_text(json.dumps(export, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    log(f"\n{'=' * 60}")
+    log(f"✅ Hoàn tất! Đã lưu → {out_path}")
+    log(f"   {len(ok_funds)}/{len(codes)} quỹ có data | {total_pts:,} điểm NAV tổng cộng")
+    if skip_funds:
+        log(f"   Skip: {', '.join(skip_funds)}")
+    log(f"\nBước tiếp theo (import vào DB khi có DATABASE_URL):")
+    log(f"   python scripts/import_tcinvest_json.py {out_path}")
+
+
 def _load_jwt_from_config() -> str:
     """Đọc TCBS JWT từ config.json. Returns "" nếu không có."""
     cfg_path = ROOT / "telegram-bot" / "config.json"
@@ -853,7 +932,11 @@ def _load_jwt_from_config() -> str:
 
 def log(msg: str) -> None:
     ts = time.strftime("%H:%M:%S")
-    print(f"[{ts}] {msg}", flush=True)
+    try:
+        print(f"[{ts}] {msg}", flush=True)
+    except UnicodeEncodeError:
+        safe = msg.encode("ascii", errors="replace").decode("ascii")
+        print(f"[{ts}] {safe}", flush=True)
 
 
 # ── Main ───────────────────────────────────────────────────────────────────────
@@ -889,10 +972,26 @@ Kiểm tra:
                         help="TCBS JWT token (mặc định đọc từ telegram-bot/config.json)")
     parser.add_argument("--id-start",   type=int, default=1,   help="ID scan start (default: 1)")
     parser.add_argument("--id-end",     type=int, default=200,  help="ID scan end (default: 200)")
+    parser.add_argument("--no-db",      action="store_true",
+                        help="Chạy --tcinvest không cần DB, lưu kết quả ra JSON")
     args = parser.parse_args()
 
     if not any([args.discover, args.backfill, args.tcinvest, args.daily, args.status]):
         parser.print_help()
+        return
+
+    # --no-db mode: chỉ hỗ trợ --tcinvest, không cần DATABASE_URL
+    if args.no_db:
+        if not args.tcinvest:
+            sys.exit("❌ --no-db chỉ dùng được với --tcinvest")
+        jwt = args.jwt or _load_jwt_from_config()
+        if not jwt:
+            sys.exit(
+                "❌ Cần TCBS JWT token.\n"
+                "Truyền trực tiếp: --jwt eyJhbGci...\n"
+                "Hoặc đảm bảo telegram-bot/config.json có 'tcbs_token'."
+            )
+        cmd_tcinvest_nodb(jwt)
         return
 
     conn = connect_db()
