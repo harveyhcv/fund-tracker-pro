@@ -566,6 +566,44 @@ def calc_signal(code: str, pts: list) -> dict:
 # TELEGRAM HELPERS
 # ═══════════════════════════════════════
 
+# ── Trade wizard session state ────────────────────────────────────────────────
+# { chat_id: {"step": "await_units"|"await_amount"|"confirm",
+#             "fund": str, "type": "buy"|"sell",
+#             "units": float|None, "amount": float|None, "date": str} }
+_TRADE_SESSIONS: dict = {}
+
+
+def tg_send_keyboard(token: str, chat_id: str, text: str, buttons: list[list[dict]]) -> bool:
+    """Gửi tin nhắn với InlineKeyboardMarkup. buttons = [[{text, callback_data}, ...], ...]"""
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    try:
+        r = requests.post(url, json={
+            "chat_id": chat_id,
+            "text": text,
+            "parse_mode": "HTML",
+            "disable_web_page_preview": True,
+            "reply_markup": {"inline_keyboard": buttons},
+        }, timeout=15)
+        if not r.ok:
+            log.error(f"[Telegram KB] {r.status_code} → {r.text[:200]}")
+        return r.ok
+    except Exception as e:
+        log.error(f"[Telegram KB] {e}")
+        return False
+
+
+def tg_answer_callback(token: str, callback_id: str) -> None:
+    """Acknowledge callback query để Telegram xoá loading spinner."""
+    try:
+        requests.post(
+            f"https://api.telegram.org/bot{token}/answerCallbackQuery",
+            json={"callback_query_id": callback_id},
+            timeout=5,
+        )
+    except Exception:
+        pass
+
+
 def tg_send(token: str, chat_id: str, text: str) -> bool:
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     try:
@@ -1209,14 +1247,13 @@ def job_check_jwt():
         )
 
     def _send_to_all(text: str):
-        sent = 0
-        for profile in cfg.get("profiles", []):
-            tg = str(profile.get("telegram_id", ""))
-            if tg.lstrip("-").isdigit():
-                ok = tg_send(bot_token, tg, text)
-                if ok:
-                    sent += 1
-        log.info(f"[JWT-CHECK] Đã gửi cảnh báo JWT tới {sent} profile(s).")
+        # Chỉ gửi cho admin — token hết hạn là vấn đề kỹ thuật, không liên quan user thường
+        admin_id = str(cfg.get("admin_telegram_id", "")).strip()
+        if admin_id and admin_id.lstrip("-").isdigit():
+            ok = tg_send(bot_token, admin_id, text)
+            log.info(f"[JWT-CHECK] Đã gửi cảnh báo JWT tới admin ({admin_id}): {ok}")
+        else:
+            log.warning("[JWT-CHECK] admin_telegram_id chưa cấu hình — không gửi được cảnh báo JWT")
 
     send_token_alert_once(send_fn=_send_to_all, message=msg)
 
@@ -2077,6 +2114,152 @@ def reconcile_admin_profile(config: dict) -> bool:
     return changed
 
 
+# ── Trade wizard helpers ───────────────────────────────────────────────────────
+
+def _handle_callback(token: str, chat_id: str, data: str, profile: dict | None, config: dict) -> None:
+    """Xử lý inline keyboard callback từ wizard /buy /sell."""
+    if data == "trade_cancel":
+        _TRADE_SESSIONS.pop(chat_id, None)
+        tg_send(token, chat_id, "❌ Đã huỷ giao dịch.")
+        return
+
+    if data.startswith("trade_confirm:"):
+        # trade_confirm:FUND:type:units:amount:date
+        _TRADE_SESSIONS.pop(chat_id, None)
+        parts_c = data.split(":")
+        if len(parts_c) < 6:
+            tg_send(token, chat_id, "⚠️ Dữ liệu xác nhận không hợp lệ.")
+            return
+        _, fund_code, tx_type, units_s, amount_s, order_date_s = parts_c[:6]
+        if not profile:
+            tg_send(token, chat_id, "⚠️ Không tìm thấy profile.")
+            return
+        try:
+            units  = float(units_s)
+            amount = float(amount_s)
+            order_date = date.fromisoformat(order_date_s)
+        except (ValueError, TypeError) as e:
+            tg_send(token, chat_id, f"⚠️ Lỗi dữ liệu: {e}")
+            return
+        _cmd_add_trade(token, chat_id, profile, fund_code, tx_type, units, amount, order_date)
+        return
+
+    if not data.startswith("trade:"):
+        return
+    parts = data.split(":")
+    if len(parts) < 3:
+        return
+    _, tx_type, fund_code = parts[0], parts[1], parts[2]
+
+    if not profile:
+        tg_send(token, chat_id, "⚠️ Bạn chưa đăng ký. Gõ /register Tên để đăng ký.")
+        return
+
+    watched = profile.get("watched_funds", [])
+    if fund_code not in watched:
+        tg_send(token, chat_id, f"⚠️ <code>{fund_code}</code> không có trong danh mục của bạn.")
+        return
+
+    # Lấy NAV hiện tại để gợi ý
+    cfg_funds  = config.get("funds", {})
+    nav_hint   = ""
+    try:
+        pts = get_nav_series(fund_code, cfg_funds.get(fund_code, {}), config)
+        if pts:
+            latest_nav = pts[-1]["nav"]
+            nav_hint = f"\n💡 NAV mới nhất: <b>{latest_nav:,.0f}đ</b>/CCQ"
+    except Exception:
+        pass
+
+    action = "Mua" if tx_type == "buy" else "Bán"
+    fund_name = cfg_funds.get(fund_code, {}).get("name", fund_code)
+
+    _TRADE_SESSIONS[chat_id] = {
+        "step": "await_units",
+        "fund": fund_code,
+        "type": tx_type,
+        "units": None,
+        "amount": None,
+        "date": date.today().isoformat(),
+    }
+
+    tg_send(token, chat_id, (
+        f"{'🟢' if tx_type == 'buy' else '🔴'} <b>{action}: {fund_code}</b>\n"
+        f"{fund_name}{nav_hint}\n\n"
+        f"Bước 1/2 — Nhập <b>số chứng chỉ quỹ (CCQ)</b>:\n"
+        f"<i>Ví dụ: 487.21</i>\n\n"
+        f"(Gõ /cancel để huỷ)"
+    ))
+
+
+def _handle_trade_wizard_text(token: str, chat_id: str, text: str, profile: dict | None, config: dict) -> None:
+    """Xử lý input text khi đang trong trade wizard session."""
+    sess = _TRADE_SESSIONS.get(chat_id)
+    if not sess:
+        return
+
+    if text.strip().lower() in ("/cancel", "cancel", "huỷ", "huy"):
+        del _TRADE_SESSIONS[chat_id]
+        tg_send(token, chat_id, "❌ Đã huỷ giao dịch.")
+        return
+
+    fund_code = sess["fund"]
+    tx_type   = sess["type"]
+    action    = "Mua" if tx_type == "buy" else "Bán"
+
+    if sess["step"] == "await_units":
+        try:
+            val = float(text.replace(",", "").replace(".", ".", 1).replace(",", ""))
+            val = float(text.replace(",", ""))
+            if val <= 0:
+                raise ValueError
+        except ValueError:
+            tg_send(token, chat_id, "⚠️ Số CCQ không hợp lệ. Nhập số dương (vd: 487.21):")
+            return
+        sess["units"] = val
+        sess["step"]  = "await_amount"
+        tg_send(token, chat_id, (
+            f"Bước 2/2 — Nhập <b>tổng số tiền (VNĐ)</b>:\n"
+            f"<i>Ví dụ: 15000000</i>\n\n"
+            f"(Không cần dấu phẩy, gõ /cancel để huỷ)"
+        ))
+        return
+
+    if sess["step"] == "await_amount":
+        try:
+            val = float(text.replace(",", "").replace(".", "").replace(" ", ""))
+            if val <= 0:
+                raise ValueError
+        except ValueError:
+            tg_send(token, chat_id, "⚠️ Số tiền không hợp lệ. Nhập số VNĐ dương (vd: 15000000):")
+            return
+        sess["amount"] = val
+        sess["step"]   = "confirm"
+
+        units       = sess["units"]
+        nav_implied = val / units
+        cfg_funds   = config.get("funds", {})
+        fund_name   = cfg_funds.get(fund_code, {}).get("name", fund_code)
+
+        # Confirm với nút bấm
+        kb = [
+            [
+                {"text": "✅ Xác nhận", "callback_data": f"trade_confirm:{fund_code}:{tx_type}:{units}:{val}:{sess['date']}"},
+                {"text": "❌ Huỷ",      "callback_data": "trade_cancel"},
+            ]
+        ]
+        tg_send_keyboard(token, chat_id, (
+            f"{'🟢' if tx_type == 'buy' else '🔴'} <b>Xác nhận giao dịch</b>\n"
+            f"──────────────────────\n"
+            f"Loại: <b>{action}</b>\n"
+            f"Quỹ: <b>{fund_code}</b> — {fund_name}\n"
+            f"Số CCQ: <b>{units:,.2f}</b>\n"
+            f"Tổng tiền: <b>{val:,.0f}đ</b>\n"
+            f"NAV thực hiện: ~<b>{nav_implied:,.0f}đ</b>/CCQ\n"
+            f"Ngày: <b>{sess['date']}</b>"
+        ), kb)
+
+
 def command_handler():
     offset = 0
     while True:
@@ -2093,6 +2276,20 @@ def command_handler():
                 continue
             for upd in r.json().get("result", []):
                 offset = upd["update_id"] + 1
+
+                # ── Callback query (inline keyboard button tap) ──────────────
+                cbq = upd.get("callback_query")
+                if cbq:
+                    tg_answer_callback(token, cbq["id"])
+                    cbq_chat  = str(cbq["message"]["chat"]["id"])
+                    cbq_data  = cbq.get("data", "")
+                    cbq_prof  = find_profile_by_chat(config, cbq_chat)
+                    try:
+                        _handle_callback(token, cbq_chat, cbq_data, cbq_prof, config)
+                    except Exception as _cbe:
+                        log.error(f"[CALLBACK] {_cbe}", exc_info=True)
+                    continue
+
                 msg    = upd.get("message") or upd.get("edited_message") or {}
                 if not msg:
                     continue
@@ -2102,6 +2299,14 @@ def command_handler():
                 cmd     = parts[0].lower().split("@")[0] if parts else ""
                 log.info(f"[CMD] {cmd!r} from chat {chat_id}")
                 profile = find_profile_by_chat(config, chat_id)
+
+                # ── Trade wizard: intercept free-text nếu đang trong session ──
+                if chat_id in _TRADE_SESSIONS and not cmd.startswith("/"):
+                    try:
+                        _handle_trade_wizard_text(token, chat_id, text, profile, config)
+                    except Exception as _we:
+                        log.error(f"[WIZARD] {_we}", exc_info=True)
+                    continue
 
                 try:
                     if cmd == "/getid":
@@ -2278,38 +2483,51 @@ def command_handler():
                         tx_type_bs = "buy" if cmd == "/buy" else "sell"
                         action_bs  = "Mua" if tx_type_bs == "buy" else "Bán"
                         parts_bs   = text.split()
-                        # Format: /buy MÃ số_CCQ tổng_tiền [ngày]
-                        if len(parts_bs) < 4:
-                            tg_send(token, chat_id, (
-                                f"❓ <b>Cú pháp /{action_bs.lower()}:</b>\n\n"
-                                f"<code>/{action_bs.lower()} MÃ số_CCQ tổng_tiền [ngày]</code>\n\n"
-                                f"Ví dụ:\n"
-                                f"<code>/{action_bs.lower()} TCBF 1000.5 15000000</code>\n"
-                                f"<code>/{action_bs.lower()} SSISCA 200 3200000 2026-06-15</code>"
-                            ))
+                        watched    = profile.get("watched_funds", [])
+
+                        # Chế độ tắt nhanh: /buy MÃ số_CCQ tổng_tiền [ngày]
+                        if len(parts_bs) >= 4:
+                            bs_fund = parts_bs[1].upper()
+                            if bs_fund not in watched:
+                                watched_str = ", ".join(f"<code>{c}</code>" for c in watched)
+                                tg_send(token, chat_id, f"⚠️ <code>{bs_fund}</code> không có trong danh mục theo dõi của bạn.\nQuỹ bạn đang theo dõi: {watched_str}")
+                                continue
+                            try:
+                                bs_units  = float(parts_bs[2])
+                                bs_amount = float(parts_bs[3])
+                                if bs_units <= 0 or bs_amount <= 0:
+                                    raise ValueError("non-positive")
+                            except (ValueError, IndexError):
+                                tg_send(token, chat_id, f"⚠️ Số CCQ và số tiền phải là số dương.")
+                                continue
+                            bs_date_str = parts_bs[4] if len(parts_bs) > 4 else date.today().isoformat()
+                            try:
+                                bs_order_date = date.fromisoformat(bs_date_str)
+                            except ValueError:
+                                tg_send(token, chat_id, f"⚠️ Ngày không hợp lệ: <code>{bs_date_str}</code>\nDùng định dạng YYYY-MM-DD.")
+                                continue
+                            _cmd_add_trade(token, chat_id, profile, bs_fund, tx_type_bs, bs_units, bs_amount, bs_order_date)
                             continue
-                        bs_fund = parts_bs[1].upper()
-                        if bs_fund not in config.get("funds", {}):
-                            tg_send(token, chat_id, f"⚠️ Không tìm thấy quỹ <code>{bs_fund}</code>.\nGõ /funds để xem danh sách.")
+
+                        # Wizard mode: hiện keyboard chọn quỹ từ watched_funds
+                        if not watched:
+                            tg_send(token, chat_id, "⚠️ Bạn chưa theo dõi quỹ nào.\nGõ /watch MÃ để thêm.")
                             continue
-                        try:
-                            bs_units  = float(parts_bs[2])
-                            bs_amount = float(parts_bs[3])
-                            if bs_units <= 0 or bs_amount <= 0:
-                                raise ValueError("non-positive")
-                        except (ValueError, IndexError):
-                            tg_send(token, chat_id, (
-                                f"⚠️ Cú pháp: <code>/{action_bs.lower()} MÃ số_CCQ tổng_tiền [ngày]</code>\n"
-                                f"Số CCQ và số tiền phải là số dương."
-                            ))
-                            continue
-                        bs_date_str = parts_bs[4] if len(parts_bs) > 4 else date.today().isoformat()
-                        try:
-                            bs_order_date = date.fromisoformat(bs_date_str)
-                        except ValueError:
-                            tg_send(token, chat_id, f"⚠️ Ngày không hợp lệ: <code>{bs_date_str}</code>\nDùng định dạng YYYY-MM-DD.")
-                            continue
-                        _cmd_add_trade(token, chat_id, profile, bs_fund, tx_type_bs, bs_units, bs_amount, bs_order_date)
+                        emoji = "🟢" if tx_type_bs == "buy" else "🔴"
+                        # Mỗi hàng 2 nút
+                        kb_rows = []
+                        row = []
+                        for i, code in enumerate(watched):
+                            row.append({"text": f"{emoji} {code}", "callback_data": f"trade:{tx_type_bs}:{code}"})
+                            if len(row) == 2:
+                                kb_rows.append(row)
+                                row = []
+                        if row:
+                            kb_rows.append(row)
+                        tg_send_keyboard(token, chat_id,
+                            f"{emoji} <b>{action_bs} quỹ nào?</b>\nChọn quỹ từ danh mục của bạn:",
+                            kb_rows
+                        )
 
                     elif cmd == "/explain":
                         if not profile:
