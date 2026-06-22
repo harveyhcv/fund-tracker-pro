@@ -377,6 +377,19 @@ def get_nav_series(code: str, fund_cfg: dict, config: dict = None) -> list:
         # fetch_tcbs() sẽ thử TCinvest endpoint mới trước, fallback về old nếu cần
         log.info(f"[Nav] {code} fetch full history (token={'yes' if tcbs_token else 'no'})")
         pts = fetch_tcbs(code, tcbs_token)
+    # Fallback cuối: đọc từ master NAV DB (nav_history) khi fetch live thất bại
+    # — giúp quỹ TCinvest-only (vd TCFF) vẫn hiển thị khi token hết hạn.
+    if not pts and _DB_AVAILABLE and _db.is_available():
+        try:
+            rows = _db.get_nav_series(code, days=400)  # đủ cho RSI/MACD/BB
+            pts = sorted(
+                ({"date": r["nav_date"].isoformat(), "nav": float(r["nav"])} for r in rows),
+                key=lambda x: x["date"],
+            )
+            if pts:
+                log.info(f"[Nav] {code} fallback DB nav_history: {len(pts)} điểm")
+        except Exception as e:
+            log.warning(f"[Nav] {code} DB fallback lỗi: {e}")
     return pts
 
 
@@ -2564,8 +2577,17 @@ def main():
 
     _ensure_config_exists()  # Tạo config từ ENV nếu chạy lần đầu trên cloud
 
+    # Bridge database_url từ config.json sang ENV (db.py chỉ đọc DATABASE_URL env).
+    # Đảm bảo DB fallback (nav_history) hoạt động kể cả khi Railway không tự inject env.
+    if not os.environ.get("DATABASE_URL"):
+        _db_url = load_config().get("database_url", "")
+        if _db_url:
+            os.environ["DATABASE_URL"] = _db_url
+            log.info("[DB] DATABASE_URL nạp từ config.json")
+
     if _DB_AVAILABLE:
         _db.init_pool()
+        log.info(f"[DB] PostgreSQL available={_db.is_available()}")
     else:
         log.warning("db.py không khả dụng — PostgreSQL bị bỏ qua")
 
