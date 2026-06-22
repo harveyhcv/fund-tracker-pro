@@ -509,6 +509,15 @@ def cmd_daily(conn, only_code: Optional[str] = None) -> int:
         log("⚠ Không có quỹ. Chạy --discover trước.")
         return 0
 
+    # JWT cho quỹ TCinvest — endpoint public (apipubaws) đã chết (404), nên
+    # quỹ tcbs phải fetch qua TCinvest chart-nav có token. Không có token thì
+    # bỏ qua quỹ tcbs (fmarket vẫn chạy bình thường).
+    jwt = _load_jwt_from_config()
+    if jwt:
+        log("🔑 Có JWT TCinvest — quỹ tcbs sẽ fetch qua chart-nav")
+    else:
+        log("⚠ Không có JWT — quỹ TCinvest-only sẽ bị bỏ qua hôm nay")
+
     total_new    = 0
     updated_list = []
 
@@ -528,14 +537,18 @@ def cmd_daily(conn, only_code: Optional[str] = None) -> int:
                 continue  # đã cập nhật đến hôm nay
             from_date = next_day
 
-        if is_tcbs:
-            pts = fetch_tcbs_nav(code)
+        if fmarket_id:
+            # Ưu tiên fmarket (không cần token) cho quỹ có fmarket_id
+            pts = fetch_fmarket_nav(fmarket_id, from_date=from_date)
+            source = "fmarket"
+        elif is_tcbs:
+            # Quỹ TCinvest-only: dùng chart-nav có JWT (public endpoint đã chết)
+            if not jwt:
+                continue
+            pts = tcinvest_fetch_nav_hist(code, jwt)
             if last:
                 pts = [p for p in pts if p["date"] >= from_date]
             source = "tcbs"
-        elif fmarket_id:
-            pts = fetch_fmarket_nav(fmarket_id, from_date=from_date)
-            source = "fmarket"
         else:
             continue
 
@@ -615,12 +628,16 @@ def _get_fetchable_funds(conn, only_code: Optional[str]) -> list[tuple]:
                 WHERE code = %s AND active = true
             """, (only_code.upper(),))
         else:
+            # CHỈ lấy quỹ tồn tại trong bảng `funds` (FK target của nav_history).
+            # funds_master chứa cả placeholder FMKT_NN chưa map → nếu fetch sẽ gây
+            # ForeignKeyViolation khi insert nav_history. EXISTS lọc bỏ chúng.
             cur.execute("""
-                SELECT code, fmarket_id, tcbs
-                FROM funds_master
-                WHERE active = true
-                  AND (fmarket_id IS NOT NULL OR tcbs = true)
-                ORDER BY code
+                SELECT m.code, m.fmarket_id, m.tcbs
+                FROM funds_master m
+                WHERE m.active = true
+                  AND (m.fmarket_id IS NOT NULL OR m.tcbs = true)
+                  AND EXISTS (SELECT 1 FROM funds f WHERE f.code = m.code)
+                ORDER BY m.code
             """)
         return cur.fetchall()
 
@@ -632,6 +649,12 @@ def _insert_nav_points(conn, fund_code: str, pts: list[dict], source: str) -> in
     """
     inserted = 0
     with conn.cursor() as cur:
+        # Guard FK: nav_history.fund_code phải tồn tại trong `funds`. Nếu chưa có
+        # (vd mã placeholder/chưa map) → bỏ qua để không abort transaction.
+        cur.execute("SELECT 1 FROM funds WHERE code = %s", (fund_code,))
+        if cur.fetchone() is None:
+            log(f"  ⚠ {fund_code}: chưa có trong bảng funds — bỏ qua insert")
+            return 0
         for p in pts:
             cur.execute("""
                 INSERT INTO nav_history (fund_code, nav_date, nav, source)

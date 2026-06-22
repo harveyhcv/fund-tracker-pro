@@ -577,6 +577,22 @@ def tg_send(token: str, chat_id: str, text: str) -> bool:
         )
         if not r.ok:
             log.error(f"[Telegram] {r.status_code} → {r.text[:200]}")
+            # Fallback: HTML parse lỗi (vd ký tự < thô) → gửi lại dạng plain-text
+            # để message không bị mất im lặng. Strip thẻ HTML + unescape entity.
+            if r.status_code == 400:
+                import re as _re
+                from html import unescape as _unescape
+                plain = _unescape(_re.sub(r"<[^>]+>", "", text))
+                r2 = requests.post(
+                    url,
+                    json={"chat_id": chat_id, "text": plain,
+                          "disable_web_page_preview": True},
+                    timeout=15,
+                )
+                if r2.ok:
+                    log.warning("[Telegram] Đã gửi fallback plain-text")
+                    return True
+                log.error(f"[Telegram] fallback fail {r2.status_code} → {r2.text[:200]}")
         return r.ok
     except Exception as e:
         log.error(f"[Telegram] send error: {e}")
@@ -854,7 +870,7 @@ def msg_explain(profile: dict, nav_data: dict, target_code: str = None) -> str:
         else:
             rsi_note = "—"
         bb_note = "Gần đáy 🟢" if bb_val is not None and bb_val < 20 else ("Gần đỉnh 🔴" if bb_val is not None and bb_val > 80 else "Vùng giữa ⚪")
-        ma_note = "MA20 > MA50 ↑" if d.get("ma20") and d.get("ma50") and d["ma20"] > d["ma50"] else "MA20 < MA50 ↓"
+        ma_note = "MA20 &gt; MA50 ↑" if d.get("ma20") and d.get("ma50") and d["ma20"] > d["ma50"] else "MA20 &lt; MA50 ↓"
         lines.append(
             f"<b>{code}</b>  {sig}\n"
             f"  RSI(14): {rsi_s} → {rsi_note}\n"
@@ -1758,7 +1774,7 @@ def msg_research(code: str, d: dict, stats: dict, fund_name: str = "") -> str:
 
     ma_note = "—"
     if ma20 and ma50:
-        ma_note = f"MA20 {'>' if ma20 > ma50 else '<'} MA50 → {'Xu hướng tăng ↑' if ma20 > ma50 else 'Xu hướng giảm ↓'}"
+        ma_note = f"MA20 {'&gt;' if ma20 > ma50 else '&lt;'} MA50 → {'Xu hướng tăng ↑' if ma20 > ma50 else 'Xu hướng giảm ↓'}"
 
     # ─── 2. Value ─────────────────────────────────────────────
     if pct_from_low < 5:     val_v = "🟢🟢 RẤT RẺ — Gần đáy 52 tuần"
