@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Fund Tracker Pro</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#060b14; --bg2:#0c1626; --bg3:#111e30;
+  --c0:#00e5ff; --c0d:#00b8cc;
+  --buy:#4ade80; --sell:#f87171; --hold:#facc15;
+  --txt:#e2e8f0; --txt2:#94a3b8; --bdr:#1e3050;
+  --mono:'IBM Plex Mono',monospace; --sans:'DM Sans',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14px;
+  min-height:100vh;overflow-x:hidden}
+body.tg{background:var(--tg-theme-bg-color,var(--bg));color:var(--tg-theme-text-color,var(--txt))}
+
+/* Nav */
+#nav{position:fixed;bottom:0;left:0;right:0;background:var(--bg2);border-top:1px solid var(--bdr);
+  display:flex;z-index:100;padding-bottom:env(safe-area-inset-bottom)}
+.nav-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;
+  padding:10px 4px 8px;background:none;border:none;color:var(--txt2);font-size:10px;
+  font-family:var(--sans);cursor:pointer;transition:color .2s}
+.nav-btn.active{color:var(--c0)}
+.nav-btn svg{width:20px;height:20px}
+
+/* Pages */
+#app{padding:12px 12px 70px}
+.page{display:none}.page.active{display:block}
+
+/* Header */
+.hdr{font-family:var(--mono);font-size:12px;color:var(--c0);letter-spacing:.08em;
+  margin-bottom:12px;display:flex;justify-content:space-between;align-items:center}
+.hdr-sub{color:var(--txt2);font-size:11px}
+
+/* Cards */
+.card{background:var(--bg2);border:1px solid var(--bdr);border-radius:10px;
+  padding:12px;margin-bottom:8px}
+.card-title{font-family:var(--mono);font-size:11px;color:var(--txt2);margin-bottom:8px;
+  text-transform:uppercase;letter-spacing:.06em}
+
+/* Badge */
+.badge{display:inline-block;padding:2px 7px;border-radius:20px;font-size:11px;
+  font-family:var(--mono);font-weight:600}
+.badge.buy{background:#052e1a;color:var(--buy);border:1px solid #166534}
+.badge.sell{background:#2d0a0a;color:var(--sell);border:1px solid #7f1d1d}
+.badge.hold{background:#2d2700;color:var(--hold);border:1px solid #713f12}
+.badge.na{background:var(--bg3);color:var(--txt2);border:1px solid var(--bdr)}
+
+/* P&L */
+.pnl{font-family:var(--mono);font-weight:600}
+.pnl.pos{color:var(--buy)}.pnl.neg{color:var(--sell)}.pnl.zero{color:var(--txt2)}
+
+/* Summary row */
+.sum-row{display:flex;justify-content:space-between;align-items:center;
+  padding:6px 0;border-bottom:1px solid var(--bdr)}
+.sum-row:last-child{border:none}
+.sum-label{color:var(--txt2);font-size:12px}
+.sum-val{font-family:var(--mono);font-size:13px}
+
+/* Fund row */
+.fund-row{display:flex;justify-content:space-between;align-items:center;
+  padding:8px 0;border-bottom:1px solid var(--bdr);gap:8px}
+.fund-row:last-child{border:none}
+.fund-code{font-family:var(--mono);font-weight:600;font-size:13px;flex:0 0 auto}
+.fund-info{flex:1;min-width:0}
+.fund-nav{font-family:var(--mono);font-size:12px;color:var(--txt2)}
+.fund-right{text-align:right;flex:0 0 auto}
+
+/* Signal bar */
+.sig-row{display:grid;grid-template-columns:90px 1fr auto;gap:8px;align-items:center;
+  padding:7px 0;border-bottom:1px solid var(--bdr)}
+.sig-row:last-child{border:none}
+.sig-code{font-family:var(--mono);font-size:13px;font-weight:600}
+.sig-meters{display:flex;gap:6px;align-items:center;overflow:hidden}
+.meter{display:flex;flex-direction:column;align-items:center;gap:1px}
+.meter-lbl{font-size:9px;color:var(--txt2);text-transform:uppercase}
+.meter-bar{width:36px;height:5px;border-radius:3px;background:var(--bg3);overflow:hidden}
+.meter-fill{height:100%;border-radius:3px;transition:width .4s}
+.meter-val{font-size:10px;font-family:var(--mono);color:var(--txt)}
+
+/* DCA */
+.dca-fund{display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;
+  padding:8px 0;border-bottom:1px solid var(--bdr)}
+.dca-fund:last-child{border:none}
+.dca-bar-wrap{grid-column:1/-1;height:4px;background:var(--bg3);border-radius:2px;margin-top:4px}
+.dca-bar{height:100%;background:var(--c0);border-radius:2px;transition:width .4s}
+
+/* Forms */
+input,select{width:100%;padding:10px 12px;background:var(--bg3);border:1px solid var(--bdr);
+  border-radius:8px;color:var(--txt);font-family:var(--mono);font-size:13px;outline:none;
+  -webkit-appearance:none}
+input:focus,select:focus{border-color:var(--c0)}
+label{display:block;color:var(--txt2);font-size:11px;margin:10px 0 4px;
+  text-transform:uppercase;letter-spacing:.05em}
+.btn{width:100%;padding:13px;border:none;border-radius:10px;font-family:var(--sans);
+  font-size:15px;font-weight:600;cursor:pointer;transition:opacity .15s;margin-top:8px}
+.btn-buy{background:var(--buy);color:#000}
+.btn-sell{background:var(--sell);color:#000}
+.btn-primary{background:var(--c0);color:#000}
+.btn:active{opacity:.7}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.type-toggle{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:4px}
+.type-btn{padding:10px;border-radius:8px;border:1px solid var(--bdr);background:var(--bg3);
+  color:var(--txt2);font-family:var(--sans);font-weight:600;font-size:14px;cursor:pointer;
+  text-align:center;transition:all .15s}
+.type-btn.buy.active{background:#052e1a;border-color:var(--buy);color:var(--buy)}
+.type-btn.sell.active{background:#2d0a0a;border-color:var(--sell);color:var(--sell)}
+
+/* Toast */
+#toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);
+  background:#1a2e4a;border:1px solid var(--c0);color:var(--txt);padding:10px 18px;
+  border-radius:8px;font-size:13px;z-index:999;display:none;max-width:90vw;text-align:center}
+
+/* Loading */
+.loading{text-align:center;padding:40px 20px;color:var(--txt2);font-size:13px}
+.spinner{width:24px;height:24px;border:2px solid var(--bdr);border-top-color:var(--c0);
+  border-radius:50%;animation:spin .6s linear infinite;margin:0 auto 10px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Portfolio total banner */
+.total-banner{background:var(--bg2);border:1px solid var(--c0);border-radius:12px;
+  padding:14px 16px;margin-bottom:12px;text-align:center}
+.total-val{font-family:var(--mono);font-size:22px;font-weight:600;color:var(--c0)}
+.total-lbl{font-size:12px;color:var(--txt2);margin-bottom:4px}
+.total-pnl{font-family:var(--mono);font-size:14px;margin-top:4px}
+
+/* Chart canvas */
+.chart-wrap{height:140px;margin:8px 0 4px;position:relative}
+canvas{width:100%!important;height:100%!important}
+
+/* Tabs within page */
+.tab-bar{display:flex;gap:6px;margin-bottom:12px;overflow-x:auto;padding-bottom:2px}
+.tab-bar::-webkit-scrollbar{display:none}
+.tab{padding:6px 14px;border-radius:20px;border:1px solid var(--bdr);font-size:12px;
+  font-family:var(--mono);color:var(--txt2);background:none;cursor:pointer;white-space:nowrap}
+.tab.active{background:var(--c0);color:#000;border-color:var(--c0)}
+
+/* Budget input row */
+.budget-row{display:flex;gap:8px;align-items:flex-end;margin-bottom:12px}
+.budget-row input{flex:1}
+.budget-row .btn{width:auto;margin:0;padding:10px 16px;flex:0 0 auto}
+</style>
+</head>
+<body>
+
+<div id="toast"></div>
+
+<div id="app">
+  <!-- Portfolio page -->
+  <div class="page active" id="page-portfolio">
+    <div class="hdr">PORTFOLIO <span class="hdr-sub" id="pf-date"></span></div>
+    <div id="pf-content"><div class="loading"><div class="spinner"></div>Đang tải...</div></div>
+  </div>
+
+  <!-- Signals page -->
+  <div class="page" id="page-signals">
+    <div class="hdr">TÍN HIỆU KỸ THUẬT <span class="hdr-sub" id="sig-date"></span></div>
+    <div id="sig-content"><div class="loading"><div class="spinner"></div>Đang tải...</div></div>
+  </div>
+
+  <!-- DCA page -->
+  <div class="page" id="page-dca">
+    <div class="hdr">DCA CALCULATOR</div>
+    <div class="budget-row">
+      <div style="flex:1">
+        <label>Ngân sách / kỳ (VNĐ)</label>
+        <input type="number" id="dca-budget" placeholder="VD: 5000000" inputmode="numeric">
+      </div>
+      <button class="btn btn-primary" style="width:auto;margin:0;padding:10px 14px" onclick="calcDCA()">Tính</button>
+    </div>
+    <div id="dca-content"><div class="loading"><div class="spinner"></div>Đang tải...</div></div>
+  </div>
+
+  <!-- Add Trade page -->
+  <div class="page" id="page-trade">
+    <div class="hdr">THÊM GIAO DỊCH</div>
+    <div class="card">
+      <label>Loại giao dịch</label>
+      <div class="type-toggle">
+        <div class="type-btn buy active" id="btn-buy" onclick="setTradeType('buy')">MUA</div>
+        <div class="type-btn sell" id="btn-sell" onclick="setTradeType('sell')">BÁN</div>
+      </div>
+      <label>Quỹ</label>
+      <select id="trade-fund"><option value="">-- Chọn quỹ --</option></select>
+      <label>Số CCQ</label>
+      <input type="number" id="trade-units" placeholder="VD: 1000" inputmode="decimal" step="0.001">
+      <label>Số tiền (VNĐ)</label>
+      <input type="number" id="trade-amount" placeholder="VD: 5000000" inputmode="numeric">
+      <label>Ngày giao dịch</label>
+      <input type="date" id="trade-date">
+      <button class="btn btn-buy" id="submit-trade" onclick="submitTrade()">XÁC NHẬN MUA</button>
+    </div>
+    <div id="trade-nav-info" style="display:none" class="card">
+      <div class="card-title">NAV HIỆN TẠI</div>
+      <div id="trade-nav-val" class="sum-val" style="font-size:15px;color:var(--c0)"></div>
+    </div>
+  </div>
+
+  <!-- History page -->
+  <div class="page" id="page-history">
+    <div class="hdr">LỊCH SỬ NAV</div>
+    <div class="tab-bar" id="hist-tabs"></div>
+    <div id="hist-content"><div class="loading"><div class="spinner"></div>Đang tải...</div></div>
+    <div class="chart-wrap"><canvas id="hist-chart"></canvas></div>
+  </div>
+</div>
+
+<!-- Nav bar -->
+<nav id="nav">
+  <button class="nav-btn active" onclick="goPage('portfolio',this)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+      <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+    </svg>
+    Danh mục
+  </button>
+  <button class="nav-btn" onclick="goPage('signals',this)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+    </svg>
+    Tín hiệu
+  </button>
+  <button class="nav-btn" onclick="goPage('dca',this)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
+    </svg>
+    DCA
+  </button>
+  <button class="nav-btn" onclick="goPage('trade',this)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/>
+    </svg>
+    Giao dịch
+  </button>
+  <button class="nav-btn" onclick="goPage('history',this)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+      <polyline points="10 11 10 17"/><polyline points="14 11 14 17"/>
+    </svg>
+    Lịch sử
+  </button>
+</nav>
+
+<script>
+// ── Telegram WebApp init ───────────────────────────────────────────────────────
+const tg = window.Telegram?.WebApp;
+if (tg) {
+  tg.ready();
+  tg.expand();
+  document.body.classList.add('tg');
+}
+
+const API_BASE = (()=>{
+  const url = new URL(window.location.href);
+  return url.origin;
+})();
+
+const USER_ID = tg?.initDataUnsafe?.user?.id
+  || new URLSearchParams(window.location.search).get('user_id')
+  || '';
+
+// ── State ──────────────────────────────────────────────────────────────────────
+let _me = null;        // /api/me response
+let _signals = null;   // /api/signals response
+let _tradeType = 'buy';
+let _histCode = null;
+let _histChart = null;
+
+// ── Nav ────────────────────────────────────────────────────────────────────────
+function goPage(name, btn) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  btn.classList.add('active');
+  if (name === 'portfolio' && !_me) loadMe();
+  if (name === 'signals' && !_signals) loadSignals();
+  if (name === 'dca') loadDCA();
+  if (name === 'trade') setupTrade();
+  if (name === 'history') loadHistory();
+}
+
+// ── Toast ──────────────────────────────────────────────────────────────────────
+let _toastTimer;
+function toast(msg, dur=2500) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.style.display = 'block';
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => el.style.display='none', dur);
+}
+
+// ── Formatting ─────────────────────────────────────────────────────────────────
+const fmt = n => n == null ? '—' : Number(n).toLocaleString('vi-VN');
+const fmtPct = p => (p >= 0 ? '+' : '') + p.toFixed(2) + '%';
+const pnlClass = p => p > 0.01 ? 'pos' : p < -0.01 ? 'neg' : 'zero';
+const signalClass = s => {
+  if (!s || s==='N/A') return 'na';
+  if (s.includes('MUA')) return 'buy';
+  if (s.includes('BAN')) return 'sell';
+  return 'hold';
+};
+
+// ── Fetch helpers ──────────────────────────────────────────────────────────────
+async function apiFetch(path) {
+  const sep = path.includes('?') ? '&' : '?';
+  const url = API_BASE + path + (USER_ID ? sep + 'user_id=' + USER_ID : '');
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(res.status);
+  return res.json();
+}
+
+// ── Portfolio ──────────────────────────────────────────────────────────────────
+async function loadMe() {
+  if (!USER_ID) {
+    document.getElementById('pf-content').innerHTML = renderErr('Không xác định được user_id. Mở từ Telegram bot.');
+    return;
+  }
+  try {
+    _me = await apiFetch('/api/me');
+    renderPortfolio(_me);
+  } catch(e) {
+    document.getElementById('pf-content').innerHTML = renderErr('Lỗi tải dữ liệu: ' + e.message);
+  }
+}
+
+function renderPortfolio(me) {
+  const pf = me.portfolio;
+  document.getElementById('pf-date').textContent = 'cập nhật ' + new Date().toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'});
+
+  let html = `<div class="total-banner">
+    <div class="total-lbl">Tổng giá trị danh mục</div>
+    <div class="total-val">${fmt(pf.total_value)} đ</div>
+    <div class="total-pnl pnl ${pnlClass(pf.total_pnl_pct)}">
+      ${fmtPct(pf.total_pnl_pct)} · ${pf.total_pnl>=0?'+':''}${fmt(pf.total_pnl)} đ
+    </div>
+  </div>`;
+
+  if (!pf.items.length) {
+    html += `<div class="card" style="text-align:center;color:var(--txt2);padding:24px">
+      Chưa có giao dịch nào.<br>Thêm ở tab Giao dịch.
+    </div>`;
+  } else {
+    html += '<div class="card">';
+    for (const h of pf.items) {
+      const chg = (h.chg_pct||0);
+      html += `<div class="fund-row">
+        <div class="fund-code">${h.code}</div>
+        <div class="fund-info">
+          <div class="fund-nav">NAV ${fmt(h.nav)} đ
+            <span class="pnl ${pnlClass(chg)}" style="font-size:11px"> ${fmtPct(chg)}</span>
+          </div>
+          <div style="font-size:11px;color:var(--txt2)">${fmt(h.units)} CCQ · CP ${fmt(h.avg_cost)}</div>
+        </div>
+        <div class="fund-right">
+          <div class="badge ${signalClass(h.signal)}">${h.signal||'N/A'}</div>
+          <div class="pnl ${pnlClass(h.pnl_pct)}" style="font-size:12px;margin-top:4px">${fmtPct(h.pnl_pct)}</div>
+          <div style="font-size:11px;color:var(--txt2)">${h.pnl>=0?'+':''}${fmt(h.pnl)}</div>
+        </div>
+      </div>`;
+    }
+    html += '</div>';
+    // Cost basis summary
+    html += `<div class="card">
+      <div class="sum-row"><span class="sum-label">Vốn đầu tư</span><span class="sum-val">${fmt(pf.total_cost)} đ</span></div>
+      <div class="sum-row"><span class="sum-label">Giá trị hiện tại</span><span class="sum-val">${fmt(pf.total_value)} đ</span></div>
+      <div class="sum-row"><span class="sum-label">Lãi/lỗ</span>
+        <span class="sum-val pnl ${pnlClass(pf.total_pnl_pct)}">${pf.total_pnl>=0?'+':''}${fmt(pf.total_pnl)} đ</span>
+      </div>
+    </div>`;
+  }
+  document.getElementById('pf-content').innerHTML = html;
+}
+
+// ── Signals ────────────────────────────────────────────────────────────────────
+async function loadSignals() {
+  try {
+    const data = await apiFetch('/api/signals');
+    _signals = data.signals;
+    document.getElementById('sig-date').textContent = 'cập nhật ' +
+      new Date(data.updated).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'});
+    renderSignals(_signals);
+  } catch(e) {
+    document.getElementById('sig-content').innerHTML = renderErr(e.message);
+  }
+}
+
+function renderSignals(signals) {
+  const codes = Object.keys(signals);
+  if (!codes.length) {
+    document.getElementById('sig-content').innerHTML = '<div class="loading">Không có dữ liệu</div>';
+    return;
+  }
+  let html = '<div class="card">';
+  for (const code of codes) {
+    const s = signals[code];
+    const rsi = s.rsi ?? 50;
+    const bb  = s.bb_pct ?? 50;
+    const rsiColor = rsi < 35 ? 'var(--buy)' : rsi > 65 ? 'var(--sell)' : 'var(--hold)';
+    const bbColor  = bb  < 20 ? 'var(--buy)' : bb  > 80 ? 'var(--sell)' : 'var(--hold)';
+    html += `<div class="sig-row">
+      <div>
+        <div class="sig-code">${code}</div>
+        <div style="font-size:11px;color:var(--txt2)">${fmt(s.nav)} đ
+          <span class="pnl ${pnlClass(s.chg_pct||0)}" style="font-size:10px"> ${fmtPct(s.chg_pct||0)}</span>
+        </div>
+      </div>
+      <div class="sig-meters">
+        <div class="meter">
+          <div class="meter-lbl">RSI</div>
+          <div class="meter-bar"><div class="meter-fill" style="width:${rsi}%;background:${rsiColor}"></div></div>
+          <div class="meter-val">${rsi}</div>
+        </div>
+        <div class="meter">
+          <div class="meter-lbl">BB%</div>
+          <div class="meter-bar"><div class="meter-fill" style="width:${bb}%;background:${bbColor}"></div></div>
+          <div class="meter-val">${bb}</div>
+        </div>
+        ${s.mom30!=null?`<div class="meter">
+          <div class="meter-lbl">M30</div>
+          <div class="meter-val pnl ${pnlClass(s.mom30)}" style="font-size:11px">${fmtPct(s.mom30)}</div>
+        </div>`:''}
+      </div>
+      <div class="badge ${signalClass(s.signal)}">${s.signal||'N/A'}</div>
+    </div>`;
+  }
+  html += '</div>';
+  document.getElementById('sig-content').innerHTML = html;
+}
+
+// ── DCA ────────────────────────────────────────────────────────────────────────
+async function loadDCA(budget) {
+  if (!USER_ID) { document.getElementById('dca-content').innerHTML = renderErr('Cần user_id'); return; }
+  document.getElementById('dca-content').innerHTML = '<div class="loading"><div class="spinner"></div>Đang tính...</div>';
+  try {
+    const b = budget || document.getElementById('dca-budget').value || 0;
+    const data = await apiFetch('/api/dca' + (b ? '?budget=' + b : ''));
+    if (data.error) { document.getElementById('dca-content').innerHTML = renderErr(data.error); return; }
+    if (!document.getElementById('dca-budget').value && data.budget)
+      document.getElementById('dca-budget').value = data.budget;
+    renderDCA(data);
+  } catch(e) {
+    document.getElementById('dca-content').innerHTML = renderErr(e.message);
+  }
+}
+
+function calcDCA() {
+  const b = document.getElementById('dca-budget').value;
+  if (!b || b <= 0) { toast('Nhập ngân sách hợp lệ'); return; }
+  loadDCA(b);
+}
+
+function renderDCA(data) {
+  if (!data.items?.length) {
+    document.getElementById('dca-content').innerHTML = renderErr('Không có quỹ nào để DCA');
+    return;
+  }
+  let html = `<div class="card">
+    <div class="sum-row">
+      <span class="sum-label">Ngân sách kỳ này</span>
+      <span class="sum-val" style="color:var(--c0)">${fmt(data.budget)} đ</span>
+    </div>
+  </div>
+  <div class="card"><div class="card-title">Phân bổ thông minh (theo tín hiệu)</div>`;
+
+  for (const item of data.items) {
+    html += `<div class="dca-fund">
+      <div>
+        <div style="font-weight:600;font-family:var(--mono)">${item.code}</div>
+        <div style="font-size:11px;color:var(--txt2)">NAV ${fmt(item.nav)} đ · RSI ${item.rsi??'—'}</div>
+      </div>
+      <div class="badge ${signalClass(item.signal)}">${item.signal||'N/A'}</div>
+      <div style="text-align:right">
+        <div style="font-family:var(--mono);font-weight:600;color:var(--c0)">${fmt(item.amount)} đ</div>
+        <div style="font-size:11px;color:var(--txt2)">~${item.units_est} CCQ</div>
+      </div>
+      <div class="dca-bar-wrap">
+        <div class="dca-bar" style="width:${Math.min(item.pct_alloc,100)}%"></div>
+      </div>
+    </div>`;
+  }
+  html += '</div>';
+  html += `<div style="font-size:11px;color:var(--txt2);text-align:center;padding:8px">
+    * Phân bổ dựa trên RSI + Bollinger Band. Không phải lời khuyên đầu tư.
+  </div>`;
+  document.getElementById('dca-content').innerHTML = html;
+}
+
+// ── Trade ──────────────────────────────────────────────────────────────────────
+function setTradeType(t) {
+  _tradeType = t;
+  document.getElementById('btn-buy').classList.toggle('active', t==='buy');
+  document.getElementById('btn-sell').classList.toggle('active', t==='sell');
+  const btn = document.getElementById('submit-trade');
+  btn.textContent = t==='buy' ? 'XÁC NHẬN MUA' : 'XÁC NHẬN BÁN';
+  btn.className = 'btn btn-' + t;
+}
+
+async function setupTrade() {
+  // Populate fund dropdown from watched list
+  const sel = document.getElementById('trade-fund');
+  if (sel.options.length > 1) return; // already populated
+  let funds = [];
+  if (_me?.watched_funds) {
+    funds = _me.watched_funds;
+  } else if (USER_ID) {
+    try { const d = await apiFetch('/api/me'); _me = d; funds = d.watched_funds||[]; } catch{}
+  }
+  funds.forEach(code => {
+    const opt = document.createElement('option');
+    opt.value = code; opt.textContent = code;
+    sel.appendChild(opt);
+  });
+  // Set today as default date
+  document.getElementById('trade-date').value = new Date().toISOString().split('T')[0];
+  // Show NAV on fund change
+  sel.onchange = () => showTradeNav(sel.value);
+}
+
+async function showTradeNav(code) {
+  const el = document.getElementById('trade-nav-info');
+  const val = document.getElementById('trade-nav-val');
+  if (!code) { el.style.display='none'; return; }
+  el.style.display = 'block';
+  val.textContent = 'Đang tải...';
+  const sig = _signals?.[code] || _me?.signals?.[code];
+  if (sig?.nav) {
+    val.textContent = `${code}: ${fmt(sig.nav)} đ  (${sig.nav_date||''})`;
+  } else {
+    try {
+      const d = await apiFetch('/api/signals');
+      _signals = d.signals;
+      val.textContent = `${code}: ${fmt(_signals[code]?.nav)} đ  (${_signals[code]?.nav_date||''})`;
+    } catch { val.textContent = '—'; }
+  }
+}
+
+async function submitTrade() {
+  const code   = document.getElementById('trade-fund').value;
+  const units  = parseFloat(document.getElementById('trade-units').value);
+  const amount = parseFloat(document.getElementById('trade-amount').value);
+  const tdate  = document.getElementById('trade-date').value;
+
+  if (!code) { toast('Chọn quỹ'); return; }
+  if (!units || units<=0) { toast('Nhập số CCQ'); return; }
+  if (!amount || amount<=0) { toast('Nhập số tiền'); return; }
+  if (!USER_ID) { toast('Không xác định được user'); return; }
+
+  const btn = document.getElementById('submit-trade');
+  btn.disabled = true;
+  try {
+    const res = await fetch(API_BASE + '/api/trade', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({telegram_id: USER_ID, code, type: _tradeType, units, amount, date: tdate})
+    });
+    const data = await res.json();
+    if (data.ok) {
+      toast(`✓ ${_tradeType==='buy'?'Mua':'Bán'} ${units} CCQ ${code} thành công`);
+      // Reset form
+      document.getElementById('trade-fund').value = '';
+      document.getElementById('trade-units').value = '';
+      document.getElementById('trade-amount').value = '';
+      document.getElementById('trade-nav-info').style.display = 'none';
+      _me = null; // invalidate cache
+      tg?.HapticFeedback?.notificationOccurred('success');
+    } else {
+      toast('Lỗi: ' + (data.error||'unknown'));
+    }
+  } catch(e) {
+    toast('Lỗi kết nối: ' + e.message);
+  }
+  btn.disabled = false;
+}
+
+// ── History chart ──────────────────────────────────────────────────────────────
+async function loadHistory() {
+  // Build tabs from watched funds
+  const tabBar = document.getElementById('hist-tabs');
+  if (!tabBar.children.length) {
+    let funds = _me?.watched_funds || [];
+    if (!funds.length && USER_ID) {
+      try { const d = await apiFetch('/api/me'); _me=d; funds=d.watched_funds||[]; } catch{}
+    }
+    if (!funds.length) funds = ['TCBF','VCBF-BCF','SSIBF'];
+    funds.forEach((code,i) => {
+      const t = document.createElement('button');
+      t.className = 'tab' + (i===0?' active':'');
+      t.textContent = code;
+      t.onclick = () => {
+        tabBar.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+        t.classList.add('active');
+        loadHistChart(code);
+      };
+      tabBar.appendChild(t);
+    });
+    loadHistChart(funds[0]);
+  }
+}
+
+async function loadHistChart(code) {
+  if (_histCode === code) return;
+  _histCode = code;
+  document.getElementById('hist-content').innerHTML = '<div class="loading"><div class="spinner"></div>Đang tải...</div>';
+  try {
+    const data = await apiFetch('/api/nav/' + code);
+    const points = data.data || [];
+    if (!points.length) { document.getElementById('hist-content').innerHTML = '<div class="loading">Không có dữ liệu</div>'; return; }
+    const last = points[points.length-1];
+    const first = points[0];
+    const change = (last.nav - first.nav)/first.nav*100;
+    document.getElementById('hist-content').innerHTML = `
+      <div class="card">
+        <div class="sum-row"><span class="sum-label">NAV mới nhất</span><span class="sum-val" style="color:var(--c0)">${fmt(last.nav)} đ</span></div>
+        <div class="sum-row"><span class="sum-label">Ngày</span><span class="sum-val">${last.date}</span></div>
+        <div class="sum-row"><span class="sum-label">Từ đầu lịch sử</span>
+          <span class="sum-val pnl ${pnlClass(change)}">${fmtPct(change)}</span>
+        </div>
+        <div class="sum-row"><span class="sum-label">Số điểm dữ liệu</span><span class="sum-val">${points.length}</span></div>
+      </div>`;
+    drawHistChart(points);
+  } catch(e) {
+    document.getElementById('hist-content').innerHTML = renderErr(e.message);
+  }
+}
+
+function drawHistChart(points) {
+  // Simple canvas sparkline (no Chart.js dependency in miniapp)
+  const canvas = document.getElementById('hist-chart');
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const W = canvas.parentElement.clientWidth;
+  const H = 130;
+  canvas.width  = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.scale(dpr, dpr);
+
+  // Downsample to ~200 points for perf
+  const step = Math.max(1, Math.floor(points.length/200));
+  const pts  = points.filter((_,i) => i%step===0);
+
+  const navs = pts.map(p=>p.nav);
+  const minN = Math.min(...navs), maxN = Math.max(...navs);
+  const range = maxN - minN || 1;
+
+  const pad = {t:10,r:8,b:24,l:52};
+  const gW = W - pad.l - pad.r;
+  const gH = H - pad.t - pad.b;
+
+  const x = i => pad.l + (i/(pts.length-1))*gW;
+  const y = v => pad.t + (1-(v-minN)/range)*gH;
+
+  // Gradient fill
+  const grad = ctx.createLinearGradient(0, pad.t, 0, pad.t+gH);
+  grad.addColorStop(0, 'rgba(0,229,255,0.3)');
+  grad.addColorStop(1, 'rgba(0,229,255,0.02)');
+
+  ctx.beginPath();
+  ctx.moveTo(x(0), y(navs[0]));
+  pts.forEach((p,i) => ctx.lineTo(x(i), y(p.nav)));
+  ctx.lineTo(x(pts.length-1), pad.t+gH);
+  ctx.lineTo(x(0), pad.t+gH);
+  ctx.closePath();
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // Line
+  ctx.beginPath();
+  ctx.moveTo(x(0), y(navs[0]));
+  pts.forEach((p,i) => ctx.lineTo(x(i), y(p.nav)));
+  ctx.strokeStyle = '#00e5ff';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // Y axis labels
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = `10px IBM Plex Mono, monospace`;
+  ctx.textAlign = 'right';
+  [minN, (minN+maxN)/2, maxN].forEach(v => {
+    ctx.fillText(fmt(Math.round(v)), pad.l-4, y(v)+4);
+  });
+
+  // X axis: first and last date
+  ctx.textAlign = 'left';
+  ctx.fillText(pts[0].date?.slice(0,7), pad.l, H-6);
+  ctx.textAlign = 'right';
+  ctx.fillText(pts[pts.length-1].date?.slice(0,7), W-pad.r, H-6);
+}
+
+// ── Error ──────────────────────────────────────────────────────────────────────
+function renderErr(msg) {
+  return `<div class="card" style="text-align:center;color:var(--sell);padding:20px">${msg}</div>`;
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────────
+loadMe();
+</script>
+</body>
+</html>

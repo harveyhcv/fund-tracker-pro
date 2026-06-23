@@ -1032,34 +1032,35 @@ def _push_nav_to_server(nav_data: dict, config: dict):
 
 
 def _handle_tcbs_auth_error(config: dict, failed_codes: set):
-    """Gửi cảnh báo Telegram khi TCBS token hết hạn (401/403).
-
-    Được gọi từ job_morning / job_check_signals khi _tcbs_auth_fail_codes
-    không rỗng sau khi fetch_all hoàn thành.
-
-    Không raise exception — fail gracefully nếu bot token chưa cấu hình.
-    """
+    """Gửi cảnh báo TCBS token hết hạn — CHỈ admin, CHỈ 1 lần/ngày."""
     bot_token = config.get("bot_token", "")
     if not bot_token or bot_token.startswith("NHAP"):
-        log.warning("[TCBS-AUTH] Bot token chưa cấu hình — không gửi cảnh báo được")
         return
+
+    today = date.today().isoformat()
+    state = load_state()
+    if state.get("tcbs_auth_alerted_date") == today:
+        log.debug("[TCBS-AUTH] đã cảnh báo hôm nay, bỏ qua.")
+        return
+
+    admin_id = str(config.get("admin_telegram_id", "")).strip()
+    if not admin_id or not admin_id.lstrip("-").isdigit():
+        log.warning("[TCBS-AUTH] admin_telegram_id chưa cấu hình.")
+        return
+
     codes_str = ", ".join(sorted(failed_codes))
     msg = (
         f"🔐 <b>TCBS Token hết hạn</b>\n"
         f"Quỹ chưa cập nhật NAV: <code>{codes_str}</code>\n\n"
-        f"👉 Làm mới ngay trong Telegram:\n"
+        f"👉 Làm mới ngay:\n"
         f"<code>/otp</code>  — gửi OTP về SĐT\n"
-        f"<code>/otp 123456</code>  — xác nhận OTP\n\n"
-        f"<i>Chưa có SĐT? Gõ /otp setup 09xx để thiết lập.</i>"
+        f"<code>/otp 123456</code>  — xác nhận OTP"
     )
-    sent = 0
-    for profile in config.get("profiles", []):
-        tg = str(profile.get("telegram_id", ""))
-        if tg.lstrip("-").isdigit():
-            ok = tg_send(bot_token, tg, msg)
-            if ok:
-                sent += 1
-    log.warning(f"[TCBS-AUTH] Token hết hạn cho {codes_str} — đã cảnh báo {sent} profile(s)")
+    ok = tg_send(bot_token, admin_id, msg)
+    if ok:
+        state["tcbs_auth_alerted_date"] = today
+        save_state(state)
+        log.warning(f"[TCBS-AUTH] Token hết hạn ({codes_str}) — đã cảnh báo admin.")
 
 
 def check_jwt_freshness(config: dict) -> Optional[int]:
@@ -1279,10 +1280,13 @@ def job_check_jwt():
         log.debug(f"[JWT-CHECK] còn {remaining//60} phút.")
         return
 
-    # Kiểm tra đã gửi hôm nay chưa (1 lần/ngày)
+    # Dedup: dùng ngày hôm nay + exp timestamp của token
+    # Nếu Railway wipe state.json, tệ nhất là 1 alert/deploy — chấp nhận được
     today = date.today().isoformat()
     state = load_state()
-    if state.get("jwt_alerted_date") == today:
+    alerted_key = state.get("jwt_alerted_key", "")
+    # Key = ngày hôm nay, đảm bảo đúng 1 lần/ngày dù state bị wipe
+    if alerted_key == today:
         log.debug(f"[JWT-CHECK] đã gửi hôm nay ({today}), bỏ qua.")
         return
 
@@ -1306,7 +1310,7 @@ def job_check_jwt():
 
     ok = tg_send(bot_token, admin_id, msg)
     if ok:
-        state["jwt_alerted_date"] = today
+        state["jwt_alerted_key"] = today
         save_state(state)
         log.warning(f"[JWT-CHECK] Đã gửi cảnh báo JWT (còn {remaining//60} phút).")
 
@@ -3266,6 +3270,9 @@ def command_handler():
                         state    = load_state()
                         tg_send(token, chat_id, msg_evening(profile, nav_data, state.get("morning_nav", {})))
 
+                    elif cmd == "/app" or cmd == "/miniapp":
+                        _cmd_app(token, chat_id, profile)
+
                     elif cmd == "/otp":
                         if not profile:
                             tg_send(token, chat_id, "⚠️ Bạn chưa đăng ký.\nGõ <code>/register Tên Của Bạn</code> để đăng ký.")
@@ -3288,6 +3295,38 @@ def command_handler():
         except Exception as e:
             log.error(f"[command_handler] {e}")
             time.sleep(10)
+
+
+# ═══════════════════════════════════════
+# MINI APP
+# ═══════════════════════════════════════
+
+def _get_miniapp_url(user_id: int) -> str:
+    """Tạo URL mini app với user_id embed."""
+    base = os.environ.get(
+        "MINIAPP_URL",
+        f"https://{os.environ.get('RAILWAY_PUBLIC_DOMAIN', 'localhost:8443')}"
+    )
+    return f"{base}?user_id={user_id}"
+
+
+def _cmd_app(token: str, chat_id: int, profile: Optional[dict]):
+    if not profile:
+        tg_send(token, chat_id, "⚠️ Bạn chưa đăng ký.\nGõ <code>/register Tên Của Bạn</code> để đăng ký.")
+        return
+    url = _get_miniapp_url(chat_id)
+    payload = {
+        "chat_id": chat_id,
+        "text": "📱 <b>Fund Tracker Pro — Mini App</b>\n\nMở app để xem danh mục, tín hiệu kỹ thuật, DCA calculator và thêm giao dịch:",
+        "parse_mode": "HTML",
+        "reply_markup": json.dumps({
+            "inline_keyboard": [[{
+                "text": "📊 Mở Fund Tracker Pro",
+                "web_app": {"url": url}
+            }]]
+        })
+    }
+    api_post(token, "sendMessage", payload)
 
 
 # ═══════════════════════════════════════
@@ -3351,6 +3390,14 @@ def main():
 
     log.info("Chạy signal check khởi động...")
     job_check_signals()
+
+    # Start Telegram Mini App HTTP server
+    try:
+        from miniapp_server import start_in_thread as _start_miniapp
+        _start_miniapp()
+        log.info(f"[miniapp] Server started on :{os.environ.get('PORT_MINIAPP', 8443)}")
+    except Exception as _e:
+        log.warning(f"[miniapp] Could not start mini app server: {_e}")
 
     t = threading.Thread(target=command_handler, daemon=True, name="cmd-handler")
     t.start()
