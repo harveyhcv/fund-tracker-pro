@@ -29,7 +29,6 @@ try:
 except ImportError:
     raise SystemExit("❌ Thiếu thư viện. Chạy: pip install requests schedule")
 
-from token_alert_patch import send_token_alert_once, reset_token_alert
 
 try:
     import schedule
@@ -74,11 +73,6 @@ STATE_FILE  = DATA_DIR / "state.json"
 # Tập hợp mã quỹ bị 401/403 trong chu kỳ fetch hiện tại.
 # Được reset trước mỗi job, kiểm tra sau fetch_all để gửi cảnh báo.
 _tcbs_auth_fail_codes: set = set()
-
-# Trạng thái OTP đang chờ xác nhận: {chat_id: {"phone": str, "ts": float}}
-# TTL 5 phút — sau đó user phải gửi /otp lại từ đầu.
-_otp_pending: dict[str, dict] = {}
-_OTP_TTL = 300  # giây
 
 
 def load_config() -> dict:
@@ -1032,7 +1026,7 @@ def _push_nav_to_server(nav_data: dict, config: dict):
 
 
 def _handle_tcbs_auth_error(config: dict, failed_codes: set):
-    """Gửi cảnh báo TCBS token hết hạn — CHỈ admin, CHỈ 1 lần/ngày."""
+    """Thông báo các quỹ outdated NAV — CHỈ admin, CHỈ 1 lần/ngày."""
     bot_token = config.get("bot_token", "")
     if not bot_token or bot_token.startswith("NHAP"):
         return
@@ -1048,271 +1042,42 @@ def _handle_tcbs_auth_error(config: dict, failed_codes: set):
         log.warning("[TCBS-AUTH] admin_telegram_id chưa cấu hình.")
         return
 
-    codes_str = ", ".join(sorted(failed_codes))
+    # Lấy ngày NAV cuối cùng của từng quỹ từ DB
+    lines = []
+    db_url = os.environ.get("DATABASE_URL", config.get("database_url", ""))
+    for code in sorted(failed_codes):
+        last_date = "—"
+        if db_url:
+            try:
+                import psycopg2
+                conn = psycopg2.connect(db_url, connect_timeout=5)
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT MAX(nav_date) FROM nav_history WHERE fund_code = %s",
+                        (code,)
+                    )
+                    row = cur.fetchone()
+                    if row and row[0]:
+                        last_date = row[0].strftime("%d/%m/%Y")
+                conn.close()
+            except Exception:
+                pass
+        lines.append(f"• <code>{code}</code>  — NAV cuối: <b>{last_date}</b>")
+
+    funds_block = "\n".join(lines)
     msg = (
-        f"🔐 <b>TCBS Token hết hạn</b>\n"
-        f"Quỹ chưa cập nhật NAV: <code>{codes_str}</code>\n\n"
-        f"👉 Làm mới ngay:\n"
-        f"<code>/otp</code>  — gửi OTP về SĐT\n"
-        f"<code>/otp 123456</code>  — xác nhận OTP"
+        f"📅 <b>NAV chưa được cập nhật</b>\n\n"
+        f"{funds_block}\n\n"
+        f"⚠️ Token TCInvest đã hết hạn.\n"
+        f"Hãy cập nhật token trong app <b>TCInvest</b> để bot lấy NAV mới nhất."
     )
     ok = tg_send(bot_token, admin_id, msg)
     if ok:
         state["tcbs_auth_alerted_date"] = today
         save_state(state)
-        log.warning(f"[TCBS-AUTH] Token hết hạn ({codes_str}) — đã cảnh báo admin.")
+        log.warning(f"[TCBS-AUTH] NAV outdated ({', '.join(sorted(failed_codes))}) — đã cảnh báo admin.")
 
 
-def check_jwt_freshness(config: dict) -> Optional[int]:
-    """Đọc TCBS JWT từ config, trả về số giây còn lại trước khi expire.
-
-    Trả về None nếu không có token hoặc token không phải JWT hợp lệ.
-    Gửi cảnh báo Telegram nếu còn < 3600 giây (1 giờ).
-    """
-    import base64
-
-    token = config.get("tcbs_token", "")
-    if not token:
-        return None
-    parts = token.split(".")
-    if len(parts) != 3:
-        return None
-    try:
-        # Thêm padding nếu thiếu
-        padded = parts[1] + "=" * (-len(parts[1]) % 4)
-        payload = json.loads(base64.b64decode(padded).decode("utf-8"))
-        exp = payload.get("exp", 0)
-        if not exp:
-            return None
-        remaining = int(exp - time.time())
-        return remaining
-    except Exception as e:
-        log.debug(f"[JWT-CHECK] Không parse được JWT payload: {e}")
-        return None
-
-
-# ── TCBS OTP endpoints (theo thứ tự ưu tiên) ──────────────────────────────────
-_TCBS_OTP_URLS    = [
-    "https://apipubaws.tcbs.com.vn/oauth/v1/me/authentication",
-    "https://apipubaws.tcbs.com.vn/oauth/v1/me/otp-request",
-]
-_TCBS_VERIFY_URLS = [
-    "https://apipubaws.tcbs.com.vn/oauth/v1/me/authentication/otp",
-    "https://apipubaws.tcbs.com.vn/oauth/v1/me/otp-verify",
-]
-
-
-def _tcbs_request_otp(phone: str) -> tuple[bool, str]:
-    """Gửi yêu cầu OTP về SĐT. Returns (success, session_id_or_error)."""
-    import urllib.request as _req
-    import urllib.error  as _err
-    payload = json.dumps({"mobile": phone}).encode()
-    headers = {"Content-Type": "application/json",
-               "User-Agent": "Mozilla/5.0"}
-    for url in _TCBS_OTP_URLS:
-        try:
-            r = _req.urlopen(
-                _req.Request(url, data=payload, headers=headers, method="POST"),
-                timeout=10
-            )
-            resp = json.loads(r.read())
-            sid  = (resp.get("data") or {}).get("sessionId", "")
-            return True, sid
-        except _err.HTTPError as e:
-            if e.code == 400:
-                return False, f"Số điện thoại không hợp lệ"
-            continue
-        except Exception:
-            continue
-    return False, "TCBS API không phản hồi"
-
-
-def _tcbs_verify_otp(phone: str, otp: str, session_id: str = "") -> tuple[bool, str]:
-    """Xác nhận OTP. Returns (success, token_or_error)."""
-    import urllib.request as _req
-    import urllib.error  as _err
-    payload_dict = {"mobile": phone, "otp": otp}
-    if session_id:
-        payload_dict["sessionId"] = session_id
-    payload = json.dumps(payload_dict).encode()
-    headers = {"Content-Type": "application/json",
-               "User-Agent": "Mozilla/5.0"}
-    for url in _TCBS_VERIFY_URLS:
-        try:
-            r = _req.urlopen(
-                _req.Request(url, data=payload, headers=headers, method="POST"),
-                timeout=10
-            )
-            resp = json.loads(r.read())
-            token = (
-                (resp.get("data") or {}).get("access_token")
-                or resp.get("access_token")
-                or (resp.get("data") or {}).get("token")
-                or ""
-            )
-            if token:
-                return True, token
-            return False, f"API không trả về token: {resp}"
-        except _err.HTTPError as e:
-            body = ""
-            try:
-                body = e.read().decode()[:200]
-            except Exception:
-                pass
-            if e.code == 400:
-                return False, f"OTP sai hoặc hết hạn"
-            continue
-        except Exception:
-            continue
-    return False, "TCBS API không phản hồi"
-
-
-def _cmd_otp(token: str, chat_id: str, parts: list, profile: dict) -> None:
-    """
-    /otp                 → Gửi OTP về SĐT đã đăng ký
-    /otp XXXXXX          → Xác nhận OTP, lưu JWT mới vào config
-    /otp setup 0901...   → Đổi SĐT dùng cho TCBS auth
-    """
-    phone_in_profile = (profile or {}).get("phone", "").strip() if profile else ""
-
-    # /otp setup 0901234567
-    if len(parts) >= 3 and parts[1].lower() == "setup":
-        new_phone = parts[2].strip()
-        if not new_phone.lstrip("+").isdigit() or len(new_phone) < 9:
-            tg_send(token, chat_id, "❌ Số điện thoại không hợp lệ.\nVí dụ: <code>/otp setup 0901234567</code>")
-            return
-        cfg = load_config()
-        for p in cfg.get("profiles", []):
-            if str(p.get("telegram_id", "")) == chat_id:
-                p["phone"] = new_phone
-                break
-        save_config(cfg)
-        tg_send(token, chat_id, f"✅ Đã lưu SĐT <b>{new_phone}</b> cho tài khoản TCBS.\n"
-                                f"Gõ <code>/otp</code> để nhận OTP.")
-        return
-
-    # /otp XXXXXX — xác nhận OTP
-    if len(parts) >= 2 and parts[1].isdigit() and len(parts[1]) >= 4:
-        otp_code = parts[1]
-        pending  = _otp_pending.get(chat_id)
-        if not pending:
-            tg_send(token, chat_id,
-                    "⚠️ Không có phiên OTP nào đang chờ.\n"
-                    "Gõ <code>/otp</code> để gửi OTP mới.")
-            return
-        if time.time() - pending["ts"] > _OTP_TTL:
-            _otp_pending.pop(chat_id, None)
-            tg_send(token, chat_id,
-                    "⏱ Phiên OTP đã hết hạn (5 phút).\n"
-                    "Gõ <code>/otp</code> để gửi lại.")
-            return
-
-        tg_send(token, chat_id, "⏳ Đang xác nhận OTP...")
-        ok, result = _tcbs_verify_otp(
-            pending["phone"], otp_code, pending.get("session_id", "")
-        )
-        _otp_pending.pop(chat_id, None)
-
-        if not ok:
-            tg_send(token, chat_id, f"❌ {result}\nGõ <code>/otp</code> để thử lại.")
-            return
-
-        # Lưu token mới vào config
-        cfg = load_config()
-        cfg["tcbs_token"] = result
-        save_config(cfg)
-
-        # Decode thời hạn từ JWT payload
-        try:
-            import base64 as _b64
-            pad     = result.split(".")[1]
-            pad    += "=" * (-len(pad) % 4)
-            payload = json.loads(_b64.b64decode(pad).decode())
-            exp_ts  = payload.get("exp", 0)
-            exp_dt  = datetime.fromtimestamp(exp_ts).strftime("%d/%m/%Y %H:%M") if exp_ts else "?"
-            expires = f"\nHết hạn lúc <b>{exp_dt}</b>"
-        except Exception:
-            expires = ""
-
-        tg_send(token, chat_id,
-                f"✅ <b>TCBS Token đã được cập nhật!</b>{expires}\n\n"
-                f"Bot sẽ tự nhắc khi token sắp hết hạn.")
-        log.info(f"[OTP] Token mới đã lưu cho chat_id={chat_id}")
-        return
-
-    # /otp — gửi OTP
-    phone = phone_in_profile
-    if not phone:
-        tg_send(token, chat_id,
-                "📱 Chưa có SĐT TCBS.\n"
-                "Thiết lập bằng:\n<code>/otp setup 0901234567</code>")
-        return
-
-    tg_send(token, chat_id, f"📱 Đang gửi OTP về <b>{phone[:4]}****{phone[-3:]}</b>...")
-    ok, sid = _tcbs_request_otp(phone)
-    if not ok:
-        tg_send(token, chat_id, f"❌ {sid}")
-        return
-
-    _otp_pending[chat_id] = {"phone": phone, "session_id": sid, "ts": time.time()}
-    tg_send(token, chat_id,
-            f"📨 OTP đã gửi về <b>{phone[:4]}****{phone[-3:]}</b>\n\n"
-            f"Nhập mã 6 số:\n<code>/otp 123456</code>\n\n"
-            f"<i>(Hết hạn sau 5 phút)</i>")
-
-
-def job_check_jwt():
-    """Kiểm tra TCBS JWT còn hạn không — chạy mỗi 30 phút.
-
-    Token đổi theo ngày → chỉ gửi 1 cảnh báo/ngày khi token hết hạn.
-    """
-    cfg = load_config()
-    remaining = check_jwt_freshness(cfg)
-    if remaining is None:
-        return
-
-    bot_token = cfg.get("bot_token", "")
-    if not bot_token or bot_token.startswith("NHAP"):
-        return
-
-    # Token vẫn còn hạn tốt → không làm gì
-    if remaining > 1800:
-        log.debug(f"[JWT-CHECK] còn {remaining//60} phút.")
-        return
-
-    # Dedup: dùng ngày hôm nay + exp timestamp của token
-    # Nếu Railway wipe state.json, tệ nhất là 1 alert/deploy — chấp nhận được
-    today = date.today().isoformat()
-    state = load_state()
-    alerted_key = state.get("jwt_alerted_key", "")
-    # Key = ngày hôm nay, đảm bảo đúng 1 lần/ngày dù state bị wipe
-    if alerted_key == today:
-        log.debug(f"[JWT-CHECK] đã gửi hôm nay ({today}), bỏ qua.")
-        return
-
-    admin_id = str(cfg.get("admin_telegram_id", "")).strip()
-    if not admin_id or not admin_id.lstrip("-").isdigit():
-        log.warning("[JWT-CHECK] admin_telegram_id chưa cấu hình.")
-        return
-
-    if remaining < 0:
-        mins = abs(remaining) // 60
-        msg = (
-            f"🔐 <b>TCBS Token đã hết hạn</b> ({mins} phút trước)\n"
-            f"<code>/otp</code> → gửi OTP  <code>/otp 123456</code> → xác nhận"
-        )
-    else:
-        mins = remaining // 60
-        msg = (
-            f"⚠️ <b>TCBS Token còn {mins} phút</b>\n"
-            f"<code>/otp</code> → gửi OTP  <code>/otp 123456</code> → xác nhận"
-        )
-
-    ok = tg_send(bot_token, admin_id, msg)
-    if ok:
-        state["jwt_alerted_key"] = today
-        save_state(state)
-        log.warning(f"[JWT-CHECK] Đã gửi cảnh báo JWT (còn {remaining//60} phút).")
 
 
 def fetch_all(config: dict, codes: set) -> dict:
@@ -3273,12 +3038,6 @@ def command_handler():
                     elif cmd == "/app" or cmd == "/miniapp":
                         _cmd_app(token, chat_id, profile)
 
-                    elif cmd == "/otp":
-                        if not profile:
-                            tg_send(token, chat_id, "⚠️ Bạn chưa đăng ký.\nGõ <code>/register Tên Của Bạn</code> để đăng ký.")
-                            continue
-                        _cmd_otp(token, chat_id, parts, profile)
-
                     else:
                         if text.startswith("/"):
                             tg_send(token, chat_id, f"❓ Lệnh <code>{cmd}</code> không tồn tại. Gõ /help để xem danh sách.")
@@ -3382,8 +3141,7 @@ def main():
 
     schedule.every(t_int).minutes.do(job_check_signals)
     schedule.every(t_int).minutes.do(job_nav_change_alert)
-    schedule.every(30).minutes.do(job_check_jwt)
-    schedule.every().day.at("09:00").do(job_backfill_settlement)
+schedule.every().day.at("09:00").do(job_backfill_settlement)
     schedule.every().day.at("09:00").do(job_dca_reminder)
     schedule.every().day.at("18:30").do(job_harvest_nav)
     schedule.every().day.at("00:01").do(job_watchdog_ping)
