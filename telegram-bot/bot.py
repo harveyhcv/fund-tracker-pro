@@ -654,7 +654,7 @@ def fmt_chg(pct: float) -> str:
 # ═══════════════════════════════════════
 # MESSAGE BUILDERS
 # ═══════════════════════════════════════
-LINE = "─" * 30
+LINE = "─" * 16
 
 
 def msg_morning(profile: dict, nav_data: dict) -> str:
@@ -1203,16 +1203,11 @@ def _cmd_otp(token: str, chat_id: str, parts: list, profile: dict) -> None:
             f"<i>(Hết hạn sau 5 phút)</i>")
 
 
-_jwt_alerted_exp: int = 0   # exp timestamp đã alert — tránh spam khi Railway restart
-
-
 def job_check_jwt():
     """Kiểm tra TCBS JWT còn hạn không — chạy mỗi 30 phút.
 
-    Chỉ gửi 1 cảnh báo khi token còn < 30 phút, dùng in-memory flag để
-    không re-alert sau Railway restart nếu token vẫn còn trong cửa sổ đó.
+    Token đổi theo ngày → chỉ gửi 1 cảnh báo/ngày khi token hết hạn.
     """
-    global _jwt_alerted_exp
     cfg = load_config()
     remaining = check_jwt_freshness(cfg)
     if remaining is None:
@@ -1222,29 +1217,18 @@ def job_check_jwt():
     if not bot_token or bot_token.startswith("NHAP"):
         return
 
-    # Lấy exp của token hiện tại để track đúng lần hết hạn
-    try:
-        import base64 as _b64, json as _json
-        pad = cfg.get("tcbs_token", "").split(".")[1]
-        pad += "=" * (-len(pad) % 4)
-        cur_exp = _json.loads(_b64.b64decode(pad).decode()).get("exp", 0)
-    except Exception:
-        cur_exp = 0
-
-    # Token còn hạn dài (> 30 phút) → không cần làm gì, reset flag nếu token mới
+    # Token vẫn còn hạn tốt → không làm gì
     if remaining > 1800:
-        if cur_exp != _jwt_alerted_exp:
-            _jwt_alerted_exp = 0  # token mới được refresh → sẵn sàng alert lần sau
         log.debug(f"[JWT-CHECK] còn {remaining//60} phút.")
         return
 
-    # Đã alert cho token này rồi → bỏ qua
-    if cur_exp and cur_exp == _jwt_alerted_exp:
-        log.debug("[JWT-CHECK] đã alert, bỏ qua.")
+    # Kiểm tra đã gửi hôm nay chưa (1 lần/ngày)
+    today = date.today().isoformat()
+    state = load_state()
+    if state.get("jwt_alerted_date") == today:
+        log.debug(f"[JWT-CHECK] đã gửi hôm nay ({today}), bỏ qua.")
         return
 
-    # Gửi alert 1 lần
-    _jwt_alerted_exp = cur_exp
     admin_id = str(cfg.get("admin_telegram_id", "")).strip()
     if not admin_id or not admin_id.lstrip("-").isdigit():
         log.warning("[JWT-CHECK] admin_telegram_id chưa cấu hình.")
@@ -1253,17 +1237,21 @@ def job_check_jwt():
     if remaining < 0:
         mins = abs(remaining) // 60
         msg = (
-            f"🔐 <b>TCBS Token đã hết hạn!</b> (hết hạn {mins} phút trước)\n\n"
-            f"<code>/otp</code> → gửi OTP | <code>/otp 123456</code> → xác nhận"
+            f"🔐 <b>TCBS Token đã hết hạn</b> ({mins} phút trước)\n"
+            f"<code>/otp</code> → gửi OTP  <code>/otp 123456</code> → xác nhận"
         )
     else:
         mins = remaining // 60
         msg = (
-            f"⚠️ <b>TCBS Token còn {mins} phút!</b>\n\n"
-            f"<code>/otp</code> → gửi OTP | <code>/otp 123456</code> → xác nhận"
+            f"⚠️ <b>TCBS Token còn {mins} phút</b>\n"
+            f"<code>/otp</code> → gửi OTP  <code>/otp 123456</code> → xác nhận"
         )
-    tg_send(bot_token, admin_id, msg)
-    log.warning(f"[JWT-CHECK] Đã gửi cảnh báo JWT (còn {remaining//60} phút).")
+
+    ok = tg_send(bot_token, admin_id, msg)
+    if ok:
+        state["jwt_alerted_date"] = today
+        save_state(state)
+        log.warning(f"[JWT-CHECK] Đã gửi cảnh báo JWT (còn {remaining//60} phút).")
 
 
 def fetch_all(config: dict, codes: set) -> dict:
@@ -1294,6 +1282,11 @@ def all_watched_codes(config: dict) -> set:
 
 def job_morning():
     log.info("══ JOB: Morning Report ══")
+    today = date.today().isoformat()
+    state_chk = load_state()
+    if state_chk.get("last_morning_date") == today:
+        log.info(f"[job_morning] Đã gửi hôm nay ({today}), bỏ qua.")
+        return
     _tcbs_auth_fail_codes.clear()          # Reset trước mỗi chu kỳ fetch
     config = load_config()
     token  = config.get("bot_token", "")
@@ -1306,8 +1299,9 @@ def job_morning():
     if _tcbs_auth_fail_codes:
         _handle_tcbs_auth_error(config, _tcbs_auth_fail_codes.copy())
     state = load_state()
-    state["morning_nav"]  = {k: {"nav": v["nav"], "date": v["nav_date"]} for k, v in nav_data.items()}
-    state["last_morning"] = datetime.now().isoformat()
+    state["morning_nav"]       = {k: {"nav": v["nav"], "date": v["nav_date"]} for k, v in nav_data.items()}
+    state["last_morning"]      = datetime.now().isoformat()
+    state["last_morning_date"] = today
     save_state(state)
     for profile in config.get("profiles", []):
         tg = profile.get("telegram_id", "")
@@ -1325,6 +1319,11 @@ def job_morning():
 
 def job_evening():
     log.info("══ JOB: Evening Report ══")
+    today = date.today().isoformat()
+    state_chk = load_state()
+    if state_chk.get("last_evening_date") == today:
+        log.info(f"[job_evening] Đã gửi hôm nay ({today}), bỏ qua.")
+        return
     config = load_config()
     token  = config.get("bot_token", "")
     if not token or token.startswith("NHAP"):
@@ -1333,7 +1332,8 @@ def job_evening():
     nav_data = fetch_all(config, codes)
     state = load_state()
     morning_nav = state.get("morning_nav", {})
-    state["last_evening"] = datetime.now().isoformat()
+    state["last_evening"]      = datetime.now().isoformat()
+    state["last_evening_date"] = today
     save_state(state)
     for profile in config.get("profiles", []):
         tg = profile.get("telegram_id", "")
@@ -2258,7 +2258,7 @@ def _handle_trade_wizard_text(token: str, chat_id: str, text: str, profile: dict
         ]
         tg_send_keyboard(token, chat_id, (
             f"{'🟢' if tx_type == 'buy' else '🔴'} <b>Xác nhận giao dịch</b>\n"
-            f"──────────────────────\n"
+            f"──────────────\n"
             f"Loại: <b>{action}</b>\n"
             f"Quỹ: <b>{fund_code}</b> — {fund_name}\n"
             f"Số CCQ: <b>{units:,.2f}</b>\n"
@@ -2577,7 +2577,7 @@ def command_handler():
                     elif cmd == "/rsi":
                         tg_send(token, chat_id, (
                             "📊 <b>RSI — Chỉ Số Sức Mạnh Tương Đối</b>\n"
-                            "──────────────────────────\n"
+                            "──────────────\n"
                             "<b>Hình dung đơn giản:</b>\n"
                             "RSI giống như \"nhiệt kế\" đo mức độ hưng phấn hay hoảng loạn "
                             "của thị trường. Thang 0–100:\n"
@@ -2608,7 +2608,7 @@ def command_handler():
                     elif cmd == "/macd":
                         tg_send(token, chat_id, (
                             "📊 <b>MACD — Đường Trung Bình Hội Tụ Phân Kỳ</b>\n"
-                            "──────────────────────────\n"
+                            "──────────────\n"
                             "<b>Hình dung đơn giản:</b>\n"
                             "Hãy tưởng tượng 2 người chạy bộ — người chạy nhanh (EMA 12 ngày) "
                             "và người chạy chậm (EMA 26 ngày). MACD là khoảng cách giữa họ:\n"
@@ -2638,7 +2638,7 @@ def command_handler():
                     elif cmd == "/bb":
                         tg_send(token, chat_id, (
                             "📊 <b>BB% — Bollinger Bands</b>\n"
-                            "──────────────────────────\n"
+                            "──────────────\n"
                             "<b>Hình dung đơn giản:</b>\n"
                             "Bollinger Bands như một \"hành lang\" bao quanh giá. "
                             "Giá có xu hướng quay về giữa hành lang sau khi chạm biên.\n\n"
@@ -2669,7 +2669,7 @@ def command_handler():
                     elif cmd == "/stoch":
                         tg_send(token, chat_id, (
                             "📊 <b>Stochastic — Vị Trí Giá Trong Vùng Dao Động</b>\n"
-                            "──────────────────────────\n"
+                            "──────────────\n"
                             "<b>Hình dung đơn giản:</b>\n"
                             "Stochastic hỏi: \"Trong 14 ngày qua, NAV hôm nay đang nằm ở đâu "
                             "trong vùng giao động?\" Nếu NAV gần đỉnh 14 ngày → Stoch cao. "
@@ -2695,7 +2695,7 @@ def command_handler():
                     elif cmd == "/atr":
                         tg_send(token, chat_id, (
                             "📊 <b>ATR% — Mức Độ Biến Động</b>\n"
-                            "──────────────────────────\n"
+                            "──────────────\n"
                             "<b>Hình dung đơn giản:</b>\n"
                             "ATR% cho biết \"trung bình mỗi ngày NAV quỹ này dao động bao nhiêu %\". "
                             "Như dự báo thời tiết: ATR cao = thời tiết bất ổn, ATR thấp = ổn định.\n\n"
@@ -2724,7 +2724,7 @@ def command_handler():
                     elif cmd == "/sharpe":
                         tg_send(token, chat_id, (
                             "📊 <b>Sharpe Ratio — Hiệu Quả Trên Mỗi Đơn Vị Rủi Ro</b>\n"
-                            "──────────────────────────\n"
+                            "──────────────\n"
                             "<b>Hình dung đơn giản:</b>\n"
                             "Sharpe trả lời câu hỏi: \"Với mức rủi ro phải chịu, tôi được đền bù "
                             "xứng đáng không?\"\n\n"
@@ -2753,7 +2753,7 @@ def command_handler():
                     elif cmd == "/momentum" or cmd == "/mom":
                         tg_send(token, chat_id, (
                             "📊 <b>Momentum &amp; Xu Hướng (MA20/MA50)</b>\n"
-                            "──────────────────────────\n"
+                            "──────────────\n"
                             "<b>Momentum là gì?</b>\n"
                             "Đà tăng/giảm của NAV trong 7 và 30 ngày qua. Giống như "
                             "xe đang chạy — muốn dừng cần thời gian, muốn đổi chiều càng mất thời gian hơn.\n\n"
@@ -2783,7 +2783,7 @@ def command_handler():
                         tg_send(token, chat_id, (
                             "🎓 <b>MPT — Lý Thuyết Danh Mục Hiện Đại</b>\n"
                             "Harry Markowitz (Nobel Kinh tế 1990)\n"
-                            "──────────────────────────\n"
+                            "──────────────\n"
                             "<b>Ý tưởng cốt lõi:</b>\n"
                             "\"Đừng bỏ trứng vào một giỏ\" — nhưng MPT nói chính xác hơn: "
                             "<i>đừng bỏ trứng vào các giỏ đi cùng một con đường</i>.\n\n"
@@ -2812,7 +2812,7 @@ def command_handler():
                         tg_send(token, chat_id, (
                             "🎓 <b>Kelly Criterion — Tối Ưu Hóa Kích Thước Vị Thế</b>\n"
                             "John L. Kelly Jr. (1956, Bell Labs)\n"
-                            "──────────────────────────\n"
+                            "──────────────\n"
                             "<b>Ý tưởng cốt lõi:</b>\n"
                             "Kelly trả lời: \"Nên đặt bao nhiêu % vốn vào mỗi quỹ để tài sản "
                             "tăng trưởng nhanh nhất có thể trong dài hạn?\"\n\n"
@@ -2841,7 +2841,7 @@ def command_handler():
                         tg_send(token, chat_id, (
                             "🎓 <b>Risk Parity — Cân Bằng Rủi Ro</b>\n"
                             "Ray Dalio / Bridgewater All Weather Fund\n"
-                            "──────────────────────────\n"
+                            "──────────────\n"
                             "<b>Vấn đề với phân bổ 50/50 thông thường:</b>\n"
                             "Nếu bạn chia đều 50% tiền vào quỹ cổ phiếu và 50% vào quỹ "
                             "trái phiếu — nghe có vẻ cân bằng, nhưng thực ra <b>rủi ro KHÔNG "
@@ -2872,7 +2872,7 @@ def command_handler():
                         tg_send(token, chat_id, (
                             "🎓 <b>Value / Contrarian — Đầu Tư Giá Trị</b>\n"
                             "Benjamin Graham, Warren Buffett\n"
-                            "──────────────────────────\n"
+                            "──────────────\n"
                             "<i>\"Mua khi người khác sợ hãi. Bán khi người khác tham lam.\"</i>\n"
                             "— Warren Buffett\n\n"
                             "<b>Ý tưởng cốt lõi:</b>\n"
@@ -2906,7 +2906,7 @@ def command_handler():
                         tg_send(token, chat_id, (
                             "🎓 <b>Momentum Investing — Theo Đà Thị Trường</b>\n"
                             "Jegadeesh &amp; Titman (1993), AQR Capital\n"
-                            "──────────────────────────\n"
+                            "──────────────\n"
                             "<i>\"Xu hướng là bạn của bạn — cho đến khi nó kết thúc.\"</i>\n\n"
                             "<b>Ý tưởng cốt lõi:</b>\n"
                             "Nghiên cứu học thuật trên hàng nghìn tài sản cho thấy: tài sản "
@@ -2939,7 +2939,7 @@ def command_handler():
                         tg_send(token, chat_id, (
                             "🎓 <b>DCA — Dollar-Cost Averaging (Bình Quân Chi Phí)</b>\n"
                             "Benjamin Graham: <i>The Intelligent Investor</i> (1949)\n"
-                            "──────────────────────────\n"
+                            "──────────────\n"
                             "<i>\"Không phải thị trường mà là kỷ luật tạo ra lợi nhuận dài hạn.\"</i>\n\n"
                             "<b>Ý tưởng cốt lõi:</b>\n"
                             "Mua <i>cùng số tiền cố định</i> theo chu kỳ đều đặn (mỗi tháng), "
@@ -2977,7 +2977,7 @@ def command_handler():
                     elif cmd == "/learn":
                         tg_send(token, chat_id, (
                             "📚 <b>LEARN — Từ Điển Đầu Tư</b>\n"
-                            "──────────────────────────\n"
+                            "──────────────\n"
                             "<b>📊 Chỉ số kỹ thuật:</b>\n"
                             "/RSI — Relative Strength Index (quá mua/bán)\n"
                             "/MACD — Moving Avg Convergence Divergence (đà)\n"
