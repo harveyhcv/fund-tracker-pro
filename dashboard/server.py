@@ -19,6 +19,7 @@ server.py — Local server cho Quỹ Tracker Dashboard
 
 import http.server
 import json
+import os
 import sqlite3
 import sys
 import urllib.request
@@ -260,6 +261,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self._core_gaps()
         elif path == "/core/nav":
             self._core_get_nav()
+        elif path.startswith("/nav-history/"):
+            code = path[len("/nav-history/"):].upper().strip()
+            self._get_nav_history(code)
         else:
             super().do_GET()
 
@@ -330,6 +334,52 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         try:
             data = json.loads(NAV_DATA_FILE.read_text(encoding="utf-8"))
             _json_resp(self, data)
+        except Exception as e:
+            _json_resp(self, {"error": str(e)}, 500)
+
+    def _get_nav_history(self, code: str):
+        """GET /nav-history/<CODE> — trả về full NAV history từ Railway PostgreSQL.
+
+        Response: {"code": "TCBF", "data": [{"date": "YYYY-MM-DD", "nav": 12345.6}, ...]}
+        Fallback: đọc từ HIST.chart baked (nếu DB không khả dụng).
+        """
+        if not code or len(code) > 10:
+            _json_resp(self, {"error": "Mã quỹ không hợp lệ"}, 400)
+            return
+        try:
+            db_url = os.environ.get("DATABASE_URL", "")
+            if not db_url:
+                cfg_path = BOT_CFG
+                if cfg_path.exists():
+                    cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+                    db_url = cfg.get("database_url", "")
+
+            if not db_url:
+                _json_resp(self, {"error": "DATABASE_URL chưa cấu hình"}, 503)
+                return
+
+            import psycopg2
+            conn = psycopg2.connect(db_url, connect_timeout=10)
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT nav_date::text, nav::float
+                       FROM nav_history
+                       WHERE fund_code = %s
+                       ORDER BY nav_date""",
+                    (code,),
+                )
+                rows = cur.fetchall()
+            conn.close()
+
+            if not rows:
+                _json_resp(self, {"code": code, "data": [], "error": "Không có dữ liệu"}, 404)
+                return
+
+            data = [{"date": r[0], "nav": r[1]} for r in rows]
+            _json_resp(self, {"code": code, "data": data, "count": len(data)})
+
+        except ImportError:
+            _json_resp(self, {"error": "psycopg2 chưa cài: pip install psycopg2-binary"}, 503)
         except Exception as e:
             _json_resp(self, {"error": str(e)}, 500)
 
@@ -914,11 +964,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
 
 if __name__ == "__main__":
+    import io as _io
+    sys.stdout = _io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
     port = int(sys.argv[1]) if len(sys.argv) > 1 else PORT
-    print(f"🌐 Quỹ Tracker Server  →  http://localhost:{port}/Quy%20Tracker%20Dashboard.html")
-    print(f"📁 Serving: {BASE}")
-    print(f"📋 Bot config: {BOT_CFG}")
-    print("   Ctrl+C để dừng\n")
+    print(f"Quy Tracker Server  ->  http://localhost:{port}/Quy%20Tracker%20Dashboard.html")
+    print(f"Serving: {BASE}")
+    print(f"Bot config: {BOT_CFG}")
+    print("   Ctrl+C de dung\n")
     try:
         http.server.HTTPServer(("", port), Handler).serve_forever()
     except KeyboardInterrupt:

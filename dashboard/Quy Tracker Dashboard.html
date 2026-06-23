@@ -1609,14 +1609,29 @@ function renderFundSearchList(){
     </div>`;
   }).join('')||'<div style="color:var(--muted);padding:10px;font-size:11px">Không tìm thấy quỹ</div>';
 }
-function addFundToProfile(code,fmarketId){
+async function addFundToProfile(code,fmarketId){
   const prof=AP();
   if(!prof.watchedFunds)prof.watchedFunds=[];
   if(prof.watchedFunds.includes(code)){toast(code+' đã có trong danh mục','warn');return;}
   prof.watchedFunds.push(code);
   const ml=FUND_MASTER_LIST.find(f=>f.code===code);
   if(ml&&!S.funds[code])S.funds[code]={name:ml.name,type:ml.type,fmarketId:fmarketId,color:PAL[Object.keys(S.funds).length%PAL.length]};
-  save();renderFundSearchList();techCache={};renderAll();toast('✓ Thêm '+code+' vào danh mục');
+  save();renderFundSearchList();techCache={};renderAll();toast('✓ Thêm '+code+' — đang tải lịch sử NAV…');
+  // Tự động tải lịch sử từ Railway DB nếu quỹ chưa có trong HIST.chart
+  if(!HIST||!HIST.chart||!HIST.chart[code]){
+    try{
+      const r=await fetch('/nav-history/'+code);
+      if(r.ok){
+        const d=await r.json();
+        if(d.data&&d.data.length){
+          if(!S.cachedNav)S.cachedNav={};
+          S.cachedNav[code]=d.data;
+          save();techCache={};renderAll();
+          toast('✓ '+code+': '+d.data.length+' điểm NAV đã tải');
+        }
+      }
+    }catch(e){console.warn('[nav-history]',e);}
+  }
 }
 function removeFundFromProfile(code){
   const prof=AP();
