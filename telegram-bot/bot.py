@@ -1203,59 +1203,67 @@ def _cmd_otp(token: str, chat_id: str, parts: list, profile: dict) -> None:
             f"<i>(Hết hạn sau 5 phút)</i>")
 
 
-def job_check_jwt():
-    """Kiểm tra TCBS JWT token còn hạn không — chạy mỗi 30 phút.
+_jwt_alerted_exp: int = 0   # exp timestamp đã alert — tránh spam khi Railway restart
 
-    Gửi cảnh báo Telegram khi token sắp hết hạn (< 1 giờ).
-    Dùng send_token_alert_once để tránh spam — chỉ gửi 1 lần mỗi chu kỳ hết hạn.
+
+def job_check_jwt():
+    """Kiểm tra TCBS JWT còn hạn không — chạy mỗi 30 phút.
+
+    Chỉ gửi 1 cảnh báo khi token còn < 30 phút, dùng in-memory flag để
+    không re-alert sau Railway restart nếu token vẫn còn trong cửa sổ đó.
     """
+    global _jwt_alerted_exp
     cfg = load_config()
     remaining = check_jwt_freshness(cfg)
     if remaining is None:
-        return  # Không có token hoặc không phải JWT — bỏ qua
+        return
 
     bot_token = cfg.get("bot_token", "")
     if not bot_token or bot_token.startswith("NHAP"):
         return
 
-    if remaining >= 7200:
-        # Token còn hạn dài — reset flag phòng trường hợp user vừa refresh token
-        reset_token_alert()
-        hours = remaining // 3600
-        log.debug(f"[JWT-CHECK] TCBS token còn hạn: {hours} giờ.")
+    # Lấy exp của token hiện tại để track đúng lần hết hạn
+    try:
+        import base64 as _b64, json as _json
+        pad = cfg.get("tcbs_token", "").split(".")[1]
+        pad += "=" * (-len(pad) % 4)
+        cur_exp = _json.loads(_b64.b64decode(pad).decode()).get("exp", 0)
+    except Exception:
+        cur_exp = 0
+
+    # Token còn hạn dài (> 30 phút) → không cần làm gì, reset flag nếu token mới
+    if remaining > 1800:
+        if cur_exp != _jwt_alerted_exp:
+            _jwt_alerted_exp = 0  # token mới được refresh → sẵn sàng alert lần sau
+        log.debug(f"[JWT-CHECK] còn {remaining//60} phút.")
+        return
+
+    # Đã alert cho token này rồi → bỏ qua
+    if cur_exp and cur_exp == _jwt_alerted_exp:
+        log.debug("[JWT-CHECK] đã alert, bỏ qua.")
+        return
+
+    # Gửi alert 1 lần
+    _jwt_alerted_exp = cur_exp
+    admin_id = str(cfg.get("admin_telegram_id", "")).strip()
+    if not admin_id or not admin_id.lstrip("-").isdigit():
+        log.warning("[JWT-CHECK] admin_telegram_id chưa cấu hình.")
         return
 
     if remaining < 0:
-        log.warning("[JWT-CHECK] TCBS token đã hết hạn!")
         mins = abs(remaining) // 60
         msg = (
-            f"🔐 <b>TCBS Token đã hết hạn!</b>\n"
-            f"Đã hết hạn <b>{mins} phút</b> trước.\n\n"
-            f"👉 Làm mới ngay:\n"
-            f"<code>/otp</code>  →  gửi OTP về SĐT\n"
-            f"<code>/otp 123456</code>  →  xác nhận"
+            f"🔐 <b>TCBS Token đã hết hạn!</b> (hết hạn {mins} phút trước)\n\n"
+            f"<code>/otp</code> → gửi OTP | <code>/otp 123456</code> → xác nhận"
         )
     else:
         mins = remaining // 60
-        log.warning(f"[JWT-CHECK] TCBS token sắp hết hạn! Còn {mins} phút.")
         msg = (
-            f"⚠️ <b>TCBS Token sắp hết hạn!</b>\n"
-            f"Còn <b>{mins} phút</b>.\n\n"
-            f"👉 Gia hạn ngay:\n"
-            f"<code>/otp</code>  →  gửi OTP về SĐT\n"
-            f"<code>/otp 123456</code>  →  xác nhận"
+            f"⚠️ <b>TCBS Token còn {mins} phút!</b>\n\n"
+            f"<code>/otp</code> → gửi OTP | <code>/otp 123456</code> → xác nhận"
         )
-
-    def _send_to_all(text: str):
-        # Chỉ gửi cho admin — token hết hạn là vấn đề kỹ thuật, không liên quan user thường
-        admin_id = str(cfg.get("admin_telegram_id", "")).strip()
-        if admin_id and admin_id.lstrip("-").isdigit():
-            ok = tg_send(bot_token, admin_id, text)
-            log.info(f"[JWT-CHECK] Đã gửi cảnh báo JWT tới admin ({admin_id}): {ok}")
-        else:
-            log.warning("[JWT-CHECK] admin_telegram_id chưa cấu hình — không gửi được cảnh báo JWT")
-
-    send_token_alert_once(send_fn=_send_to_all, message=msg)
+    tg_send(bot_token, admin_id, msg)
+    log.warning(f"[JWT-CHECK] Đã gửi cảnh báo JWT (còn {remaining//60} phút).")
 
 
 def fetch_all(config: dict, codes: set) -> dict:
