@@ -3099,6 +3099,45 @@ def _cmd_app(token: str, chat_id: int, profile: Optional[dict]):
 
 
 # ═══════════════════════════════════════
+# MINI APP
+# ═══════════════════════════════════════
+
+def _get_miniapp_url(user_id) -> str:
+    base = os.environ.get(
+        "MINIAPP_URL",
+        f"https://{os.environ.get('RAILWAY_PUBLIC_DOMAIN', 'localhost:8443')}"
+    )
+    return f"{base}?user_id={user_id}"
+
+
+def _cmd_app(token: str, chat_id, profile):
+    if not profile:
+        tg_send(token, str(chat_id), "⚠️ Bạn chưa đăng ký.\nGõ <code>/register Tên Của Bạn</code> để đăng ký.")
+        return
+    url = _get_miniapp_url(chat_id)
+    tg_url = f"https://api.telegram.org/bot{token}/sendMessage"
+    try:
+        r = requests.post(tg_url, json={
+            "chat_id": chat_id,
+            "text": "📱 <b>Fund Tracker Pro</b>\n\nMở app để xem danh mục, tín hiệu, DCA và thêm giao dịch:",
+            "parse_mode": "HTML",
+            "reply_markup": {"inline_keyboard": [[
+                {"text": "📊 Mở Fund Tracker Pro", "web_app": {"url": url}}
+            ]]},
+        }, timeout=15)
+        if r.ok:
+            return
+        log.error(f"[/app] Telegram: {r.status_code} {r.text[:300]}")
+    except Exception as e:
+        log.error(f"[/app] {e}")
+    # Fallback: link thường
+    tg_send(token, str(chat_id),
+            f"📱 <b>Fund Tracker Pro</b>\n\n"
+            f'<a href="{url}">Nhấn để mở Mini App</a>\n\n'
+            f"<i>{url}</i>")
+
+
+# ═══════════════════════════════════════
 # MAIN
 # ═══════════════════════════════════════
 
@@ -3151,7 +3190,7 @@ def main():
 
     schedule.every(t_int).minutes.do(job_check_signals)
     schedule.every(t_int).minutes.do(job_nav_change_alert)
-schedule.every().day.at("09:00").do(job_backfill_settlement)
+    schedule.every().day.at("09:00").do(job_backfill_settlement)
     schedule.every().day.at("09:00").do(job_dca_reminder)
     schedule.every().day.at("18:30").do(job_harvest_nav)
     schedule.every().day.at("00:01").do(job_watchdog_ping)
