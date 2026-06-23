@@ -984,11 +984,11 @@ def msg_explain(profile: dict, nav_data: dict, target_code: str = None) -> str:
 
 # HIST cutoff cho từng quỹ — khớp với HIST_CUTOFF trong server.py
 _HIST_CUTOFF = {
-    "TCBF":    "2026-04-02",
-    "VCBFTBF": "2026-04-02",
-    "SSISCA":  "2026-04-02",
-    "VCBFBCF": "2026-04-02",
-    "TCFF":    "2026-04-02",
+    "TCBF":    "2026-06-23",
+    "VCBFTBF": "2026-06-23",
+    "SSISCA":  "2026-06-23",
+    "VCBFBCF": "2026-06-23",
+    "TCFF":    "2026-06-23",
 }
 
 

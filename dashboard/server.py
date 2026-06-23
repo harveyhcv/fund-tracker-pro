@@ -50,7 +50,7 @@ FUNDS_CONFIG = {
     "TCGF":    {"source": "tcbs",    "fmarket_id": None, "tcbs_fallback": True},
 }
 # Ngày cuối cùng đã baked vào HIST.chart — chỉ fetch delta sau ngày này
-HIST_CUTOFF = {code: "2026-04-02" for code in FUNDS_CONFIG}
+HIST_CUTOFF = {code: "2026-06-23" for code in FUNDS_CONFIG}
 
 FMARKET_URL = "https://api.fmarket.vn/res/product/get-nav-history"
 FMARKET_HEADERS = {
