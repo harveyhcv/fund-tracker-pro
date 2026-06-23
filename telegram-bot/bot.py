@@ -3074,18 +3074,11 @@ def _cmd_app(token: str, chat_id: int, profile: Optional[dict]):
         tg_send(token, chat_id, "⚠️ Bạn chưa đăng ký.\nGõ <code>/register Tên Của Bạn</code> để đăng ký.")
         return
     url = _get_miniapp_url(chat_id)
-    payload = {
-        "chat_id": chat_id,
-        "text": "📱 <b>Fund Tracker Pro — Mini App</b>\n\nMở app để xem danh mục, tín hiệu kỹ thuật, DCA calculator và thêm giao dịch:",
-        "parse_mode": "HTML",
-        "reply_markup": json.dumps({
-            "inline_keyboard": [[{
-                "text": "📊 Mở Fund Tracker Pro",
-                "web_app": {"url": url}
-            }]]
-        })
-    }
-    api_post(token, "sendMessage", payload)
+    tg_send_keyboard(
+        token, str(chat_id),
+        "📱 <b>Fund Tracker Pro — Mini App</b>\n\nMở app để xem danh mục, tín hiệu kỹ thuật, DCA calculator và thêm giao dịch:",
+        [[{"text": "📊 Mở Fund Tracker Pro", "web_app": {"url": url}}]]
+    )
 
 
 # ═══════════════════════════════════════
