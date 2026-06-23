@@ -671,23 +671,49 @@ def msg_morning(profile: dict, nav_data: dict) -> str:
         if not d or d["nav"] == 0:
             lines.append(f"⚠️ <code>{code}</code>  Chưa có dữ liệu")
             continue
-        sig = d["signal"]
+        sig  = d["signal"]
         emoji = "🟢" if "MUA" in sig else "🔴" if "BÁN" in sig else "⚪"
+        chg   = d.get("chg_pct", 0) or 0
+        chg_s = f"{'+' if chg >= 0 else ''}{chg:.2f}%"
+        chg_arrow = "▲" if chg > 0.02 else "▼" if chg < -0.02 else "─"
         rsi_s = f"{d['rsi']:.0f}" if d["rsi"] is not None else "—"
         bb_s  = f"{d['bb_pct']:.0f}%" if d["bb_pct"] is not None else "—"
         lines.append(
             f"{emoji} <code>{code}</code>  <b>{fmt_nav(d['nav'])}</b>  "
-            f"<i>{fmt_date(d['nav_date'])}</i>\n"
+            f"{chg_arrow} {chg_s} vs hôm qua\n"
             f"     {sig}  ·  RSI {rsi_s}  ·  BB {bb_s}"
         )
         if "MUA" in sig or "BÁN" in sig:
             action_funds.append(code)
+
+    # Portfolio P&L tóm tắt
+    holdings = {
+        h["code"]: h for h in profile.get("portfolio", [])
+        if h.get("code") and h.get("units", 0) > 0 and h.get("avg_cost", 0) > 0
+    }
+    if holdings:
+        total_val = total_cost = 0.0
+        for code, h in holdings.items():
+            d = nav_data.get(code)
+            if d and d["nav"]:
+                total_val  += float(h["units"]) * d["nav"]
+                total_cost += float(h["units"]) * float(h["avg_cost"])
+        if total_cost > 0:
+            pnl     = total_val - total_cost
+            pnl_pct = pnl / total_cost * 100
+            sign    = "+" if pnl >= 0 else ""
+            lines.append(LINE)
+            lines.append(
+                f"💼 <b>Danh mục:</b> {int(total_val):,}đ  "
+                f"({'📈' if pnl >= 0 else '📉'} {sign}{int(pnl):,}đ  {sign}{pnl_pct:.2f}%)"
+            )
+
     lines.append(LINE)
     if action_funds:
-        lines.append(f"⚡ <b>Tín hiệu hành động:</b> {', '.join(action_funds)}")
+        lines.append(f"⚡ <b>Tín hiệu:</b> {', '.join(action_funds)}")
     else:
-        lines.append("💤 Không có tín hiệu đặc biệt — duy trì danh mục hiện tại")
-    lines.append(f"\n<i>Quỹ Tracker Pro · {now.strftime('%H:%M')}</i>")
+        lines.append("💤 Không có tín hiệu đặc biệt")
+    lines.append(f"<i>Quỹ Tracker Pro · {now.strftime('%H:%M')}</i>")
     return "\n".join(lines)
 
 
@@ -698,19 +724,50 @@ def msg_evening(profile: dict, nav_data: dict, morning_nav: dict) -> str:
         f"👤 <b>{profile['name']}</b>",
         LINE,
     ]
+    action_funds = []
     for code in profile.get("watched_funds", []):
         d = nav_data.get(code)
         if not d or d["nav"] == 0:
             continue
-        nav_now = d["nav"]
-        nav_am  = morning_nav.get(code, {}).get("nav", nav_now)
-        chg = (nav_now - nav_am) / nav_am * 100 if nav_am else 0
+        sig   = d["signal"]
+        emoji = "🟢" if "MUA" in sig else "🔴" if "BÁN" in sig else "⚪"
+        # So vs hôm qua (T-1) — chg_pct từ calc_signal, có ý nghĩa hơn "so sáng"
+        chg   = d.get("chg_pct", 0) or 0
+        chg_s = f"{'+' if chg >= 0 else ''}{chg:.2f}%"
+        chg_arrow = "▲" if chg > 0.02 else "▼" if chg < -0.02 else "─"
+        rsi_s = f"{d['rsi']:.0f}" if d["rsi"] is not None else "—"
         lines.append(
-            f"{fmt_chg(chg)} <code>{code}</code>  "
-            f"<b>{fmt_nav(nav_now)}</b>  "
-            f"<i>{'+' if chg>=0 else ''}{chg:.2f}% so sáng</i>"
+            f"{emoji} <code>{code}</code>  <b>{fmt_nav(d['nav'])}</b>  "
+            f"{chg_arrow} {chg_s}  RSI {rsi_s}"
         )
+        if "MUA" in sig or "BÁN" in sig:
+            action_funds.append(f"{code} {sig}")
+
+    # Portfolio P&L tóm tắt
+    holdings = {
+        h["code"]: h for h in profile.get("portfolio", [])
+        if h.get("code") and h.get("units", 0) > 0 and h.get("avg_cost", 0) > 0
+    }
+    if holdings:
+        total_val = total_cost = 0.0
+        for code, h in holdings.items():
+            d = nav_data.get(code)
+            if d and d["nav"]:
+                total_val  += float(h["units"]) * d["nav"]
+                total_cost += float(h["units"]) * float(h["avg_cost"])
+        if total_cost > 0:
+            pnl     = total_val - total_cost
+            pnl_pct = pnl / total_cost * 100
+            sign    = "+" if pnl >= 0 else ""
+            lines.append(LINE)
+            lines.append(
+                f"💼 <b>Danh mục:</b> {int(total_val):,}đ  "
+                f"({'📈' if pnl >= 0 else '📉'} {sign}{int(pnl):,}đ  {sign}{pnl_pct:.2f}%)"
+            )
+
     lines.append(LINE)
+    if action_funds:
+        lines.append(f"⚡ {' · '.join(action_funds)}")
     lines.append(f"<i>Quỹ Tracker Pro · {now.strftime('%H:%M')}</i>")
     return "\n".join(lines)
 
