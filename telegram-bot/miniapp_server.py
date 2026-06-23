@@ -57,114 +57,63 @@ def _json(handler, data, status=200):
     handler.wfile.write(body)
 
 
-def _find_profile(cfg: dict, telegram_id: str) -> dict | None:
+def _find_profile(cfg: dict, telegram_id: str):
     for p in cfg.get("profiles", []):
         if str(p.get("telegram_id", "")) == str(telegram_id):
             return p
     return None
 
 
-def _get_nav_from_db(codes: list) -> dict:
-    """Lấy NAV mới nhất và series từ Railway DB. {code: {nav, nav_date, series:[{date,nav}]}}"""
-    result = {}
-    try:
-        db_url = os.environ.get("DATABASE_URL", _load_cfg().get("database_url", ""))
-        if not db_url:
-            return result
-        import psycopg2
-        conn = psycopg2.connect(db_url, connect_timeout=8)
-        with conn.cursor() as cur:
-            # Lấy NAV mới nhất mỗi quỹ
-            placeholders = ",".join(["%s"] * len(codes))
-            cur.execute(f"""
-                SELECT DISTINCT ON (fund_code) fund_code, nav_date::text, nav::float
-                FROM nav_history
-                WHERE fund_code IN ({placeholders})
-                ORDER BY fund_code, nav_date DESC
-            """, codes)
-            for code, nav_date, nav in cur.fetchall():
-                result[code] = {"nav": nav, "nav_date": nav_date, "series": []}
-
-            # Lấy 200 điểm gần nhất cho chart
-            cur.execute(f"""
-                SELECT fund_code, nav_date::text, nav::float
-                FROM (
-                    SELECT fund_code, nav_date, nav,
-                           ROW_NUMBER() OVER (PARTITION BY fund_code ORDER BY nav_date DESC) rn
-                    FROM nav_history WHERE fund_code IN ({placeholders})
-                ) t WHERE rn <= 200
-                ORDER BY fund_code, nav_date
-            """, codes)
-            for code, nav_date, nav in cur.fetchall():
-                if code in result:
-                    result[code]["series"].append({"date": nav_date, "nav": nav})
-        conn.close()
-    except Exception as e:
-        log.warning(f"[miniapp] DB nav fetch: {e}")
-    return result
+# Import calc_signal + get_nav_series từ bot.py để dùng cùng logic tính tín hiệu
+try:
+    import sys as _sys
+    _sys.path.insert(0, str(Path(__file__).parent))
+    from bot import calc_signal as _calc_signal_bot, get_nav_series as _get_nav_series_bot
+    _BOT_IMPORTED = True
+except Exception as _e:
+    log.warning(f"[miniapp] Không import được bot.py: {_e}")
+    _BOT_IMPORTED = False
 
 
-def _calc_signals(nav_data: dict) -> dict:
-    """Tính RSI, MACD đơn giản từ series. Trả về {code: {signal, rsi, bb_pct, score}}"""
+def _get_signals_for_codes(codes: list, cfg: dict) -> dict:
+    """Tính tín hiệu dùng đúng hàm calc_signal từ bot.py."""
     results = {}
-    for code, d in nav_data.items():
-        series = d.get("series", [])
-        navs = [p["nav"] for p in series]
-        if len(navs) < 20:
-            results[code] = {"signal": "N/A", "rsi": None, "bb_pct": None, "score": 0,
-                             "nav": d.get("nav", 0), "nav_date": d.get("nav_date", "")}
-            continue
-
-        # RSI 14
-        gains, losses = [], []
-        for i in range(1, min(15, len(navs))):
-            diff = navs[-(i)] - navs[-(i+1)]
-            (gains if diff > 0 else losses).append(abs(diff))
-        avg_g = sum(gains)/14 if gains else 0.001
-        avg_l = sum(losses)/14 if losses else 0.001
-        rs    = avg_g / avg_l
-        rsi   = round(100 - 100/(1+rs), 1)
-
-        # BB 20
-        window = navs[-20:]
-        mean   = sum(window)/len(window)
-        std    = (sum((x-mean)**2 for x in window)/len(window))**0.5
-        upper  = mean + 2*std
-        lower  = mean - 2*std
-        last   = navs[-1]
-        bb_pct = round((last - lower) / (upper - lower) * 100, 1) if upper != lower else 50
-
-        # Score đơn giản
-        score = 0
-        if rsi < 33: score += 3
-        elif rsi < 45: score += 2
-        elif rsi > 70: score -= 3
-        elif rsi > 60: score -= 2
-
-        if bb_pct < 15: score += 2
-        elif bb_pct > 85: score -= 2
-
-        # Momentum 30 ngày
-        if len(navs) >= 31:
-            mom30 = (last - navs[-31]) / navs[-31] * 100
-            if mom30 < -5: score += 1
-        else:
-            mom30 = None
-
-        if score >= 4: sig = "MUA MANH"
-        elif score >= 2: sig = "MUA"
-        elif score <= -4: sig = "BAN MANH"
-        elif score <= -2: sig = "BAN"
-        else: sig = "HOLD"
-
-        # Thay đổi vs hôm qua
-        chg_pct = round((navs[-1] - navs[-2]) / navs[-2] * 100, 3) if len(navs) >= 2 else 0
-
-        results[code] = {
-            "signal": sig, "score": score, "rsi": rsi, "bb_pct": bb_pct,
-            "nav": d["nav"], "nav_date": d["nav_date"], "chg_pct": chg_pct,
-            "mom30": round(mom30, 2) if mom30 is not None else None,
-        }
+    funds_cfg = cfg.get("funds", {})
+    if _BOT_IMPORTED:
+        for code in codes:
+            try:
+                pts = _get_nav_series_bot(code, funds_cfg.get(code, {}), cfg)
+                if pts:
+                    sig = _calc_signal_bot(code, pts)
+                    results[code] = sig
+                else:
+                    results[code] = {"signal": "N/A", "score": 0, "nav": 0, "nav_date": "",
+                                     "rsi": None, "bb_pct": None, "chg_pct": 0}
+            except Exception as e:
+                log.warning(f"[miniapp] calc_signal {code}: {e}")
+                results[code] = {"signal": "N/A", "score": 0, "nav": 0, "nav_date": "",
+                                 "rsi": None, "bb_pct": None, "chg_pct": 0}
+    else:
+        # Fallback: lấy NAV mới nhất từ DB, trả N/A signal
+        db_url = os.environ.get("DATABASE_URL", cfg.get("database_url", ""))
+        if db_url:
+            try:
+                import psycopg2
+                conn = psycopg2.connect(db_url, connect_timeout=8)
+                with conn.cursor() as cur:
+                    ph = ",".join(["%s"] * len(codes))
+                    cur.execute(f"""
+                        SELECT DISTINCT ON (fund_code) fund_code, nav_date::text, nav::float
+                        FROM nav_history WHERE fund_code IN ({ph})
+                        ORDER BY fund_code, nav_date DESC
+                    """, codes)
+                    for code, nav_date, nav in cur.fetchall():
+                        results[code] = {"signal": "N/A", "score": 0,
+                                         "nav": nav, "nav_date": nav_date,
+                                         "rsi": None, "bb_pct": None, "chg_pct": 0}
+                conn.close()
+            except Exception as e:
+                log.warning(f"[miniapp] DB fallback: {e}")
     return results
 
 
@@ -338,10 +287,9 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         if not profile:
             _json(self, {"error": "Profile không tìm thấy", "telegram_id": tg_id}, 404)
             return
-        # Lấy NAV + signals
+        # Lấy NAV + signals dùng cùng logic với bot.py
         watched  = profile.get("watched_funds", [])
-        nav_data = _get_nav_from_db(watched)
-        signals  = _calc_signals(nav_data)
+        signals  = _get_signals_for_codes(watched, cfg)
         portfolio = _calc_portfolio(profile, signals)
         _json(self, {
             "name": profile.get("name", ""),
@@ -357,8 +305,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         cfg     = _load_cfg()
         profile = _find_profile(cfg, tg_id) if tg_id else None
         watched = profile.get("watched_funds", []) if profile else list(cfg.get("funds", {}).keys())[:10]
-        nav_data = _get_nav_from_db(watched)
-        signals  = _calc_signals(nav_data)
+        signals = _get_signals_for_codes(watched, cfg)
         _json(self, {"signals": signals, "updated": datetime.now().isoformat()})
 
     def _api_nav_history(self, code: str):
@@ -393,8 +340,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             _json(self, {"error": "Profile không tìm thấy"}, 404)
             return
         watched  = profile.get("watched_funds", [])
-        nav_data = _get_nav_from_db(watched)
-        signals  = _calc_signals(nav_data)
+        signals  = _get_signals_for_codes(watched, cfg)
         result   = _calc_dca(profile, signals, budget)
         _json(self, result)
 
