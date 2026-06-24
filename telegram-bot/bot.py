@@ -1026,15 +1026,16 @@ def _push_nav_to_server(nav_data: dict, config: dict):
 
 
 def _handle_tcbs_auth_error(config: dict, failed_codes: set):
-    """Thông báo các quỹ outdated NAV — CHỈ admin, CHỈ 1 lần/ngày."""
+    """Thông báo các quỹ outdated NAV — CHỈ admin, cooldown 4 giờ."""
     bot_token = config.get("bot_token", "")
     if not bot_token or bot_token.startswith("NHAP"):
         return
 
-    today = date.today().isoformat()
     state = load_state()
-    if state.get("tcbs_auth_alerted_date") == today:
-        log.debug("[TCBS-AUTH] đã cảnh báo hôm nay, bỏ qua.")
+    last_alert_ts = state.get("tcbs_auth_alerted_ts", 0)
+    now_ts = datetime.now().timestamp()
+    if now_ts - last_alert_ts < 4 * 3600:  # cooldown 4 tiếng
+        log.debug(f"[TCBS-AUTH] cooldown còn {(4*3600 - (now_ts - last_alert_ts))/60:.0f} phút, bỏ qua.")
         return
 
     admin_id = str(config.get("admin_telegram_id", "")).strip()
@@ -1073,7 +1074,7 @@ def _handle_tcbs_auth_error(config: dict, failed_codes: set):
     )
     ok = tg_send(bot_token, admin_id, msg)
     if ok:
-        state["tcbs_auth_alerted_date"] = today
+        state["tcbs_auth_alerted_ts"] = datetime.now().timestamp()
         save_state(state)
         log.warning(f"[TCBS-AUTH] NAV outdated ({', '.join(sorted(failed_codes))}) — đã cảnh báo admin.")
 

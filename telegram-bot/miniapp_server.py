@@ -654,15 +654,35 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         cfg["tcbs_token"] = new_token
         _save_cfg(cfg)
         log.info(f"[admin] tcbs_token cập nhật (len={len(new_token)}) — sẽ fetch NAV ngay")
-        # Fetch NAV ngay trong background thread
+        # Fetch NAV ngay trong background thread rồi báo kết quả cho admin
         if _BOT_IMPORTED:
+            admin_tg_id = str(cfg.get("admin_telegram_id", ""))
+            bot_tok = cfg.get("bot_token", "")
+
             def _bg_fetch():
                 try:
                     log.info("[admin] Background fetch NAV sau khi cập nhật token...")
-                    _job_check_signals_bot()
-                    log.info("[admin] Background fetch NAV hoàn tất.")
+                    from bot import load_config as _load_config, all_watched_codes as _all_watched_codes
+                    from bot import fetch_all as _fetch_all, tg_send as _tg_send
+                    fresh_cfg = _load_config()
+                    codes = _all_watched_codes(fresh_cfg)
+                    nav_data = _fetch_all(fresh_cfg, codes)
+                    ok_codes  = sorted(c for c, d in nav_data.items() if d.get("nav"))
+                    fail_codes = sorted(codes - set(ok_codes))
+                    log.info(f"[admin] Fetch xong: OK={ok_codes}, FAIL={fail_codes}")
+                    if admin_tg_id and bot_tok:
+                        lines = [f"✅ <b>NAV đã cập nhật</b> ({len(ok_codes)}/{len(codes)} mã)\n"]
+                        if ok_codes:
+                            for c in ok_codes:
+                                nav_val = nav_data[c].get("nav", 0)
+                                sig     = nav_data[c].get("signal", "")
+                                lines.append(f"• <code>{c}</code>  {nav_val:,.0f}  {sig}")
+                        if fail_codes:
+                            lines.append(f"\n❌ Chưa lấy được ({len(fail_codes)} mã): {', '.join(f'<code>{c}</code>' for c in fail_codes)}")
+                        _tg_send(bot_tok, admin_tg_id, "\n".join(lines))
                 except Exception as _ex:
                     log.warning(f"[admin] Background fetch lỗi: {_ex}")
+
             threading.Thread(target=_bg_fetch, daemon=True, name="admin-nav-refresh").start()
         _json(self, {"ok": True, "msg": "tcbs_token updated, NAV fetch started in background"})
 
