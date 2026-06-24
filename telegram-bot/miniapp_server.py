@@ -654,32 +654,67 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         cfg["tcbs_token"] = new_token
         _save_cfg(cfg)
         log.info(f"[admin] tcbs_token cập nhật (len={len(new_token)}) — sẽ fetch NAV ngay")
-        # Fetch NAV ngay trong background thread rồi báo kết quả cho admin
+        # Fetch full DB NAV trong background, rồi gửi 1 message tổng hợp cho admin
         if _BOT_IMPORTED:
             admin_tg_id = str(cfg.get("admin_telegram_id", ""))
-            bot_tok = cfg.get("bot_token", "")
+            bot_tok     = cfg.get("bot_token", "")
+            _new_token  = new_token  # capture cho closure
 
             def _bg_fetch():
+                import subprocess, sys as _sys
                 try:
-                    log.info("[admin] Background fetch NAV sau khi cập nhật token...")
-                    from bot import load_config as _load_config, all_watched_codes as _all_watched_codes
-                    from bot import fetch_all as _fetch_all, tg_send as _tg_send
-                    fresh_cfg = _load_config()
-                    codes = _all_watched_codes(fresh_cfg)
-                    nav_data = _fetch_all(fresh_cfg, codes)
-                    ok_codes  = sorted(c for c, d in nav_data.items() if d.get("nav"))
-                    fail_codes = sorted(codes - set(ok_codes))
-                    log.info(f"[admin] Fetch xong: OK={ok_codes}, FAIL={fail_codes}")
+                    from bot import load_config as _lc, all_watched_codes as _awc
+                    from bot import fetch_all as _fa, tg_send as _ts
+
+                    # ── 1. harvest_nav.py --daily --jwt TOKEN (toàn bộ funds_master) ──
+                    script = Path(__file__).parent.parent / "scripts" / "harvest_nav.py"
+                    harvest_out, harvest_err = "", ""
+                    total_new, updated_funds = 0, []
+                    if script.exists():
+                        res = subprocess.run(
+                            [_sys.executable, str(script), "--daily", "--jwt", _new_token],
+                            capture_output=True, text=True, timeout=300,
+                            env={**__import__("os").environ},
+                        )
+                        harvest_out = (res.stdout or "").strip()
+                        harvest_err = (res.stderr or "").strip()
+                        log.info(f"[admin] harvest_nav: {harvest_out[-200:] if harvest_out else harvest_err[:200]}")
+                        # Parse dòng summary "✅ Daily: +N records — TCBF(+1), TCFF(+3), ..."
+                        for line in harvest_out.splitlines():
+                            if "Daily:" in line and "+" in line:
+                                import re
+                                m = re.search(r"\+(\d+) records", line)
+                                if m:
+                                    total_new = int(m.group(1))
+                                updated_funds = re.findall(r"([A-Z]+)\(\+\d+\)", line)
+                    else:
+                        log.warning("[admin] harvest_nav.py không tìm thấy")
+
+                    # ── 2. fetch_all watched codes để lấy signal ──
+                    fresh_cfg  = _lc()
+                    watched    = sorted(_awc(fresh_cfg))
+                    nav_data   = _fa(fresh_cfg, set(watched))
+                    ok_watched = [c for c in watched if nav_data.get(c, {}).get("nav")]
+                    fail_watched = [c for c in watched if c not in ok_watched]
+
+                    # ── 3. Gộp 1 message ──
                     if admin_tg_id and bot_tok:
-                        lines = [f"✅ <b>NAV đã cập nhật</b> ({len(ok_codes)}/{len(codes)} mã)\n"]
-                        if ok_codes:
-                            for c in ok_codes:
-                                nav_val = nav_data[c].get("nav", 0)
-                                sig     = nav_data[c].get("signal", "")
-                                lines.append(f"• <code>{c}</code>  {nav_val:,.0f}  {sig}")
-                        if fail_codes:
-                            lines.append(f"\n❌ Chưa lấy được ({len(fail_codes)} mã): {', '.join(f'<code>{c}</code>' for c in fail_codes)}")
-                        _tg_send(bot_tok, admin_tg_id, "\n".join(lines))
+                        lines = []
+                        if total_new > 0:
+                            lines.append(f"✅ <b>NAV đã cập nhật</b> — <b>+{total_new}</b> records mới ({len(updated_funds)} mã trong DB)")
+                        else:
+                            lines.append(f"✅ <b>Token mới đã lưu</b> — DB đã up-to-date (không có NAV mới)")
+
+                        lines.append("")
+                        lines.append("📊 <b>Tín hiệu danh mục của bạn:</b>")
+                        for c in ok_watched:
+                            d = nav_data[c]
+                            lines.append(f"  • <code>{c}</code>  {d.get('nav', 0):,.0f}  {d.get('signal', '')}")
+                        if fail_watched:
+                            lines.append(f"\n❌ Chưa lấy được: {', '.join(f'<code>{c}</code>' for c in fail_watched)}")
+
+                        _ts(bot_tok, admin_tg_id, "\n".join(lines))
+
                 except Exception as _ex:
                     log.warning(f"[admin] Background fetch lỗi: {_ex}")
 
