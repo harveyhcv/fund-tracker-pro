@@ -1,17 +1,23 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-fetch_gold.py — Lấy giá vàng SJC + DOJI + XAU/USD và lưu vào PostgreSQL
+fetch_gold.py — Lấy giá vàng và lưu vào PostgreSQL
 
-Sản phẩm theo dõi:
-  SJC_1L      Vàng miếng SJC 1 lượng          (từ sjc.com.vn)
-  DOJI_SJC_1L Vàng miếng SJC 1 lượng tại DOJI (từ doji.vn)
-  DOJI_NHAN   Vàng nhẫn DOJI 999.9            (từ doji.vn)
-  XAU_USD     Vàng quốc tế                    (Yahoo Finance, USD/troy oz)
+Nguồn chính   : vang.today/api/prices  (JSON, free, không cần auth)
+Nguồn dự phòng: giavang.doji.vn scrape + Yahoo Finance (XAU/USD)
+Cross-check   : so sánh vang.today vs DOJI scrape, cảnh báo nếu lệch >1%
+
+Sản phẩm lưu (source : product):
+  VANGTODAYAPI : SJC_1L           Vàng miếng SJC 1L
+  VANGTODAYAPI : DOJI_NHAN_9999   DOJI nhẫn 9999 (Hà Nội)
+  VANGTODAYAPI : XAUUSD           XAU/USD quốc tế
+  DOJI_SCRAPE  : SJC_1L           Cross-check từ giavang.doji.vn
+  DOJI_SCRAPE  : DOJI_NHAN_9999   Cross-check từ giavang.doji.vn
 
 Chạy daily (cron 18:30):
     python3 scripts/fetch_gold.py --daily
     python3 scripts/fetch_gold.py --status
+    python3 scripts/fetch_gold.py --crosscheck
 """
 
 import argparse
@@ -29,6 +35,23 @@ from typing import Optional
 
 ROOT = Path(__file__).parent.parent
 
+_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/125.0.0.0 Safari/537.36"
+
+# Mapping vang.today type_code → product key của chúng ta
+_VANGTODAY_MAP = {
+    "SJL1L10":   ("SJC_1L",         "Vàng miếng SJC 9999 1 lượng"),
+    "DOHNL":     ("DOJI_NHAN_9999", "DOJI Hà Nội"),
+    "DOHCML":    ("DOJI_HCM",       "DOJI HCM"),
+    "DOJINHTV":  ("DOJI_JEWELRY",   "DOJI Jewelry"),
+    "SJ9999":    ("SJC_NHAN",       "Nhẫn SJC 9999"),
+    "PQHNVM":    ("PNJ_HN",         "PNJ Hà Nội"),
+    "PQHN24NTT": ("PNJ_24K",        "PNJ 24K"),
+    "BT9999NTT": ("BAOTINNGUYEN",   "Bảo Tín 9999"),
+    "BTSJC":     ("BAOTINSJC",      "Bảo Tín SJC"),
+    "VNGSJC":    ("VNGOLD_SJC",     "VN Gold SJC"),
+    "XAUUSD":    ("XAUUSD",         "Vàng quốc tế XAU/USD"),
+}
+
 
 # ── DB ────────────────────────────────────────────────────────────────────────
 
@@ -42,7 +65,7 @@ def _get_db_url() -> str:
             return json.loads(cfg.read_text(encoding="utf-8")).get("database_url", "")
         except Exception:
             pass
-    sys.exit("❌ DATABASE_URL không tìm thấy")
+    sys.exit("DATABASE_URL không tìm thấy")
 
 
 def connect_db():
@@ -50,7 +73,7 @@ def connect_db():
         import psycopg2
         return psycopg2.connect(_get_db_url(), connect_timeout=10)
     except ImportError:
-        sys.exit("❌ psycopg2 chưa cài: pip install psycopg2-binary")
+        sys.exit("psycopg2 chưa cài: pip install psycopg2-binary")
 
 
 _SCHEMA = """
@@ -73,199 +96,16 @@ CREATE INDEX IF NOT EXISTS idx_gold_date ON gold_prices (price_date DESC);
 def ensure_schema(conn):
     with conn.cursor() as cur:
         cur.execute(_SCHEMA)
-        # Migrate cũ: nếu cột product chưa tồn tại, thêm vào
         try:
-            cur.execute("""
-                ALTER TABLE gold_prices ADD COLUMN IF NOT EXISTS product TEXT NOT NULL DEFAULT 'default';
-            """)
+            cur.execute("ALTER TABLE gold_prices ADD COLUMN IF NOT EXISTS product TEXT NOT NULL DEFAULT 'default'")
         except Exception:
             pass
-        # Thêm unique constraint mới nếu cần
         try:
-            cur.execute("""
-                ALTER TABLE gold_prices
-                    DROP CONSTRAINT IF EXISTS gold_prices_price_date_source_key;
-            """)
+            cur.execute("ALTER TABLE gold_prices DROP CONSTRAINT IF EXISTS gold_prices_price_date_source_key")
         except Exception:
             pass
     conn.commit()
 
-
-# ── Parse helpers ─────────────────────────────────────────────────────────────
-
-def _parse_price(val) -> Optional[float]:
-    if val is None:
-        return None
-    s = str(val).strip().replace(" ", "").replace(",", "")
-    # Nếu có dấu chấm mà độ dài phần thập phân <= 3 → dấu thập phân
-    # VD: "89.500.000" → 89500000; "3.141" → 3141 (VND thường không có thập phân)
-    s = s.replace(".", "")
-    try:
-        v = float(s)
-        # Sanity check: giá vàng VN dao động 5M–200M VND/lượng
-        if v < 1_000:       # quá nhỏ → có thể đơn vị triệu
-            v *= 1_000_000
-        elif v > 500_000_000:  # > 500M → có thể đơn vị đồng nhưng sai
-            v /= 1000
-        return v
-    except Exception:
-        return None
-
-
-def _req(url: str, timeout: int = 12) -> bytes:
-    headers = {
-        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0) AppleWebKit/605.1.15",
-        "Accept": "application/json, text/html, */*",
-    }
-    req = urllib.request.Request(url, headers=headers)
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return r.read()
-
-
-# ── Fetch SJC official ────────────────────────────────────────────────────────
-
-def fetch_sjc_official() -> Optional[dict]:
-    """
-    Lấy giá SJC miếng 1 lượng (VND/lượng).
-    Thử: (1) SJC XML chính thức, (2) scrape giavang.doji.vn (họ niêm yết giá SJC).
-    """
-    # Thử 1: SJC XML — sjc.com.vn/xml/tygia.xml (có thể 403/404 tùy thời điểm)
-    for sjc_url in ("https://sjc.com.vn/xml/tygia.xml", "https://www.sjc.com.vn/xml/tygia.xml"):
-        try:
-            raw = _req(sjc_url).decode("utf-8", errors="replace")
-            root = ET.fromstring(raw)
-            candidates = []
-            for item in root.iter():
-                name = (item.get("name") or item.findtext("name") or "").lower()
-                buy_raw  = item.get("buy")  or item.findtext("buy")
-                sell_raw = item.get("sell") or item.findtext("sell")
-                if not buy_raw or not sell_raw:
-                    continue
-                buy  = _parse_price(buy_raw)
-                sell = _parse_price(sell_raw)
-                if buy and sell and 50_000_000 < sell < 250_000_000:
-                    score = 0
-                    if "1l" in name or "1 l" in name: score += 3
-                    if "sjc" in name:                  score += 2
-                    if "mieng" in name or "miếng" in name: score += 1
-                    candidates.append((score, buy, sell, name))
-            if candidates:
-                candidates.sort(reverse=True)
-                _, buy, sell, matched_name = candidates[0]
-                return {"buy": buy, "sell": sell, "name": matched_name}
-        except Exception:
-            pass
-
-    # Thử 2: scrape giavang.doji.vn (có giá SJC bán lẻ chính xác)
-    try:
-        html = _req(_DOJI_GOLD_URL).decode("utf-8", errors="replace")
-        rows = re.findall(r"<tr[^>]*>(.*?)</tr>", html, re.S)
-        for row in rows:
-            cells = re.findall(r"<t[dh][^>]*>(.*?)</t[dh]>", row, re.S)
-            if len(cells) < 3:
-                continue
-            name = re.sub(r"<[^>]+>", " ", cells[0]).strip().lower()
-            if "sjc" not in name or "bán lẻ" not in name:
-                continue
-            nums = []
-            for c in cells[1:]:
-                txt = re.sub(r"<[^>]+>", "", c).strip().replace(".", "").replace(",", "")
-                try:
-                    v = float(txt)
-                    if 5_000 < v < 500_000:
-                        nums.append(v)
-                except ValueError:
-                    pass
-            if len(nums) >= 2:
-                return {"buy": round(nums[0] * 10_000), "sell": round(nums[1] * 10_000),
-                        "name": "SJC bán lẻ (nguồn DOJI)"}
-    except Exception as e:
-        print(f"  ⚠ SJC từ DOJI: {e}", file=sys.stderr)
-    return None
-
-
-# ── Fetch DOJI ────────────────────────────────────────────────────────────────
-
-_DOJI_GOLD_URL = "https://giavang.doji.vn/"
-
-def fetch_doji() -> dict:
-    """
-    Scrape giavang.doji.vn — bảng giá HTML, đơn vị nghìn/chỉ → quy về VND/lượng.
-    Trả về dict: {"SJC_1L": {"buy":..., "sell":...}, "DOJI_NHAN_9999": {...}, ...}
-    """
-    results = {}
-    try:
-        html = _req(_DOJI_GOLD_URL).decode("utf-8", errors="replace")
-        # Mỗi row: <tr>...Tên sản phẩm...<td>MUA</td><td>BÁN</td>...</tr>
-        rows = re.findall(r"<tr[^>]*>(.*?)</tr>", html, re.S)
-        for row in rows:
-            cells = re.findall(r"<t[dh][^>]*>(.*?)</t[dh]>", row, re.S)
-            if len(cells) < 3:
-                continue
-            name = re.sub(r"<[^>]+>", " ", cells[0]).strip()
-            # Tìm 2 số đầu tiên trong các ô còn lại
-            nums = []
-            for c in cells[1:]:
-                txt = re.sub(r"<[^>]+>", "", c).strip().replace(".", "").replace(",", "")
-                try:
-                    v = float(txt)
-                    if 5_000 < v < 500_000:   # nghìn/chỉ range
-                        nums.append(v)
-                except ValueError:
-                    pass
-            if len(nums) < 2:
-                continue
-            # Đơn vị: nghìn/chỉ → VND/lượng = value * 1000 * 10
-            buy  = round(nums[0] * 10_000)
-            sell = round(nums[1] * 10_000)
-            nl   = name.lower()
-
-            if "sjc" in nl and "bán lẻ" in nl:
-                if "SJC_1L" not in results:
-                    results["SJC_1L"] = {"buy": buy, "sell": sell, "name": f"SJC Bán lẻ (DOJI)"}
-            elif "nhẫn" in nl or "nhan" in nl:
-                key = "DOJI_NHAN_9999" if ("9999" in nl or "999.9" in nl or "hưng thịnh" in nl) else "DOJI_NHAN"
-                if key not in results:
-                    results[key] = {"buy": buy, "sell": sell, "name": name[:50]}
-    except Exception as e:
-        print(f"  ⚠ DOJI scrape: {e}", file=sys.stderr)
-    return results
-
-
-# ── Fetch XAU/USD ─────────────────────────────────────────────────────────────
-
-def fetch_xauusd() -> Optional[float]:
-    """Giá vàng quốc tế USD/troy oz."""
-    for symbol in ("GC=F", "XAUUSD=X"):
-        try:
-            url = (f"https://query1.finance.yahoo.com/v8/finance/chart/"
-                   f"{urllib.parse.quote(symbol)}?interval=1d&range=2d")
-            data   = json.loads(_req(url))
-            closes = data["chart"]["result"][0]["indicators"]["quote"][0]["close"]
-            closes = [c for c in closes if c is not None]
-            if closes:
-                return round(closes[-1], 2)
-        except Exception as e:
-            print(f"  ⚠ XAU/USD ({symbol}): {e}", file=sys.stderr)
-    return None
-
-
-def fetch_usd_vnd() -> Optional[float]:
-    """Tỷ giá USD/VND từ Vietcombank."""
-    try:
-        url = "https://portal.vietcombank.com.vn/Usercontrols/TVPortal.TyGia/pXML.aspx"
-        raw  = _req(url).decode("utf-8", errors="replace")
-        root = ET.fromstring(raw)
-        for item in root.iter("Exrate"):
-            if item.get("CurrencyCode") == "USD":
-                sell = item.get("Sell", "").replace(",", "")
-                return float(sell) if sell else None
-    except Exception as e:
-        print(f"  ⚠ USD/VND: {e}", file=sys.stderr)
-    return None
-
-
-# ── DB upsert ─────────────────────────────────────────────────────────────────
 
 def upsert(conn, today: date, source: str, product: str,
            buy: float, sell: float, currency: str = "VND", extra: dict = None):
@@ -281,55 +121,224 @@ def upsert(conn, today: date, source: str, product: str,
         cur.execute(sql, (today, source, product, buy, sell, currency, json.dumps(extra or {})))
 
 
+# ── HTTP helper ───────────────────────────────────────────────────────────────
+
+def _req(url: str, timeout: int = 12) -> bytes:
+    req = urllib.request.Request(url, headers={"User-Agent": _UA, "Accept": "application/json,*/*"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return r.read()
+
+
+# ── Nguồn 1: vang.today API ──────────────────────────────────────────────────
+
+_VANGTODAY_URL = "https://www.vang.today/api/prices"
+
+def fetch_vangtoday() -> dict:
+    """
+    GET vang.today/api/prices — trả về toàn bộ sản phẩm.
+    Result: {product_key: {"buy":..., "sell":..., "name":..., "currency":..., "change_buy":...}}
+    """
+    try:
+        data = json.loads(_req(_VANGTODAY_URL))
+        if not data.get("success"):
+            print("  ⚠ vang.today: success=false", file=sys.stderr)
+            return {}
+        prices = data.get("prices", {})
+        result = {}
+        for code, info in prices.items():
+            if code not in _VANGTODAY_MAP:
+                continue
+            product_key, label = _VANGTODAY_MAP[code]
+            result[product_key] = {
+                "buy":        info["buy"],
+                "sell":       info.get("sell") or info["buy"],
+                "name":       label,
+                "currency":   info.get("currency", "VND"),
+                "change_buy": info.get("change_buy", 0),
+                "type_code":  code,
+            }
+        return result
+    except Exception as e:
+        print(f"  ⚠ vang.today: {e}", file=sys.stderr)
+        return {}
+
+
+# ── Nguồn 2: DOJI scrape (cross-check) ───────────────────────────────────────
+
+_DOJI_GOLD_URL = "https://giavang.doji.vn/"
+
+def fetch_doji_scrape() -> dict:
+    """
+    Scrape giavang.doji.vn — đơn vị nghìn/chỉ → VND/lượng (*10,000).
+    Dùng để cross-check với vang.today.
+    """
+    results = {}
+    try:
+        html = _req(_DOJI_GOLD_URL).decode("utf-8", errors="replace")
+        rows = re.findall(r"<tr[^>]*>(.*?)</tr>", html, re.S)
+        for row in rows:
+            cells = re.findall(r"<t[dh][^>]*>(.*?)</t[dh]>", row, re.S)
+            if len(cells) < 3:
+                continue
+            name = re.sub(r"<[^>]+>", " ", cells[0]).strip()
+            nums = []
+            for c in cells[1:]:
+                txt = re.sub(r"<[^>]+>", "", c).strip().replace(".", "").replace(",", "")
+                try:
+                    v = float(txt)
+                    if 5_000 < v < 500_000:
+                        nums.append(v)
+                except ValueError:
+                    pass
+            if len(nums) < 2:
+                continue
+            buy  = round(nums[0] * 10_000)
+            sell = round(nums[1] * 10_000)
+            nl   = name.lower()
+            if "sjc" in nl and "bán lẻ" in nl and "SJC_1L" not in results:
+                results["SJC_1L"] = {"buy": buy, "sell": sell, "name": "SJC bán lẻ (DOJI scrape)"}
+            elif ("nhẫn" in nl or "nhan" in nl) and "9999" in nl and "DOJI_NHAN_9999" not in results:
+                results["DOJI_NHAN_9999"] = {"buy": buy, "sell": sell, "name": name[:50]}
+    except Exception as e:
+        print(f"  ⚠ DOJI scrape: {e}", file=sys.stderr)
+    return results
+
+
+# ── Nguồn 3: XAU/USD Yahoo Finance (backup nếu vang.today thiếu) ─────────────
+
+def fetch_xauusd_yahoo() -> Optional[float]:
+    for symbol in ("GC=F", "XAUUSD=X"):
+        try:
+            url = (f"https://query1.finance.yahoo.com/v8/finance/chart/"
+                   f"{urllib.parse.quote(symbol)}?interval=1d&range=2d")
+            data   = json.loads(_req(url))
+            closes = data["chart"]["result"][0]["indicators"]["quote"][0]["close"]
+            closes = [c for c in closes if c is not None]
+            if closes:
+                return round(closes[-1], 2)
+        except Exception as e:
+            print(f"  ⚠ XAU/USD Yahoo ({symbol}): {e}", file=sys.stderr)
+    return None
+
+
+def fetch_usd_vnd() -> Optional[float]:
+    try:
+        url = "https://portal.vietcombank.com.vn/Usercontrols/TVPortal.TyGia/pXML.aspx"
+        raw  = _req(url).decode("utf-8", errors="replace")
+        root = ET.fromstring(raw)
+        for item in root.iter("Exrate"):
+            if item.get("CurrencyCode") == "USD":
+                sell = item.get("Sell", "").replace(",", "")
+                return float(sell) if sell else None
+    except Exception:
+        pass
+    return None
+
+
+# ── Cross-check ───────────────────────────────────────────────────────────────
+
+def crosscheck(vt: dict, doji: dict, threshold_pct: float = 1.0) -> list[str]:
+    """So sánh vang.today vs DOJI scrape, trả về danh sách cảnh báo nếu lệch > threshold_pct%."""
+    warnings = []
+    for product in ("SJC_1L", "DOJI_NHAN_9999"):
+        vt_d   = vt.get(product)
+        doji_d = doji.get(product)
+        if not vt_d or not doji_d:
+            continue
+        for side in ("buy", "sell"):
+            v1, v2 = vt_d[side], doji_d[side]
+            if v1 and v2 and v2:
+                diff_pct = abs(v1 - v2) / v2 * 100
+                if diff_pct > threshold_pct:
+                    warnings.append(
+                        f"  ⚠ LỆCH {diff_pct:.1f}% [{product}.{side}] "
+                        f"vang.today={v1/1e6:.3f}M vs DOJI={v2/1e6:.3f}M"
+                    )
+    return warnings
+
+
 # ── Main pipeline ─────────────────────────────────────────────────────────────
 
 def run_daily(verbose: bool = True) -> dict:
-    today   = date.today()
-    results = {}
-    conn    = connect_db()
+    today  = date.today()
+    conn   = connect_db()
     ensure_schema(conn)
+    saved  = {}
 
-    # 1. SJC official
-    sjc = fetch_sjc_official()
-    if sjc:
-        upsert(conn, today, "SJC", "SJC_1L", sjc["buy"], sjc["sell"])
-        results["SJC_1L"] = sjc
+    # 1. vang.today — nguồn chính (tất cả sản phẩm)
+    vt = fetch_vangtoday()
+    for product, d in vt.items():
+        curr = d.get("currency", "VND")
+        buy, sell = d["buy"], d["sell"]
+        upsert(conn, today, "VANGTODAYAPI", product, buy, sell, currency=curr,
+               extra={"name": d["name"], "type_code": d.get("type_code"),
+                      "change_buy": d.get("change_buy", 0)})
+        saved[product] = d
         if verbose:
-            print(f"  ✅ SJC official  Mua:{sjc['buy']/1e6:.3f}M  Bán:{sjc['sell']/1e6:.3f}M VND/lượng")
-    else:
-        results["SJC_error"] = "Không lấy được"
-        if verbose:
-            print("  ❌ SJC official — không lấy được giá")
+            if curr == "USD":
+                print(f"  ✅ {product:<20} {buy:,.2f} USD/oz  (vang.today)")
+            else:
+                print(f"  ✅ {product:<20} Mua:{buy/1e6:.3f}M  Bán:{sell/1e6:.3f}M  (vang.today)")
 
-    # 2. DOJI products
-    doji = fetch_doji()
+    if not vt and verbose:
+        print("  ❌ vang.today — không lấy được, dùng fallback")
+
+    # 2. DOJI scrape — cross-check + fallback nếu vang.today lỗi
+    doji = fetch_doji_scrape()
     for product, d in doji.items():
-        upsert(conn, today, "DOJI", product, d["buy"], d["sell"],
+        upsert(conn, today, "DOJI_SCRAPE", product, d["buy"], d["sell"],
                extra={"name": d["name"]})
-        results[f"DOJI_{product}"] = d
-        if verbose:
-            print(f"  ✅ DOJI {product:15s} Mua:{d['buy']/1e6:.3f}M  Bán:{d['sell']/1e6:.3f}M")
-    if not doji and verbose:
-        print("  ⚠ DOJI — không lấy được giá (API có thể thay đổi)")
+    if verbose and doji:
+        print(f"  ✅ DOJI cross-check ({len(doji)} sản phẩm) lưu vào DOJI_SCRAPE")
 
-    # 3. XAU/USD + tỷ giá
-    xau = fetch_xauusd()
-    if xau:
-        usd_vnd         = fetch_usd_vnd() or 25_400.0
-        xau_vnd_luong   = round(xau * usd_vnd * (37.5 / 31.1035))
-        upsert(conn, today, "INTERNATIONAL", "XAU_USD", xau, xau, currency="USD",
-               extra={"usd_vnd": usd_vnd, "xau_vnd_luong": xau_vnd_luong})
-        results["XAU_USD"] = {"price_usd": xau, "usd_vnd": usd_vnd,
-                               "vnd_luong": xau_vnd_luong}
+    # Nếu vang.today không có SJC_1L → dùng DOJI scrape
+    if "SJC_1L" not in vt and "SJC_1L" in doji:
+        d = doji["SJC_1L"]
+        upsert(conn, today, "VANGTODAYAPI", "SJC_1L", d["buy"], d["sell"],
+               extra={"name": d["name"], "fallback": "doji_scrape"})
+        saved["SJC_1L"] = d
         if verbose:
-            print(f"  ✅ XAU/USD  {xau:,.2f} USD/oz ≈ {xau_vnd_luong/1e6:.2f}M VND/lượng")
+            print(f"  ✅ SJC_1L (fallback DOJI scrape) Mua:{d['buy']/1e6:.3f}M Bán:{d['sell']/1e6:.3f}M")
+
+    # 3. XAU/USD — dùng vang.today nếu có, Yahoo Finance làm backup
+    if "XAUUSD" not in vt:
+        xau = fetch_xauusd_yahoo()
+        if xau:
+            usd_vnd = fetch_usd_vnd() or 25_400.0
+            xau_vnd = round(xau * usd_vnd * (37.5 / 31.1035))
+            upsert(conn, today, "VANGTODAYAPI", "XAUUSD", xau, xau, currency="USD",
+                   extra={"usd_vnd": usd_vnd, "xau_vnd_luong": xau_vnd})
+            if verbose:
+                print(f"  ✅ XAUUSD (Yahoo) {xau:,.2f} USD/oz ≈ {xau_vnd/1e6:.2f}M VND/lượng")
     else:
+        # Tính thêm quy đổi VND/lượng nếu vang.today chỉ cho USD/oz
+        xau_entry = vt["XAUUSD"]
+        usd_vnd   = fetch_usd_vnd() or 25_400.0
+        xau_vnd   = round(xau_entry["buy"] * usd_vnd * (37.5 / 31.1035))
+        upsert(conn, today, "VANGTODAYAPI", "XAUUSD",
+               xau_entry["buy"], xau_entry["buy"], currency="USD",
+               extra={"usd_vnd": usd_vnd, "xau_vnd_luong": xau_vnd,
+                      "change": xau_entry.get("change_buy", 0)})
         if verbose:
-            print("  ❌ XAU/USD — không lấy được")
+            print(f"  ✅ XAUUSD {xau_entry['buy']:,.2f} USD/oz ≈ {xau_vnd/1e6:.2f}M VND/lượng")
+
+    # 4. Cross-check cảnh báo
+    warnings = crosscheck(vt, doji)
+    if warnings:
+        print("\n  --- CROSS-CHECK WARNINGS ---")
+        for w in warnings:
+            print(w)
+    elif verbose and doji:
+        # Hiển thị diff để tham khảo
+        for product in ("SJC_1L", "DOJI_NHAN_9999"):
+            vt_d = vt.get(product); doji_d = doji.get(product)
+            if vt_d and doji_d:
+                diff = abs(vt_d["sell"] - doji_d["sell"]) / 1e6
+                print(f"  ✓ cross-check {product}: diff={diff:.3f}M VND/lượng OK")
 
     conn.commit()
     conn.close()
-    return results
+    return saved
 
 
 def run_status():
@@ -345,25 +354,54 @@ def run_status():
         """)
         rows = cur.fetchall()
     conn.close()
-    print(f"\n📊 Gold DB Status — {len(rows)} sản phẩm")
-    print(f"{'Source':<14} {'Product':<18} {'#':>5}  {'First':>12}  {'Last':>12}  {'Sell':>18}")
-    print("-" * 85)
+    print(f"\nGold DB Status — {len(rows)} san pham")
+    print(f"{'Source':<16} {'Product':<22} {'#':>5}  {'First':>12}  {'Last':>12}  {'Sell':>18}")
+    print("-" * 90)
     for r in rows:
         src, prod, cnt, first, last, sell = r
-        print(f"{src:<14} {prod:<18} {cnt:>5}  {str(first):>12}  {str(last):>12}  "
+        print(f"{src:<16} {prod:<22} {cnt:>5}  {str(first):>12}  {str(last):>12}  "
               f"{sell:>18,.0f}")
+
+
+def run_crosscheck():
+    """Chạy cross-check tức thì và in kết quả chi tiết."""
+    print(f"Cross-check vang.today vs DOJI scrape ({date.today()})")
+    print("=" * 55)
+    vt   = fetch_vangtoday()
+    doji = fetch_doji_scrape()
+
+    for product in ("SJC_1L", "DOJI_NHAN_9999"):
+        vt_d   = vt.get(product)
+        doji_d = doji.get(product)
+        print(f"\n[{product}]")
+        if vt_d:
+            print(f"  vang.today : Mua={vt_d['buy']/1e6:.3f}M  Bán={vt_d['sell']/1e6:.3f}M")
+        else:
+            print("  vang.today : N/A")
+        if doji_d:
+            print(f"  DOJI scrape: Mua={doji_d['buy']/1e6:.3f}M  Bán={doji_d['sell']/1e6:.3f}M")
+        else:
+            print("  DOJI scrape: N/A")
+        if vt_d and doji_d:
+            for side in ("buy", "sell"):
+                diff_pct = abs(vt_d[side] - doji_d[side]) / doji_d[side] * 100
+                flag = " ⚠ LỆCH" if diff_pct > 1.0 else " ✓"
+                print(f"  {side}: diff={diff_pct:.2f}%{flag}")
 
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
-    p.add_argument("--daily",  action="store_true")
-    p.add_argument("--status", action="store_true")
+    p.add_argument("--daily",      action="store_true", help="Fetch và lưu giá hôm nay")
+    p.add_argument("--status",     action="store_true", help="Xem DB summary")
+    p.add_argument("--crosscheck", action="store_true", help="So sánh vang.today vs DOJI")
     args = p.parse_args()
     if args.daily:
-        print(f"🔄 Fetch gold prices ({date.today()})...")
+        print(f"Fetch gold prices ({date.today()})...")
         run_daily()
-        print("✅ Done")
+        print("Done")
     elif args.status:
         run_status()
+    elif args.crosscheck:
+        run_crosscheck()
     else:
         p.print_help()
