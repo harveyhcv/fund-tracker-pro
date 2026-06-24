@@ -1897,7 +1897,7 @@ _ADMIN_PROFILE_SEED = {
     "watched_funds": ["TCBF", "VCBFTBF", "SSISCA", "VCBFBCF", "TCFF"],
     "portfolio": [
         {"code": "TCBF",    "units": 487.21,  "avg_cost": 19525},
-        {"code": "SSISCA",  "units": 713.57,  "avg_cost": 42042},
+        {"code": "SSISCA",  "units": 713.57,  "avg_cost": 41936},
         {"code": "VCBFBCF", "units": 839.29,  "avg_cost": 35744},
         {"code": "VCBFTBF", "units": 449.41,  "avg_cost": 33377},
         {"code": "TCFF",    "units": 1832.66, "avg_cost": 13641},
