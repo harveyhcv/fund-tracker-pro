@@ -158,7 +158,10 @@ canvas{width:100%!important;height:100%!important}
 
   <!-- Signals -->
   <div class="page" id="page-signals">
-    <div class="hdr">TÍN HIỆU KỸ THUẬT <span class="hdr-sub" id="sig-date"></span></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+      <div class="hdr" style="margin:0">TÍN HIỆU KỸ THUẬT <span class="hdr-sub" id="sig-date"></span></div>
+      <button onclick="openWatchModal()" style="background:var(--bg3);border:1px solid var(--bdr);color:var(--c0);border-radius:8px;padding:5px 10px;font-size:12px;cursor:pointer">⚙️ Quản lý</button>
+    </div>
     <div style="font-size:11px;color:var(--txt2);margin-bottom:8px">👆 Bấm vào quỹ để xem phân tích chi tiết</div>
     <div id="sig-content"><div class="loading"><div class="spinner"></div>Đang tải...</div></div>
   </div>
@@ -273,11 +276,19 @@ canvas{width:100%!important;height:100%!important}
     <!-- Form ghi giao dịch vàng -->
     <div class="hdr" style="margin-top:16px">GHI GIAO DỊCH VÀNG</div>
     <div class="card">
-      <label>Loại</label>
+      <label>Loại giao dịch</label>
       <div class="type-toggle" style="margin-bottom:12px">
         <div class="type-btn buy active" id="gold-btn-buy" onclick="setGoldType('buy')">MUA</div>
         <div class="type-btn sell" id="gold-btn-sell" onclick="setGoldType('sell')">BÁN</div>
       </div>
+      <label>Sản phẩm vàng</label>
+      <select id="gold-product-select" style="width:100%;background:var(--bg);border:1px solid var(--bdr);color:var(--txt);border-radius:8px;padding:10px;margin-bottom:12px;font-size:13px">
+        <option value="SJC_1L">Vàng miếng SJC 1 lượng</option>
+        <option value="DOJI_SJC_1L">SJC tại DOJI 1 lượng</option>
+        <option value="DOJI_NHAN_9999">Nhẫn DOJI 999.9 / 24K</option>
+        <option value="DOJI_NHAN">Nhẫn DOJI (khác)</option>
+        <option value="OTHER">Khác</option>
+      </select>
       <label>Đơn vị</label>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:12px" id="gold-unit-group">
         <div class="tlog-btn" id="gold-unit-luong" onclick="setGoldUnit('luong')" style="padding:8px;border-radius:8px;border:1px solid var(--c0);background:#052e3a;color:var(--c0);text-align:center;cursor:pointer;font-size:12px">Lượng</div>
@@ -334,6 +345,24 @@ canvas{width:100%!important;height:100%!important}
     <button class="btn btn-primary" style="margin-bottom:10px;padding:8px" onclick="applyDateRange()">Áp dụng</button>
     <div id="hist-content"></div>
     <div class="chart-wrap"><canvas id="hist-chart"></canvas></div>
+  </div>
+</div>
+
+<!-- Watch Funds Modal -->
+<div id="watch-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1000;overflow-y:auto">
+  <div style="background:#0d1b2a;margin:32px 16px 80px;border-radius:12px;padding:20px;border:1px solid #1e3a5f">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div style="font-size:14px;font-weight:700;color:var(--c0)">QUẢN LÝ QUỸ THEO DÕI</div>
+      <button onclick="closeWatchModal()" style="background:none;border:none;color:var(--txt2);font-size:20px;cursor:pointer">×</button>
+    </div>
+    <div style="font-size:11px;color:var(--txt2);margin-bottom:12px">Chọn các quỹ muốn xem tín hiệu. Tối đa 10 quỹ để hiệu suất tốt nhất.</div>
+    <input id="watch-search" type="text" placeholder="🔍 Tìm mã quỹ..." oninput="filterWatchList()"
+      style="width:100%;background:var(--bg);border:1px solid var(--bdr);color:var(--txt);border-radius:8px;padding:8px;margin-bottom:10px;font-size:13px">
+    <div id="watch-fund-list" style="max-height:55vh;overflow-y:auto"></div>
+    <div style="margin-top:14px;display:flex;gap:8px">
+      <button onclick="saveWatchedFunds()" class="btn btn-primary" style="flex:1;padding:10px">LƯU</button>
+      <button onclick="closeWatchModal()" style="flex:0 0 80px;padding:10px;background:var(--bg3);border:1px solid var(--bdr);color:var(--txt2);border-radius:8px;cursor:pointer">Huỷ</button>
+    </div>
   </div>
 </div>
 
@@ -456,9 +485,11 @@ function renderPortfolio(me){
 }
 
 // ── Signals ──────────────────────────────────────────────────────────────
+let _sigData = null;
 async function loadSignals(){
   try{
     const data=await apiFetch('/api/signals');
+    _sigData=data;
     _signals=data.signals;
     document.getElementById('sig-date').textContent='cập nhật '+new Date(data.updated).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'});
     renderSignals(_signals);
@@ -961,6 +992,15 @@ function drawChart(points){
 }
 
 // ── Gold ─────────────────────────────────────────────────────────────────────
+const _GOLD_PRODUCT_LABELS = {
+  'SJC_1L':        'Vàng miếng SJC 1L',
+  'DOJI_SJC_1L':   'SJC tại DOJI 1L',
+  'DOJI_NHAN_9999':'Nhẫn DOJI 9999',
+  'DOJI_NHAN':     'Nhẫn DOJI',
+  'OTHER':         'Vàng khác',
+};
+function _goldProductLabel(p) { return _GOLD_PRODUCT_LABELS[p] || p || 'Vàng'; }
+
 let _goldData = null;
 let _goldType = 'buy';
 let _goldUnit = 'luong';
@@ -988,36 +1028,65 @@ async function loadGoldPage() {
 }
 
 function renderGoldPrices() {
-  const sjc = _goldData?.prices?.SJC;
-  const el  = document.getElementById('gold-price-content');
-  if (!sjc) { el.textContent = 'Chưa có dữ liệu SJC. Chạy fetch_gold.py --daily để cập nhật.'; return; }
-  const buyM  = (sjc.buy  / 1e6).toFixed(3);
-  const sellM = (sjc.sell / 1e6).toFixed(3);
-  el.innerHTML = `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px">
-      <div style="background:var(--bg3);border-radius:8px;padding:10px;text-align:center">
-        <div style="font-size:10px;color:var(--txt2);margin-bottom:4px">MUA VÀO</div>
-        <div style="font-family:var(--mono);font-size:16px;color:var(--buy)">${buyM}M</div>
-        <div style="font-size:10px;color:var(--txt2)">VNĐ/lượng</div>
+  const prices = _goldData?.prices || {};
+  const el = document.getElementById('gold-price-content');
+
+  // Tìm SJC official (key "SJC:SJC_1L") hoặc fallback cũ
+  const sjc = prices['SJC:SJC_1L'] || prices['SJC'] || null;
+  const xau = prices['INTERNATIONAL:XAU_USD'] || prices['XAU_USD'] || null;
+
+  // Các sản phẩm nội địa để hiển thị bảng giá
+  const domesticOrder = ['SJC:SJC_1L','DOJI:SJC_1L','DOJI:DOJI_NHAN_9999','DOJI:DOJI_NHAN'];
+  const domestic = domesticOrder.map(k => prices[k]).filter(Boolean);
+  // Thêm các loại khác chưa có trong danh sách trên
+  Object.values(prices).forEach(p => {
+    if (p.currency !== 'USD' && !domesticOrder.includes(`${p.source}:${p.product}`))
+      domestic.push(p);
+  });
+
+  if (!domestic.length) {
+    el.textContent = 'Chưa có dữ liệu vàng. Chạy fetch_gold.py --daily để cập nhật.';
+    document.getElementById('gold-xau-card').style.display = 'none';
+    return;
+  }
+
+  // Cập nhật date header
+  const latestDate = domestic[0]?.date || '';
+  document.getElementById('gold-date').textContent = latestDate;
+
+  // Bảng giá vàng (nhiều sản phẩm)
+  let rows = domestic.map(p => {
+    const buyM  = p.buy  ? (p.buy  / 1e6).toFixed(3) + 'M' : '--';
+    const sellM = p.sell ? (p.sell / 1e6).toFixed(3) + 'M' : '--';
+    const spread = (p.buy && p.sell) ? ((p.sell - p.buy)/1e6).toFixed(2) + 'M' : '--';
+    const label = p.label || `${p.source} ${p.product}`;
+    return `<div style="background:var(--bg3);border-radius:8px;padding:10px;margin-bottom:8px">
+      <div style="font-size:11px;color:var(--c0);font-weight:600;margin-bottom:6px">${label}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;text-align:center">
+        <div><div style="font-size:9px;color:var(--txt2)">MUA VÀO</div>
+          <div style="font-family:var(--mono);font-size:13px;color:var(--buy)">${buyM}</div></div>
+        <div><div style="font-size:9px;color:var(--txt2)">BÁN RA</div>
+          <div style="font-family:var(--mono);font-size:13px;color:var(--sell)">${sellM}</div></div>
+        <div><div style="font-size:9px;color:var(--txt2)">SPREAD</div>
+          <div style="font-family:var(--mono);font-size:13px;color:var(--txt2)">${spread}</div></div>
       </div>
-      <div style="background:var(--bg3);border-radius:8px;padding:10px;text-align:center">
-        <div style="font-size:10px;color:var(--txt2);margin-bottom:4px">BÁN RA</div>
-        <div style="font-family:var(--mono);font-size:16px;color:var(--sell)">${sellM}M</div>
-        <div style="font-size:10px;color:var(--txt2)">VNĐ/lượng</div>
-      </div>
-    </div>
-    <div style="margin-top:8px;text-align:center;font-size:11px;color:var(--txt2)">
-      Spread: ${((sjc.sell - sjc.buy)/1e6).toFixed(3)}M · ${sjc.date || ''}
+      <div style="font-size:9px;color:var(--txt2);margin-top:4px;text-align:right">${p.date || ''}</div>
     </div>`;
-  document.getElementById('gold-date').textContent = sjc.date || '';
+  }).join('');
+  el.innerHTML = rows;
+
+  // Card tiêu đề
+  document.querySelector('#gold-price-card .card-title').textContent =
+    `BẢNG GIÁ VÀNG (${domestic.length} sản phẩm)`;
 
   // XAU/USD
-  const xau = _goldData?.prices?.XAU_USD;
   const xauCard = document.getElementById('gold-xau-card');
-  if (xau && xau.extra) {
+  if (xau) {
     xauCard.style.display = 'block';
-    const vndM = xau.extra.xau_vnd_luong ? (xau.extra.xau_vnd_luong/1e6).toFixed(2) : '--';
-    const usdVnd = xau.extra.usd_vnd ? Number(xau.extra.usd_vnd).toLocaleString('vi-VN') : '--';
+    const vndM = xau.extra?.xau_vnd_luong ? (xau.extra.xau_vnd_luong/1e6).toFixed(2) : '--';
+    const usdVnd = xau.extra?.usd_vnd ? Number(xau.extra.usd_vnd).toLocaleString('vi-VN') : '--';
+    const premPct = sjc && vndM !== '--'
+      ? ((sjc.sell/1e6 - parseFloat(vndM))/parseFloat(vndM)*100).toFixed(1) + '%' : '--';
     document.getElementById('gold-xau-content').innerHTML = `
       <div class="sum-row"><span class="sum-label">Giá quốc tế</span>
         <span class="sum-val" style="color:var(--hold)">${Number(xau.buy).toLocaleString('vi-VN')} USD/oz</span></div>
@@ -1026,9 +1095,10 @@ function renderGoldPrices() {
       <div class="sum-row"><span class="sum-label">Quy đổi (tham khảo)</span>
         <span class="sum-val">${vndM}M VND/lượng</span></div>
       <div style="font-size:10px;color:var(--txt2);margin-top:6px">
-        Premium SJC: ${sjc ? ((sjc.sell/1e6 - parseFloat(vndM))/parseFloat(vndM)*100).toFixed(1)+'%' : '--'}
-        so với giá quốc tế quy đổi
+        Premium SJC ${premPct} so với giá quốc tế quy đổi
       </div>`;
+  } else {
+    xauCard.style.display = 'none';
   }
 }
 
@@ -1131,6 +1201,7 @@ async function submitGoldTrade() {
   if (!qty || qty <= 0) { toast('Nhập số lượng'); return; }
   if (!price || price <= 0) { toast('Nhập giá/lượng'); return; }
   if (!dt) { toast('Chọn ngày giao dịch'); return; }
+  const product = document.getElementById('gold-product-select')?.value || 'SJC_1L';
   const unitF = {'luong':1,'chi':0.1,'gram':1/37.5}[_goldUnit] || 1;
   const total = Math.round(qty * unitF * price);
   const btn   = document.getElementById('gold-submit-btn');
@@ -1139,12 +1210,13 @@ async function submitGoldTrade() {
     const res = await fetch(`${API_BASE}/api/gold/trade`, {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({telegram_id:USER_ID, type:_goldType, unit:_goldUnit,
-                            qty, price_per_luong:price, total_vnd:total, date:dt})
+                            product, qty, price_per_luong:price, total_vnd:total, date:dt})
     });
     const d = await res.json();
     if (d.ok) {
       const label = _goldType==='buy'?'Mua':'Bán';
-      toast(`✓ ${label} ${qty} ${_goldUnit} vàng SJC`);
+      const pLabel = {'SJC_1L':'SJC 1L','DOJI_NHAN_9999':'DOJI nhẫn 9999','DOJI_NHAN':'DOJI nhẫn','DOJI_SJC_1L':'DOJI SJC 1L'}[product]||product;
+      toast(`✓ ${label} ${qty} ${_goldUnit} ${pLabel}`);
       document.getElementById('gold-qty').value = '';
       document.getElementById('gold-price').value = '';
       document.getElementById('gold-total-preview').style.display = 'none';
@@ -1173,7 +1245,7 @@ function renderGoldTradeLog() {
     const qtyL    = t.qty_luong ?? t.qty;
     return `<div class="tlog-row">
   <div class="tlog-left">
-    <div><span class="tlog-code" style="color:#fbbf24">VÀNG SJC</span>
+    <div><span class="tlog-code" style="color:#fbbf24">${_goldProductLabel(t.product||'SJC_1L')}</span>
       <span style="font-size:11px;color:${color};font-weight:700;margin-left:6px">${label}</span></div>
     <div class="tlog-meta">${t.date} · ${qtyL} lượng · ${priceM}M ₫/lượng</div>
     <div class="tlog-meta">Tổng: <span style="color:var(--c0)">${totalFmt} ₫</span></div>
@@ -1241,6 +1313,71 @@ async function confirmDeleteGoldTrade(idx) {
     if (d.ok) { toast('✓ Đã xóa'); _goldData=null; await loadGoldPage(); }
     else toast('Lỗi: '+(d.error||'unknown'));
   } catch(e) { toast('Lỗi: '+e.message); }
+}
+
+// ── Watch Funds Modal ────────────────────────────────────────────────────
+let _allFunds = {};       // {code: name} — từ API signals
+let _watchedSet = new Set(); // mã hiện tại đang watch
+
+function openWatchModal() {
+  // Lấy all_funds + watched từ data đã fetch (nếu có)
+  if (_sigData?.all_funds) _allFunds = _sigData.all_funds;
+  if (_sigData?.watched)   _watchedSet = new Set(_sigData.watched.map(c => c.toUpperCase()));
+  _renderWatchList(Object.entries(_allFunds));
+  document.getElementById('watch-modal').style.display = 'block';
+}
+
+function closeWatchModal() {
+  document.getElementById('watch-modal').style.display = 'none';
+  document.getElementById('watch-search').value = '';
+}
+
+function filterWatchList() {
+  const q = document.getElementById('watch-search').value.trim().toUpperCase();
+  const entries = Object.entries(_allFunds).filter(([code, name]) =>
+    !q || code.includes(q) || name.toUpperCase().includes(q));
+  _renderWatchList(entries);
+}
+
+function _renderWatchList(entries) {
+  const el = document.getElementById('watch-fund-list');
+  if (!entries.length) { el.innerHTML = '<div style="color:var(--txt2);text-align:center;padding:20px">Không tìm thấy</div>'; return; }
+  el.innerHTML = entries.map(([code, name]) => {
+    const checked = _watchedSet.has(code.toUpperCase());
+    return `<label style="display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid var(--bdr);cursor:pointer">
+      <input type="checkbox" value="${code}" ${checked?'checked':''} onchange="_toggleWatch('${code}',this.checked)"
+        style="width:16px;height:16px;accent-color:var(--c0)">
+      <span>
+        <span style="font-family:var(--mono);color:var(--c0);font-size:12px">${code}</span>
+        <span style="color:var(--txt2);font-size:11px;margin-left:6px">${name}</span>
+      </span>
+    </label>`;
+  }).join('');
+}
+
+function _toggleWatch(code, checked) {
+  code = code.toUpperCase();
+  if (checked) _watchedSet.add(code);
+  else         _watchedSet.delete(code);
+}
+
+async function saveWatchedFunds() {
+  if (!USER_ID) { toast('Chưa xác định user'); return; }
+  const watched = [..._watchedSet];
+  if (!watched.length) { toast('Chọn ít nhất 1 quỹ'); return; }
+  try {
+    const res = await fetch(`${API_BASE}/api/me/watched_funds`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({telegram_id: USER_ID, watched_funds: watched}),
+    });
+    const d = await res.json();
+    if (d.ok) {
+      toast(`✓ Đã lưu ${d.watched_funds.length} quỹ theo dõi`);
+      closeWatchModal();
+      _sigData = null;
+      loadSignals();
+    } else toast('Lỗi: ' + (d.error||'unknown'));
+  } catch(e) { toast('Lỗi: ' + e.message); }
 }
 
 // ── Init ────────────────────────────────────────────────────────────────

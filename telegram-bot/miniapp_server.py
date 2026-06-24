@@ -102,6 +102,18 @@ def _recalc_portfolio(cfg: dict, tg_id: str):
 
 # ── Gold helpers ──────────────────────────────────────────────────────────────
 
+_GOLD_LABELS = {
+    "SJC:SJC_1L":          "Vàng miếng SJC 1L",
+    "DOJI:SJC_1L":         "SJC tại DOJI 1L",
+    "DOJI:DOJI_NHAN":      "Nhẫn DOJI 999.9",
+    "DOJI:DOJI_NHAN_9999": "Nhẫn DOJI 9999 24K",
+    "INTERNATIONAL:XAU_USD": "Vàng QT (XAU/USD)",
+}
+
+def _gold_product_label(source: str, product: str) -> str:
+    return _GOLD_LABELS.get(f"{source}:{product}", f"{source} {product}")
+
+
 def _unit_to_luong(unit: str) -> float:
     """Quy đổi đơn vị về lượng. 1 lượng = 10 chỉ = 37.5g."""
     return {"luong": 1.0, "chi": 0.1, "gram": 1.0 / 37.5}.get(unit, 1.0)
@@ -540,7 +552,9 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path   = parsed.path.rstrip("/")
 
-        if path == "/api/gold/trade":
+        if path == "/api/me/watched_funds":
+            self._api_update_watched(data)
+        elif path == "/api/gold/trade":
             self._api_add_gold_trade(data)
         elif path.startswith("/api/gold/trade/"):
             idx = path[len("/api/gold/trade/"):]
@@ -605,7 +619,30 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         profile = _find_profile(cfg, tg_id) if tg_id else None
         watched = profile.get("watched_funds", []) if profile else list(cfg.get("funds", {}).keys())[:10]
         signals = _get_signals_for_codes(watched, cfg)
-        _json(self, {"signals": signals, "updated": datetime.now().isoformat()})
+        all_funds = {code: info.get("name", code) for code, info in cfg.get("funds", {}).items()}
+        _json(self, {"signals": signals, "updated": datetime.now().isoformat(),
+                     "watched": watched, "all_funds": all_funds})
+
+    def _api_update_watched(self, data: dict):
+        """POST /api/me/watched_funds — cập nhật danh sách quỹ theo dõi."""
+        tg_id   = str(data.get("telegram_id", ""))
+        watched = data.get("watched_funds", [])
+        if not tg_id:
+            _json(self, {"error": "telegram_id required"}, 400)
+            return
+        cfg = _load_cfg()
+        profile = _find_profile(cfg, tg_id)
+        if not profile:
+            _json(self, {"error": "Profile không tìm thấy"}, 404)
+            return
+        all_codes = set(cfg.get("funds", {}).keys())
+        valid = [c.upper() for c in watched if c.upper() in all_codes]
+        if not valid:
+            _json(self, {"error": "Không có mã hợp lệ"}, 400)
+            return
+        profile["watched_funds"] = valid
+        _save_cfg(cfg)
+        _json(self, {"ok": True, "watched_funds": valid})
 
     def _api_research(self, code: str, qs: dict):
         """Phân tích sâu 5 trường phái cho 1 quỹ — dùng msg_research logic từ bot."""
@@ -922,20 +959,25 @@ class MiniAppHandler(BaseHTTPRequestHandler):
                 conn = psycopg2.connect(db_url, connect_timeout=8)
                 with conn.cursor() as cur:
                     cur.execute("""
-                        SELECT source, buy_price::float, sell_price::float,
-                               price_date::text, extra
+                        SELECT DISTINCT ON (source, product)
+                               source, product, buy_price::float, sell_price::float,
+                               price_date::text, currency, extra
                         FROM gold_prices
                         WHERE price_date >= CURRENT_DATE - INTERVAL '7 days'
-                        ORDER BY price_date DESC, source
+                        ORDER BY source, product, price_date DESC
                     """)
                     rows = cur.fetchall()
                 conn.close()
-                seen = {}
-                for src, buy, sell, dt, extra in rows:
-                    if src not in seen:
-                        seen[src] = {"source": src, "buy": buy, "sell": sell,
-                                     "date": dt, "extra": extra or {}}
-                prices = seen
+                # key = "SOURCE:PRODUCT", e.g. "SJC:SJC_1L", "DOJI:DOJI_NHAN"
+                for src, prod, buy, sell, dt, curr, extra in rows:
+                    key = f"{src}:{prod}"
+                    prices[key] = {
+                        "source": src, "product": prod,
+                        "buy": buy, "sell": sell,
+                        "date": dt, "currency": curr,
+                        "extra": extra or {},
+                        "label": _gold_product_label(src, prod),
+                    }
             except Exception as e:
                 prices = {"error": str(e)}
 
@@ -956,10 +998,11 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         })
 
     def _api_gold_history(self, qs: dict):
-        """GET /api/gold/history?source=SJC&days=90 — lịch sử giá vàng."""
-        source = (qs.get("source") or ["SJC"])[0].upper()
-        days   = int((qs.get("days") or ["90"])[0])
-        db_url = os.environ.get("DATABASE_URL", _load_cfg().get("database_url", ""))
+        """GET /api/gold/history?source=SJC&product=SJC_1L&days=90 — lịch sử giá vàng."""
+        source  = (qs.get("source")  or ["SJC"])[0].upper()
+        product = (qs.get("product") or ["SJC_1L"])[0]
+        days    = int((qs.get("days") or ["90"])[0])
+        db_url  = os.environ.get("DATABASE_URL", _load_cfg().get("database_url", ""))
         if not db_url:
             _json(self, {"error": "DATABASE_URL not set"}, 503)
             return
@@ -970,15 +1013,15 @@ class MiniAppHandler(BaseHTTPRequestHandler):
                 cur.execute("""
                     SELECT price_date::text, buy_price::float, sell_price::float, extra
                     FROM gold_prices
-                    WHERE source = %s
-                      AND price_date >= CURRENT_DATE - INTERVAL '%s days'
+                    WHERE source = %s AND product = %s
+                      AND price_date >= CURRENT_DATE - INTERVAL %s
                     ORDER BY price_date
-                """, (source, days))
+                """, (source, product, f"{days} days"))
                 rows = cur.fetchall()
             conn.close()
             data = [{"date": r[0], "buy": r[1], "sell": r[2],
                      "extra": r[3] or {}} for r in rows]
-            _json(self, {"source": source, "data": data})
+            _json(self, {"source": source, "product": product, "data": data})
         except Exception as e:
             _json(self, {"error": str(e)}, 500)
 
@@ -1002,6 +1045,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         tg_id    = str(data.get("telegram_id", ""))
         tx_type  = str(data.get("type", "")).lower()
         unit     = str(data.get("unit", "luong")).lower()   # luong | chi | gram
+        product  = str(data.get("product", "SJC_1L"))       # loại sản phẩm vàng
         qty      = float(data.get("qty", 0))
         price    = float(data.get("price_per_luong", 0))    # VND/lượng
         total    = float(data.get("total_vnd", 0)) or round(qty * price * _unit_to_luong(unit))
@@ -1022,6 +1066,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             "telegram_id":    tg_id,
             "type":           tx_type,
             "unit":           unit,
+            "product":        product,
             "qty":            round(qty, 4),
             "qty_luong":      round(qty * _unit_to_luong(unit), 4),
             "price_per_luong": round(price, 0),
