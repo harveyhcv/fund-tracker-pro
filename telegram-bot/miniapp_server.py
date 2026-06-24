@@ -697,23 +697,15 @@ class MiniAppHandler(BaseHTTPRequestHandler):
                     ok_watched = [c for c in watched if nav_data.get(c, {}).get("nav")]
                     fail_watched = [c for c in watched if c not in ok_watched]
 
-                    # ── 3. Gộp 1 message ──
+                    # ── 3. 1 message ngắn gọn ──
                     if admin_tg_id and bot_tok:
-                        lines = []
-                        if total_new > 0:
-                            lines.append(f"✅ <b>NAV đã cập nhật</b> — <b>+{total_new}</b> records mới ({len(updated_funds)} mã trong DB)")
-                        else:
-                            lines.append(f"✅ <b>Token mới đã lưu</b> — DB đã up-to-date (không có NAV mới)")
-
-                        lines.append("")
-                        lines.append("📊 <b>Tín hiệu danh mục của bạn:</b>")
-                        for c in ok_watched:
-                            d = nav_data[c]
-                            lines.append(f"  • <code>{c}</code>  {d.get('nav', 0):,.0f}  {d.get('signal', '')}")
+                        total = len(watched)
+                        ok_n  = len(ok_watched)
+                        msg   = f"✅ NAV đã cập nhật ({ok_n}/{total} mã)"
                         if fail_watched:
-                            lines.append(f"\n❌ Chưa lấy được: {', '.join(f'<code>{c}</code>' for c in fail_watched)}")
-
-                        _ts(bot_tok, admin_tg_id, "\n".join(lines))
+                            fail_str = ", ".join(f"<code>{c}</code>" for c in fail_watched)
+                            msg += f"\n❌ Chưa lấy được ({len(fail_watched)} mã): {fail_str}"
+                        _ts(bot_tok, admin_tg_id, msg)
 
                 except Exception as _ex:
                     log.warning(f"[admin] Background fetch lỗi: {_ex}")
