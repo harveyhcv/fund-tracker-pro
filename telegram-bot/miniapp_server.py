@@ -690,21 +690,33 @@ class MiniAppHandler(BaseHTTPRequestHandler):
                     else:
                         log.warning("[admin] harvest_nav.py không tìm thấy")
 
-                    # ── 2. fetch_all watched codes để lấy signal ──
-                    fresh_cfg  = _lc()
-                    watched    = sorted(_awc(fresh_cfg))
-                    nav_data   = _fa(fresh_cfg, set(watched))
-                    ok_watched = [c for c in watched if nav_data.get(c, {}).get("nav")]
-                    fail_watched = [c for c in watched if c not in ok_watched]
+                    # ── 2. Đếm tổng số quỹ trong funds_master từ harvest output ──
+                    # Parse "X/Y funds checked" hoặc đếm từ updated_funds + skipped
+                    total_funds = 0
+                    fail_funds  = []
+                    for line in harvest_out.splitlines():
+                        # harvest log dạng: "⚠ X funds bỏ qua (không có JWT)"
+                        import re
+                        m_total = re.search(r"(\d+) quỹ", line)
+                        if m_total and total_funds == 0:
+                            total_funds = int(m_total.group(1))
+                        # Tìm mã bị skip/lỗi
+                        if "bỏ qua" in line or "lỗi" in line.lower():
+                            skipped = re.findall(r"\b([A-Z]{3,8})\b", line)
+                            fail_funds.extend(skipped)
 
-                    # ── 3. 1 message ngắn gọn ──
+                    ok_n   = len(updated_funds) if updated_funds else (total_funds - len(fail_funds))
+                    total  = total_funds or ok_n
+
+                    # ── 3. 1 message ngắn gọn dựa trên harvest_nav result ──
                     if admin_tg_id and bot_tok:
-                        total = len(watched)
-                        ok_n  = len(ok_watched)
-                        msg   = f"✅ NAV đã cập nhật ({ok_n}/{total} mã)"
-                        if fail_watched:
-                            fail_str = ", ".join(f"<code>{c}</code>" for c in fail_watched)
-                            msg += f"\n❌ Chưa lấy được ({len(fail_watched)} mã): {fail_str}"
+                        if total_new > 0:
+                            msg = f"✅ NAV đã cập nhật ({ok_n}/{total} mã) — +{total_new} records"
+                        else:
+                            msg = f"✅ NAV đã up-to-date ({total} mã, không có records mới)"
+                        if fail_funds:
+                            fail_str = ", ".join(f"<code>{c}</code>" for c in sorted(set(fail_funds)))
+                            msg += f"\n❌ Chưa lấy được ({len(set(fail_funds))} mã): {fail_str}"
                         _ts(bot_tok, admin_tg_id, msg)
 
                 except Exception as _ex:

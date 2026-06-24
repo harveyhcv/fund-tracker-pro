@@ -1026,56 +1026,9 @@ def _push_nav_to_server(nav_data: dict, config: dict):
 
 
 def _handle_tcbs_auth_error(config: dict, failed_codes: set):
-    """Thông báo các quỹ outdated NAV — CHỈ admin, cooldown 4 giờ."""
-    bot_token = config.get("bot_token", "")
-    if not bot_token or bot_token.startswith("NHAP"):
-        return
-
-    today = date.today().isoformat()
-    state = load_state()
-    if state.get("tcbs_auth_alerted_date") == today:
-        log.debug("[TCBS-AUTH] đã cảnh báo hôm nay, bỏ qua.")
-        return
-
-    admin_id = str(config.get("admin_telegram_id", "")).strip()
-    if not admin_id or not admin_id.lstrip("-").isdigit():
-        log.warning("[TCBS-AUTH] admin_telegram_id chưa cấu hình.")
-        return
-
-    # Lấy ngày NAV cuối cùng của từng quỹ từ DB
-    lines = []
-    db_url = os.environ.get("DATABASE_URL", config.get("database_url", ""))
-    for code in sorted(failed_codes):
-        last_date = "—"
-        if db_url:
-            try:
-                import psycopg2
-                conn = psycopg2.connect(db_url, connect_timeout=5)
-                with conn.cursor() as cur:
-                    cur.execute(
-                        "SELECT MAX(nav_date) FROM nav_history WHERE fund_code = %s",
-                        (code,)
-                    )
-                    row = cur.fetchone()
-                    if row and row[0]:
-                        last_date = row[0].strftime("%d/%m/%Y")
-                conn.close()
-            except Exception:
-                pass
-        lines.append(f"• <code>{code}</code>  — NAV cuối: <b>{last_date}</b>")
-
-    funds_block = "\n".join(lines)
-    msg = (
-        f"📅 <b>NAV chưa được cập nhật</b>\n\n"
-        f"{funds_block}\n\n"
-        f"⚠️ Token TCInvest đã hết hạn.\n"
-        f"Hãy cập nhật token trong app <b>TCInvest</b> để bot lấy NAV mới nhất."
-    )
-    ok = tg_send(bot_token, admin_id, msg)
-    if ok:
-        state["tcbs_auth_alerted_date"] = today
-        save_state(state)
-        log.warning(f"[TCBS-AUTH] NAV outdated ({', '.join(sorted(failed_codes))}) — đã cảnh báo admin.")
+    """Log khi TCBS token hết hạn — không gửi Telegram (settoken flow đã thay thế)."""
+    log.warning(f"[TCBS-AUTH] Token hết hạn, không fetch được: {', '.join(sorted(failed_codes))}"
+                f" — Dùng /admin settoken <TOKEN> để cập nhật.")
 
 
 
