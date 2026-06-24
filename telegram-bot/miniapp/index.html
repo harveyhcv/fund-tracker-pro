@@ -187,18 +187,21 @@ canvas{width:100%!important;height:100%!important}
         <div class="type-btn sell" id="btn-sell" onclick="setTradeType('sell')">BÁN</div>
       </div>
       <label>Quỹ</label>
-      <select id="trade-fund"><option value="">-- Chọn quỹ --</option></select>
-      <label>Số CCQ</label>
-      <input type="number" id="trade-units" placeholder="VD: 1000" inputmode="decimal" step="0.001">
-      <label>Số tiền (VNĐ)</label>
-      <input type="number" id="trade-amount" placeholder="VD: 5000000" inputmode="numeric">
+      <select id="trade-fund" onchange="onTradeFundChange()"><option value="">-- Chọn quỹ --</option></select>
       <label>Ngày giao dịch</label>
-      <input type="date" id="trade-date">
+      <input type="date" id="trade-date" onchange="onTradeDateChange()">
+      <label>Số CCQ nhận được</label>
+      <input type="text" inputmode="decimal" id="trade-units" placeholder="VD: 487.21" oninput="calcTradeAmount()">
+      <label>Giá NAV / CCQ (VNĐ)</label>
+      <input type="text" inputmode="decimal" id="trade-price" placeholder="VD: 20524.84" oninput="calcTradeAmount()">
+      <div id="trade-amount-preview" style="display:none" class="sum-row" style="margin:8px 0">
+        <span class="sum-label">Tổng tiền</span>
+        <span class="sum-val" id="trade-amount-val" style="color:var(--c0)"></span>
+      </div>
+      <div id="trade-nav-mismatch" style="display:none;font-size:11px;color:var(--hold);margin:6px 0;padding:6px 8px;background:#2d2700;border-radius:6px;border:1px solid #713f12">
+        ⚠️ Giá nhập (<span id="mismatch-input"></span>) lệch so với NAV DB (<span id="mismatch-db"></span>) ngày đó. Giao dịch vẫn được lưu và đánh dấu để review sau.
+      </div>
       <button class="btn btn-buy" id="submit-trade" onclick="submitTrade()">XÁC NHẬN MUA</button>
-    </div>
-    <div id="trade-nav-info" style="display:none" class="card">
-      <div class="card-title">NAV HIỆN TẠI</div>
-      <div id="trade-nav-val" class="sum-val" style="font-size:15px;color:var(--c0)"></div>
     </div>
   </div>
 
@@ -575,38 +578,80 @@ async function setupTrade(){
   else if(USER_ID){try{const d=await apiFetch('/api/me');_me=d;funds=d.watched_funds||[];}catch{}}
   funds.forEach(code=>{const o=document.createElement('option');o.value=code;o.textContent=code;sel.appendChild(o);});
   document.getElementById('trade-date').value=new Date().toISOString().split('T')[0];
-  sel.onchange=()=>showTradeNav(sel.value);
 }
-async function showTradeNav(code){
-  const el=document.getElementById('trade-nav-info');const val=document.getElementById('trade-nav-val');
-  if(!code){el.style.display='none';return;}
-  el.style.display='block';val.textContent='Đang tải...';
-  const sig=_signals?.[code]||_me?.signals?.[code];
-  if(sig?.nav){val.textContent=`${code}: ${fmt(sig.nav)} đ  (${sig.nav_date||''})`;return;}
-  try{const d=await apiFetch('/api/signals');_signals=d.signals;val.textContent=`${code}: ${fmt(_signals[code]?.nav)} đ`;}
-  catch{val.textContent='—';}
+function calcTradeAmount(){
+  const units=parseDecimal(document.getElementById('trade-units').value);
+  const price=parseDecimal(document.getElementById('trade-price').value);
+  const preview=document.getElementById('trade-amount-preview');
+  const valEl=document.getElementById('trade-amount-val');
+  if(units>0&&price>0){
+    const total=units*price;
+    valEl.textContent=fmt(total)+' đ';
+    preview.style.display='flex';
+  }else{
+    preview.style.display='none';
+  }
+}
+function parseDecimal(s){
+  // Chấp nhận cả dấu chấm và dấu phẩy thập phân
+  return parseFloat((s||'').replace(/,/g,'.').trim())||0;
+}
+async function onTradeFundChange(){
+  document.getElementById('trade-nav-mismatch').style.display='none';
+  await checkNavMismatch();
+}
+async function onTradeDateChange(){
+  await checkNavMismatch();
+}
+async function checkNavMismatch(){
+  const code=document.getElementById('trade-fund').value;
+  const tdate=document.getElementById('trade-date').value;
+  const price=parseDecimal(document.getElementById('trade-price').value);
+  const mismatch=document.getElementById('trade-nav-mismatch');
+  mismatch.style.display='none';
+  if(!code||!tdate||price<=0)return;
+  try{
+    const pts=await apiFetch(`/api/nav/${code}`);
+    const match=pts.find(p=>p.date===tdate);
+    if(match&&Math.abs(match.nav-price)/match.nav>0.005){// lệch >0.5%
+      document.getElementById('mismatch-input').textContent=fmt(price);
+      document.getElementById('mismatch-db').textContent=fmt(match.nav);
+      mismatch.style.display='block';
+    }
+  }catch{}
 }
 async function submitTrade(){
   const code=document.getElementById('trade-fund').value;
-  const units=parseFloat(document.getElementById('trade-units').value);
-  const amount=parseFloat(document.getElementById('trade-amount').value);
+  const units=parseDecimal(document.getElementById('trade-units').value);
+  const price=parseDecimal(document.getElementById('trade-price').value);
   const tdate=document.getElementById('trade-date').value;
   if(!code){toast('Chọn quỹ');return;}
   if(!units||units<=0){toast('Nhập số CCQ');return;}
-  if(!amount||amount<=0){toast('Nhập số tiền');return;}
+  if(!price||price<=0){toast('Nhập giá NAV/CCQ');return;}
+  if(!tdate){toast('Chọn ngày giao dịch');return;}
   if(!USER_ID){toast('Không xác định user');return;}
+  const amount=Math.round(units*price);
+  // Kiểm tra mismatch để đánh dấu
+  let navMismatch=false;
+  try{
+    const pts=await apiFetch(`/api/nav/${code}`);
+    const match=pts.find(p=>p.date===tdate);
+    if(match&&Math.abs(match.nav-price)/match.nav>0.005)navMismatch=true;
+  }catch{}
   const btn=document.getElementById('submit-trade');
   btn.disabled=true;
   try{
     const res=await fetch(API_BASE+'/api/trade',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({telegram_id:USER_ID,code,type:_tradeType,units,amount,date:tdate})});
+      body:JSON.stringify({telegram_id:USER_ID,code,type:_tradeType,units,amount,price_per_unit:price,date:tdate,nav_mismatch:navMismatch})});
     const data=await res.json();
     if(data.ok){
-      toast(`✓ ${_tradeType==='buy'?'Mua':'Bán'} ${units} CCQ ${code} thành công`);
+      const flag=navMismatch?' ⚠️':'';
+      toast(`✓ ${_tradeType==='buy'?'Mua':'Bán'} ${units} CCQ ${code}${flag}`);
       document.getElementById('trade-fund').value='';
       document.getElementById('trade-units').value='';
-      document.getElementById('trade-amount').value='';
-      document.getElementById('trade-nav-info').style.display='none';
+      document.getElementById('trade-price').value='';
+      document.getElementById('trade-amount-preview').style.display='none';
+      document.getElementById('trade-nav-mismatch').style.display='none';
       _me=null;
       tg?.HapticFeedback?.notificationOccurred('success');
     }else{toast('Lỗi: '+(data.error||'unknown'));}

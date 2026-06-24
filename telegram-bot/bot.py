@@ -2221,100 +2221,10 @@ def command_handler():
                         nav_data = fetch_all(config, set(profile.get("watched_funds", [])))
                         tg_send(token, chat_id, msg_portfolio(profile, nav_data))
 
-                    elif cmd == "/add-trade":
-                        if not profile:
-                            tg_send(token, chat_id, "⚠️ Bạn chưa đăng ký.\nGõ <code>/register Tên Của Bạn</code> để tự đăng ký.")
-                            continue
-                        parts_tr = text.split()
-                        if len(parts_tr) < 5:
-                            tg_send(token, chat_id, (
-                                "❓ <b>Cú pháp /add-trade:</b>\n\n"
-                                "<code>/add-trade MÃ loại số_CCQ tổng_tiền [ngày]</code>\n\n"
-                                "Ví dụ:\n"
-                                "<code>/add-trade TCBF buy 1000.5 15000000</code>\n"
-                                "<code>/add-trade SSISCA sell 200 3200000 2026-06-15</code>\n\n"
-                                "• <b>loại</b>: <code>buy</code> hoặc <code>sell</code>\n"
-                                "• <b>số_CCQ</b>: số chứng chỉ quỹ nhận được\n"
-                                "• <b>tổng_tiền</b>: số VND thực tế thanh toán\n"
-                                "• <b>ngày</b>: ngày lệnh (YYYY-MM-DD), mặc định hôm nay"
-                            ))
-                            continue
-                        tr_fund = parts_tr[1].upper()
-                        tr_type = parts_tr[2].lower()
-                        if tr_type not in ("buy", "sell"):
-                            tg_send(token, chat_id, "⚠️ Loại giao dịch phải là <code>buy</code> hoặc <code>sell</code>.")
-                            continue
-                        if tr_fund not in config.get("funds", {}):
-                            tg_send(token, chat_id, f"⚠️ Không tìm thấy quỹ <code>{tr_fund}</code>.\nGõ /funds để xem danh sách.")
-                            continue
-                        try:
-                            tr_units  = float(parts_tr[3])
-                            tr_amount = float(parts_tr[4])
-                            if tr_units <= 0 or tr_amount <= 0:
-                                raise ValueError("non-positive")
-                        except (ValueError, IndexError):
-                            tg_send(token, chat_id, "⚠️ Số CCQ và số tiền phải là số dương.")
-                            continue
-                        tr_date_str = parts_tr[5] if len(parts_tr) > 5 else date.today().isoformat()
-                        try:
-                            tr_order_date = date.fromisoformat(tr_date_str)
-                        except ValueError:
-                            tg_send(token, chat_id, f"⚠️ Ngày không hợp lệ: <code>{tr_date_str}</code>\nDùng định dạng YYYY-MM-DD.")
-                            continue
-                        _cmd_add_trade(token, chat_id, profile, tr_fund, tr_type, tr_units, tr_amount, tr_order_date)
-
-                    elif cmd in ("/buy", "/sell"):
-                        if not profile:
-                            tg_send(token, chat_id, "⚠️ Bạn chưa đăng ký.\nGõ <code>/register Tên Của Bạn</code> để tự đăng ký.")
-                            continue
-                        tx_type_bs = "buy" if cmd == "/buy" else "sell"
-                        action_bs  = "Mua" if tx_type_bs == "buy" else "Bán"
-                        parts_bs   = text.split()
-                        watched    = profile.get("watched_funds", [])
-
-                        # Chế độ tắt nhanh: /buy MÃ số_CCQ tổng_tiền [ngày]
-                        if len(parts_bs) >= 4:
-                            bs_fund = parts_bs[1].upper()
-                            if bs_fund not in watched:
-                                watched_str = ", ".join(f"<code>{c}</code>" for c in watched)
-                                tg_send(token, chat_id, f"⚠️ <code>{bs_fund}</code> không có trong danh mục theo dõi của bạn.\nQuỹ bạn đang theo dõi: {watched_str}")
-                                continue
-                            try:
-                                bs_units  = float(parts_bs[2])
-                                bs_amount = float(parts_bs[3])
-                                if bs_units <= 0 or bs_amount <= 0:
-                                    raise ValueError("non-positive")
-                            except (ValueError, IndexError):
-                                tg_send(token, chat_id, f"⚠️ Số CCQ và số tiền phải là số dương.")
-                                continue
-                            bs_date_str = parts_bs[4] if len(parts_bs) > 4 else date.today().isoformat()
-                            try:
-                                bs_order_date = date.fromisoformat(bs_date_str)
-                            except ValueError:
-                                tg_send(token, chat_id, f"⚠️ Ngày không hợp lệ: <code>{bs_date_str}</code>\nDùng định dạng YYYY-MM-DD.")
-                                continue
-                            _cmd_add_trade(token, chat_id, profile, bs_fund, tx_type_bs, bs_units, bs_amount, bs_order_date)
-                            continue
-
-                        # Wizard mode: hiện keyboard chọn quỹ từ watched_funds
-                        if not watched:
-                            tg_send(token, chat_id, "⚠️ Bạn chưa theo dõi quỹ nào.\nGõ /watch MÃ để thêm.")
-                            continue
-                        emoji = "🟢" if tx_type_bs == "buy" else "🔴"
-                        # Mỗi hàng 2 nút
-                        kb_rows = []
-                        row = []
-                        for i, code in enumerate(watched):
-                            row.append({"text": f"{emoji} {code}", "callback_data": f"trade:{tx_type_bs}:{code}"})
-                            if len(row) == 2:
-                                kb_rows.append(row)
-                                row = []
-                        if row:
-                            kb_rows.append(row)
-                        tg_send_keyboard(token, chat_id,
-                            f"{emoji} <b>{action_bs} quỹ nào?</b>\nChọn quỹ từ danh mục của bạn:",
-                            kb_rows
-                        )
+                    elif cmd in ("/add-trade", "/buy", "/sell"):
+                        tg_send(token, chat_id,
+                            "📱 Giao dịch được quản lý trong <b>Mini App</b>.\n"
+                            "Gõ /app để mở.")
 
                     elif cmd == "/explain":
                         if not profile:

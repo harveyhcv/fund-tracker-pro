@@ -587,12 +587,14 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         _json(self, result)
 
     def _api_add_trade(self, data: dict):
-        tg_id   = str(data.get("telegram_id", ""))
-        code    = str(data.get("code", "")).upper()
-        tx_type = str(data.get("type", "")).lower()
-        units   = float(data.get("units", 0))
-        amount  = float(data.get("amount", 0))
-        tx_date = str(data.get("date", date.today().isoformat()))
+        tg_id         = str(data.get("telegram_id", ""))
+        code          = str(data.get("code", "")).upper()
+        tx_type       = str(data.get("type", "")).lower()
+        units         = float(data.get("units", 0))
+        amount        = float(data.get("amount", 0))
+        tx_date       = str(data.get("date", date.today().isoformat()))
+        price_per_unit = float(data.get("price_per_unit", 0)) or (amount / units if units else 0)
+        nav_mismatch  = bool(data.get("nav_mismatch", False))
 
         if not all([tg_id, code, tx_type in ("buy", "sell"), units > 0, amount > 0]):
             _json(self, {"error": "Thiếu hoặc sai thông tin giao dịch"}, 400)
@@ -617,12 +619,12 @@ class MiniAppHandler(BaseHTTPRequestHandler):
                 new_units = old_units + units
                 new_cost  = (old_units * old_cost + amount) / new_units
                 holding["units"]    = round(new_units, 4)
-                holding["avg_cost"] = round(new_cost, 0)
+                holding["avg_cost"] = round(new_cost, 2)
             else:
                 profile["portfolio"].append({
                     "code": code,
                     "units": round(units, 4),
-                    "avg_cost": round(amount / units, 0),
+                    "avg_cost": round(price_per_unit or amount / units, 2),
                 })
         elif tx_type == "sell":
             if not holding:
@@ -637,8 +639,21 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             else:
                 holding["units"] = round(new_units, 4)
 
+        # Lưu vào trade_log để có lịch sử đầy đủ + flag mismatch
+        trade_log = cfg.setdefault("trade_log", [])
+        trade_log.append({
+            "telegram_id": tg_id,
+            "code": code,
+            "type": tx_type,
+            "units": round(units, 4),
+            "price_per_unit": round(price_per_unit, 2),
+            "amount": round(amount, 0),
+            "date": tx_date,
+            "nav_mismatch": nav_mismatch,
+            "ts": datetime.now().isoformat(),
+        })
         _save_cfg(cfg)
-        _json(self, {"ok": True, "code": code, "type": tx_type, "units": units, "amount": amount})
+        _json(self, {"ok": True, "code": code, "type": tx_type, "units": units, "amount": amount, "nav_mismatch": nav_mismatch})
 
     def _api_admin_settoken(self, data: dict):
         """POST /api/admin/settoken — cập nhật tcbs_token rồi fetch NAV ngay."""
