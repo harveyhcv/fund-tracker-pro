@@ -124,123 +124,111 @@ def _req(url: str, timeout: int = 12) -> bytes:
 
 # ── Fetch SJC official ────────────────────────────────────────────────────────
 
-_SJC_XML = "https://sjc.com.vn/xml/tygia.xml"
-
 def fetch_sjc_official() -> Optional[dict]:
-    """Giá SJC chính thức từ sjc.com.vn XML — trả về VND/lượng."""
+    """
+    Lấy giá SJC miếng 1 lượng (VND/lượng).
+    Thử: (1) SJC XML chính thức, (2) scrape giavang.doji.vn (họ niêm yết giá SJC).
+    """
+    # Thử 1: SJC XML — sjc.com.vn/xml/tygia.xml (có thể 403/404 tùy thời điểm)
+    for sjc_url in ("https://sjc.com.vn/xml/tygia.xml", "https://www.sjc.com.vn/xml/tygia.xml"):
+        try:
+            raw = _req(sjc_url).decode("utf-8", errors="replace")
+            root = ET.fromstring(raw)
+            candidates = []
+            for item in root.iter():
+                name = (item.get("name") or item.findtext("name") or "").lower()
+                buy_raw  = item.get("buy")  or item.findtext("buy")
+                sell_raw = item.get("sell") or item.findtext("sell")
+                if not buy_raw or not sell_raw:
+                    continue
+                buy  = _parse_price(buy_raw)
+                sell = _parse_price(sell_raw)
+                if buy and sell and 50_000_000 < sell < 250_000_000:
+                    score = 0
+                    if "1l" in name or "1 l" in name: score += 3
+                    if "sjc" in name:                  score += 2
+                    if "mieng" in name or "miếng" in name: score += 1
+                    candidates.append((score, buy, sell, name))
+            if candidates:
+                candidates.sort(reverse=True)
+                _, buy, sell, matched_name = candidates[0]
+                return {"buy": buy, "sell": sell, "name": matched_name}
+        except Exception:
+            pass
+
+    # Thử 2: scrape giavang.doji.vn (có giá SJC bán lẻ chính xác)
     try:
-        raw = _req(_SJC_XML).decode("utf-8", errors="replace")
-        root = ET.fromstring(raw)
-        candidates = []
-        for item in root.iter():
-            name = (item.get("name") or item.findtext("name") or "").lower()
-            buy_raw  = item.get("buy")  or item.findtext("buy")
-            sell_raw = item.get("sell") or item.findtext("sell")
-            if not buy_raw or not sell_raw:
+        html = _req(_DOJI_GOLD_URL).decode("utf-8", errors="replace")
+        rows = re.findall(r"<tr[^>]*>(.*?)</tr>", html, re.S)
+        for row in rows:
+            cells = re.findall(r"<t[dh][^>]*>(.*?)</t[dh]>", row, re.S)
+            if len(cells) < 3:
                 continue
-            buy  = _parse_price(buy_raw)
-            sell = _parse_price(sell_raw)
-            if buy and sell and 50_000_000 < sell < 200_000_000:
-                # Ưu tiên "1l" / "1 lượng" / "sjc 1"
-                score = 0
-                if "1l" in name or "1 l" in name: score += 3
-                if "sjc" in name:                  score += 2
-                if "mieng" in name or "miếng" in name: score += 1
-                candidates.append((score, buy, sell, name))
-        if candidates:
-            candidates.sort(reverse=True)
-            _, buy, sell, matched_name = candidates[0]
-            return {"buy": buy, "sell": sell, "name": matched_name}
+            name = re.sub(r"<[^>]+>", " ", cells[0]).strip().lower()
+            if "sjc" not in name or "bán lẻ" not in name:
+                continue
+            nums = []
+            for c in cells[1:]:
+                txt = re.sub(r"<[^>]+>", "", c).strip().replace(".", "").replace(",", "")
+                try:
+                    v = float(txt)
+                    if 5_000 < v < 500_000:
+                        nums.append(v)
+                except ValueError:
+                    pass
+            if len(nums) >= 2:
+                return {"buy": round(nums[0] * 10_000), "sell": round(nums[1] * 10_000),
+                        "name": "SJC bán lẻ (nguồn DOJI)"}
     except Exception as e:
-        print(f"  ⚠ SJC XML: {e}", file=sys.stderr)
+        print(f"  ⚠ SJC từ DOJI: {e}", file=sys.stderr)
     return None
 
 
 # ── Fetch DOJI ────────────────────────────────────────────────────────────────
 
-# Các endpoint DOJI thường dùng
-_DOJI_ENDPOINTS = [
-    "https://edge-api.doji.vn/api/v1/prices/sjc",
-    "https://edge-api.doji.vn/api/v1/prices/doji",
-    "https://edge-api.doji.vn/api/v1/prices",
-    "https://api.doji.vn/api/v2/prices",
-]
+_DOJI_GOLD_URL = "https://giavang.doji.vn/"
 
 def fetch_doji() -> dict:
     """
-    Trả về dict các sản phẩm vàng DOJI:
-    {
-      "SJC_1L":   {"buy": ..., "sell": ...},
-      "DOJI_NHAN": {"buy": ..., "sell": ...},
-      ...
-    }
+    Scrape giavang.doji.vn — bảng giá HTML, đơn vị nghìn/chỉ → quy về VND/lượng.
+    Trả về dict: {"SJC_1L": {"buy":..., "sell":...}, "DOJI_NHAN_9999": {...}, ...}
     """
     results = {}
-    raw_data = []
-
-    for url in _DOJI_ENDPOINTS:
-        try:
-            data = json.loads(_req(url))
-            items = data if isinstance(data, list) else (
-                data.get("data") or data.get("items") or data.get("prices") or []
-            )
-            if isinstance(items, list) and items:
-                raw_data.extend(items)
-                break
-            elif isinstance(items, dict):
-                raw_data.extend(items.values())
-                break
-        except Exception as e:
-            print(f"  ⚠ DOJI ({url}): {e}", file=sys.stderr)
-
-    if not raw_data:
-        # Fallback: scrape website
-        try:
-            html = _req("https://www.doji.vn/bang-gia-vang/").decode("utf-8", errors="replace")
-            # Parse JSON trong script tag
-            m = re.search(r'window\.__NUXT__\s*=\s*(\{.+?\})\s*;?\s*</script>', html, re.S)
-            if not m:
-                m = re.search(r'"prices"\s*:\s*(\[.+?\])', html, re.S)
-            if m:
+    try:
+        html = _req(_DOJI_GOLD_URL).decode("utf-8", errors="replace")
+        # Mỗi row: <tr>...Tên sản phẩm...<td>MUA</td><td>BÁN</td>...</tr>
+        rows = re.findall(r"<tr[^>]*>(.*?)</tr>", html, re.S)
+        for row in rows:
+            cells = re.findall(r"<t[dh][^>]*>(.*?)</t[dh]>", row, re.S)
+            if len(cells) < 3:
+                continue
+            name = re.sub(r"<[^>]+>", " ", cells[0]).strip()
+            # Tìm 2 số đầu tiên trong các ô còn lại
+            nums = []
+            for c in cells[1:]:
+                txt = re.sub(r"<[^>]+>", "", c).strip().replace(".", "").replace(",", "")
                 try:
-                    raw_data = json.loads(m.group(1))
-                    if isinstance(raw_data, dict):
-                        raw_data = list(raw_data.values())
-                except Exception:
+                    v = float(txt)
+                    if 5_000 < v < 500_000:   # nghìn/chỉ range
+                        nums.append(v)
+                except ValueError:
                     pass
-        except Exception as e:
-            print(f"  ⚠ DOJI scrape: {e}", file=sys.stderr)
+            if len(nums) < 2:
+                continue
+            # Đơn vị: nghìn/chỉ → VND/lượng = value * 1000 * 10
+            buy  = round(nums[0] * 10_000)
+            sell = round(nums[1] * 10_000)
+            nl   = name.lower()
 
-    # Phân loại sản phẩm
-    for it in raw_data:
-        if not isinstance(it, dict):
-            continue
-        name = (it.get("name") or it.get("productName") or it.get("title") or "").strip()
-        buy_raw  = (it.get("buy")      or it.get("buyPrice")   or
-                    it.get("gia_mua")  or it.get("buy_price"))
-        sell_raw = (it.get("sell")     or it.get("sellPrice")  or
-                    it.get("gia_ban")  or it.get("sell_price"))
-        if not buy_raw or not sell_raw:
-            continue
-        buy  = _parse_price(buy_raw)
-        sell = _parse_price(sell_raw)
-        if not buy or not sell or sell < 5_000_000:
-            continue
-
-        nl = name.lower()
-        if ("sjc" in nl) and ("1l" in nl or "1 l" in nl or "miếng" in nl or "mieng" in nl):
-            if "SJC_1L" not in results:
-                results["SJC_1L"] = {"buy": buy, "sell": sell, "name": name}
-        elif "sjc" in nl and "half" not in nl and "1/2" not in nl:
-            if "SJC_1L" not in results:
-                results["SJC_1L"] = {"buy": buy, "sell": sell, "name": name}
-        if "nhẫn" in nl or "nhan" in nl or ("doji" in nl and "sjc" not in nl):
-            key = "DOJI_NHAN"
-            if "999.9" in nl or "9999" in nl or "24" in nl:
-                key = "DOJI_NHAN_9999"
-            if key not in results:
-                results[key] = {"buy": buy, "sell": sell, "name": name}
-
+            if "sjc" in nl and "bán lẻ" in nl:
+                if "SJC_1L" not in results:
+                    results["SJC_1L"] = {"buy": buy, "sell": sell, "name": f"SJC Bán lẻ (DOJI)"}
+            elif "nhẫn" in nl or "nhan" in nl:
+                key = "DOJI_NHAN_9999" if ("9999" in nl or "999.9" in nl or "hưng thịnh" in nl) else "DOJI_NHAN"
+                if key not in results:
+                    results[key] = {"buy": buy, "sell": sell, "name": name[:50]}
+    except Exception as e:
+        print(f"  ⚠ DOJI scrape: {e}", file=sys.stderr)
     return results
 
 
