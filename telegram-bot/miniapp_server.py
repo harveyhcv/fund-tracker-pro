@@ -364,6 +364,10 @@ class MiniAppHandler(BaseHTTPRequestHandler):
 
         if path == "/api/trade":
             self._api_add_trade(data)
+        elif path == "/api/admin/settoken":
+            self._api_admin_settoken(data)
+        elif path == "/api/admin/fixportfolio":
+            self._api_admin_fixportfolio(data)
         else:
             _json(self, {"error": "Not found"}, 404)
 
@@ -631,6 +635,52 @@ class MiniAppHandler(BaseHTTPRequestHandler):
 
         _save_cfg(cfg)
         _json(self, {"ok": True, "code": code, "type": tx_type, "units": units, "amount": amount})
+
+    def _api_admin_settoken(self, data: dict):
+        """POST /api/admin/settoken — cập nhật tcbs_token (chỉ admin)."""
+        admin_id = str(data.get("admin_id", ""))
+        new_token = str(data.get("token", "")).strip()
+        if not new_token:
+            _json(self, {"error": "token required"}, 400)
+            return
+        cfg = _load_cfg()
+        if admin_id and admin_id != str(cfg.get("admin_telegram_id", "")):
+            _json(self, {"error": "Unauthorized"}, 403)
+            return
+        cfg["tcbs_token"] = new_token
+        _save_cfg(cfg)
+        log.info(f"[admin] tcbs_token đã được cập nhật (len={len(new_token)})")
+        _json(self, {"ok": True, "msg": "tcbs_token updated"})
+
+    def _api_admin_fixportfolio(self, data: dict):
+        """POST /api/admin/fixportfolio — sửa portfolio admin."""
+        admin_id = str(data.get("admin_id", ""))
+        code = str(data.get("code", "")).upper()
+        avg_cost = data.get("avg_cost")
+        units = data.get("units")
+        if not code or avg_cost is None:
+            _json(self, {"error": "code and avg_cost required"}, 400)
+            return
+        cfg = _load_cfg()
+        if admin_id and admin_id != str(cfg.get("admin_telegram_id", "")):
+            _json(self, {"error": "Unauthorized"}, 403)
+            return
+        cfg_admin_id = str(cfg.get("admin_telegram_id", ""))
+        admin_p = next((p for p in cfg.get("profiles", []) if str(p.get("telegram_id")) == cfg_admin_id), None)
+        if not admin_p:
+            _json(self, {"error": "Admin profile not found"}, 404)
+            return
+        entry = next((e for e in admin_p.get("portfolio", []) if e.get("code") == code), None)
+        if not entry:
+            _json(self, {"error": f"{code} not in portfolio"}, 404)
+            return
+        old = {"avg_cost": entry.get("avg_cost"), "units": entry.get("units")}
+        entry["avg_cost"] = float(avg_cost)
+        if units is not None:
+            entry["units"] = float(units)
+        _save_cfg(cfg)
+        log.info(f"[admin] fixportfolio {code}: avg_cost {old['avg_cost']} → {avg_cost}")
+        _json(self, {"ok": True, "code": code, "old": old, "new": entry})
 
 
 # ── Start ──────────────────────────────────────────────────────────────────────
