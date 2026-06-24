@@ -68,7 +68,11 @@ def _find_profile(cfg: dict, telegram_id: str):
 try:
     import sys as _sys
     _sys.path.insert(0, str(Path(__file__).parent))
-    from bot import calc_signal as _calc_signal_bot, get_nav_series as _get_nav_series_bot
+    from bot import (
+        calc_signal as _calc_signal_bot,
+        get_nav_series as _get_nav_series_bot,
+        job_check_signals as _job_check_signals_bot,
+    )
     _BOT_IMPORTED = True
 except Exception as _e:
     log.warning(f"[miniapp] Không import được bot.py: {_e}")
@@ -637,7 +641,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         _json(self, {"ok": True, "code": code, "type": tx_type, "units": units, "amount": amount})
 
     def _api_admin_settoken(self, data: dict):
-        """POST /api/admin/settoken — cập nhật tcbs_token (chỉ admin)."""
+        """POST /api/admin/settoken — cập nhật tcbs_token rồi fetch NAV ngay."""
         admin_id = str(data.get("admin_id", ""))
         new_token = str(data.get("token", "")).strip()
         if not new_token:
@@ -649,8 +653,18 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             return
         cfg["tcbs_token"] = new_token
         _save_cfg(cfg)
-        log.info(f"[admin] tcbs_token đã được cập nhật (len={len(new_token)})")
-        _json(self, {"ok": True, "msg": "tcbs_token updated"})
+        log.info(f"[admin] tcbs_token cập nhật (len={len(new_token)}) — sẽ fetch NAV ngay")
+        # Fetch NAV ngay trong background thread
+        if _BOT_IMPORTED:
+            def _bg_fetch():
+                try:
+                    log.info("[admin] Background fetch NAV sau khi cập nhật token...")
+                    _job_check_signals_bot()
+                    log.info("[admin] Background fetch NAV hoàn tất.")
+                except Exception as _ex:
+                    log.warning(f"[admin] Background fetch lỗi: {_ex}")
+            threading.Thread(target=_bg_fetch, daemon=True, name="admin-nav-refresh").start()
+        _json(self, {"ok": True, "msg": "tcbs_token updated, NAV fetch started in background"})
 
     def _api_admin_fixportfolio(self, data: dict):
         """POST /api/admin/fixportfolio — sửa portfolio admin."""
