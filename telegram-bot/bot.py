@@ -702,6 +702,12 @@ def msg_morning(profile: dict, nav_data: dict) -> str:
                 f"({'📈' if pnl >= 0 else '📉'} {sign}{int(pnl):,}đ  {sign}{pnl_pct:.2f}%)"
             )
 
+    # Gold summary
+    gold_lines = _morning_gold_summary(load_config(), profile)
+    if gold_lines:
+        lines.append(LINE)
+        lines.extend(gold_lines)
+
     lines.append(LINE)
     if action_funds:
         lines.append(f"⚡ <b>Tín hiệu:</b> {', '.join(action_funds)}")
@@ -709,6 +715,74 @@ def msg_morning(profile: dict, nav_data: dict) -> str:
         lines.append("💤 Không có tín hiệu đặc biệt")
     lines.append(f"<i>Quỹ Tracker Pro · {now.strftime('%H:%M')}</i>")
     return "\n".join(lines)
+
+
+def _morning_gold_summary(cfg: dict, profile: dict) -> list:
+    """Tóm tắt vàng cho morning report: giá SJC mới nhất + P&L portfolio vàng."""
+    db_url = os.environ.get("DATABASE_URL", cfg.get("database_url", ""))
+    if not db_url:
+        return []
+    lines = []
+    try:
+        import psycopg2
+        conn = psycopg2.connect(db_url, connect_timeout=6)
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT buy_price::float, sell_price::float, price_date::text
+                FROM gold_prices WHERE source='SJC'
+                ORDER BY price_date DESC LIMIT 1
+            """)
+            row = cur.fetchone()
+            # Tín hiệu RSI đơn giản
+            cur.execute("""
+                SELECT sell_price::float FROM gold_prices
+                WHERE source='SJC' ORDER BY price_date DESC LIMIT 20
+            """)
+            hist = [r[0] for r in cur.fetchall()]
+        conn.close()
+        if not row:
+            return []
+        buy, sell, dt = row
+        buy_m  = buy  / 1_000_000
+        sell_m = sell / 1_000_000
+        lines.append(f"🥇 <b>Vàng SJC</b> — <i>{dt}</i>")
+        lines.append(f"   Mua: <b>{buy_m:.3f}M</b>  Bán: <b>{sell_m:.3f}M</b>  VNĐ/lượng")
+        # RSI nhanh
+        if len(hist) >= 10:
+            hist = list(reversed(hist))
+            deltas = [hist[i]-hist[i-1] for i in range(1,len(hist))]
+            gains  = [max(d,0) for d in deltas[-14:]]
+            losses = [max(-d,0) for d in deltas[-14:]]
+            avg_g, avg_l = sum(gains)/len(gains), sum(losses)/len(losses)
+            rsi = 100 - 100/(1 + avg_g/avg_l) if avg_l else 100
+            rsi_note = "🟢 Vùng tích lũy" if rsi < 40 else "🔴 Vùng cẩn thận" if rsi > 65 else "⚪ Trung tính"
+            lines.append(f"   RSI {rsi:.0f} — {rsi_note}")
+        # P&L vàng
+        gold_trades = cfg.get("gold_trades", [])
+        tg_id = str(profile.get("telegram_id", ""))
+        total_l = total_cost = 0.0
+        for t in gold_trades:
+            if str(t.get("telegram_id","")) != tg_id:
+                continue
+            ql = float(t.get("qty_luong", t.get("qty", 0)))
+            tv = float(t.get("total_vnd", 0))
+            if t.get("type") == "buy":
+                total_l    += ql; total_cost += tv
+            elif t.get("type") == "sell":
+                frac = ql / total_l if total_l else 0
+                total_cost -= total_cost * frac; total_l -= ql
+        if total_l > 0.001 and total_cost > 0:
+            cur_val = total_l * sell
+            pnl = cur_val - total_cost
+            sign = "+" if pnl >= 0 else ""
+            icon = "📈" if pnl >= 0 else "📉"
+            lines.append(
+                f"   Nắm: <b>{total_l:.4f} lượng</b>  "
+                f"{icon} {sign}{int(pnl):,}đ  ({sign}{pnl/total_cost*100:.2f}%)"
+            )
+    except Exception as e:
+        log.warning(f"[gold_morning] {e}")
+    return lines
 
 
 def msg_evening(profile: dict, nav_data: dict, morning_nav: dict) -> str:

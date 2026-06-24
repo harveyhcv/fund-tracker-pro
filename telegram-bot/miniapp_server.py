@@ -100,6 +100,121 @@ def _recalc_portfolio(cfg: dict, tg_id: str):
     profile["portfolio"] = portfolio
 
 
+# ── Gold helpers ──────────────────────────────────────────────────────────────
+
+def _unit_to_luong(unit: str) -> float:
+    """Quy đổi đơn vị về lượng. 1 lượng = 10 chỉ = 37.5g."""
+    return {"luong": 1.0, "chi": 0.1, "gram": 1.0 / 37.5}.get(unit, 1.0)
+
+
+def _calc_gold_signals(db_url: str) -> dict:
+    """Tính RSI, BB, MA cho giá SJC từ 60 ngày gần nhất."""
+    try:
+        import psycopg2
+        conn = psycopg2.connect(db_url, connect_timeout=6)
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT price_date::text, sell_price::float
+                FROM gold_prices WHERE source='SJC'
+                ORDER BY price_date DESC LIMIT 60
+            """)
+            rows = cur.fetchall()
+        conn.close()
+        if len(rows) < 10:
+            return {}
+        rows = list(reversed(rows))
+        dates  = [r[0] for r in rows]
+        prices = [r[1] for r in rows]
+        # RSI(14)
+        rsi = _gold_rsi(prices)
+        # MA20, MA50
+        ma20 = sum(prices[-20:]) / min(len(prices), 20)
+        ma50 = sum(prices[-50:]) / min(len(prices), 50) if len(prices) >= 20 else None
+        cur_price = prices[-1]
+        prev_price = prices[-2] if len(prices) >= 2 else cur_price
+        chg_pct = (cur_price - prev_price) / prev_price * 100 if prev_price else 0
+        # BB(20)
+        window = prices[-20:] if len(prices) >= 20 else prices
+        mean   = sum(window) / len(window)
+        std    = (sum((x - mean) ** 2 for x in window) / len(window)) ** 0.5
+        bb_pct = (cur_price - (mean - 2 * std)) / (4 * std) * 100 if std else 50
+        # Signal score
+        score = 0
+        if rsi is not None:
+            if rsi < 33:   score += 2
+            elif rsi < 48: score += 1
+            elif rsi > 70: score -= 2
+        if bb_pct < 25:    score += 1
+        elif bb_pct > 75:  score -= 1
+        if ma50 and cur_price > ma50: score += 1
+        if score >= 3:      sig = "MUA 🟢"
+        elif score >= 1:    sig = "TÍCH LŨY 🟡"
+        elif score <= -2:   sig = "THẬN TRỌNG 🔴"
+        else:               sig = "HOLD ⚪"
+        return {
+            "signal": sig, "score": score,
+            "rsi": round(rsi, 1) if rsi else None,
+            "bb_pct": round(bb_pct, 1),
+            "ma20": round(ma20, 0),
+            "ma50": round(ma50, 0) if ma50 else None,
+            "price": cur_price,
+            "chg_pct": round(chg_pct, 2),
+            "date": dates[-1],
+            "n_points": len(prices),
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def _gold_rsi(prices: list, period: int = 14) -> float | None:
+    if len(prices) < period + 1:
+        return None
+    deltas = [prices[i] - prices[i-1] for i in range(1, len(prices))]
+    gains  = [max(d, 0) for d in deltas[-period:]]
+    losses = [max(-d, 0) for d in deltas[-period:]]
+    avg_g  = sum(gains) / period
+    avg_l  = sum(losses) / period
+    if avg_l == 0:
+        return 100.0
+    rs = avg_g / avg_l
+    return 100 - (100 / (1 + rs))
+
+
+def _calc_gold_portfolio(cfg: dict, tg_id: str, sjc_price: dict | None) -> dict:
+    """Tính portfolio vàng: tổng lượng, avg cost, current value, P&L."""
+    trades = cfg.get("gold_trades", [])
+    total_luong  = 0.0
+    total_cost   = 0.0
+    for t in trades:
+        if str(t.get("telegram_id", "")) != tg_id:
+            continue
+        ql = float(t.get("qty_luong", t.get("qty", 0) * _unit_to_luong(t.get("unit", "luong"))))
+        tv = float(t.get("total_vnd", 0))
+        if t.get("type") == "buy":
+            total_luong += ql
+            total_cost  += tv
+        elif t.get("type") == "sell":
+            sell_frac    = ql / total_luong if total_luong > 0 else 0
+            total_cost  -= total_cost * sell_frac
+            total_luong -= ql
+    if total_luong < 0.001:
+        return {"total_luong": 0.0, "avg_cost": 0, "current_value": 0, "pnl": 0, "pnl_pct": 0}
+    avg_cost = total_cost / total_luong
+    cur_sell = sjc_price["sell"] if sjc_price else 0
+    cur_val  = total_luong * cur_sell
+    pnl      = cur_val - total_cost
+    pnl_pct  = pnl / total_cost * 100 if total_cost else 0
+    return {
+        "total_luong":    round(total_luong, 4),
+        "avg_cost":       round(avg_cost, 0),
+        "current_value":  round(cur_val, 0),
+        "total_cost":     round(total_cost, 0),
+        "pnl":            round(pnl, 0),
+        "pnl_pct":        round(pnl_pct, 2),
+        "current_price":  cur_sell,
+    }
+
+
 # Import calc_signal + get_nav_series từ bot.py để dùng cùng logic tính tín hiệu
 try:
     import sys as _sys
@@ -388,6 +503,12 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             self._api_dca(qs)
         elif path == "/api/trades":
             self._api_get_trades(qs)
+        elif path == "/api/gold":
+            self._api_gold(qs)
+        elif path == "/api/gold/history":
+            self._api_gold_history(qs)
+        elif path == "/api/gold/trades":
+            self._api_get_gold_trades(qs)
         elif path == "/health":
             _json(self, {"ok": True, "ts": datetime.now().isoformat()})
         else:
@@ -405,7 +526,10 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path   = parsed.path.rstrip("/")
         data   = self._read_body()
-        if path.startswith("/api/trade/"):
+        if path.startswith("/api/gold/trade/"):
+            idx = path[len("/api/gold/trade/"):]
+            self._api_delete_gold_trade(idx, data)
+        elif path.startswith("/api/trade/"):
             idx = path[len("/api/trade/"):]
             self._api_delete_trade(idx, data)
         else:
@@ -416,7 +540,12 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path   = parsed.path.rstrip("/")
 
-        if path == "/api/trade":
+        if path == "/api/gold/trade":
+            self._api_add_gold_trade(data)
+        elif path.startswith("/api/gold/trade/"):
+            idx = path[len("/api/gold/trade/"):]
+            self._api_edit_gold_trade(idx, data)
+        elif path == "/api/trade":
             self._api_add_trade(data)
         elif path.startswith("/api/trade/"):
             idx = path[len("/api/trade/"):]
@@ -779,6 +908,179 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         _recalc_portfolio(cfg, tg_id)
         _save_cfg(cfg)
         _json(self, {"ok": True, "index": idx, "trade": trades[idx]})
+
+    # ── Gold APIs ────────────────────────────────────────────────────────────────
+
+    def _api_gold(self, qs: dict):
+        """GET /api/gold?user_id=... — giá vàng mới nhất + tín hiệu + portfolio."""
+        tg_id = (qs.get("user_id") or [""])[0]
+        db_url = os.environ.get("DATABASE_URL", _load_cfg().get("database_url", ""))
+        prices = {}
+        if db_url:
+            try:
+                import psycopg2
+                conn = psycopg2.connect(db_url, connect_timeout=8)
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT source, buy_price::float, sell_price::float,
+                               price_date::text, extra
+                        FROM gold_prices
+                        WHERE price_date >= CURRENT_DATE - INTERVAL '7 days'
+                        ORDER BY price_date DESC, source
+                    """)
+                    rows = cur.fetchall()
+                conn.close()
+                seen = {}
+                for src, buy, sell, dt, extra in rows:
+                    if src not in seen:
+                        seen[src] = {"source": src, "buy": buy, "sell": sell,
+                                     "date": dt, "extra": extra or {}}
+                prices = seen
+            except Exception as e:
+                prices = {"error": str(e)}
+
+        # Tính signals từ lịch sử SJC (30 ngày gần nhất)
+        signals = _calc_gold_signals(db_url) if db_url else {}
+
+        # Portfolio vàng
+        portfolio = None
+        if tg_id:
+            cfg = _load_cfg()
+            portfolio = _calc_gold_portfolio(cfg, tg_id, prices.get("SJC"))
+
+        _json(self, {
+            "prices":    prices,
+            "signals":   signals,
+            "portfolio": portfolio,
+            "updated":   datetime.now().isoformat(),
+        })
+
+    def _api_gold_history(self, qs: dict):
+        """GET /api/gold/history?source=SJC&days=90 — lịch sử giá vàng."""
+        source = (qs.get("source") or ["SJC"])[0].upper()
+        days   = int((qs.get("days") or ["90"])[0])
+        db_url = os.environ.get("DATABASE_URL", _load_cfg().get("database_url", ""))
+        if not db_url:
+            _json(self, {"error": "DATABASE_URL not set"}, 503)
+            return
+        try:
+            import psycopg2
+            conn = psycopg2.connect(db_url, connect_timeout=8)
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT price_date::text, buy_price::float, sell_price::float, extra
+                    FROM gold_prices
+                    WHERE source = %s
+                      AND price_date >= CURRENT_DATE - INTERVAL '%s days'
+                    ORDER BY price_date
+                """, (source, days))
+                rows = cur.fetchall()
+            conn.close()
+            data = [{"date": r[0], "buy": r[1], "sell": r[2],
+                     "extra": r[3] or {}} for r in rows]
+            _json(self, {"source": source, "data": data})
+        except Exception as e:
+            _json(self, {"error": str(e)}, 500)
+
+    def _api_get_gold_trades(self, qs: dict):
+        """GET /api/gold/trades?user_id=..."""
+        tg_id = (qs.get("user_id") or [""])[0]
+        if not tg_id:
+            _json(self, {"error": "user_id required"}, 400)
+            return
+        cfg = _load_cfg()
+        all_trades = cfg.get("gold_trades", [])
+        user_trades = [
+            {"index": i, **t}
+            for i, t in enumerate(all_trades)
+            if str(t.get("telegram_id", "")) == tg_id
+        ]
+        _json(self, {"trades": user_trades})
+
+    def _api_add_gold_trade(self, data: dict):
+        """POST /api/gold/trade — thêm giao dịch vàng."""
+        tg_id    = str(data.get("telegram_id", ""))
+        tx_type  = str(data.get("type", "")).lower()
+        unit     = str(data.get("unit", "luong")).lower()   # luong | chi | gram
+        qty      = float(data.get("qty", 0))
+        price    = float(data.get("price_per_luong", 0))    # VND/lượng
+        total    = float(data.get("total_vnd", 0)) or round(qty * price * _unit_to_luong(unit))
+        tx_date  = str(data.get("date", date.today().isoformat()))
+
+        if not all([tg_id, tx_type in ("buy", "sell"), qty > 0, price > 0]):
+            _json(self, {"error": "Thiếu hoặc sai thông tin"}, 400)
+            return
+
+        cfg     = _load_cfg()
+        profile = _find_profile(cfg, tg_id)
+        if not profile:
+            _json(self, {"error": "Profile không tìm thấy"}, 404)
+            return
+
+        trades = cfg.setdefault("gold_trades", [])
+        trades.append({
+            "telegram_id":    tg_id,
+            "type":           tx_type,
+            "unit":           unit,
+            "qty":            round(qty, 4),
+            "qty_luong":      round(qty * _unit_to_luong(unit), 4),
+            "price_per_luong": round(price, 0),
+            "total_vnd":      round(total, 0),
+            "date":           tx_date,
+            "ts":             datetime.now().isoformat(),
+        })
+        _save_cfg(cfg)
+        _json(self, {"ok": True, "type": tx_type, "qty": qty, "unit": unit,
+                     "price_per_luong": price, "total_vnd": total})
+
+    def _api_edit_gold_trade(self, raw_idx: str, data: dict):
+        """POST /api/gold/trade/<idx> — sửa giao dịch vàng."""
+        try:
+            idx = int(raw_idx)
+        except (ValueError, TypeError):
+            _json(self, {"error": "Invalid index"}, 400)
+            return
+        cfg = _load_cfg()
+        trades = cfg.get("gold_trades", [])
+        if idx < 0 or idx >= len(trades):
+            _json(self, {"error": "Index out of range"}, 404)
+            return
+        entry = trades[idx]
+        unit  = str(data.get("unit", entry["unit"])).lower()
+        qty   = float(data.get("qty", entry["qty"]))
+        price = float(data.get("price_per_luong", entry["price_per_luong"]))
+        total = float(data.get("total_vnd", 0)) or round(qty * price * _unit_to_luong(unit))
+        trades[idx] = {
+            **entry,
+            "type":            str(data.get("type", entry["type"])).lower(),
+            "unit":            unit,
+            "qty":             round(qty, 4),
+            "qty_luong":       round(qty * _unit_to_luong(unit), 4),
+            "price_per_luong": round(price, 0),
+            "total_vnd":       round(total, 0),
+            "date":            str(data.get("date", entry["date"])),
+            "edited_ts":       datetime.now().isoformat(),
+        }
+        cfg["gold_trades"] = trades
+        _save_cfg(cfg)
+        _json(self, {"ok": True, "index": idx, "trade": trades[idx]})
+
+    def _api_delete_gold_trade(self, raw_idx: str, data: dict):
+        """DELETE /api/gold/trade/<idx> — xóa giao dịch vàng."""
+        try:
+            idx = int(raw_idx)
+        except (ValueError, TypeError):
+            _json(self, {"error": "Invalid index"}, 400)
+            return
+        cfg = _load_cfg()
+        trades = cfg.get("gold_trades", [])
+        if idx < 0 or idx >= len(trades):
+            _json(self, {"error": "Index out of range"}, 404)
+            return
+        trades.pop(idx)
+        cfg["gold_trades"] = trades
+        _save_cfg(cfg)
+        _json(self, {"ok": True, "deleted_index": idx})
 
     def _api_admin_settoken(self, data: dict):
         """POST /api/admin/settoken — cập nhật tcbs_token rồi fetch NAV ngay."""

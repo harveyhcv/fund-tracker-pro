@@ -242,6 +242,87 @@ canvas{width:100%!important;height:100%!important}
     </div>
   </div>
 
+  <!-- Gold -->
+  <div class="page" id="page-gold">
+    <div class="hdr">VÀNG <span class="hdr-sub" id="gold-date"></span></div>
+
+    <!-- Giá vàng hiện tại -->
+    <div class="card" id="gold-price-card">
+      <div class="card-title">GIÁ VÀNG SJC</div>
+      <div id="gold-price-content" style="text-align:center;padding:16px;color:var(--txt2)">Đang tải...</div>
+    </div>
+
+    <!-- XAU/USD tham khảo -->
+    <div class="card" id="gold-xau-card" style="display:none">
+      <div class="card-title">XAU/USD — QUỐC TẾ</div>
+      <div id="gold-xau-content"></div>
+    </div>
+
+    <!-- Tín hiệu kỹ thuật -->
+    <div class="card" id="gold-signal-card" style="display:none">
+      <div class="card-title">TÍN HIỆU KỸ THUẬT</div>
+      <div id="gold-signal-content"></div>
+    </div>
+
+    <!-- Portfolio vàng -->
+    <div class="card" id="gold-portfolio-card" style="display:none">
+      <div class="card-title">DANH MỤC VÀNG</div>
+      <div id="gold-portfolio-content"></div>
+    </div>
+
+    <!-- Form ghi giao dịch vàng -->
+    <div class="hdr" style="margin-top:16px">GHI GIAO DỊCH VÀNG</div>
+    <div class="card">
+      <label>Loại</label>
+      <div class="type-toggle" style="margin-bottom:12px">
+        <div class="type-btn buy active" id="gold-btn-buy" onclick="setGoldType('buy')">MUA</div>
+        <div class="type-btn sell" id="gold-btn-sell" onclick="setGoldType('sell')">BÁN</div>
+      </div>
+      <label>Đơn vị</label>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:12px" id="gold-unit-group">
+        <div class="tlog-btn" id="gold-unit-luong" onclick="setGoldUnit('luong')" style="padding:8px;border-radius:8px;border:1px solid var(--c0);background:#052e3a;color:var(--c0);text-align:center;cursor:pointer;font-size:12px">Lượng</div>
+        <div class="tlog-btn" id="gold-unit-chi" onclick="setGoldUnit('chi')" style="padding:8px;border-radius:8px;border:1px solid var(--bdr);background:var(--bg3);color:var(--txt2);text-align:center;cursor:pointer;font-size:12px">Chỉ</div>
+        <div class="tlog-btn" id="gold-unit-gram" onclick="setGoldUnit('gram')" style="padding:8px;border-radius:8px;border:1px solid var(--bdr);background:var(--bg3);color:var(--txt2);text-align:center;cursor:pointer;font-size:12px">Gram</div>
+      </div>
+      <label>Số lượng</label>
+      <input type="text" inputmode="decimal" id="gold-qty" placeholder="VD: 1 (lượng)" oninput="calcGoldTotal()" style="width:100%;background:var(--bg);border:1px solid var(--bdr);color:var(--txt);border-radius:8px;padding:10px;margin-bottom:8px">
+      <label>Giá mua/bán (VNĐ / lượng)</label>
+      <input type="text" inputmode="decimal" id="gold-price" placeholder="VD: 89000000" oninput="calcGoldTotal()" style="width:100%;background:var(--bg);border:1px solid var(--bdr);color:var(--txt);border-radius:8px;padding:10px;margin-bottom:8px">
+      <div id="gold-total-preview" style="display:none;color:var(--c0);font-size:13px;margin-bottom:8px;font-family:var(--mono)"></div>
+      <label>Ngày giao dịch</label>
+      <input type="date" id="gold-date-input" style="width:100%;background:var(--bg);border:1px solid var(--bdr);color:var(--txt);border-radius:8px;padding:10px;margin-bottom:12px">
+      <button class="btn btn-buy" id="gold-submit-btn" onclick="submitGoldTrade()">XÁC NHẬN MUA</button>
+    </div>
+
+    <!-- Lịch sử giao dịch vàng -->
+    <div class="hdr" style="margin-top:16px">LỊCH SỬ GIAO DỊCH VÀNG</div>
+    <div id="gold-trade-log"></div>
+  </div>
+
+  <!-- Edit Gold Trade Modal -->
+  <div id="edit-gold-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:999;overflow-y:auto">
+    <div style="background:#0d1b2a;margin:32px 16px;border-radius:12px;padding:20px;border:1px solid #1e3a5f">
+      <div style="font-size:14px;font-weight:700;color:#fbbf24;margin-bottom:14px">CHỈNH SỬA GIAO DỊCH VÀNG</div>
+      <input type="hidden" id="edit-gold-idx">
+      <label>Loại</label>
+      <div class="type-toggle" style="margin-bottom:12px">
+        <div class="type-btn buy active" id="edit-gold-btn-buy" onclick="setEditGoldType('buy')">MUA</div>
+        <div class="type-btn sell" id="edit-gold-btn-sell" onclick="setEditGoldType('sell')">BÁN</div>
+      </div>
+      <label>Số lượng (lượng)</label>
+      <input type="text" inputmode="decimal" id="edit-gold-qty" placeholder="1" oninput="calcEditGoldTotal()" style="width:100%;background:#060b14;border:1px solid #1e3a5f;color:#e2e8f0;border-radius:8px;padding:8px;margin-bottom:8px;box-sizing:border-box">
+      <label>Giá / lượng (VNĐ)</label>
+      <input type="text" inputmode="decimal" id="edit-gold-price" placeholder="89000000" oninput="calcEditGoldTotal()" style="width:100%;background:#060b14;border:1px solid #1e3a5f;color:#e2e8f0;border-radius:8px;padding:8px;margin-bottom:8px;box-sizing:border-box">
+      <label>Ngày</label>
+      <input type="date" id="edit-gold-date" style="width:100%;background:#060b14;border:1px solid #1e3a5f;color:#e2e8f0;border-radius:8px;padding:8px;margin-bottom:8px;box-sizing:border-box">
+      <div id="edit-gold-total" style="display:none;color:var(--c0);font-size:13px;margin-bottom:10px"></div>
+      <div style="display:flex;gap:8px">
+        <button class="btn" style="flex:1;background:#1e3a5f;color:#e2e8f0" onclick="closeEditGoldModal()">Hủy</button>
+        <button class="btn btn-buy" style="flex:1" onclick="saveEditGoldTrade()">Lưu</button>
+      </div>
+    </div>
+  </div>
+
   <!-- History -->
   <div class="page" id="page-history">
     <div class="hdr">LỊCH SỬ NAV</div>
@@ -277,6 +358,10 @@ canvas{width:100%!important;height:100%!important}
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/><circle cx="12" cy="12" r="10"/></svg>
     Lịch sử
   </button>
+  <button class="nav-btn" onclick="goPage('gold',this)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9 12l2 2 4-4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2"/></svg>
+    Vàng
+  </button>
 </nav>
 
 <script>
@@ -299,6 +384,7 @@ function goPage(name,btn){
   if(name==='dca')loadDCA();
   if(name==='trade'){setupTrade();loadTradeLog();}
   if(name==='history')loadHistory();
+  if(name==='gold')loadGoldPage();
 }
 
 let _toastTimer;
@@ -872,6 +958,289 @@ function drawChart(points){
   [minN,(minN+maxN)/2,maxN].forEach(v=>ctx.fillText(fmt(Math.round(v)),pad.l-4,y(v)+4));
   ctx.textAlign='left';ctx.fillText(pts[0]?.date?.slice(0,7)||'',pad.l,H-6);
   ctx.textAlign='right';ctx.fillText(pts[pts.length-1]?.date?.slice(0,7)||'',W-pad.r,H-6);
+}
+
+// ── Gold ─────────────────────────────────────────────────────────────────────
+let _goldData = null;
+let _goldType = 'buy';
+let _goldUnit = 'luong';
+let _goldTrades = [];
+
+async function loadGoldPage() {
+  if (!USER_ID) return;
+  document.getElementById('gold-price-content').textContent = 'Đang tải...';
+  try {
+    _goldData = await apiFetch(`/api/gold?user_id=${USER_ID}`);
+    renderGoldPrices();
+    renderGoldSignal();
+    renderGoldPortfolio();
+  } catch(e) {
+    document.getElementById('gold-price-content').textContent = 'Lỗi tải dữ liệu: ' + e.message;
+  }
+  try {
+    const d = await apiFetch(`/api/gold/trades?user_id=${USER_ID}`);
+    _goldTrades = d.trades || [];
+    renderGoldTradeLog();
+  } catch {}
+  // Set default date
+  const dInput = document.getElementById('gold-date-input');
+  if (!dInput.value) dInput.value = new Date().toISOString().split('T')[0];
+}
+
+function renderGoldPrices() {
+  const sjc = _goldData?.prices?.SJC;
+  const el  = document.getElementById('gold-price-content');
+  if (!sjc) { el.textContent = 'Chưa có dữ liệu SJC. Chạy fetch_gold.py --daily để cập nhật.'; return; }
+  const buyM  = (sjc.buy  / 1e6).toFixed(3);
+  const sellM = (sjc.sell / 1e6).toFixed(3);
+  el.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px">
+      <div style="background:var(--bg3);border-radius:8px;padding:10px;text-align:center">
+        <div style="font-size:10px;color:var(--txt2);margin-bottom:4px">MUA VÀO</div>
+        <div style="font-family:var(--mono);font-size:16px;color:var(--buy)">${buyM}M</div>
+        <div style="font-size:10px;color:var(--txt2)">VNĐ/lượng</div>
+      </div>
+      <div style="background:var(--bg3);border-radius:8px;padding:10px;text-align:center">
+        <div style="font-size:10px;color:var(--txt2);margin-bottom:4px">BÁN RA</div>
+        <div style="font-family:var(--mono);font-size:16px;color:var(--sell)">${sellM}M</div>
+        <div style="font-size:10px;color:var(--txt2)">VNĐ/lượng</div>
+      </div>
+    </div>
+    <div style="margin-top:8px;text-align:center;font-size:11px;color:var(--txt2)">
+      Spread: ${((sjc.sell - sjc.buy)/1e6).toFixed(3)}M · ${sjc.date || ''}
+    </div>`;
+  document.getElementById('gold-date').textContent = sjc.date || '';
+
+  // XAU/USD
+  const xau = _goldData?.prices?.XAU_USD;
+  const xauCard = document.getElementById('gold-xau-card');
+  if (xau && xau.extra) {
+    xauCard.style.display = 'block';
+    const vndM = xau.extra.xau_vnd_luong ? (xau.extra.xau_vnd_luong/1e6).toFixed(2) : '--';
+    const usdVnd = xau.extra.usd_vnd ? Number(xau.extra.usd_vnd).toLocaleString('vi-VN') : '--';
+    document.getElementById('gold-xau-content').innerHTML = `
+      <div class="sum-row"><span class="sum-label">Giá quốc tế</span>
+        <span class="sum-val" style="color:var(--hold)">${Number(xau.buy).toLocaleString('vi-VN')} USD/oz</span></div>
+      <div class="sum-row"><span class="sum-label">Tỷ giá USD/VND</span>
+        <span class="sum-val">${usdVnd}</span></div>
+      <div class="sum-row"><span class="sum-label">Quy đổi (tham khảo)</span>
+        <span class="sum-val">${vndM}M VND/lượng</span></div>
+      <div style="font-size:10px;color:var(--txt2);margin-top:6px">
+        Premium SJC: ${sjc ? ((sjc.sell/1e6 - parseFloat(vndM))/parseFloat(vndM)*100).toFixed(1)+'%' : '--'}
+        so với giá quốc tế quy đổi
+      </div>`;
+  }
+}
+
+function renderGoldSignal() {
+  const sig = _goldData?.signals;
+  const card = document.getElementById('gold-signal-card');
+  if (!sig || sig.error || !sig.signal) return;
+  card.style.display = 'block';
+  const isBuy  = sig.signal.includes('MUA');
+  const isWarn = sig.signal.includes('THẬN');
+  const sigColor = isBuy ? 'var(--buy)' : isWarn ? 'var(--sell)' : 'var(--hold)';
+  const chgColor = sig.chg_pct >= 0 ? 'var(--buy)' : 'var(--sell)';
+  const chgSign  = sig.chg_pct >= 0 ? '+' : '';
+  document.getElementById('gold-signal-content').innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <span style="font-size:18px;font-weight:700;color:${sigColor}">${sig.signal}</span>
+      <span style="font-size:13px;color:${chgColor};font-family:var(--mono)">${chgSign}${sig.chg_pct}%</span>
+    </div>
+    <div class="sum-row"><span class="sum-label">RSI(14)</span>
+      <span class="sum-val" style="color:${sig.rsi<33?'var(--buy)':sig.rsi>70?'var(--sell)':'var(--txt)'}">${sig.rsi ?? '--'}</span></div>
+    <div class="sum-row"><span class="sum-label">BB%</span>
+      <span class="sum-val">${sig.bb_pct ?? '--'}%</span></div>
+    <div class="sum-row"><span class="sum-label">MA20</span>
+      <span class="sum-val">${sig.ma20 ? (sig.ma20/1e6).toFixed(3)+'M' : '--'}</span></div>
+    ${sig.ma50 ? `<div class="sum-row"><span class="sum-label">MA50</span>
+      <span class="sum-val">${(sig.ma50/1e6).toFixed(3)}M</span></div>` : ''}
+    <div style="font-size:10px;color:var(--txt2);margin-top:6px">${sig.n_points} ngày dữ liệu</div>`;
+}
+
+function renderGoldPortfolio() {
+  const pf = _goldData?.portfolio;
+  const card = document.getElementById('gold-portfolio-card');
+  if (!pf || pf.total_luong === 0) return;
+  card.style.display = 'block';
+  const pnlColor = pf.pnl >= 0 ? 'var(--buy)' : 'var(--sell)';
+  const pnlSign  = pf.pnl >= 0 ? '+' : '';
+  const fmt = v => Number(v).toLocaleString('vi-VN');
+  document.getElementById('gold-portfolio-content').innerHTML = `
+    <div class="sum-row"><span class="sum-label">Số lượng</span>
+      <span class="sum-val" style="color:var(--c0)">${pf.total_luong} lượng</span></div>
+    <div class="sum-row"><span class="sum-label">Giá vốn TB</span>
+      <span class="sum-val">${fmt(pf.avg_cost)} ₫/lượng</span></div>
+    <div class="sum-row"><span class="sum-label">Giá hiện tại</span>
+      <span class="sum-val">${fmt(pf.current_price)} ₫/lượng</span></div>
+    <div class="sum-row"><span class="sum-label">Giá trị hiện tại</span>
+      <span class="sum-val">${fmt(pf.current_value)} ₫</span></div>
+    <div class="sum-row" style="border-top:1px solid var(--bdr);margin-top:4px;padding-top:8px">
+      <span class="sum-label">Lãi/Lỗ</span>
+      <span class="sum-val" style="color:${pnlColor}">${pnlSign}${fmt(pf.pnl)} ₫ (${pnlSign}${pf.pnl_pct}%)</span></div>`;
+}
+
+// Trade form
+function setGoldType(type) {
+  _goldType = type;
+  document.getElementById('gold-btn-buy').classList.toggle('active', type==='buy');
+  document.getElementById('gold-btn-sell').classList.toggle('active', type==='sell');
+  document.getElementById('gold-btn-buy').className = 'type-btn buy' + (type==='buy'?' active':'');
+  document.getElementById('gold-btn-sell').className = 'type-btn sell' + (type==='sell'?' active':'');
+  document.getElementById('gold-submit-btn').textContent = type==='buy' ? 'XÁC NHẬN MUA' : 'XÁC NHẬN BÁN';
+  document.getElementById('gold-submit-btn').className = 'btn ' + (type==='buy'?'btn-buy':'btn-sell');
+}
+
+function setGoldUnit(unit) {
+  _goldUnit = unit;
+  ['luong','chi','gram'].forEach(u => {
+    const el = document.getElementById(`gold-unit-${u}`);
+    if (u === unit) {
+      el.style.borderColor = 'var(--c0)';
+      el.style.background  = '#052e3a';
+      el.style.color       = 'var(--c0)';
+    } else {
+      el.style.borderColor = 'var(--bdr)';
+      el.style.background  = 'var(--bg3)';
+      el.style.color       = 'var(--txt2)';
+    }
+  });
+  const placeholder = unit==='luong' ? 'VD: 1 (lượng)' : unit==='chi' ? 'VD: 5 (chỉ)' : 'VD: 37.5 (gram)';
+  document.getElementById('gold-qty').placeholder = placeholder;
+  calcGoldTotal();
+}
+
+function calcGoldTotal() {
+  const qty   = parseDecimal(document.getElementById('gold-qty').value);
+  const price = parseDecimal(document.getElementById('gold-price').value);
+  const el    = document.getElementById('gold-total-preview');
+  const unitF = {'luong':1,'chi':0.1,'gram':1/37.5}[_goldUnit] || 1;
+  if (qty > 0 && price > 0) {
+    const total = qty * unitF * price;
+    const qtyL  = qty * unitF;
+    el.textContent = `${qtyL.toFixed(4)} lượng × ${price.toLocaleString('vi-VN')} ₫ = ${total.toLocaleString('vi-VN')} ₫`;
+    el.style.display = 'block';
+  } else { el.style.display = 'none'; }
+}
+
+async function submitGoldTrade() {
+  if (!USER_ID) { toast('Không xác định user'); return; }
+  const qty   = parseDecimal(document.getElementById('gold-qty').value);
+  const price = parseDecimal(document.getElementById('gold-price').value);
+  const dt    = document.getElementById('gold-date-input').value;
+  if (!qty || qty <= 0) { toast('Nhập số lượng'); return; }
+  if (!price || price <= 0) { toast('Nhập giá/lượng'); return; }
+  if (!dt) { toast('Chọn ngày giao dịch'); return; }
+  const unitF = {'luong':1,'chi':0.1,'gram':1/37.5}[_goldUnit] || 1;
+  const total = Math.round(qty * unitF * price);
+  const btn   = document.getElementById('gold-submit-btn');
+  btn.disabled = true;
+  try {
+    const res = await fetch(`${API_BASE}/api/gold/trade`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({telegram_id:USER_ID, type:_goldType, unit:_goldUnit,
+                            qty, price_per_luong:price, total_vnd:total, date:dt})
+    });
+    const d = await res.json();
+    if (d.ok) {
+      const label = _goldType==='buy'?'Mua':'Bán';
+      toast(`✓ ${label} ${qty} ${_goldUnit} vàng SJC`);
+      document.getElementById('gold-qty').value = '';
+      document.getElementById('gold-price').value = '';
+      document.getElementById('gold-total-preview').style.display = 'none';
+      _goldData = null;
+      tg?.HapticFeedback?.notificationOccurred('success');
+      await loadGoldPage();
+    } else { toast('Lỗi: ' + (d.error||'unknown')); }
+  } catch(e) { toast('Lỗi kết nối: ' + e.message); }
+  btn.disabled = false;
+}
+
+// Trade log render
+function renderGoldTradeLog() {
+  const el = document.getElementById('gold-trade-log');
+  if (!_goldTrades.length) {
+    el.innerHTML = '<div style="color:var(--txt2);font-size:12px;padding:8px 0;text-align:center">Chưa có giao dịch vàng nào</div>';
+    return;
+  }
+  const sorted = [..._goldTrades].sort((a,b) => b.date.localeCompare(a.date));
+  el.innerHTML = sorted.map(t => {
+    const isBuy   = t.type==='buy';
+    const color   = isBuy ? 'var(--buy)' : 'var(--sell)';
+    const label   = isBuy ? 'MUA' : 'BÁN';
+    const priceM  = (t.price_per_luong/1e6).toFixed(3);
+    const totalFmt = Number(t.total_vnd).toLocaleString('vi-VN');
+    const qtyL    = t.qty_luong ?? t.qty;
+    return `<div class="tlog-row">
+  <div class="tlog-left">
+    <div><span class="tlog-code" style="color:#fbbf24">VÀNG SJC</span>
+      <span style="font-size:11px;color:${color};font-weight:700;margin-left:6px">${label}</span></div>
+    <div class="tlog-meta">${t.date} · ${qtyL} lượng · ${priceM}M ₫/lượng</div>
+    <div class="tlog-meta">Tổng: <span style="color:var(--c0)">${totalFmt} ₫</span></div>
+  </div>
+  <div class="tlog-actions">
+    <button class="tlog-btn tlog-edit" onclick="openEditGoldModal(${t.index})">✏️</button>
+    <button class="tlog-btn tlog-del" onclick="confirmDeleteGoldTrade(${t.index})">🗑️</button>
+  </div>
+</div>`;
+  }).join('');
+}
+
+// Edit gold trade
+let _editGoldType = 'buy';
+function setEditGoldType(type) {
+  _editGoldType = type;
+  document.getElementById('edit-gold-btn-buy').className = 'type-btn buy' + (type==='buy'?' active':'');
+  document.getElementById('edit-gold-btn-sell').className = 'type-btn sell' + (type==='sell'?' active':'');
+}
+function openEditGoldModal(idx) {
+  const t = _goldTrades.find(x => x.index===idx);
+  if (!t) return;
+  document.getElementById('edit-gold-idx').value = idx;
+  document.getElementById('edit-gold-qty').value = t.qty_luong ?? t.qty;
+  document.getElementById('edit-gold-price').value = t.price_per_luong;
+  document.getElementById('edit-gold-date').value = t.date;
+  setEditGoldType(t.type);
+  document.getElementById('edit-gold-total').style.display = 'none';
+  document.getElementById('edit-gold-modal').style.display = 'block';
+}
+function calcEditGoldTotal() {
+  const qty   = parseDecimal(document.getElementById('edit-gold-qty').value);
+  const price = parseDecimal(document.getElementById('edit-gold-price').value);
+  const el    = document.getElementById('edit-gold-total');
+  if (qty > 0 && price > 0) {
+    el.textContent = 'Tổng: ' + (qty * price).toLocaleString('vi-VN') + ' ₫';
+    el.style.display = 'block';
+  } else { el.style.display = 'none'; }
+}
+function closeEditGoldModal() { document.getElementById('edit-gold-modal').style.display = 'none'; }
+async function saveEditGoldTrade() {
+  const idx   = parseInt(document.getElementById('edit-gold-idx').value);
+  const qty   = parseDecimal(document.getElementById('edit-gold-qty').value);
+  const price = parseDecimal(document.getElementById('edit-gold-price').value);
+  const dt    = document.getElementById('edit-gold-date').value;
+  if (!qty||qty<=0||!price||price<=0||!dt) { toast('Kiểm tra lại thông tin'); return; }
+  const total = Math.round(qty * price);
+  try {
+    const res = await fetch(`${API_BASE}/api/gold/trade/${idx}`,{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({type:_editGoldType,unit:'luong',qty,price_per_luong:price,total_vnd:total,date:dt})});
+    const d = await res.json();
+    if (d.ok) { toast('✓ Đã cập nhật'); closeEditGoldModal(); _goldData=null; await loadGoldPage(); }
+    else toast('Lỗi: '+(d.error||'unknown'));
+  } catch(e) { toast('Lỗi: '+e.message); }
+}
+async function confirmDeleteGoldTrade(idx) {
+  const t = _goldTrades.find(x => x.index===idx);
+  if (!t) return;
+  if (!confirm(`Xóa giao dịch ${t.type==='buy'?'MUA':'BÁN'} ${t.qty_luong??t.qty} lượng ngày ${t.date}?`)) return;
+  try {
+    const res = await fetch(`${API_BASE}/api/gold/trade/${idx}`,{method:'DELETE',
+      headers:{'Content-Type':'application/json'},body:'{}'});
+    const d = await res.json();
+    if (d.ok) { toast('✓ Đã xóa'); _goldData=null; await loadGoldPage(); }
+    else toast('Lỗi: '+(d.error||'unknown'));
+  } catch(e) { toast('Lỗi: '+e.message); }
 }
 
 // ── Init ────────────────────────────────────────────────────────────────
