@@ -64,6 +64,42 @@ def _find_profile(cfg: dict, telegram_id: str):
     return None
 
 
+def _recalc_portfolio(cfg: dict, tg_id: str):
+    """Tính lại portfolio của user từ toàn bộ trade_log (sau khi sửa/xóa)."""
+    profile = _find_profile(cfg, tg_id)
+    if not profile:
+        return
+    holdings: dict[str, dict] = {}
+    for t in cfg.get("trade_log", []):
+        if str(t.get("telegram_id", "")) != tg_id:
+            continue
+        code   = t["code"]
+        units  = float(t["units"])
+        amount = float(t["amount"])
+        tx     = t.get("type", "buy")
+        if tx == "buy":
+            if code not in holdings:
+                holdings[code] = {"units": 0.0, "total_cost": 0.0}
+            h = holdings[code]
+            h["total_cost"] = h["total_cost"] + amount
+            h["units"]      = round(h["units"] + units, 4)
+        elif tx == "sell":
+            if code in holdings:
+                h = holdings[code]
+                h["units"] = round(h["units"] - units, 4)
+                if h["units"] <= 0:
+                    del holdings[code]
+    portfolio = []
+    for code, h in holdings.items():
+        if h["units"] > 0:
+            portfolio.append({
+                "code":     code,
+                "units":    round(h["units"], 4),
+                "avg_cost": round(h["total_cost"] / h["units"], 2),
+            })
+    profile["portfolio"] = portfolio
+
+
 # Import calc_signal + get_nav_series từ bot.py để dùng cùng logic tính tín hiệu
 try:
     import sys as _sys
@@ -327,8 +363,8 @@ class MiniAppHandler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
         self.send_response(200)
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-HTTP-Method-Override")
         self.end_headers()
 
     def do_GET(self):
@@ -350,24 +386,45 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             self._api_research(code, qs)
         elif path == "/api/dca":
             self._api_dca(qs)
+        elif path == "/api/trades":
+            self._api_get_trades(qs)
         elif path == "/health":
             _json(self, {"ok": True, "ts": datetime.now().isoformat()})
         else:
             _json(self, {"error": "Not found"}, 404)
 
-    def do_POST(self):
+    def _read_body(self):
         length = int(self.headers.get("Content-Length", 0))
         body   = self.rfile.read(length)
         try:
-            data = json.loads(body) if body else {}
+            return json.loads(body) if body else {}
         except Exception:
-            data = {}
+            return {}
 
+    def do_DELETE(self):
+        parsed = urlparse(self.path)
+        path   = parsed.path.rstrip("/")
+        data   = self._read_body()
+        if path.startswith("/api/trade/"):
+            idx = path[len("/api/trade/"):]
+            self._api_delete_trade(idx, data)
+        else:
+            _json(self, {"error": "Not found"}, 404)
+
+    def do_POST(self):
+        data   = self._read_body()
         parsed = urlparse(self.path)
         path   = parsed.path.rstrip("/")
 
         if path == "/api/trade":
             self._api_add_trade(data)
+        elif path.startswith("/api/trade/"):
+            idx = path[len("/api/trade/"):]
+            method = self.headers.get("X-HTTP-Method-Override", "").upper() or "POST"
+            if method == "DELETE":
+                self._api_delete_trade(idx, data)
+            else:
+                self._api_edit_trade(idx, data)
         elif path == "/api/admin/settoken":
             self._api_admin_settoken(data)
         elif path == "/api/admin/fixportfolio":
@@ -654,6 +711,74 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         })
         _save_cfg(cfg)
         _json(self, {"ok": True, "code": code, "type": tx_type, "units": units, "amount": amount, "nav_mismatch": nav_mismatch})
+
+    def _api_get_trades(self, qs: dict):
+        """GET /api/trades?user_id=... — trả về trade_log của user."""
+        tg_id = (qs.get("user_id") or qs.get("telegram_id") or [""])[0]
+        if not tg_id:
+            _json(self, {"error": "user_id required"}, 400)
+            return
+        cfg = _load_cfg()
+        all_trades = cfg.get("trade_log", [])
+        user_trades = [
+            {"index": i, **t}
+            for i, t in enumerate(all_trades)
+            if str(t.get("telegram_id", "")) == tg_id
+        ]
+        _json(self, {"trades": user_trades})
+
+    def _api_delete_trade(self, raw_idx: str, data: dict):
+        """DELETE /api/trade/<index> — xóa 1 entry và tính lại portfolio."""
+        try:
+            idx = int(raw_idx)
+        except (ValueError, TypeError):
+            _json(self, {"error": "Invalid index"}, 400)
+            return
+        cfg = _load_cfg()
+        trades = cfg.get("trade_log", [])
+        if idx < 0 or idx >= len(trades):
+            _json(self, {"error": "Index out of range"}, 404)
+            return
+        entry = trades[idx]
+        tg_id = str(entry.get("telegram_id", ""))
+        trades.pop(idx)
+        cfg["trade_log"] = trades
+        _recalc_portfolio(cfg, tg_id)
+        _save_cfg(cfg)
+        _json(self, {"ok": True, "deleted_index": idx})
+
+    def _api_edit_trade(self, raw_idx: str, data: dict):
+        """POST /api/trade/<index> — cập nhật 1 entry và tính lại portfolio."""
+        try:
+            idx = int(raw_idx)
+        except (ValueError, TypeError):
+            _json(self, {"error": "Invalid index"}, 400)
+            return
+        cfg = _load_cfg()
+        trades = cfg.get("trade_log", [])
+        if idx < 0 or idx >= len(trades):
+            _json(self, {"error": "Index out of range"}, 404)
+            return
+        entry = trades[idx]
+        tg_id = str(entry.get("telegram_id", ""))
+        units  = float(data.get("units", entry["units"]))
+        amount = float(data.get("amount", entry["amount"]))
+        price_per_unit = float(data.get("price_per_unit", 0)) or (amount / units if units else entry["price_per_unit"])
+        trades[idx] = {
+            **entry,
+            "units":         round(units, 4),
+            "amount":        round(amount, 0),
+            "price_per_unit": round(price_per_unit, 2),
+            "date":          str(data.get("date", entry["date"])),
+            "type":          str(data.get("type", entry["type"])).lower(),
+            "nav_mismatch":  bool(data.get("nav_mismatch", entry.get("nav_mismatch", False))),
+            "ts":            entry["ts"],
+            "edited_ts":     datetime.now().isoformat(),
+        }
+        cfg["trade_log"] = trades
+        _recalc_portfolio(cfg, tg_id)
+        _save_cfg(cfg)
+        _json(self, {"ok": True, "index": idx, "trade": trades[idx]})
 
     def _api_admin_settoken(self, data: dict):
         """POST /api/admin/settoken — cập nhật tcbs_token rồi fetch NAV ngay."""

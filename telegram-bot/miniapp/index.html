@@ -37,6 +37,15 @@ body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14p
 .sum-row:last-child{border:none}
 .sum-label{color:var(--txt2);font-size:12px}
 .sum-val{font-family:var(--mono);font-size:13px}
+.tlog-row{background:var(--bg2);border:1px solid var(--bdr);border-radius:8px;padding:10px 12px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:flex-start}
+.tlog-left{flex:1;min-width:0}
+.tlog-code{font-family:var(--mono);font-size:13px;font-weight:700;color:var(--c0)}
+.tlog-meta{font-size:11px;color:var(--txt2);margin-top:2px}
+.tlog-mismatch{font-size:10px;color:#facc15;margin-top:2px}
+.tlog-actions{display:flex;gap:6px;margin-left:8px;flex-shrink:0}
+.tlog-btn{padding:4px 8px;border-radius:6px;border:none;font-size:11px;cursor:pointer;font-family:var(--sans)}
+.tlog-edit{background:#1e3a5f;color:#93c5fd}
+.tlog-del{background:#3b0f0f;color:#f87171}
 .fund-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--bdr);gap:8px;cursor:pointer;transition:background .15s;border-radius:6px;padding:8px 4px}
 .fund-row:last-child{border:none}
 .fund-row:active{background:var(--bg3)}
@@ -203,6 +212,34 @@ canvas{width:100%!important;height:100%!important}
       </div>
       <button class="btn btn-buy" id="submit-trade" onclick="submitTrade()">XÁC NHẬN MUA</button>
     </div>
+
+    <!-- Trade Log -->
+    <div class="hdr" style="margin-top:16px">LỊCH SỬ GIAO DỊCH</div>
+    <div id="trade-log-list"></div>
+  </div>
+
+  <!-- Edit Trade Modal -->
+  <div id="edit-trade-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:999;overflow-y:auto">
+    <div style="background:#0d1b2a;margin:32px 16px;border-radius:12px;padding:20px;border:1px solid #1e3a5f">
+      <div style="font-size:14px;font-weight:700;color:var(--c0);margin-bottom:14px">CHỈNH SỬA GIAO DỊCH</div>
+      <input type="hidden" id="edit-idx">
+      <label>Loại</label>
+      <div class="type-toggle" style="margin-bottom:12px">
+        <div class="type-btn buy active" id="edit-btn-buy" onclick="setEditType('buy')">ĐÃ MUA</div>
+        <div class="type-btn sell" id="edit-btn-sell" onclick="setEditType('sell')">ĐÃ BÁN</div>
+      </div>
+      <label>Ngày giao dịch</label>
+      <input type="date" id="edit-date" style="width:100%;background:#060b14;border:1px solid #1e3a5f;color:#e2e8f0;border-radius:8px;padding:8px;margin-bottom:8px;box-sizing:border-box">
+      <label>Số CCQ</label>
+      <input type="text" inputmode="decimal" id="edit-units" placeholder="487.21" oninput="calcEditAmount()" style="width:100%;background:#060b14;border:1px solid #1e3a5f;color:#e2e8f0;border-radius:8px;padding:8px;margin-bottom:8px;box-sizing:border-box">
+      <label>Giá NAV / CCQ</label>
+      <input type="text" inputmode="decimal" id="edit-price" placeholder="20524.84" oninput="calcEditAmount()" style="width:100%;background:#060b14;border:1px solid #1e3a5f;color:#e2e8f0;border-radius:8px;padding:8px;margin-bottom:8px;box-sizing:border-box">
+      <div id="edit-amount-preview" style="display:none;color:var(--c0);font-size:13px;margin-bottom:10px"></div>
+      <div style="display:flex;gap:8px;margin-top:4px">
+        <button class="btn" style="flex:1;background:#1e3a5f;color:#e2e8f0" onclick="closeEditModal()">Hủy</button>
+        <button class="btn btn-buy" style="flex:1" onclick="saveEditTrade()">Lưu</button>
+      </div>
+    </div>
   </div>
 
   <!-- History -->
@@ -260,7 +297,7 @@ function goPage(name,btn){
   if(name==='portfolio'&&!_me)loadMe();
   if(name==='signals'&&!_signals)loadSignals();
   if(name==='dca')loadDCA();
-  if(name==='trade')setupTrade();
+  if(name==='trade'){setupTrade();loadTradeLog();}
   if(name==='history')loadHistory();
 }
 
@@ -654,9 +691,106 @@ async function submitTrade(){
       document.getElementById('trade-nav-mismatch').style.display='none';
       _me=null;
       tg?.HapticFeedback?.notificationOccurred('success');
+      loadTradeLog();
     }else{toast('Lỗi: '+(data.error||'unknown'));}
   }catch(e){toast('Lỗi kết nối: '+e.message);}
   btn.disabled=false;
+}
+
+// ── Trade Log ────────────────────────────────────────────────────────────
+let _tradeLog=[];
+async function loadTradeLog(){
+  if(!USER_ID)return;
+  try{
+    const d=await apiFetch(`/api/trades?user_id=${USER_ID}`);
+    _tradeLog=d.trades||[];
+  }catch{_tradeLog=[];}
+  renderTradeLog();
+}
+function renderTradeLog(){
+  const el=document.getElementById('trade-log-list');
+  if(!el)return;
+  if(!_tradeLog.length){el.innerHTML='<div style="color:var(--txt2);font-size:12px;padding:8px 0;text-align:center">Chưa có giao dịch nào</div>';return;}
+  const sorted=[..._tradeLog].sort((a,b)=>b.date.localeCompare(a.date));
+  el.innerHTML=sorted.map(t=>{
+    const isBuy=t.type==='buy';
+    const typeColor=isBuy?'var(--buy)':'var(--sell)';
+    const typeLabel=isBuy?'MUA':'BÁN';
+    const amt=Number(t.amount).toLocaleString('vi-VN');
+    const price=Number(t.price_per_unit).toLocaleString('vi-VN');
+    const mismatch=t.nav_mismatch?`<div class="tlog-mismatch">⚠️ Giá lệch NAV DB</div>`:'';
+    return `<div class="tlog-row">
+  <div class="tlog-left">
+    <div><span class="tlog-code">${t.code}</span> <span style="font-size:11px;color:${typeColor};font-weight:700">${typeLabel}</span></div>
+    <div class="tlog-meta">${t.date} · ${t.units} CCQ · ${price} ₫/CCQ</div>
+    <div class="tlog-meta">Tổng: <span style="color:var(--c0)">${amt} ₫</span></div>
+    ${mismatch}
+  </div>
+  <div class="tlog-actions">
+    <button class="tlog-btn tlog-edit" onclick="openEditModal(${t.index})">✏️</button>
+    <button class="tlog-btn tlog-del" onclick="confirmDeleteTrade(${t.index})">🗑️</button>
+  </div>
+</div>`;
+  }).join('');
+}
+function openEditModal(idx){
+  const t=_tradeLog.find(x=>x.index===idx);
+  if(!t)return;
+  document.getElementById('edit-idx').value=idx;
+  document.getElementById('edit-date').value=t.date;
+  document.getElementById('edit-units').value=t.units;
+  document.getElementById('edit-price').value=t.price_per_unit;
+  document.getElementById('edit-amount-preview').style.display='none';
+  _setEditType(t.type);
+  document.getElementById('edit-trade-modal').style.display='block';
+}
+let _editType='buy';
+function setEditType(type){
+  _editType=type;
+  _setEditType(type);
+}
+function _setEditType(type){
+  _editType=type;
+  document.getElementById('edit-btn-buy').classList.toggle('active',type==='buy');
+  document.getElementById('edit-btn-sell').classList.toggle('active',type==='sell');
+}
+function calcEditAmount(){
+  const units=parseDecimal(document.getElementById('edit-units').value);
+  const price=parseDecimal(document.getElementById('edit-price').value);
+  const el=document.getElementById('edit-amount-preview');
+  if(units>0&&price>0){
+    el.textContent='Tổng: '+(units*price).toLocaleString('vi-VN')+' ₫';
+    el.style.display='block';
+  }else{el.style.display='none';}
+}
+function closeEditModal(){document.getElementById('edit-trade-modal').style.display='none';}
+async function saveEditTrade(){
+  const idx=parseInt(document.getElementById('edit-idx').value);
+  const units=parseDecimal(document.getElementById('edit-units').value);
+  const price=parseDecimal(document.getElementById('edit-price').value);
+  const tdate=document.getElementById('edit-date').value;
+  if(!units||units<=0){toast('Nhập số CCQ');return;}
+  if(!price||price<=0){toast('Nhập giá');return;}
+  if(!tdate){toast('Chọn ngày');return;}
+  const amount=Math.round(units*price);
+  try{
+    const res=await fetch(`${API_BASE}/api/trade/${idx}`,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({type:_editType,units,price_per_unit:price,amount,date:tdate})});
+    const d=await res.json();
+    if(d.ok){toast('✓ Đã cập nhật');closeEditModal();_me=null;await loadTradeLog();}
+    else toast('Lỗi: '+(d.error||'unknown'));
+  }catch(e){toast('Lỗi kết nối: '+e.message);}
+}
+async function confirmDeleteTrade(idx){
+  const t=_tradeLog.find(x=>x.index===idx);
+  if(!t)return;
+  if(!confirm(`Xóa giao dịch ${t.type==='buy'?'MUA':'BÁN'} ${t.units} CCQ ${t.code} ngày ${t.date}?`))return;
+  try{
+    const res=await fetch(`${API_BASE}/api/trade/${idx}`,{method:'DELETE',headers:{'Content-Type':'application/json'},body:'{}'});
+    const d=await res.json();
+    if(d.ok){toast('✓ Đã xóa');_me=null;await loadTradeLog();}
+    else toast('Lỗi: '+(d.error||'unknown'));
+  }catch(e){toast('Lỗi kết nối: '+e.message);}
 }
 
 // ── History ──────────────────────────────────────────────────────────────
