@@ -1896,7 +1896,7 @@ def find_profile_by_chat(config: dict, chat_id: str) -> Optional[dict]:
 _ADMIN_PROFILE_SEED = {
     "watched_funds": ["TCBF", "VCBFTBF", "SSISCA", "VCBFBCF", "TCFF"],
     "portfolio": [
-        {"code": "TCBF",    "units": 487.21,  "avg_cost": 20525},
+        {"code": "TCBF",    "units": 487.21,  "avg_cost": 19525},
         {"code": "SSISCA",  "units": 713.57,  "avg_cost": 42042},
         {"code": "VCBFBCF", "units": 839.29,  "avg_cost": 35744},
         {"code": "VCBFTBF", "units": 449.41,  "avg_cost": 33377},
@@ -3012,12 +3012,57 @@ def command_handler():
                                     if tg_send(token, tg, f"📢 <b>Thông báo</b>\n\n{bcast_msg}"):
                                         sent_count += 1
                             tg_send(token, chat_id, f"✅ Đã gửi tới {sent_count} users")
+                        elif sub == "settoken" and len(text.split()) > 2:
+                            new_token = text.split()[2]
+                            cfg_w = load_config()
+                            cfg_w["tcbs_token"] = new_token
+                            save_config(cfg_w)
+                            config["tcbs_token"] = new_token
+                            tg_send(token, chat_id, "✅ Đã cập nhật TCBS token mới vào config.")
+
+                        elif sub == "fixportfolio" and len(text.split()) >= 4:
+                            # /admin fixportfolio TCBF avg_cost [units]
+                            parts_fp = text.split()
+                            fp_code = parts_fp[2].upper()
+                            try:
+                                fp_cost = float(parts_fp[3])
+                                fp_units = float(parts_fp[4]) if len(parts_fp) > 4 else None
+                            except ValueError:
+                                tg_send(token, chat_id, "⚠️ avg_cost và units phải là số.")
+                                continue
+                            cfg_w = load_config()
+                            admin_id2 = str(cfg_w.get("admin_telegram_id", "")).strip()
+                            admin_p = next((p for p in cfg_w.get("profiles", []) if str(p.get("telegram_id")) == admin_id2), None)
+                            if not admin_p:
+                                tg_send(token, chat_id, "⚠️ Không tìm thấy profile admin trong config.")
+                                continue
+                            pf = admin_p.get("portfolio", [])
+                            entry = next((e for e in pf if e.get("code") == fp_code), None)
+                            if entry:
+                                old_cost = entry.get("avg_cost")
+                                old_units = entry.get("units")
+                                entry["avg_cost"] = fp_cost
+                                if fp_units is not None:
+                                    entry["units"] = fp_units
+                                save_config(cfg_w)
+                                reply = (
+                                    f"✅ Đã cập nhật <b>{fp_code}</b>:\n"
+                                    f"  avg_cost: {old_cost:,.0f} → {fp_cost:,.0f}\n"
+                                )
+                                if fp_units is not None:
+                                    reply += f"  units: {old_units} → {fp_units}\n"
+                                tg_send(token, chat_id, reply)
+                            else:
+                                tg_send(token, chat_id, f"⚠️ Không tìm thấy <code>{fp_code}</code> trong portfolio admin.")
+
                         else:
                             tg_send(token, chat_id, (
                                 "🔧 <b>Admin Commands</b>\n\n"
                                 "<code>/admin users</code> — Xem tất cả users\n"
                                 "<code>/admin kick CHATID</code> — Xóa user\n"
                                 "<code>/admin broadcast TIN NHẮN</code> — Broadcast tới tất cả\n"
+                                "<code>/admin settoken TOKEN</code> — Cập nhật TCBS token\n"
+                                "<code>/admin fixportfolio MÃ avg_cost [units]</code> — Sửa portfolio\n"
                             ))
 
                     elif cmd == "/morning":
