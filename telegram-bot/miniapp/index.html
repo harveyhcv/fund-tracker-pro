@@ -434,7 +434,8 @@ canvas{width:100%!important;height:100%!important}
     <div style="font-size:11px;color:var(--txt2);margin-bottom:12px;line-height:1.5">Paste JWT token từ TCInvest để fetch NAV mới nhất. Token thường hết hạn sau 12 giờ.</div>
     <textarea id="token-input" rows="5" placeholder="Paste token JWT ở đây..." style="width:100%;background:var(--bg);border:1px solid var(--bdr);color:var(--txt);border-radius:8px;padding:10px;font-size:11px;font-family:var(--mono);resize:none;box-sizing:border-box;margin-bottom:10px"></textarea>
     <div id="token-status" style="font-size:12px;color:var(--txt2);margin-bottom:10px;min-height:16px"></div>
-    <button onclick="submitToken()" style="width:100%;padding:12px;background:var(--c0);color:#000;border:none;border-radius:8px;font-weight:700;font-size:14px;cursor:pointer;font-family:var(--mono)">CẬP NHẬT & FETCH NAV</button>
+    <button onclick="submitToken()" style="width:100%;padding:12px;background:var(--c0);color:#000;border:none;border-radius:8px;font-weight:700;font-size:14px;cursor:pointer;font-family:var(--mono);margin-bottom:8px">CẬP NHẬT TOKEN & FETCH TCBS</button>
+    <button onclick="triggerFetchAllNav()" style="width:100%;padding:10px;background:var(--bg3);color:var(--buy);border:1px solid var(--buy);border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;font-family:var(--mono)">⟳ FETCH ALL FUNDS (fmarket + TCBS)</button>
   </div>
 </div>
 
@@ -1601,6 +1602,25 @@ async function submitToken(){
       setTimeout(()=>{document.getElementById('token-modal').style.display='none';document.getElementById('token-input').value='';statusEl.textContent='';statusEl.style.color='var(--txt2)';},3000);
     } else {statusEl.style.color='var(--sell)';statusEl.textContent='Lỗi: '+(d.error||'unknown');}
   }catch(e){statusEl.style.color='var(--sell)';statusEl.textContent='Lỗi kết nối: '+e.message;}
+}
+async function triggerFetchAllNav(){
+  const statusEl = document.getElementById('token-status');
+  statusEl.style.color = 'var(--c0)';
+  statusEl.textContent = 'Dang kich hoat fetch NAV tat ca quy...';
+  try {
+    const res = await fetch(`${API_BASE}/api/admin/fetch-nav`, {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'});
+    const d = await res.json();
+    if (d.ok) {
+      statusEl.style.color = 'var(--buy)';
+      statusEl.textContent = 'Dang fetch NAV trong nen. Doi 1-2 phut roi lam moi app.';
+    } else {
+      statusEl.style.color = 'var(--sell)';
+      statusEl.textContent = 'Loi: ' + (d.error || 'unknown');
+    }
+  } catch(e) {
+    statusEl.style.color = 'var(--sell)';
+    statusEl.textContent = 'Loi ket noi: ' + e.message;
+  }
 }
 function drawChart(points){
   const canvas=document.getElementById('hist-chart');

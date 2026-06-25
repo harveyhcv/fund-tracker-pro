@@ -570,6 +570,10 @@ class MiniAppHandler(BaseHTTPRequestHandler):
                 self._api_edit_trade(idx, data)
         elif path == "/api/admin/settoken":
             self._api_admin_settoken(data)
+        elif path == "/api/admin/fetch-nav":
+            self._api_admin_fetch_nav(data)
+        elif path == "/api/admin/import-nav":
+            self._api_admin_import_nav(data)
         elif path == "/api/admin/fixportfolio":
             self._api_admin_fixportfolio(data)
         else:
@@ -1211,6 +1215,93 @@ class MiniAppHandler(BaseHTTPRequestHandler):
 
             threading.Thread(target=_bg_fetch, daemon=True, name="admin-nav-refresh").start()
         _json(self, {"ok": True, "msg": "tcbs_token updated, NAV fetch started in background"})
+
+    def _api_admin_fetch_nav(self, data: dict):
+        """POST /api/admin/fetch-nav — trigger fresh NAV fetch for all funds (fmarket + TCBS)."""
+        if not _BOT_IMPORTED:
+            _json(self, {"error": "bot module not available"}, 503)
+            return
+        cfg = _load_cfg()
+        import bot as _bot
+        import threading
+
+        def _do_fetch():
+            try:
+                token = cfg.get("tcbs_token", "")
+                db_url = os.environ.get("DATABASE_URL", cfg.get("database_url", ""))
+                funds_cfg = cfg.get("funds", {})
+                results = {}
+                for code, fc in funds_cfg.items():
+                    pts = []
+                    if fc.get("fmarket_id"):
+                        try:
+                            pts = _bot.fetch_fmarket(fc["fmarket_id"])
+                        except Exception as ex:
+                            log.warning(f"fmarket {code}: {ex}")
+                    if not pts and fc.get("tcbs") and token:
+                        try:
+                            pts = _bot.fetch_tcbs(code, token)
+                        except Exception as ex:
+                            log.warning(f"tcbs {code}: {ex}")
+                    if pts and db_url:
+                        try:
+                            saved = _bot.save_nav_to_db(db_url, code, pts)
+                            results[code] = saved
+                            log.info(f"[fetch-nav] {code}: +{saved} records")
+                        except Exception as ex:
+                            log.warning(f"save {code}: {ex}")
+                log.info(f"[fetch-nav] done: {results}")
+            except Exception as ex:
+                log.error(f"[fetch-nav] error: {ex}")
+
+        threading.Thread(target=_do_fetch, daemon=True, name="admin-fetch-nav").start()
+        _json(self, {"ok": True, "msg": "NAV fetch started for all funds in background"})
+
+    def _api_admin_import_nav(self, data: dict):
+        """POST /api/admin/import-nav — bulk import NAV data {funds: {CODE: [{date, nav}]}}."""
+        funds_data = data.get("funds", {})
+        if not funds_data:
+            _json(self, {"error": "funds required"}, 400)
+            return
+        db_url = os.environ.get("DATABASE_URL", _load_cfg().get("database_url", ""))
+        if not db_url:
+            _json(self, {"error": "DATABASE_URL not configured"}, 503)
+            return
+
+        import psycopg2, psycopg2.extras
+
+        def _insert_pg(db_url, code, points):
+            """Insert NAV points to PostgreSQL, return count inserted."""
+            conn = psycopg2.connect(db_url, sslmode="require")
+            cur = conn.cursor()
+            inserted = 0
+            for pt in points:
+                cur.execute(
+                    "INSERT INTO nav_history (fund_code, date, nav, source, status) "
+                    "VALUES (%s, %s, %s, 'tcinvest', 'draft') "
+                    "ON CONFLICT (fund_code, date) DO NOTHING",
+                    (code, pt["date"], float(pt["nav"]))
+                )
+                inserted += cur.rowcount
+            conn.commit()
+            conn.close()
+            return inserted
+
+        results = {}
+        errors = {}
+        for code, pts in funds_data.items():
+            if not pts:
+                continue
+            try:
+                n = _insert_pg(db_url, code.upper(), pts)
+                results[code.upper()] = n
+                log.info(f"[import-nav] {code}: +{n} records")
+            except Exception as ex:
+                errors[code] = str(ex)
+                log.warning(f"[import-nav] {code} error: {ex}")
+
+        _json(self, {"ok": True, "inserted": results, "errors": errors,
+                     "total": sum(results.values())})
 
     def _api_admin_fixportfolio(self, data: dict):
         """POST /api/admin/fixportfolio — sửa portfolio admin."""
