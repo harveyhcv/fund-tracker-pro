@@ -289,10 +289,7 @@ canvas{width:100%!important;height:100%!important}
           <!-- Fund select -->
           <select id="trade-fund" onchange="onTradeFundChange()" style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--bdr);color:var(--txt);border-radius:8px;padding:6px 8px;font-size:13px;height:34px"></select>
           <!-- Date -->
-          <div style="flex-shrink:0;text-align:right">
-            <div id="trade-date-label" style="font-size:10px;color:var(--txt2);margin-bottom:2px;font-family:var(--mono)">NGÀY MUA</div>
-            <input type="date" id="trade-date" onchange="onTradeDateChange()" style="background:var(--bg);border:1px solid var(--bdr);color:var(--txt);border-radius:8px;padding:4px 6px;font-size:12px;width:120px">
-          </div>
+          <input type="date" id="trade-date" onchange="onTradeDateChange()" style="flex-shrink:0;background:var(--bg);border:1px solid var(--bdr);color:var(--txt);border-radius:8px;padding:6px 8px;font-size:12px;height:34px;box-sizing:border-box;width:130px">
         </div>
         <!-- Thêm quỹ row (ẩn khi không cần) -->
         <div id="trade-add-fund-row" style="display:none;gap:8px;margin-bottom:10px;align-items:center">
@@ -316,40 +313,39 @@ canvas{width:100%!important;height:100%!important}
     <!-- Gold form -->
     <div id="trade-sub-gold" style="display:none">
       <div class="card">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-          <label style="margin:0">Giao dịch</label>
-          <div id="gold-type-pill" onclick="toggleGoldType()" style="display:flex;align-items:center;width:120px;height:32px;border-radius:16px;border:1px solid var(--bdr);background:var(--bg2);position:relative;cursor:pointer;overflow:hidden">
-            <div id="gold-pill-thumb" style="position:absolute;left:0;width:60px;height:100%;border-radius:16px;background:var(--buy);transition:left .2s"></div>
-            <span style="position:relative;flex:1;text-align:center;font-size:12px;font-weight:700;color:#000;z-index:1">MUA</span>
-            <span style="position:relative;flex:1;text-align:center;font-size:12px;font-weight:700;color:var(--txt2);z-index:1">BÁN</span>
+        <!-- Hàng 1: Toggle + Sản phẩm + Ngày -->
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+          <div id="gold-type-pill" onclick="toggleGoldType()" style="flex-shrink:0;display:flex;align-items:center;width:100px;height:34px;border-radius:17px;border:1px solid var(--bdr);background:var(--bg2);position:relative;cursor:pointer;overflow:hidden">
+            <div id="gold-pill-thumb" style="position:absolute;left:0;width:50px;height:100%;border-radius:17px;background:var(--buy);transition:left .2s"></div>
+            <span style="position:relative;flex:1;text-align:center;font-size:11px;font-weight:700;color:#000;z-index:1;font-family:var(--mono)">MUA</span>
+            <span style="position:relative;flex:1;text-align:center;font-size:11px;font-weight:700;color:var(--txt2);z-index:1;font-family:var(--mono)">BÁN</span>
           </div>
+          <select id="gold-product-select" onchange="onGoldProductChange()" style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--bdr);color:var(--txt);border-radius:8px;padding:6px 8px;font-size:12px;height:34px">
+            <option value="SJC_1L">SJC 9999 (miếng)</option>
+            <option value="DOJI_NHAN_9999">DOJI 9999 (HN)</option>
+            <option value="DOJI_NHAN_HCM">DOJI 9999 (HCM)</option>
+            <option value="SJC_NHAN">SJC 9999 (nhẫn)</option>
+            <option value="PNJ_VANGMY">PNJ Vàng mỹ</option>
+            <option value="PNJ_24K">PNJ 24K</option>
+            <option value="BAOTINNGUYEN">Bảo Tín 9999</option>
+            <option value="VIETTIN_SJC">Việt Tín SJC</option>
+            <option value="OTHER">Vàng khác...</option>
+          </select>
+          <input type="date" id="gold-date-input" style="flex-shrink:0;background:var(--bg);border:1px solid var(--bdr);color:var(--txt);border-radius:8px;padding:6px 8px;font-size:12px;height:34px;box-sizing:border-box;width:130px">
         </div>
-        <label>Sản phẩm vàng</label>
-        <select id="gold-product-select" onchange="onGoldProductChange()">
-          <option value="SJC_1L">Vàng miếng SJC 9999 — 1 lượng</option>
-          <option value="DOJI_NHAN_9999">Nhẫn tròn DOJI 9999 (HN)</option>
-          <option value="DOJI_NHAN_HCM">Nhẫn tròn DOJI 9999 (HCM)</option>
-          <option value="SJC_NHAN">Nhẫn tròn SJC 9999</option>
-          <option value="PNJ_VANGMY">Nhẫn vàng mỹ PNJ</option>
-          <option value="PNJ_24K">Nhẫn 24K PNJ 9999</option>
-          <option value="BAOTINNGUYEN">Vàng nhẫn Bảo Tín 9999</option>
-          <option value="VIETTIN_SJC">Vàng SJC tại Việt Tín</option>
-          <option value="OTHER">Vàng khác (ghi rõ tên)</option>
-        </select>
+        <!-- Tên vàng khác (ẩn khi không cần) -->
         <input type="text" id="gold-other-name" placeholder="Nhập tên sản phẩm vàng..." style="display:none;width:100%;background:var(--bg);border:1px solid var(--bdr);color:var(--txt);border-radius:8px;padding:8px;margin-bottom:8px;box-sizing:border-box;font-size:13px">
-        <label>Đơn vị</label>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:4px" id="gold-unit-group">
-          <div id="gold-unit-luong" onclick="setGoldUnit('luong')" style="padding:8px;border-radius:8px;border:1px solid var(--c0);background:#052e3a;color:var(--c0);text-align:center;cursor:pointer;font-size:12px">Lượng</div>
-          <div id="gold-unit-chi" onclick="setGoldUnit('chi')" style="padding:8px;border-radius:8px;border:1px solid var(--bdr);background:var(--bg3);color:var(--txt2);text-align:center;cursor:pointer;font-size:12px">Chỉ</div>
-          <div id="gold-unit-gram" onclick="setGoldUnit('gram')" style="padding:8px;border-radius:8px;border:1px solid var(--bdr);background:var(--bg3);color:var(--txt2);text-align:center;cursor:pointer;font-size:12px">Gram</div>
+        <!-- Hàng 2: Đơn vị + Số lượng + Tổng giá trị -->
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+          <div id="gold-unit-group" style="display:flex;gap:3px;flex-shrink:0">
+            <div id="gold-unit-luong" onclick="setGoldUnit('luong')" style="padding:5px 9px;border-radius:6px;border:1px solid var(--c0);background:#052e3a;color:var(--c0);cursor:pointer;font-size:11px;font-family:var(--mono);font-weight:700">L</div>
+            <div id="gold-unit-chi" onclick="setGoldUnit('chi')" style="padding:5px 9px;border-radius:6px;border:1px solid var(--bdr);background:var(--bg3);color:var(--txt2);cursor:pointer;font-size:11px;font-family:var(--mono);font-weight:700">C</div>
+            <div id="gold-unit-gram" onclick="setGoldUnit('gram')" style="padding:5px 9px;border-radius:6px;border:1px solid var(--bdr);background:var(--bg3);color:var(--txt2);cursor:pointer;font-size:11px;font-family:var(--mono);font-weight:700">G</div>
+          </div>
+          <input type="text" inputmode="decimal" id="gold-qty" placeholder="Số lượng" oninput="calcGoldTotal()" style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--bdr);color:var(--txt);border-radius:8px;padding:8px;font-size:13px;box-sizing:border-box">
+          <input type="text" inputmode="numeric" id="gold-price" placeholder="Tổng giá trị (₫)" oninput="calcGoldTotal()" style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--bdr);color:var(--txt);border-radius:8px;padding:8px;font-size:13px;box-sizing:border-box">
         </div>
-        <label>Số lượng</label>
-        <input type="text" inputmode="decimal" id="gold-qty" placeholder="VD: 1 (lượng)" oninput="calcGoldTotal()">
-        <label>Giá mua/bán (VNĐ / lượng)</label>
-        <input type="text" inputmode="decimal" id="gold-price" placeholder="VD: 89000000" oninput="calcGoldTotal()">
-        <div id="gold-total-preview" style="display:none;color:var(--c0);font-size:13px;margin:8px 0;font-family:var(--mono)"></div>
-        <label>Ngày giao dịch</label>
-        <input type="date" id="gold-date-input">
+        <div id="gold-total-preview" style="display:none;color:var(--c0);font-size:12px;margin:0 0 8px;font-family:var(--mono)"></div>
         <button class="btn btn-buy" id="gold-submit-btn" onclick="submitGoldTrade()">XÁC NHẬN MUA</button>
       </div>
     </div>
@@ -1148,7 +1144,6 @@ function toggleTradeType(){
   thumb.style.background=isBuy?'var(--buy)':'var(--sell)';
   l.style.color=isBuy?'#000':'var(--txt2)';
   r.style.color=isBuy?'var(--txt2)':'#000';
-  document.getElementById('trade-date-label').textContent=isBuy?'NGÀY MUA':'NGÀY BÁN';
   const btn=document.getElementById('submit-trade');
   btn.textContent=isBuy?'XÁC NHẬN MUA':'XÁC NHẬN BÁN';
   btn.className='btn btn-'+_tradeType;
@@ -1280,6 +1275,12 @@ function autoFillMarketData(){
   const xau = prices['INTERNATIONAL:XAUUSD'] || Object.values(prices).find(function(p){return p.currency==='USD';});
   if (xau && xau.buy) document.getElementById('gp-xau').value = Number(xau.buy).toFixed(0);
   if (xau && xau.extra && xau.extra.usd_vnd) document.getElementById('gp-usd').value = Number(xau.extra.usd_vnd).toFixed(0);
+  const btcEl = document.getElementById('gp-btc');
+  if (btcEl && !btcEl.value) {
+    fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT')
+      .then(r=>r.json()).then(d=>{if(d.price){btcEl.value=Number(d.price).toFixed(0);runGoldPrediction();}})
+      .catch(()=>{});
+  }
   runGoldPrediction();
 }
 function calcGoldDCA(){ runGoldPrediction(); }
@@ -1435,7 +1436,7 @@ function renderUnifiedHistory(){
       return `<div class="tlog-row">
 <div class="tlog-left">
   <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-    <span style="background:#92400e;color:#fbbf24;font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;font-family:var(--mono);flex-shrink:0">VÀNG</span>
+    <span style="background:#78350f;color:#fde68a;border:1px solid #fbbf24;font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;font-family:var(--mono);flex-shrink:0">VÀNG</span>
     <span style="font-size:12px;font-weight:600;color:#fbbf24">${rawLabel}</span>
     <span style="font-size:11px;color:${tColor};font-weight:700">${tLabel}</span>
   </div>
@@ -1685,20 +1686,20 @@ function setGoldUnit(unit) {
       el.style.color       = 'var(--txt2)';
     }
   });
-  const placeholder = unit==='luong' ? 'VD: 1 (lượng)' : unit==='chi' ? 'VD: 5 (chỉ)' : 'VD: 37.5 (gram)';
-  document.getElementById('gold-qty').placeholder = placeholder;
+  const ph = unit==='luong' ? 'Số lượng (lượng)' : unit==='chi' ? 'Số lượng (chỉ)' : 'Số lượng (gram)';
+  document.getElementById('gold-qty').placeholder = ph;
   calcGoldTotal();
 }
 
 function calcGoldTotal() {
   const qty   = parseDecimal(document.getElementById('gold-qty').value);
-  const price = parseDecimal(document.getElementById('gold-price').value);
+  const total = parseDecimal(document.getElementById('gold-price').value); // total VND
   const el    = document.getElementById('gold-total-preview');
   const unitF = {'luong':1,'chi':0.1,'gram':1/37.5}[_goldUnit] || 1;
-  if (qty > 0 && price > 0) {
-    const total = qty * unitF * price;
-    const qtyL  = qty * unitF;
-    el.textContent = `${qtyL.toFixed(4)} lượng × ${price.toLocaleString('vi-VN')} ₫ = ${total.toLocaleString('vi-VN')} ₫`;
+  if (qty > 0 && total >= 0) {
+    const qtyL = qty * unitF;
+    const pricePerLuong = qtyL > 0 ? total / qtyL : 0;
+    el.textContent = `${qtyL.toFixed(4)} lượng — giá/lượng: ${Math.round(pricePerLuong).toLocaleString('vi-VN')} ₫`;
     el.style.display = 'block';
   } else { el.style.display = 'none'; }
 }
@@ -1706,10 +1707,10 @@ function calcGoldTotal() {
 async function submitGoldTrade() {
   if (!USER_ID) { toast('Không xác định user'); return; }
   const qty   = parseDecimal(document.getElementById('gold-qty').value);
-  const price = parseDecimal(document.getElementById('gold-price').value);
+  const totalRaw = parseDecimal(document.getElementById('gold-price').value); // total VND
   const dt    = document.getElementById('gold-date-input').value;
   if (!qty || qty <= 0) { toast('Nhập số lượng'); return; }
-  if (price == null || price < 0) { toast('Nhập giá/lượng (≥ 0)'); return; }
+  if (totalRaw == null || totalRaw < 0) { toast('Nhập tổng giá trị (≥ 0)'); return; }
   if (!dt) { toast('Chọn ngày giao dịch'); return; }
   let product = document.getElementById('gold-product-select')?.value || 'SJC_1L';
   if (product === 'OTHER') {
@@ -1718,7 +1719,9 @@ async function submitGoldTrade() {
     product = 'OTHER:' + customName;
   }
   const unitF = {'luong':1,'chi':0.1,'gram':1/37.5}[_goldUnit] || 1;
-  const total = Math.round(qty * unitF * price);
+  const qtyLuong = qty * unitF;
+  const price = qtyLuong > 0 ? totalRaw / qtyLuong : 0; // price_per_luong derived
+  const total = Math.round(totalRaw);
   const btn   = document.getElementById('gold-submit-btn');
   btn.disabled = true;
   try {
