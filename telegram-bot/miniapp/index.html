@@ -1531,9 +1531,6 @@ async function confirmDeleteGoldTrade(idx) {
 }
 
 // ── Watch Funds Modal ────────────────────────────────────────────────────
-let _allFunds = {};       // {code: name} — từ API signals
-let _watchedSet = new Set(); // mã hiện tại đang watch
-
 function openWatchModal() {
   // Lấy all_funds + watched từ data đã fetch (nếu có)
   if (_sigData?.all_funds) _allFunds = _sigData.all_funds;
