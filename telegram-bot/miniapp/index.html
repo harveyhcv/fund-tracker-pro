@@ -261,8 +261,18 @@ canvas{width:100%!important;height:100%!important}
             <div style="font-size:11px;color:var(--txt2);margin-bottom:3px">Lạm phát VN (%/năm)</div>
             <input type="text" inputmode="decimal" id="gp-inf" placeholder="VD: 4.5" style="width:100%;background:var(--bg);border:1px solid var(--bdr);color:var(--txt);border-radius:8px;padding:7px 8px;font-size:13px;box-sizing:border-box" oninput="runGoldPrediction()">
           </div>
+          <div style="grid-column:1/-1">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
+              <span style="font-size:11px;color:var(--txt2)">Lãi suất Fed (%)</span>
+              <span id="gp-fed-status" style="font-size:10px;color:var(--txt2);opacity:.6"></span>
+            </div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <input type="text" inputmode="decimal" id="gp-fed" placeholder="VD: 4.33" style="flex:1;background:var(--bg);border:1px solid var(--bdr);color:var(--txt);border-radius:8px;padding:7px 8px;font-size:13px;box-sizing:border-box" oninput="runGoldPrediction()">
+              <button onclick="fetchFedRate()" id="gp-fed-btn" style="flex-shrink:0;padding:7px 10px;background:var(--bg3);border:1px solid var(--bdr);color:var(--c0);border-radius:8px;font-size:11px;cursor:pointer;font-family:var(--mono);white-space:nowrap">⟳ Lấy</button>
+            </div>
+          </div>
         </div>
-        <button onclick="autoFillMarketData()" style="width:100%;padding:8px;background:var(--bg3);border:1px solid var(--bdr);color:var(--c0);border-radius:8px;font-size:12px;cursor:pointer;margin-bottom:4px;font-family:var(--mono)">⟳ Tự động điền từ dữ liệu hiện có</button>
+        <button onclick="autoFillMarketData()" style="width:100%;padding:8px;background:var(--bg3);border:1px solid var(--bdr);color:var(--c0);border-radius:8px;font-size:12px;cursor:pointer;margin-bottom:4px;font-family:var(--mono)">⟳ Tự động điền tất cả</button>
       </div>
       <div id="gold-predict-result"></div>
     </div>
@@ -1270,6 +1280,36 @@ function setGoldSchool(s){
   });
   runGoldPrediction();
 }
+async function fetchFedRate(){
+  const btn = document.getElementById('gp-fed-btn');
+  const status = document.getElementById('gp-fed-status');
+  if (btn) { btn.textContent = '...'; btn.disabled = true; }
+  if (status) status.textContent = 'đang lấy...';
+  try {
+    // Yahoo Finance ^IRX = 13-week T-Bill rate — proxy cho Fed Funds Rate
+    const r = await fetch('https://query1.finance.yahoo.com/v8/finance/chart/%5EIRX?interval=1d&range=5d');
+    const d = await r.json();
+    const rate = d?.chart?.result?.[0]?.meta?.regularMarketPrice;
+    if (rate != null) {
+      document.getElementById('gp-fed').value = rate.toFixed(2);
+      if (status) status.textContent = '≈ T-Bill 13W';
+      runGoldPrediction();
+    } else if (status) status.textContent = 'không lấy được';
+  } catch(e) {
+    // CORS fallback: try alternative proxy
+    try {
+      const r2 = await fetch('https://query2.finance.yahoo.com/v8/finance/chart/%5EIRX?interval=1d&range=5d');
+      const d2 = await r2.json();
+      const rate2 = d2?.chart?.result?.[0]?.meta?.regularMarketPrice;
+      if (rate2 != null) {
+        document.getElementById('gp-fed').value = rate2.toFixed(2);
+        if (status) status.textContent = '≈ T-Bill 13W';
+        runGoldPrediction();
+      } else if (status) status.textContent = 'lỗi kết nối';
+    } catch { if (status) status.textContent = 'lỗi kết nối'; }
+  }
+  if (btn) { btn.textContent = '⟳ Lấy'; btn.disabled = false; }
+}
 function autoFillMarketData(){
   const prices = _goldData&&_goldData.prices ? _goldData.prices : {};
   const xau = prices['INTERNATIONAL:XAUUSD'] || Object.values(prices).find(function(p){return p.currency==='USD';});
@@ -1281,6 +1321,7 @@ function autoFillMarketData(){
       .then(r=>r.json()).then(d=>{if(d.price){btcEl.value=Number(d.price).toFixed(0);runGoldPrediction();}})
       .catch(()=>{});
   }
+  if (!document.getElementById('gp-fed').value) fetchFedRate();
   runGoldPrediction();
 }
 function calcGoldDCA(){ runGoldPrediction(); }
@@ -1291,6 +1332,7 @@ function runGoldPrediction(){
   const xauusd = parseDecimal(document.getElementById('gp-xau').value) || 0;
   const btcusd = parseDecimal(document.getElementById('gp-btc').value) || 0;
   const inf    = parseDecimal(document.getElementById('gp-inf').value) || 4.5;
+  const fedRate = parseDecimal(document.getElementById('gp-fed').value) || 0;
   const prices = _goldData&&_goldData.prices ? _goldData.prices : {};
   const sjc = prices['VANGTODAYAPI:SJC_1L'] || Object.values(prices).find(function(p){return p.product==='SJC_1L';});
   const sjcPrice = sjc ? (sjc.sell||0) : 0;
@@ -1314,7 +1356,9 @@ function runGoldPrediction(){
          + (xauVndLuong>0?'<div class="sum-row"><span class="sum-label">Gia QT quy doi</span><span class="sum-val" style="color:var(--c0)">'+(xauVndLuong/1e6).toFixed(2)+'M</span></div>':'')
          + (premiumPct!==null?'<div class="sum-row"><span class="sum-label">Premium SJC vs QT</span><span class="sum-val" style="color:'+(premiumPct>15?'var(--sell)':premiumPct<8?'var(--buy)':'var(--hold)')+'">'+premiumPct.toFixed(1)+'%</span></div>':'')
          + '<div class="sum-row"><span class="sum-label">RSI(14)</span><span class="sum-val" style="color:'+(rsi<35?'var(--buy)':rsi>65?'var(--sell)':'var(--hold)')+'">'+rsi.toFixed(0)+' '+(rsi<35?'— qua ban':rsi>65?'— qua mua':'— trung tinh')+'</span></div>'
-         + '<div class="sum-row"><span class="sum-label">BB%</span><span class="sum-val">'+bbPct.toFixed(0)+'%'+(bbPct<25?' — day dai':bbPct>75?' — dinh dai':'')+'</span></div></div>'
+         + '<div class="sum-row"><span class="sum-label">BB%</span><span class="sum-val">'+bbPct.toFixed(0)+'%'+(bbPct<25?' — day dai':bbPct>75?' — dinh dai':'')+'</span></div>'
+         + (fedRate>0?'<div class="sum-row"><span class="sum-label">Fed Rate</span><span class="sum-val" style="color:'+(fedRate>4.5?'var(--sell)':fedRate<3?'var(--buy)':'var(--hold)')+'">'+fedRate.toFixed(2)+'%'+(fedRate>4.5?' — that chat':fedRate<3?' — no long':'')+'</span></div>':'')
+         + '</div>'
          + (sjcPrice>0 ? '<div class="card"><div class="card-title">DIEM VAO LENH</div>'
          + '<div class="sum-row"><span class="sum-label">Entry 1</span><span class="sum-val" style="color:var(--buy)">'+(entry1/1e6).toFixed(2)+'M</span></div>'
          + '<div class="sum-row"><span class="sum-label">Entry 2</span><span class="sum-val" style="color:var(--buy)">'+(entry2/1e6).toFixed(2)+'M</span></div>'
@@ -1358,6 +1402,7 @@ function runGoldPrediction(){
          + (btcusd>0?'<div class="sum-row"><span class="sum-label">BTC/USD</span><span class="sum-val" style="color:'+(btcusd>100000?'var(--buy)':'var(--hold)')+'">'+Number(btcusd).toLocaleString('vi-VN')+'</span></div>':'')
          + (usdvnd>0?'<div class="sum-row"><span class="sum-label">USD/VND</span><span class="sum-val">'+Number(usdvnd).toLocaleString('vi-VN')+'</span></div>':'')
          + '<div class="sum-row"><span class="sum-label">Lam phat VN</span><span class="sum-val" style="color:'+(inf>6?'var(--sell)':inf>4?'var(--hold)':'var(--buy)')+'">'+inf+'%/nam</span></div>'
+         + (fedRate>0?'<div class="sum-row"><span class="sum-label">Fed Rate</span><span class="sum-val" style="color:'+(fedRate>4.5?'var(--sell)':fedRate<3?'var(--buy)':'var(--hold)')+'">'+fedRate.toFixed(2)+'%'+(fedRate>4.5?' — bat loi vang':fedRate<3?' — ho tro vang':'')+'</span></div>':'')
          +'</div>';
   }
   if (!html) html = '<div style="color:var(--txt2);text-align:center;padding:16px">Nhap du lieu de xem du bao</div>';
