@@ -138,8 +138,21 @@ canvas{width:100%!important;height:100%!important}
 .alloc-gold{height:100%;background:#fbbf24;transition:width .5s}
 .school-card{background:var(--bg3);border-radius:8px;padding:10px;margin-bottom:8px;border-left:3px solid var(--bdr)}
 .school-card.buy{border-color:var(--buy)}.school-card.sell{border-color:var(--sell)}.school-card.hold{border-color:var(--hold)}
-.school-title{font-size:12px;font-weight:700;margin-bottom:4px}
-.school-body{font-size:11px;color:var(--txt2);line-height:1.6}
+.school-hdr{display:flex;justify-content:space-between;align-items:flex-start;cursor:pointer;gap:8px}
+.school-title{font-size:12px;font-weight:700;flex:1}
+.school-chevron{font-size:14px;color:var(--txt2);transition:transform .2s;flex-shrink:0}
+.school-card.open .school-chevron{transform:rotate(180deg)}
+.school-summary{font-size:11px;color:var(--txt2);margin-top:4px}
+.school-detail{display:none;margin-top:10px;border-top:1px solid var(--bdr);padding-top:10px}
+.school-card.open .school-detail{display:block}
+.school-body{font-size:11px;color:var(--txt);line-height:1.7}
+.school-term{display:flex;gap:6px;margin-top:6px;font-size:11px}
+.school-term-lbl{color:var(--c0);font-family:var(--mono);min-width:80px;flex-shrink:0}
+.school-term-val{color:var(--txt2);line-height:1.5}
+.school-action{margin-top:8px;padding:6px 10px;border-radius:6px;font-size:11px;font-weight:600;font-family:var(--mono)}
+.school-action.buy{background:#052e1a;color:var(--buy);border-left:2px solid var(--buy)}
+.school-action.sell{background:#2d0a0a;color:var(--sell);border-left:2px solid var(--sell)}
+.school-action.hold{background:var(--bg2);color:var(--hold);border-left:2px solid var(--hold)}
 .school-target{font-family:var(--mono);font-size:12px;margin-top:5px}
 </style>
 </head>
@@ -282,13 +295,16 @@ canvas{width:100%!important;height:100%!important}
     <!-- Gold form -->
     <div id="trade-sub-gold" style="display:none">
       <div class="card">
-        <label>Loại giao dịch</label>
-        <div class="type-toggle">
-          <div class="type-btn buy active" id="gold-btn-buy" onclick="setGoldType('buy')">MUA</div>
-          <div class="type-btn sell" id="gold-btn-sell" onclick="setGoldType('sell')">BÁN</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <label style="margin:0">Giao dịch</label>
+          <div id="gold-type-pill" onclick="toggleGoldType()" style="display:flex;align-items:center;width:120px;height:32px;border-radius:16px;border:1px solid var(--bdr);background:var(--bg2);position:relative;cursor:pointer;overflow:hidden">
+            <div id="gold-pill-thumb" style="position:absolute;left:0;width:60px;height:100%;border-radius:16px;background:var(--buy);transition:left .2s"></div>
+            <span style="position:relative;flex:1;text-align:center;font-size:12px;font-weight:700;color:#000;z-index:1">MUA</span>
+            <span style="position:relative;flex:1;text-align:center;font-size:12px;font-weight:700;color:var(--txt2);z-index:1">BÁN</span>
+          </div>
         </div>
         <label>Sản phẩm vàng</label>
-        <select id="gold-product-select">
+        <select id="gold-product-select" onchange="onGoldProductChange()">
           <option value="SJC_1L">Vàng miếng SJC 9999 — 1 lượng</option>
           <option value="DOJI_NHAN_9999">Nhẫn tròn DOJI 9999 (HN)</option>
           <option value="DOJI_NHAN_HCM">Nhẫn tròn DOJI 9999 (HCM)</option>
@@ -297,8 +313,9 @@ canvas{width:100%!important;height:100%!important}
           <option value="PNJ_24K">Nhẫn 24K PNJ 9999</option>
           <option value="BAOTINNGUYEN">Vàng nhẫn Bảo Tín 9999</option>
           <option value="VIETTIN_SJC">Vàng SJC tại Việt Tín</option>
-          <option value="OTHER">Vàng khác</option>
+          <option value="OTHER">Vàng khác (ghi rõ tên)</option>
         </select>
+        <input type="text" id="gold-other-name" placeholder="Nhập tên sản phẩm vàng..." style="display:none;width:100%;background:var(--bg);border:1px solid var(--bdr);color:var(--txt);border-radius:8px;padding:8px;margin-bottom:8px;box-sizing:border-box;font-size:13px">
         <label>Đơn vị</label>
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:4px" id="gold-unit-group">
           <div id="gold-unit-luong" onclick="setGoldUnit('luong')" style="padding:8px;border-radius:8px;border:1px solid var(--c0);background:#052e3a;color:var(--c0);text-align:center;cursor:pointer;font-size:12px">Lượng</div>
@@ -646,7 +663,7 @@ function renderPfGoldSub(){
     const p=prices[k];
     if(!p) continue;
     const sellM=(p.sell/1e6).toFixed(2)+'M';
-    priceRows+=`<div class="sum-row"><span class="sum-label" style="font-size:11px">${p.label||_goldLabel(p.source,p.product)}</span><span class="sum-val" style="color:var(--sell);font-size:12px">${sellM}</span></div>`;
+    priceRows+=`<div class="sum-row"><span class="sum-label" style="font-size:11px">${_goldLabel(p.source,p.product)||p.label||k}</span><span class="sum-val" style="color:var(--sell);font-size:12px">${sellM}</span></div>`;
   }
   el.innerHTML=`<div class="card">
     <div class="card-title">DANH MỤC VÀNG</div>
@@ -690,54 +707,88 @@ function renderGoldSignalFull(){
 
   // ── Phân tích 3 trường phái ──
   // 1. Lướt sóng (Short-term)
-  let ws_class='hold', ws_verdict='TRUNG LẬP', ws_body='', ws_target='';
+  let ws_class='hold', ws_verdict='TRUNG LẬP', ws_summary='', ws_detail='';
   if(rsi<35&&bbPct<25){
     ws_class='buy'; ws_verdict='VÀO LỆNH MUA';
-    ws_body=`RSI ${rsi.toFixed(0)} — vùng quá bán. BB% ${bbPct.toFixed(0)}% — giá chạm dải dưới. <b>Tín hiệu phục hồi ngắn hạn.</b>`;
-    const t1=currentPrice*1.03;const t2=currentPrice*1.05;
-    ws_target=`Mục tiêu T1: <span style="color:var(--buy)">${(t1/1e6).toFixed(2)}M</span> · T2: <span style="color:var(--buy)">${(t2/1e6).toFixed(2)}M</span> · Cắt lỗ: <span style="color:var(--sell)">${(currentPrice*0.98/1e6).toFixed(2)}M</span>`;
+    ws_summary=`RSI ${rsi.toFixed(0)} quá bán + BB% ${bbPct.toFixed(0)}% chạm đáy dải — tín hiệu phục hồi ngắn hạn.`;
+    const t1=(currentPrice*1.03/1e6).toFixed(2);const t2=(currentPrice*1.05/1e6).toFixed(2);const sl=(currentPrice*0.98/1e6).toFixed(2);
+    ws_detail=`<div class="school-body">Hai chỉ báo kỹ thuật cùng lúc cho tín hiệu <b>quá bán</b>. Thống kê lịch sử: sau khi RSI &lt;35 và BB% &lt;25%, giá vàng thường phục hồi trong 1–4 tuần.</div>
+      <div class="school-term"><span class="school-term-lbl">RSI = ${rsi.toFixed(0)}</span><span class="school-term-val">Relative Strength Index — đo lực mua/bán 14 ngày gần nhất. Dưới 35 = thị trường đang bán quá mức, thường có sự phục hồi kỹ thuật.</span></div>
+      <div class="school-term"><span class="school-term-lbl">BB% = ${bbPct.toFixed(0)}%</span><span class="school-term-val">Vị trí giá trong dải Bollinger (0% = đáy dải, 100% = đỉnh dải). Dưới 25% = giá gần đáy dải — thường bật lên.</span></div>
+      <div class="school-term"><span class="school-term-lbl">Mục tiêu</span><span class="school-term-val"><span style="color:var(--buy)">T1: ${t1}M · T2: ${t2}M</span> · Cắt lỗ: <span style="color:var(--sell)">${sl}M</span> (−2%)</span></div>
+      <div class="school-action buy">→ Có thể mua một phần (30–50% kế hoạch). Đặt cắt lỗ tại ${sl}M. Không dùng đòn bẩy với vàng vật chất.</div>`;
   } else if(rsi>70&&bbPct>75){
     ws_class='sell'; ws_verdict='CHỐT LỜI';
-    ws_body=`RSI ${rsi.toFixed(0)} — vùng quá mua. BB% ${bbPct.toFixed(0)}% — giá chạm dải trên. <b>Rủi ro điều chỉnh ngắn hạn.</b>`;
-    const t1=currentPrice*0.97;
-    ws_target=`Vùng mua lại: <span style="color:var(--buy)">${(t1/1e6).toFixed(2)}M</span> · Giữ SL tại: <span style="color:var(--sell)">${(currentPrice*1.02/1e6).toFixed(2)}M</span>`;
+    ws_summary=`RSI ${rsi.toFixed(0)} quá mua + BB% ${bbPct.toFixed(0)}% chạm đỉnh dải — rủi ro điều chỉnh.`;
+    const buy_back=(currentPrice*0.97/1e6).toFixed(2);
+    ws_detail=`<div class="school-body">Hai chỉ báo đang ở vùng <b>quá mua</b>. Giá có thể tiếp tục tăng nhưng rủi ro điều chỉnh ngắn hạn đang cao.</div>
+      <div class="school-term"><span class="school-term-lbl">RSI = ${rsi.toFixed(0)}</span><span class="school-term-val">Trên 70 = thị trường đang mua quá mức. Không có nghĩa là giá sẽ giảm ngay, nhưng momentum đang yếu dần.</span></div>
+      <div class="school-term"><span class="school-term-lbl">BB% = ${bbPct.toFixed(0)}%</span><span class="school-term-val">Trên 75% = giá chạm đỉnh dải Bollinger. Khoảng 60–70% trường hợp giá sẽ quay về giữa dải.</span></div>
+      <div class="school-term"><span class="school-term-lbl">Vùng mua lại</span><span class="school-term-val">${buy_back}M (−3% từ hiện tại) — vùng hợp lý để mua lại nếu chốt lời.</span></div>
+      <div class="school-action sell">→ Nếu đang giữ lãi, có thể chốt lời một phần (20–30%). Không nên mở vị thế mua mới ở vùng này.</div>`;
   } else {
-    ws_body=`RSI ${rsi.toFixed(0)} — vùng trung tính. BB% ${bbPct.toFixed(0)}%. Chờ RSI <35 để mua hoặc >70 để chốt lời.`;
-    ws_target=`Vùng mua: <span style="color:var(--buy)">${(currentPrice*0.97/1e6).toFixed(2)}M–${(currentPrice*0.98/1e6).toFixed(2)}M</span>`;
+    ws_summary=`RSI ${rsi.toFixed(0)}, BB% ${bbPct.toFixed(0)}% — vùng trung tính, chưa có tín hiệu rõ.`;
+    const buyZone_lo=(currentPrice*0.97/1e6).toFixed(2);const buyZone_hi=(currentPrice*0.98/1e6).toFixed(2);
+    ws_detail=`<div class="school-body">Các chỉ báo kỹ thuật đang ở vùng <b>trung tính</b> — không đủ tín hiệu để hành động. Chiến lược tốt nhất là chờ.</div>
+      <div class="school-term"><span class="school-term-lbl">RSI = ${rsi.toFixed(0)}</span><span class="school-term-val">Vùng 35–70 = trung tính. Chờ RSI xuống &lt;35 (cơ hội mua) hoặc lên &gt;70 (cân nhắc chốt lời).</span></div>
+      <div class="school-term"><span class="school-term-lbl">BB% = ${bbPct.toFixed(0)}%</span><span class="school-term-val">Giá đang ở giữa dải Bollinger. Chờ BB% &lt;25% (đáy dải) hoặc &gt;75% (đỉnh dải) để hành động.</span></div>
+      <div class="school-term"><span class="school-term-lbl">Vùng mua tốt</span><span class="school-term-val">${buyZone_lo}M – ${buyZone_hi}M (−2÷3% từ hiện tại) — nếu giá về đây kèm RSI &lt;40 thì mua.</span></div>
+      <div class="school-action hold">→ Giữ nguyên. Không cần làm gì — chờ tín hiệu rõ hơn. Kiên nhẫn là lợi thế của nhà đầu tư cá nhân.</div>`;
   }
 
   // 2. DCA Dài hạn
-  let dca_class='hold', dca_verdict='DCA BÌNH THƯỜNG', dca_body='', dca_target='';
+  let dca_class='hold', dca_verdict='DCA ĐỀU ĐẶN', dca_summary='', dca_detail='';
   const belowMa50=currentPrice<ma50&&ma50>0;
   if(belowMa50&&rsi<50){
     dca_class='buy'; dca_verdict='VÙNG TÍCH LŨY TỐT';
-    dca_body=`Giá hiện tại <b>dưới MA50</b> (${(ma50/1e6).toFixed(2)}M). RSI thấp — vùng giá có lịch sử sinh lời tốt cho DCA dài hạn.`;
+    dca_summary='Giá đang dưới mức trung bình 50 ngày — thời điểm tốt để mua định kỳ.';
+    dca_detail=`<div class="school-body">Giá SJC đang <b>thấp hơn đường trung bình 50 ngày (MA50)</b>, kết hợp RSI thấp — đây là vùng giá có xác suất sinh lời tốt cho người tích lũy dài hạn.</div>
+      <div class="school-term"><span class="school-term-lbl">MA50 = ${(ma50/1e6).toFixed(2)}M</span><span class="school-term-val">Giá trung bình 50 phiên giao dịch gần nhất. Giá dưới MA50 nghĩa là thị trường đang rẻ hơn mức trung bình — lịch sử thường phục hồi về MA50.</span></div>
+      <div class="school-term"><span class="school-term-lbl">RSI = ${rsi.toFixed(0)}</span><span class="school-term-val">Đo lực mua/bán. Dưới 50 = lực bán đang lấn át → giá chưa bị đẩy lên quá cao.</span></div>
+      <div class="school-action buy">→ Mua DCA đều: ví dụ 1–3 chỉ/tháng (${fmt(Math.round(currentPrice/10))}–${fmt(Math.round(currentPrice*3/10))} ₫). Không cần đoán đỉnh đáy — mua đều và kiên nhẫn.</div>`;
   } else if(!belowMa50&&upTrend){
-    dca_class='hold'; dca_verdict='DCA ĐỀU ĐẶN';
-    dca_body=`Giá <b>trên MA50</b> — xu hướng tăng dài hạn. Tiếp tục DCA đều theo kế hoạch, không tăng đột biến.`;
+    dca_summary='Xu hướng tăng dài hạn — tiếp tục DCA đều, không tăng đột biến.';
+    dca_detail=`<div class="school-body">Giá SJC đang <b>trên MA50</b> và MA20 > MA50 — xu hướng tăng đang giữ vững. Không nên mua dồn vào vùng giá cao này.</div>
+      <div class="school-term"><span class="school-term-lbl">MA20 > MA50</span><span class="school-term-val">Đường trung bình ngắn hạn (20 ngày) nằm trên trung bình dài hạn (50 ngày) — tín hiệu xu hướng tăng ("golden cross").</span></div>
+      <div class="school-term"><span class="school-term-lbl">DCA là gì?</span><span class="school-term-val">Dollar Cost Averaging — mua định kỳ cố định (vd: 1 chỉ/tháng), bất kể giá lên hay xuống. Giúp giảm rủi ro mua đỉnh.</span></div>
+      <div class="school-action hold">→ Tiếp tục mua đều theo kế hoạch. Tránh mua thêm đột biến khi giá đã lên cao.</div>`;
   } else {
-    dca_body=`Tiếp tục DCA đều đặn theo kế hoạch. Tránh mua dồn khi giá trên MA50 (${ma50?(ma50/1e6).toFixed(2)+'M':'chưa có dữ liệu'}).`;
+    dca_summary='Chưa có tín hiệu rõ — tiếp tục DCA đều theo kế hoạch hàng tháng.';
+    dca_detail=`<div class="school-body">Thị trường chưa có tín hiệu rõ ràng. Chiến lược tốt nhất: <b>mua đều hàng tháng</b> với số lượng cố định, không cần dự báo giá.</div>
+      <div class="school-term"><span class="school-term-lbl">DCA là gì?</span><span class="school-term-val">Dollar Cost Averaging — mua định kỳ cố định, vd: 1 chỉ/tháng (~${fmt(Math.round(currentPrice/10))} ₫). Sau 12 tháng = ~1.2 lượng. Không cần đoán đỉnh/đáy.</span></div>
+      <div class="school-term"><span class="school-term-lbl">MA50 = ${ma50?(ma50/1e6).toFixed(2)+'M':'chưa đủ dữ liệu'}</span><span class="school-term-val">Mốc tham chiếu dài hạn. Khi giá xuống dưới MA50 → tăng DCA. Khi giá cao hơn nhiều MA50 → giữ nguyên kế hoạch.</span></div>
+      <div class="school-action hold">→ Mua đều ${fmt(Math.round(currentPrice/10))} ₫/tháng (~1 chỉ). Không đoán thị trường — tích lũy đều là chiến thắng dài hạn.</div>`;
   }
-  const annualRate=0.08;const periods=12;
-  const monthlyBuy=currentPrice/37.5*3; // ~3 gram/tháng
-  dca_target=`Ví dụ DCA 3 gram/tháng (~${fmt(Math.round(monthlyBuy))} ₫) → sau 1 năm: ~36g ≈ ~1 lượng`;
 
-  // 3. Tích lũy phân kỳ (Divergence / Contrarian)
-  let div_class='hold', div_verdict='KHÔNG CÓ TÍN HIỆU PHÂN KỲ', div_body='', div_target='';
+  // 3. So sánh với giá quốc tế (Contrarian)
+  let div_class='hold', div_verdict='', div_summary='', div_detail='';
   const premiumPct=xau&&xau.extra?.xau_vnd_luong&&currentPrice
     ?((currentPrice-xau.extra.xau_vnd_luong)/xau.extra.xau_vnd_luong*100):0;
+  const xauVndM=xau?.extra?.xau_vnd_luong?(xau.extra.xau_vnd_luong/1e6).toFixed(2)+'M':'--';
+  const xauUsd=xau?.buy?Number(xau.buy).toLocaleString('vi-VN')+'USD':'--';
   if(premiumPct>15){
-    div_class='sell'; div_verdict='PREMIUM QUÁ CAO — CẨN THẬN';
-    div_body=`SJC đang cao hơn giá quốc tế quy đổi <b>${premiumPct.toFixed(1)}%</b>. Lịch sử cho thấy premium >15% thường điều chỉnh về gần 8-12%.`;
-    div_target=`Giá hợp lý tham chiếu: <span style="color:var(--buy)">${(xau.extra.xau_vnd_luong*1.1/1e6).toFixed(2)}M</span> (premium 10%)`;
+    div_class='sell'; div_verdict='PREMIUM QUÁ CAO';
+    div_summary=`SJC cao hơn giá thế giới ${premiumPct.toFixed(1)}% — thận trọng, không nên mua thêm.`;
+    div_detail=`<div class="school-body">Giá SJC trong nước đang <b>cao hơn giá vàng quốc tế ${premiumPct.toFixed(1)}%</b>. Mức premium lịch sử hợp lý là 8–12%. Khi premium vượt 15% thường điều chỉnh về gần mức đó.</div>
+      <div class="school-term"><span class="school-term-lbl">Premium</span><span class="school-term-val">% chênh lệch giữa giá SJC trong nước và giá vàng thế giới quy đổi sang VNĐ/lượng. Premium cao = SJC đang đắt hơn thế giới.</span></div>
+      <div class="school-term"><span class="school-term-lbl">Giá QT quy đổi</span><span class="school-term-val">${xauVndM}/lượng (XAU/USD: ${xauUsd}/oz × tỷ giá USD/VND). Giá tham chiếu nếu không có chênh lệch.</span></div>
+      <div class="school-term"><span class="school-term-lbl">Giá hợp lý</span><span class="school-term-val">${xau?.extra?.xau_vnd_luong?(xau.extra.xau_vnd_luong*1.1/1e6).toFixed(2)+'M':'--'} (premium 10% — mức lịch sử bình thường)</span></div>
+      <div class="school-action sell">→ Không mua thêm. Nếu đang giữ nhiều, có thể chốt lời một phần, chờ premium về 8–12% để tích lũy lại.</div>`;
   } else if(premiumPct>0&&premiumPct<10){
-    div_class='buy'; div_verdict='PREMIUM HỢP LÝ — TÍCH LŨY';
-    div_body=`Premium SJC so với giá QT: <b>${premiumPct.toFixed(1)}%</b> — ở mức hợp lý lịch sử. Cơ hội tích lũy dài hạn.`;
-    div_target=`Giá QT quy đổi: ${xau?(xau.extra?.xau_vnd_luong/1e6).toFixed(2)+'M':'--'} · Premium hiện tại: ${premiumPct.toFixed(1)}%`;
+    div_class='buy'; div_verdict='PREMIUM HỢP LÝ';
+    div_summary=`SJC chênh với giá thế giới ${premiumPct.toFixed(1)}% — mức bình thường, có thể tích lũy.`;
+    div_detail=`<div class="school-body">Premium SJC hiện ở mức <b>${premiumPct.toFixed(1)}%</b> — nằm trong vùng lịch sử bình thường (8–12%). Đây là thời điểm hợp lý để tích lũy theo chiến lược dài hạn.</div>
+      <div class="school-term"><span class="school-term-lbl">Giá QT quy đổi</span><span class="school-term-val">${xauVndM}/lượng. SJC hiện chênh ${premiumPct.toFixed(1)}% — trong biên độ chấp nhận được.</span></div>
+      <div class="school-term"><span class="school-term-lbl">Premium</span><span class="school-term-val">Chênh lệch giá SJC trong nước so với giá vàng thế giới quy đổi VNĐ/lượng. Thường dao động 8–15% do thuế, phí và chênh lệch thị trường.</span></div>
+      <div class="school-action buy">→ Có thể mua tích lũy. Premium đang hợp lý — không có dấu hiệu SJC đang bị thổi giá quá mức.</div>`;
   } else {
-    div_body=premiumPct?`Premium SJC so với QT: ${premiumPct.toFixed(1)}%. `:'';
-    div_body+=`Không có tín hiệu phân kỳ rõ ràng. Theo dõi thêm biến động USD/VND và giá vàng quốc tế.`;
-    div_target=xau?`XAU/USD: ${Number(xau.buy).toLocaleString('vi-VN')} USD/oz`:'';
+    div_verdict= premiumPct>=10?'PREMIUM CAO':'THEO DÕI THÊM';
+    div_summary= premiumPct>=10?`Premium ${premiumPct.toFixed(1)}% — trên mức bình thường, theo dõi thêm trước khi mua.`:`Chưa đủ dữ liệu so sánh quốc tế — theo dõi tỷ giá USD/VND.`;
+    div_detail=`<div class="school-body">Chiến lược <b>So sánh với giá quốc tế</b> dựa trên % chênh lệch (premium) của SJC so với giá XAU/USD thế giới quy đổi. Khi premium thấp = SJC không đắt hơn quốc tế nhiều → cơ hội mua. Khi premium cao = SJC đắt hơn nhiều → cẩn thận.</div>
+      <div class="school-term"><span class="school-term-lbl">XAU/USD</span><span class="school-term-val">${xauUsd}/oz — giá vàng thế giới tính bằng USD. 1 troy oz ≈ 31.1g = ~0.832 chỉ.</span></div>
+      <div class="school-term"><span class="school-term-lbl">Quy đổi</span><span class="school-term-val">Giá QT/lượng = XAU/USD × tỷ giá USD/VND × (1 lượng/31.1g × 37.5g). Hiện tại: ${xauVndM}/lượng.</span></div>
+      <div class="school-term"><span class="school-term-lbl">Premium hiện tại</span><span class="school-term-val">${premiumPct?premiumPct.toFixed(1)+'%':'Chưa tính được (thiếu dữ liệu XAU/USD)'}. Mức bình thường lịch sử: 8–15%.</span></div>
+      <div class="school-action hold">→ Chưa có tín hiệu rõ. Tiếp tục DCA đều đặn, theo dõi biến động USD/VND.</div>`;
   }
 
   // Main signal badge
@@ -749,7 +800,7 @@ function renderGoldSignalFull(){
   const showKeys=['VANGTODAYAPI:SJC_1L','VANGTODAYAPI:DOJI_NHAN_9999','VANGTODAYAPI:DOJI_NHAN_HCM','VANGTODAYAPI:SJC_NHAN','VANGTODAYAPI:PNJ_24K'];
   for(const k of showKeys){
     const p=prices[k];if(!p) continue;
-    const lbl=p.label||_goldLabel(p.source,p.product);
+    const lbl=_goldLabel(p.source,p.product)||p.label||k;
     const bM=p.buy?(p.buy/1e6).toFixed(2)+'M':'--';
     const sM=p.sell?(p.sell/1e6).toFixed(2)+'M':'--';
     priceTable+=`<div class="sum-row">
@@ -781,22 +832,37 @@ function renderGoldSignalFull(){
 
   <div style="font-family:var(--mono);font-size:11px;color:var(--c0);margin:12px 0 8px;letter-spacing:.06em">PHÂN TÍCH THEO TRƯỜNG PHÁI</div>
 
-  <div class="school-card ${ws_class}">
-    <div class="school-title">⚡ Lướt Sóng (Short-term Trading) — <span style="color:${ws_class==='buy'?'var(--buy)':ws_class==='sell'?'var(--sell)':'var(--hold)'}">${ws_verdict}</span></div>
-    <div class="school-body">${ws_body}</div>
-    ${ws_target?`<div class="school-target">${ws_target}</div>`:''}
+  <div class="school-card ${ws_class}" onclick="toggleSchool(this)">
+    <div class="school-hdr">
+      <div style="flex:1">
+        <div class="school-title">⚡ Lướt Sóng — <span style="color:${ws_class==='buy'?'var(--buy)':ws_class==='sell'?'var(--sell)':'var(--hold)'}">${ws_verdict}</span></div>
+        <div class="school-summary">${ws_summary}</div>
+      </div>
+      <div class="school-chevron">▾</div>
+    </div>
+    <div class="school-detail">${ws_detail}</div>
   </div>
 
-  <div class="school-card ${dca_class}">
-    <div class="school-title">📅 DCA Dài Hạn (Tích lũy định kỳ) — <span style="color:${dca_class==='buy'?'var(--buy)':'var(--hold)'}">${dca_verdict}</span></div>
-    <div class="school-body">${dca_body}</div>
-    ${dca_target?`<div class="school-target" style="color:var(--txt2)">${dca_target}</div>`:''}
+  <div class="school-card ${dca_class}" onclick="toggleSchool(this)">
+    <div class="school-hdr">
+      <div style="flex:1">
+        <div class="school-title">📅 Tích Lũy Định Kỳ (DCA) — <span style="color:${dca_class==='buy'?'var(--buy)':'var(--hold)'}">${dca_verdict}</span></div>
+        <div class="school-summary">${dca_summary}</div>
+      </div>
+      <div class="school-chevron">▾</div>
+    </div>
+    <div class="school-detail">${dca_detail}</div>
   </div>
 
-  <div class="school-card ${div_class}">
-    <div class="school-title">📊 Tích Lũy Phân Kỳ (Contrarian) — <span style="color:${div_class==='buy'?'var(--buy)':div_class==='sell'?'var(--sell)':'var(--hold)'}">${div_verdict}</span></div>
-    <div class="school-body">${div_body}</div>
-    ${div_target?`<div class="school-target" style="color:var(--txt2)">${div_target}</div>`:''}
+  <div class="school-card ${div_class}" onclick="toggleSchool(this)">
+    <div class="school-hdr">
+      <div style="flex:1">
+        <div class="school-title">📊 So Sánh Giá Quốc Tế — <span style="color:${div_class==='buy'?'var(--buy)':div_class==='sell'?'var(--sell)':'var(--hold)'}">${div_verdict}</span></div>
+        <div class="school-summary">${div_summary}</div>
+      </div>
+      <div class="school-chevron">▾</div>
+    </div>
+    <div class="school-detail">${div_detail}</div>
   </div>
 
   <div style="font-size:11px;color:var(--txt2);text-align:center;padding:6px 0">⚠️ Phân tích kỹ thuật — không phải khuyến nghị đầu tư cá nhân</div>`;
@@ -1203,6 +1269,7 @@ function _buildHistFilterCodes(){
   if(_goldTrades.length){const o=document.createElement('option');o.value='GOLD';o.textContent='Vàng (tất cả)';sel.appendChild(o);}
 }
 
+function toggleSchool(el){el.classList.toggle('open');}
 function toggleHistFilter(){
   const p=document.getElementById('hist-filter-panel');
   p.style.display=p.style.display==='none'?'block':'none';
@@ -1243,12 +1310,16 @@ function renderUnifiedHistory(){
     const tLabel=isBuy?'MUA':'BÁN';
     if(t._asset==='gold'){
       const qtyL=t.qty_luong??t.qty;
-      const priceM=(t.price_per_luong/1e6).toFixed(2);
-      const label=_GOLD_LABELS[t.product]||t.product||'Vàng';
+      const priceM=t.price_per_luong>0?(t.price_per_luong/1e6).toFixed(2)+'M':'tặng';
+      const rawLabel=t.product?.startsWith('OTHER:')?t.product.slice(6):(_GOLD_LABELS[t.product]||t.product||'Vàng');
       return `<div class="tlog-row">
 <div class="tlog-left">
-  <div><span class="tlog-code" style="color:#fbbf24">${label}</span> <span style="font-size:11px;color:${tColor};font-weight:700">${tLabel}</span></div>
-  <div class="tlog-meta">${t.date} · ${qtyL} lượng · ${priceM}M ₫/lượng</div>
+  <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+    <span style="background:#92400e;color:#fbbf24;font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;font-family:var(--mono);flex-shrink:0">VÀNG</span>
+    <span style="font-size:12px;font-weight:600;color:#fbbf24">${rawLabel}</span>
+    <span style="font-size:11px;color:${tColor};font-weight:700">${tLabel}</span>
+  </div>
+  <div class="tlog-meta">${t.date} · ${qtyL} lượng · ${priceM} ₫/lượng</div>
   <div class="tlog-meta">Tổng: <span style="color:var(--c0)">${fmt(t.total_vnd)} ₫</span></div>
 </div>
 <div class="tlog-actions">
@@ -1416,14 +1487,21 @@ function drawChart(points){
 }
 
 // Trade form
-function setGoldType(type) {
-  _goldType = type;
-  document.getElementById('gold-btn-buy').classList.toggle('active', type==='buy');
-  document.getElementById('gold-btn-sell').classList.toggle('active', type==='sell');
-  document.getElementById('gold-btn-buy').className = 'type-btn buy' + (type==='buy'?' active':'');
-  document.getElementById('gold-btn-sell').className = 'type-btn sell' + (type==='sell'?' active':'');
-  document.getElementById('gold-submit-btn').textContent = type==='buy' ? 'XÁC NHẬN MUA' : 'XÁC NHẬN BÁN';
-  document.getElementById('gold-submit-btn').className = 'btn ' + (type==='buy'?'btn-buy':'btn-sell');
+function toggleGoldType() {
+  _goldType = _goldType==='buy' ? 'sell' : 'buy';
+  const isBuy = _goldType==='buy';
+  const thumb = document.getElementById('gold-pill-thumb');
+  const spans = document.getElementById('gold-type-pill').querySelectorAll('span');
+  thumb.style.left = isBuy ? '0' : '60px';
+  thumb.style.background = isBuy ? 'var(--buy)' : 'var(--sell)';
+  spans[0].style.color = isBuy ? '#000' : 'var(--txt2)';
+  spans[1].style.color = isBuy ? 'var(--txt2)' : '#000';
+  document.getElementById('gold-submit-btn').textContent = isBuy ? 'XÁC NHẬN MUA' : 'XÁC NHẬN BÁN';
+  document.getElementById('gold-submit-btn').className = 'btn ' + (isBuy?'btn-buy':'btn-sell');
+}
+function onGoldProductChange() {
+  const v = document.getElementById('gold-product-select').value;
+  document.getElementById('gold-other-name').style.display = v==='OTHER' ? 'block' : 'none';
 }
 
 function setGoldUnit(unit) {
@@ -1464,9 +1542,14 @@ async function submitGoldTrade() {
   const price = parseDecimal(document.getElementById('gold-price').value);
   const dt    = document.getElementById('gold-date-input').value;
   if (!qty || qty <= 0) { toast('Nhập số lượng'); return; }
-  if (!price || price <= 0) { toast('Nhập giá/lượng'); return; }
+  if (price == null || price < 0) { toast('Nhập giá/lượng (≥ 0)'); return; }
   if (!dt) { toast('Chọn ngày giao dịch'); return; }
-  const product = document.getElementById('gold-product-select')?.value || 'SJC_1L';
+  let product = document.getElementById('gold-product-select')?.value || 'SJC_1L';
+  if (product === 'OTHER') {
+    const customName = document.getElementById('gold-other-name')?.value?.trim();
+    if (!customName) { toast('Nhập tên sản phẩm vàng'); return; }
+    product = 'OTHER:' + customName;
+  }
   const unitF = {'luong':1,'chi':0.1,'gram':1/37.5}[_goldUnit] || 1;
   const total = Math.round(qty * unitF * price);
   const btn   = document.getElementById('gold-submit-btn');
