@@ -236,32 +236,41 @@ canvas{width:100%!important;height:100%!important}
     </div>
     <div id="dca-sub-gold" style="display:none">
       <div class="card">
-        <div class="card-title">DCA VÀNG — TÍNH SỐ LƯỢNG</div>
-        <label>Ngân sách / kỳ (VNĐ)</label>
-        <input type="number" id="gold-dca-budget" placeholder="VD: 5000000" inputmode="numeric" oninput="calcGoldDCA()">
-        <label>Chu kỳ đầu tư</label>
-        <select id="gold-dca-period" onchange="calcGoldDCA()">
-          <option value="1">Hàng tháng</option>
-          <option value="3">Hàng quý (3 tháng)</option>
-          <option value="6">6 tháng / lần</option>
-          <option value="12">Hàng năm</option>
-        </select>
-        <label>Mục tiêu tích lũy (năm)</label>
-        <select id="gold-dca-years" onchange="calcGoldDCA()">
-          <option value="1">1 năm</option>
-          <option value="3" selected>3 năm</option>
-          <option value="5">5 năm</option>
-          <option value="10">10 năm</option>
-        </select>
+        <div class="card-title">DỰ BÁO XU HƯỚNG VÀNG</div>
+        <label>Chọn trường phái đầu tư</label>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:12px" id="gold-school-group">
+          <div id="gs-btn-short" class="style-btn" style="border-color:var(--c0);background:#052e3a;color:var(--c0)" onclick="setGoldSchool('short')">⚡ Lướt sóng</div>
+          <div id="gs-btn-dca" class="style-btn" onclick="setGoldSchool('dca')">📅 DCA</div>
+          <div id="gs-btn-ct" class="style-btn" onclick="setGoldSchool('contrarian')">📊 Phân kỳ</div>
+        </div>
+        <label>Dữ liệu thị trường hiện tại</label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+          <div>
+            <div style="font-size:11px;color:var(--txt2);margin-bottom:3px">USD/VND</div>
+            <input type="text" inputmode="decimal" id="gp-usd" placeholder="VD: 25900" style="width:100%;background:var(--bg);border:1px solid var(--bdr);color:var(--txt);border-radius:8px;padding:7px 8px;font-size:13px;box-sizing:border-box" oninput="runGoldPrediction()">
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--txt2);margin-bottom:3px">XAU/USD</div>
+            <input type="text" inputmode="decimal" id="gp-xau" placeholder="VD: 3300" style="width:100%;background:var(--bg);border:1px solid var(--bdr);color:var(--txt);border-radius:8px;padding:7px 8px;font-size:13px;box-sizing:border-box" oninput="runGoldPrediction()">
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--txt2);margin-bottom:3px">BTC/USD</div>
+            <input type="text" inputmode="decimal" id="gp-btc" placeholder="VD: 105000" style="width:100%;background:var(--bg);border:1px solid var(--bdr);color:var(--txt);border-radius:8px;padding:7px 8px;font-size:13px;box-sizing:border-box" oninput="runGoldPrediction()">
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--txt2);margin-bottom:3px">Lạm phát VN (%/năm)</div>
+            <input type="text" inputmode="decimal" id="gp-inf" placeholder="VD: 4.5" style="width:100%;background:var(--bg);border:1px solid var(--bdr);color:var(--txt);border-radius:8px;padding:7px 8px;font-size:13px;box-sizing:border-box" oninput="runGoldPrediction()">
+          </div>
+        </div>
+        <button onclick="autoFillMarketData()" style="width:100%;padding:8px;background:var(--bg3);border:1px solid var(--bdr);color:var(--c0);border-radius:8px;font-size:12px;cursor:pointer;margin-bottom:4px;font-family:var(--mono)">⟳ Tự động điền từ dữ liệu hiện có</button>
       </div>
-      <div id="gold-dca-result"></div>
-      <div style="font-size:11px;color:var(--txt2);text-align:center;padding:8px 0">⚠️ Giá vàng biến động — chỉ mang tính tham khảo kế hoạch</div>
+      <div id="gold-predict-result"></div>
     </div>
   </div>
 
   <!-- Trade -->
   <div class="page" id="page-trade">
-    <div class="hdr">GHI NHẬN GIAO DỊCH</div>
+    <div class="hdr" onclick="onHdrTap()" style="cursor:default">GHI NHẬN GIAO DỊCH <span style="font-size:9px;opacity:.3">⚙</span></div>
     <div class="subtab-bar">
       <div class="subtab active" onclick="showSubtab('trade','ccq',this)">CCQ</div>
       <div class="subtab" onclick="showSubtab('trade','gold',this)">Vàng</div>
@@ -269,15 +278,27 @@ canvas{width:100%!important;height:100%!important}
     <!-- CCQ form -->
     <div id="trade-sub-ccq">
       <div class="card">
-        <label>Loại</label>
-        <div class="type-toggle">
-          <div class="type-btn buy active" id="btn-buy" onclick="setTradeType('buy')">ĐÃ MUA</div>
-          <div class="type-btn sell" id="btn-sell" onclick="setTradeType('sell')">ĐÃ BÁN</div>
+        <!-- Hàng 1: Toggle + Quỹ + Ngày -->
+        <div style="display:flex;gap:8px;align-items:flex-end;margin-bottom:12px">
+          <!-- Pill toggle -->
+          <div id="ccq-type-pill" onclick="toggleTradeType()" style="flex-shrink:0;display:flex;align-items:center;width:100px;height:34px;border-radius:17px;border:1px solid var(--bdr);background:var(--bg2);position:relative;cursor:pointer;overflow:hidden">
+            <div id="ccq-pill-thumb" style="position:absolute;left:0;width:50px;height:100%;border-radius:17px;background:var(--buy);transition:left .2s,background .2s"></div>
+            <span id="ccq-pill-l" style="position:relative;flex:1;text-align:center;font-size:11px;font-weight:700;color:#000;z-index:1;font-family:var(--mono)">MUA</span>
+            <span id="ccq-pill-r" style="position:relative;flex:1;text-align:center;font-size:11px;font-weight:700;color:var(--txt2);z-index:1;font-family:var(--mono)">BÁN</span>
+          </div>
+          <!-- Fund select -->
+          <select id="trade-fund" onchange="onTradeFundChange()" style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--bdr);color:var(--txt);border-radius:8px;padding:6px 8px;font-size:13px;height:34px"></select>
+          <!-- Date -->
+          <div style="flex-shrink:0;text-align:right">
+            <div id="trade-date-label" style="font-size:10px;color:var(--txt2);margin-bottom:2px;font-family:var(--mono)">NGÀY MUA</div>
+            <input type="date" id="trade-date" onchange="onTradeDateChange()" style="background:var(--bg);border:1px solid var(--bdr);color:var(--txt);border-radius:8px;padding:4px 6px;font-size:12px;width:120px">
+          </div>
         </div>
-        <label>Quỹ</label>
-        <select id="trade-fund" onchange="onTradeFundChange()"><option value="">-- Chọn quỹ --</option></select>
-        <label>Ngày giao dịch</label>
-        <input type="date" id="trade-date" onchange="onTradeDateChange()">
+        <!-- Thêm quỹ row (ẩn khi không cần) -->
+        <div id="trade-add-fund-row" style="display:none;gap:8px;margin-bottom:10px;align-items:center">
+          <input type="text" id="trade-new-fund-code" placeholder="Mã quỹ (VD: TCBF)" style="flex:1;background:var(--bg);border:1px solid var(--bdr);color:var(--txt);border-radius:8px;padding:8px;font-size:13px;text-transform:uppercase">
+          <button onclick="addNewFundAndWatch()" style="background:var(--c0);color:#000;border:none;border-radius:8px;padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">+ Thêm & Theo dõi</button>
+        </div>
         <label>Số CCQ nhận được</label>
         <input type="text" inputmode="decimal" id="trade-units" placeholder="VD: 487.21" oninput="calcTradeAmount()">
         <label>Giá NAV / CCQ (VNĐ)</label>
@@ -394,9 +415,26 @@ canvas{width:100%!important;height:100%!important}
       <div><label>Từ ngày</label><input type="date" id="hist-from"></div>
       <div><label>Đến ngày</label><input type="date" id="hist-to"></div>
     </div>
-    <button class="btn btn-primary" style="margin-bottom:10px;padding:8px" onclick="applyDateRange()">Áp dụng</button>
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <button class="btn btn-primary" style="flex:1;padding:8px" onclick="applyDateRange()">Áp dụng</button>
+      <button style="padding:8px 14px;background:var(--bg3);border:1px solid var(--bdr);color:var(--txt2);border-radius:8px;cursor:pointer;font-size:12px;font-family:var(--mono)" onclick="applyAllTime()">All time</button>
+    </div>
     <div id="hist-content"></div>
     <div class="chart-wrap"><canvas id="hist-chart"></canvas></div>
+  </div>
+</div>
+
+<!-- Token Update Modal -->
+<div id="token-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:2000;overflow-y:auto">
+  <div style="background:#0d1b2a;margin:60px 16px;border-radius:12px;padding:20px;border:1px solid #1e3a5f">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div style="font-size:13px;font-weight:700;color:var(--c0);font-family:var(--mono)">CẬP NHẬT TCBS TOKEN</div>
+      <button onclick="document.getElementById('token-modal').style.display='none'" style="background:none;border:none;color:var(--txt2);font-size:20px;cursor:pointer">×</button>
+    </div>
+    <div style="font-size:11px;color:var(--txt2);margin-bottom:12px;line-height:1.5">Paste JWT token từ TCInvest để fetch NAV mới nhất. Token thường hết hạn sau 12 giờ.</div>
+    <textarea id="token-input" rows="5" placeholder="Paste token JWT ở đây..." style="width:100%;background:var(--bg);border:1px solid var(--bdr);color:var(--txt);border-radius:8px;padding:10px;font-size:11px;font-family:var(--mono);resize:none;box-sizing:border-box;margin-bottom:10px"></textarea>
+    <div id="token-status" style="font-size:12px;color:var(--txt2);margin-bottom:10px;min-height:16px"></div>
+    <button onclick="submitToken()" style="width:100%;padding:12px;background:var(--c0);color:#000;border:none;border-radius:8px;font-weight:700;font-size:14px;cursor:pointer;font-family:var(--mono)">CẬP NHẬT & FETCH NAV</button>
   </div>
 </div>
 
@@ -1099,43 +1137,68 @@ function renderDCA(data){
 }
 
 // ── Trade ────────────────────────────────────────────────────────────────
-function setTradeType(t){
-  _tradeType=t;
-  document.getElementById('btn-buy').classList.toggle('active',t==='buy');
-  document.getElementById('btn-sell').classList.toggle('active',t==='sell');
+function toggleTradeType(){
+  _tradeType=_tradeType==='buy'?'sell':'buy';
+  const isBuy=_tradeType==='buy';
+  const thumb=document.getElementById('ccq-pill-thumb');
+  const l=document.getElementById('ccq-pill-l');
+  const r=document.getElementById('ccq-pill-r');
+  thumb.style.left=isBuy?'0':'50px';
+  thumb.style.background=isBuy?'var(--buy)':'var(--sell)';
+  l.style.color=isBuy?'#000':'var(--txt2)';
+  r.style.color=isBuy?'var(--txt2)':'#000';
+  document.getElementById('trade-date-label').textContent=isBuy?'NGÀY MUA':'NGÀY BÁN';
   const btn=document.getElementById('submit-trade');
-  btn.textContent=t==='buy'?'XÁC NHẬN MUA':'XÁC NHẬN BÁN';
-  btn.className='btn btn-'+t;
+  btn.textContent=isBuy?'XÁC NHẬN MUA':'XÁC NHẬN BÁN';
+  btn.className='btn btn-'+_tradeType;
+}
+function _refreshFundSelect(funds){
+  const sel=document.getElementById('trade-fund');
+  sel.innerHTML='<option value="">-- Chọn quỹ --</option>';
+  (funds||[]).forEach(code=>{const o=document.createElement('option');o.value=code;o.textContent=code;sel.appendChild(o);});
+  const add=document.createElement('option');add.value='__ADD__';add.textContent='+ Thêm quỹ mới...';sel.appendChild(add);
 }
 async function setupTrade(){
   const sel=document.getElementById('trade-fund');
-  if(sel.options.length>1)return;
+  if(sel.options.length>2)return;
   let funds=[];
   if(_me?.watched_funds)funds=_me.watched_funds;
   else if(USER_ID){try{const d=await apiFetch('/api/me');_me=d;funds=d.watched_funds||[];}catch{}}
-  funds.forEach(code=>{const o=document.createElement('option');o.value=code;o.textContent=code;sel.appendChild(o);});
+  _refreshFundSelect(funds);
   document.getElementById('trade-date').value=new Date().toISOString().split('T')[0];
 }
-function calcTradeAmount(){
-  const units=parseDecimal(document.getElementById('trade-units').value);
-  const price=parseDecimal(document.getElementById('trade-price').value);
-  const preview=document.getElementById('trade-amount-preview');
-  const valEl=document.getElementById('trade-amount-val');
-  if(units>0&&price>0){
-    const total=units*price;
-    valEl.textContent=fmt(total)+' đ';
-    preview.style.display='flex';
-  }else{
-    preview.style.display='none';
-  }
-}
-function parseDecimal(s){
-  // Chấp nhận cả dấu chấm và dấu phẩy thập phân
-  return parseFloat((s||'').replace(/,/g,'.').trim())||0;
-}
 async function onTradeFundChange(){
+  const sel=document.getElementById('trade-fund');
+  const addRow=document.getElementById('trade-add-fund-row');
+  if(sel.value==='__ADD__'){
+    addRow.style.display='flex';
+    document.getElementById('trade-new-fund-code').focus();
+    sel.value='';
+    return;
+  }
+  addRow.style.display='none';
   document.getElementById('trade-nav-mismatch').style.display='none';
   await checkNavMismatch();
+}
+async function addNewFundAndWatch(){
+  const code=(document.getElementById('trade-new-fund-code').value||'').toUpperCase().trim();
+  if(!code){toast('Nhập mã quỹ');return;}
+  if(!USER_ID){toast('Không xác định user');return;}
+  const watched=(_me?.watched_funds||[]);
+  if(!watched.includes(code)) watched.push(code);
+  try{
+    const res=await fetch(`${API_BASE}/api/me/watched_funds`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({telegram_id:USER_ID,watched_funds:watched})});
+    const d=await res.json();
+    if(d.ok){
+      if(_me)_me.watched_funds=watched;
+      _watchedSet=new Set(watched);
+      _refreshFundSelect(watched);
+      document.getElementById('trade-fund').value=code;
+      document.getElementById('trade-add-fund-row').style.display='none';
+      document.getElementById('trade-new-fund-code').value='';
+      toast(`✓ Đã thêm ${code} vào danh sách theo dõi`);
+    } else toast('Lỗi: '+(d.error||'unknown'));
+  }catch(e){toast('Lỗi: '+e.message);}
 }
 async function onTradeDateChange(){
   await checkNavMismatch();
@@ -1197,51 +1260,107 @@ async function submitTrade(){
   btn.disabled=false;
 }
 
-// ── Gold DCA Calculator ───────────────────────────────────────────────────
-function calcGoldDCA(){
-  const el=document.getElementById('gold-dca-result');
-  const budget=parseFloat(document.getElementById('gold-dca-budget')?.value)||0;
-  const periodMonths=parseInt(document.getElementById('gold-dca-period')?.value)||1;
-  const years=parseInt(document.getElementById('gold-dca-years')?.value)||3;
-  if(!budget||budget<=0){el.innerHTML='<div style="color:var(--txt2);text-align:center;padding:16px">Nhập ngân sách để tính</div>';return;}
-
-  const prices=_goldData?.prices||{};
-  const sjc=prices['VANGTODAYAPI:SJC_1L']||prices['DOJI_SCRAPE:SJC_1L']||Object.values(prices).find(p=>p.product==='SJC_1L');
-  const nhan=prices['VANGTODAYAPI:DOJI_NHAN_9999']||Object.values(prices).find(p=>p.product==='DOJI_NHAN_9999');
-  const sjcPrice=sjc?.sell||90000000;
-  const nhanPrice=nhan?.sell||85000000;
-
-  const periods=Math.floor(years*12/periodMonths);
-  const totalBudget=budget*periods;
-  const qtyLuongSJC=budget/sjcPrice;
-  const qtyChiSJC=qtyLuongSJC*10;
-  const qtyGramSJC=qtyLuongSJC*37.5;
-  const qtyLuongNhan=budget/nhanPrice;
-
-  const totalLuongSJC=qtyLuongSJC*periods;
-  const totalLuongNhan=qtyLuongNhan*periods;
-
-  const periodLabel={'1':'tháng','3':'quý','6':'6 tháng','12':'năm'}[String(periodMonths)]||'kỳ';
-
-  el.innerHTML=`<div class="card">
-    <div class="card-title">KẾT QUẢ DCA VÀNG — ${years} NĂM</div>
-    <div class="sum-row"><span class="sum-label">Ngân sách / ${periodLabel}</span><span class="sum-val" style="color:var(--c0)">${fmt(budget)} ₫</span></div>
-    <div class="sum-row"><span class="sum-label">Số kỳ đầu tư</span><span class="sum-val">${periods} ${periodLabel}</span></div>
-    <div class="sum-row"><span class="sum-label">Tổng vốn bỏ ra</span><span class="sum-val" style="color:var(--hold)">${fmt(totalBudget)} ₫</span></div>
-  </div>
-  <div class="card">
-    <div class="card-title">MỖI KỲ MUA ĐƯỢC (theo giá hiện tại)</div>
-    <div style="background:var(--bg3);border-radius:8px;padding:10px;margin-bottom:8px">
-      <div style="font-size:12px;color:var(--c0);font-weight:600;margin-bottom:6px">Vàng miếng SJC — ${(sjcPrice/1e6).toFixed(1)}M/lượng</div>
-      <div class="sum-row"><span class="sum-label">Số lượng/kỳ</span><span class="sum-val">${qtyGramSJC.toFixed(2)} gram · ${qtyChiSJC.toFixed(2)} chỉ</span></div>
-      <div class="sum-row"><span class="sum-label">Sau ${years} năm</span><span class="sum-val" style="color:var(--buy)">${totalLuongSJC.toFixed(4)} lượng ≈ ${(totalLuongSJC*37.5).toFixed(1)} gram</span></div>
-    </div>
-    ${nhanPrice?`<div style="background:var(--bg3);border-radius:8px;padding:10px">
-      <div style="font-size:12px;color:#fbbf24;font-weight:600;margin-bottom:6px">Nhẫn DOJI 9999 — ${(nhanPrice/1e6).toFixed(1)}M/lượng</div>
-      <div class="sum-row"><span class="sum-label">Số lượng/kỳ</span><span class="sum-val">${(qtyLuongNhan*10).toFixed(2)} chỉ · ${(qtyLuongNhan*37.5).toFixed(2)} gram</span></div>
-      <div class="sum-row"><span class="sum-label">Sau ${years} năm</span><span class="sum-val" style="color:var(--buy)">${totalLuongNhan.toFixed(4)} lượng</span></div>
-    </div>`:''}
-  </div>`;
+// -- Gold Prediction --
+let _goldSchool = 'short';
+function setGoldSchool(s){
+  _goldSchool = s;
+  ['short','dca','contrarian'].forEach(k => {
+    const el = document.getElementById('gs-btn-'+k);
+    if (!el) return;
+    const on = k === s;
+    el.style.borderColor = on ? 'var(--c0)' : 'var(--bdr)';
+    el.style.background  = on ? '#052e3a' : 'var(--bg3)';
+    el.style.color       = on ? 'var(--c0)' : 'var(--txt2)';
+  });
+  runGoldPrediction();
+}
+function autoFillMarketData(){
+  const prices = _goldData&&_goldData.prices ? _goldData.prices : {};
+  const xau = prices['INTERNATIONAL:XAUUSD'] || Object.values(prices).find(function(p){return p.currency==='USD';});
+  if (xau && xau.buy) document.getElementById('gp-xau').value = Number(xau.buy).toFixed(0);
+  if (xau && xau.extra && xau.extra.usd_vnd) document.getElementById('gp-usd').value = Number(xau.extra.usd_vnd).toFixed(0);
+  runGoldPrediction();
+}
+function calcGoldDCA(){ runGoldPrediction(); }
+function runGoldPrediction(){
+  const el = document.getElementById('gold-predict-result');
+  if (!el) return;
+  const usdvnd = parseDecimal(document.getElementById('gp-usd').value) || 25900;
+  const xauusd = parseDecimal(document.getElementById('gp-xau').value) || 0;
+  const btcusd = parseDecimal(document.getElementById('gp-btc').value) || 0;
+  const inf    = parseDecimal(document.getElementById('gp-inf').value) || 4.5;
+  const prices = _goldData&&_goldData.prices ? _goldData.prices : {};
+  const sjc = prices['VANGTODAYAPI:SJC_1L'] || Object.values(prices).find(function(p){return p.product==='SJC_1L';});
+  const sjcPrice = sjc ? (sjc.sell||0) : 0;
+  const xauVndLuong = xauusd > 0 ? xauusd * usdvnd * (37.5/31.1035) : 0;
+  const premiumPct  = xauVndLuong > 0 && sjcPrice > 0 ? ((sjcPrice - xauVndLuong) / xauVndLuong * 100) : null;
+  const sig  = _goldData&&_goldData.signal ? _goldData.signal : {};
+  const rsi  = sig.rsi || 50;
+  const bbPct= sig.bb_pct || 50;
+  const ma50 = sig.ma50 || 0;
+  let html = '';
+  if (_goldSchool === 'short') {
+    const entry1 = sjcPrice * 0.97;
+    const entry2 = sjcPrice * 0.985;
+    const tp1    = sjcPrice * 1.03;
+    const tp2    = sjcPrice * 1.055;
+    const sl     = sjcPrice * 0.975;
+    const sentiment = rsi < 40 ? 'MUA' : rsi > 65 ? 'THAN TRONG' : 'TRUNG LAP';
+    const sColor = rsi < 40 ? 'var(--buy)' : rsi > 65 ? 'var(--sell)' : 'var(--hold)';
+    html = '<div class="card"><div class="card-title">DU BAO NGAN HAN (1-4 tuan)</div>'
+         + '<div style="font-size:20px;font-weight:700;color:'+sColor+';font-family:var(--mono);margin-bottom:8px">'+sentiment+'</div>'
+         + (xauVndLuong>0?'<div class="sum-row"><span class="sum-label">Gia QT quy doi</span><span class="sum-val" style="color:var(--c0)">'+(xauVndLuong/1e6).toFixed(2)+'M</span></div>':'')
+         + (premiumPct!==null?'<div class="sum-row"><span class="sum-label">Premium SJC vs QT</span><span class="sum-val" style="color:'+(premiumPct>15?'var(--sell)':premiumPct<8?'var(--buy)':'var(--hold)')+'">'+premiumPct.toFixed(1)+'%</span></div>':'')
+         + '<div class="sum-row"><span class="sum-label">RSI(14)</span><span class="sum-val" style="color:'+(rsi<35?'var(--buy)':rsi>65?'var(--sell)':'var(--hold)')+'">'+rsi.toFixed(0)+' '+(rsi<35?'— qua ban':rsi>65?'— qua mua':'— trung tinh')+'</span></div>'
+         + '<div class="sum-row"><span class="sum-label">BB%</span><span class="sum-val">'+bbPct.toFixed(0)+'%'+(bbPct<25?' — day dai':bbPct>75?' — dinh dai':'')+'</span></div></div>'
+         + (sjcPrice>0 ? '<div class="card"><div class="card-title">DIEM VAO LENH</div>'
+         + '<div class="sum-row"><span class="sum-label">Entry 1</span><span class="sum-val" style="color:var(--buy)">'+(entry1/1e6).toFixed(2)+'M</span></div>'
+         + '<div class="sum-row"><span class="sum-label">Entry 2</span><span class="sum-val" style="color:var(--buy)">'+(entry2/1e6).toFixed(2)+'M</span></div>'
+         + '<div class="sum-row"><span class="sum-label">Chot loi T1</span><span class="sum-val" style="color:var(--c0)">'+(tp1/1e6).toFixed(2)+'M (+3%)</span></div>'
+         + '<div class="sum-row"><span class="sum-label">Chot loi T2</span><span class="sum-val" style="color:var(--c0)">'+(tp2/1e6).toFixed(2)+'M (+5.5%)</span></div>'
+         + '<div class="sum-row"><span class="sum-label">Cat lo</span><span class="sum-val" style="color:var(--sell)">'+(sl/1e6).toFixed(2)+'M (-2.5%)</span></div></div>' : '');
+  } else if (_goldSchool === 'dca') {
+    const r1y = sjcPrice > 0 ? sjcPrice*(1+inf/100) : 0;
+    const r3y = sjcPrice > 0 ? sjcPrice*Math.pow(1+inf/100,3) : 0;
+    const r5y = sjcPrice > 0 ? sjcPrice*Math.pow(1+inf/100,5) : 0;
+    const goodEntry = ma50 > 0 ? ma50*0.98 : sjcPrice*0.95;
+    html = '<div class="card"><div class="card-title">DU BAO DAI HAN (1-5 nam)</div>'
+         + '<div style="font-size:14px;font-weight:700;color:var(--buy);margin-bottom:8px">'+(btcusd>100000?'TICH CUC — BTC cao':'TRUNG LAP')+'</div>'
+         + (sjcPrice>0?'<div class="sum-row"><span class="sum-label">Gia hien tai</span><span class="sum-val" style="color:var(--c0)">'+(sjcPrice/1e6).toFixed(2)+'M</span></div>':'')
+         + (r1y>0?'<div class="sum-row"><span class="sum-label">Muc tieu 1 nam</span><span class="sum-val" style="color:var(--buy)">'+(r1y/1e6).toFixed(2)+'M (+'+inf+'% LP)</span></div>':'')
+         + (r3y>0?'<div class="sum-row"><span class="sum-label">Muc tieu 3 nam</span><span class="sum-val" style="color:var(--buy)">'+(r3y/1e6).toFixed(2)+'M</span></div>':'')
+         + (r5y>0?'<div class="sum-row"><span class="sum-label">Muc tieu 5 nam</span><span class="sum-val" style="color:var(--buy)">'+(r5y/1e6).toFixed(2)+'M</span></div>':'')
+         + (ma50>0?'<div class="sum-row"><span class="sum-label">Vung DCA tot</span><span class="sum-val" style="color:var(--buy)">< '+(goodEntry/1e6).toFixed(2)+'M</span></div>':'')
+         + (btcusd>0?'<div class="sum-row"><span class="sum-label">BTC tham chieu</span><span class="sum-val">'+Number(btcusd).toLocaleString('vi-VN')+' USD</span></div>':'')
+         +'</div>'
+         + '<div class="card"><div class="card-title">GIA THAM KHAO DCA THANG</div>'
+         + (sjcPrice>0?
+              '<div class="sum-row"><span class="sum-label">1 chi</span><span class="sum-val">'+fmt(Math.round(sjcPrice/10))+' d</span></div>'
+            + '<div class="sum-row"><span class="sum-label">2 chi</span><span class="sum-val">'+fmt(Math.round(sjcPrice/5))+' d</span></div>'
+            + '<div class="sum-row"><span class="sum-label">5 chi</span><span class="sum-val">'+fmt(Math.round(sjcPrice/2))+' d</span></div>'
+           : '<div style="color:var(--txt2);font-size:12px">Vao tab Tin Hieu de tai gia vang</div>')
+         +'</div>';
+  } else {
+    const fairValue  = xauVndLuong > 0 ? xauVndLuong*1.10 : 0;
+    const overvalued = premiumPct !== null && premiumPct > 15;
+    const undervalued= premiumPct !== null && premiumPct < 8;
+    const verdict    = overvalued ? 'QUA DAT — cho dieu chinh' : undervalued ? 'HOP LY — tich luy' : 'BINH THUONG';
+    const vColor     = overvalued ? 'var(--sell)' : undervalued ? 'var(--buy)' : 'var(--hold)';
+    html = '<div class="card"><div class="card-title">PREMIUM SJC vs QUOC TE</div>'
+         + '<div style="font-size:16px;font-weight:700;color:'+vColor+';font-family:var(--mono);margin-bottom:8px">'+verdict+'</div>'
+         + (xauVndLuong>0?'<div class="sum-row"><span class="sum-label">XAU/USD = '+xauusd+' USD</span><span class="sum-val">'+(xauVndLuong/1e6).toFixed(2)+'M/luong</span></div>':'')
+         + (premiumPct!==null?'<div class="sum-row"><span class="sum-label">Premium</span><span class="sum-val" style="color:'+vColor+'">'+premiumPct.toFixed(1)+'% '+(premiumPct>15?'(QUA CAO)':premiumPct<8?'(HOP LY)':'')+'</span></div>':'')
+         + (fairValue>0?'<div class="sum-row"><span class="sum-label">Gia hop ly (10%)</span><span class="sum-val" style="color:var(--buy)">'+(fairValue/1e6).toFixed(2)+'M</span></div>':'')
+         +'</div>'
+         + '<div class="card"><div class="card-title">CHI BAO VI MO</div>'
+         + (btcusd>0?'<div class="sum-row"><span class="sum-label">BTC/USD</span><span class="sum-val" style="color:'+(btcusd>100000?'var(--buy)':'var(--hold)')+'">'+Number(btcusd).toLocaleString('vi-VN')+'</span></div>':'')
+         + (usdvnd>0?'<div class="sum-row"><span class="sum-label">USD/VND</span><span class="sum-val">'+Number(usdvnd).toLocaleString('vi-VN')+'</span></div>':'')
+         + '<div class="sum-row"><span class="sum-label">Lam phat VN</span><span class="sum-val" style="color:'+(inf>6?'var(--sell)':inf>4?'var(--hold)':'var(--buy)')+'">'+inf+'%/nam</span></div>'
+         +'</div>';
+  }
+  if (!html) html = '<div style="color:var(--txt2);text-align:center;padding:16px">Nhap du lieu de xem du bao</div>';
+  html += '<div style="font-size:11px;color:var(--txt2);text-align:center;padding:6px 0">Chi mang tinh tham khao</div>';
+  el.innerHTML = html;
 }
 
 // ── Unified Trade History ─────────────────────────────────────────────────
@@ -1454,6 +1573,34 @@ function applyDateRange(){
     <div class="sum-row"><span class="sum-label">Số điểm</span><span class="sum-val">${pts.length}</span></div>
   </div>`;
   drawChart(pts);
+}
+function applyAllTime(){
+  document.getElementById('hist-from').value='';
+  document.getElementById('hist-to').value='';
+  applyDateRange();
+}
+// ── Token update ──────────────────────────────────────────────────────────
+let _tapCount=0, _tapTimer=null;
+function onHdrTap(){
+  _tapCount++;
+  clearTimeout(_tapTimer);
+  _tapTimer=setTimeout(()=>{_tapCount=0;},800);
+  if(_tapCount>=5){_tapCount=0;document.getElementById('token-modal').style.display='block';}
+}
+async function submitToken(){
+  const token=(document.getElementById('token-input').value||'').trim();
+  const statusEl=document.getElementById('token-status');
+  if(!token){statusEl.textContent='Vui lòng paste token vào ô trên';return;}
+  statusEl.textContent='Đang cập nhật...';
+  try{
+    const res=await fetch(`${API_BASE}/api/admin/settoken`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token})});
+    const d=await res.json();
+    if(d.ok){
+      statusEl.style.color='var(--buy)';
+      statusEl.textContent='✓ Token đã cập nhật! Đang fetch NAV trong nền...';
+      setTimeout(()=>{document.getElementById('token-modal').style.display='none';document.getElementById('token-input').value='';statusEl.textContent='';statusEl.style.color='var(--txt2)';},3000);
+    } else {statusEl.style.color='var(--sell)';statusEl.textContent='Lỗi: '+(d.error||'unknown');}
+  }catch(e){statusEl.style.color='var(--sell)';statusEl.textContent='Lỗi kết nối: '+e.message;}
 }
 function drawChart(points){
   const canvas=document.getElementById('hist-chart');
