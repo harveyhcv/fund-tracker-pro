@@ -39,17 +39,25 @@ _UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/125.0
 
 # Mapping vang.today type_code → product key của chúng ta
 _VANGTODAY_MAP = {
-    "SJL1L10":   ("SJC_1L",         "Vàng miếng SJC 9999 1 lượng"),
-    "DOHNL":     ("DOJI_NHAN_9999", "DOJI Hà Nội"),
-    "DOHCML":    ("DOJI_HCM",       "DOJI HCM"),
-    "DOJINHTV":  ("DOJI_JEWELRY",   "DOJI Jewelry"),
-    "SJ9999":    ("SJC_NHAN",       "Nhẫn SJC 9999"),
-    "PQHNVM":    ("PNJ_HN",         "PNJ Hà Nội"),
-    "PQHN24NTT": ("PNJ_24K",        "PNJ 24K"),
-    "BT9999NTT": ("BAOTINNGUYEN",   "Bảo Tín 9999"),
-    "BTSJC":     ("BAOTINSJC",      "Bảo Tín SJC"),
-    "VNGSJC":    ("VNGOLD_SJC",     "VN Gold SJC"),
-    "XAUUSD":    ("XAUUSD",         "Vàng quốc tế XAU/USD"),
+    # SJC miếng vàng (chính thống Nhà nước)
+    "SJL1L10":     ("SJC_1L",         "Vàng miếng SJC 9999 — 1 lượng"),
+    # Nhẫn DOJI 9999 (2 chi nhánh, cùng sản phẩm — lưu chung key)
+    "DOHNL":       ("DOJI_NHAN_9999", "Nhẫn tròn DOJI 9999 (Hà Nội)"),
+    "DOHCML":      ("DOJI_NHAN_HCM",  "Nhẫn tròn DOJI 9999 (HCM)"),
+    "DOJINHTV":    ("DOJI_JEWELRY",   "DOJI Trang sức (không đầu tư)"),
+    # Nhẫn SJC 9999 (khác với miếng SJC)
+    "SJ9999":      ("SJC_NHAN",       "Nhẫn tròn SJC 9999"),
+    # PNJ — 2 dòng sản phẩm khác nhau
+    "PQHNVM":      ("PNJ_VANGMY",     "Nhẫn vàng mỹ PNJ (Hà Nội)"),
+    "PQHN24NTT":   ("PNJ_24K",        "Nhẫn 24K PNJ 9999"),
+    # Bảo Tín Minh Châu
+    "BT9999NTT":   ("BAOTINNGUYEN",   "Vàng nhẫn Bảo Tín 9999"),
+    "BTSJC":       ("BAOTINSJC",      "Vàng SJC tại Bảo Tín"),
+    # Đơn vị bán SJC khác
+    "VNGSJC":      ("VNGOLD_SJC",     "Vàng SJC tại VN Gold"),
+    "VIETTINMSJC": ("VIETTIN_SJC",    "Vàng SJC tại Việt Tín"),
+    # Quốc tế
+    "XAUUSD":      ("XAUUSD",         "Vàng quốc tế XAU/USD"),
 }
 
 

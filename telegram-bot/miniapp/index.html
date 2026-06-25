@@ -290,10 +290,13 @@ canvas{width:100%!important;height:100%!important}
         <label>Sản phẩm vàng</label>
         <select id="gold-product-select">
           <option value="SJC_1L">Vàng miếng SJC 9999 — 1 lượng</option>
-          <option value="DOJI_SJC_1L">SJC tại DOJI — 1 lượng</option>
-          <option value="DOJI_NHAN_9999">Nhẫn tròn DOJI 9999 24K</option>
-          <option value="DOJI_NHAN">Nhẫn DOJI (loại khác)</option>
-          <option value="PNJ_24K">Nhẫn PNJ 24K 9999</option>
+          <option value="DOJI_NHAN_9999">Nhẫn tròn DOJI 9999 (HN)</option>
+          <option value="DOJI_NHAN_HCM">Nhẫn tròn DOJI 9999 (HCM)</option>
+          <option value="SJC_NHAN">Nhẫn tròn SJC 9999</option>
+          <option value="PNJ_VANGMY">Nhẫn vàng mỹ PNJ</option>
+          <option value="PNJ_24K">Nhẫn 24K PNJ 9999</option>
+          <option value="BAOTINNGUYEN">Vàng nhẫn Bảo Tín 9999</option>
+          <option value="VIETTIN_SJC">Vàng SJC tại Việt Tín</option>
           <option value="OTHER">Vàng khác</option>
         </select>
         <label>Đơn vị</label>
@@ -457,13 +460,31 @@ let _tradeLog=[], _showAllHist=false;
 let _sigData=null, _allFunds={}, _watchedSet=new Set();
 
 const _GOLD_LABELS = {
-  'SJC_1L':'Vàng miếng SJC 9999 — 1L','DOJI_SJC_1L':'SJC tại DOJI — 1L',
-  'DOJI_NHAN_9999':'Nhẫn DOJI 9999 24K','DOJI_NHAN':'Nhẫn DOJI',
-  'PNJ_24K':'Nhẫn PNJ 24K 9999','OTHER':'Vàng khác',
-  'VANGTODAYAPI:SJC_1L':'Vàng miếng SJC 9999 1L','VANGTODAYAPI:DOJI_NHAN_9999':'Nhẫn DOJI 9999 24K',
-  'VANGTODAYAPI:PNJ_24K':'Nhẫn PNJ 24K','VANGTODAYAPI:BAOTINNGUYEN':'Bảo Tín Minh Châu',
-  'DOJI_SCRAPE:SJC_1L':'SJC tại DOJI 1L','DOJI_SCRAPE:DOJI_NHAN_9999':'Nhẫn DOJI 9999 (DOJI)',
-  'INTERNATIONAL:XAUUSD':'Vàng QT XAU/USD',
+  // Product codes (form giao dịch)
+  'SJC_1L':        'Vàng miếng SJC 9999 — 1 lượng',
+  'DOJI_NHAN_9999':'Nhẫn tròn DOJI 9999 (HN)',
+  'DOJI_NHAN_HCM': 'Nhẫn tròn DOJI 9999 (HCM)',
+  'SJC_NHAN':      'Nhẫn tròn SJC 9999',
+  'PNJ_VANGMY':    'Nhẫn vàng mỹ PNJ',
+  'PNJ_24K':       'Nhẫn 24K PNJ 9999',
+  'BAOTINNGUYEN':  'Vàng nhẫn Bảo Tín 9999',
+  'BAOTINSJC':     'Vàng SJC tại Bảo Tín',
+  'VNGOLD_SJC':    'Vàng SJC tại VN Gold',
+  'VIETTIN_SJC':   'Vàng SJC tại Việt Tín',
+  'OTHER':         'Vàng khác',
+  // SOURCE:PRODUCT từ API (bảng giá / tín hiệu)
+  'VANGTODAYAPI:SJC_1L':        'Vàng miếng SJC 9999 — 1L',
+  'VANGTODAYAPI:DOJI_NHAN_9999':'Nhẫn tròn DOJI 9999 (HN)',
+  'VANGTODAYAPI:DOJI_NHAN_HCM': 'Nhẫn tròn DOJI 9999 (HCM)',
+  'VANGTODAYAPI:SJC_NHAN':      'Nhẫn tròn SJC 9999',
+  'VANGTODAYAPI:PNJ_VANGMY':    'Nhẫn vàng mỹ PNJ',
+  'VANGTODAYAPI:PNJ_24K':       'Nhẫn 24K PNJ 9999',
+  'VANGTODAYAPI:BAOTINNGUYEN':  'Vàng nhẫn Bảo Tín 9999',
+  'VANGTODAYAPI:BAOTINSJC':     'Vàng SJC tại Bảo Tín',
+  'VANGTODAYAPI:VNGOLD_SJC':    'Vàng SJC tại VN Gold',
+  'VANGTODAYAPI:VIETTIN_SJC':   'Vàng SJC tại Việt Tín',
+  'VANGTODAYAPI:XAUUSD':        'Vàng quốc tế XAU/USD',
+  'INTERNATIONAL:XAUUSD':       'Vàng quốc tế XAU/USD',
 };
 function _goldLabel(source, product) {
   return _GOLD_LABELS[`${source}:${product}`] || _GOLD_LABELS[product] || `${source} ${product}`;
@@ -619,7 +640,7 @@ function renderPfGoldSub(){
   const pnlC2=pf.pnl>=0?'var(--buy)':'var(--sell)';
   const pnlSign=pf.pnl>=0?'+':'';
   // Bảng giá nhanh
-  const domesticKeys=['VANGTODAYAPI:SJC_1L','DOJI_SCRAPE:SJC_1L','VANGTODAYAPI:DOJI_NHAN_9999'];
+  const domesticKeys=['VANGTODAYAPI:SJC_1L','VANGTODAYAPI:DOJI_NHAN_9999','VANGTODAYAPI:DOJI_NHAN_HCM','VANGTODAYAPI:SJC_NHAN'];
   let priceRows='';
   for(const k of domesticKeys){
     const p=prices[k];
@@ -725,7 +746,7 @@ function renderGoldSignalFull(){
 
   // Price table
   let priceTable='';
-  const showKeys=['VANGTODAYAPI:SJC_1L','VANGTODAYAPI:DOJI_NHAN_9999','DOJI_SCRAPE:SJC_1L'];
+  const showKeys=['VANGTODAYAPI:SJC_1L','VANGTODAYAPI:DOJI_NHAN_9999','VANGTODAYAPI:DOJI_NHAN_HCM','VANGTODAYAPI:SJC_NHAN','VANGTODAYAPI:PNJ_24K'];
   for(const k of showKeys){
     const p=prices[k];if(!p) continue;
     const lbl=p.label||_goldLabel(p.source,p.product);
