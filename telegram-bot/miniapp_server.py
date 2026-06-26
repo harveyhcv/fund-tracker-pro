@@ -196,19 +196,29 @@ def _gold_rsi(prices: list, period: int = 14) -> float | None:
 
 
 def _calc_gold_portfolio(cfg: dict, tg_id: str, sjc_price: dict | None) -> dict:
-    """Tính portfolio vàng: tổng lượng, avg cost, current value, P&L."""
-    trades = cfg.get("gold_trades", [])
+    """Tính portfolio vàng: tổng lượng, avg cost, current value, P&L — đọc từ PostgreSQL."""
     total_luong  = 0.0
     total_cost   = 0.0
-    for t in trades:
-        if str(t.get("telegram_id", "")) != tg_id:
-            continue
-        ql = float(t.get("qty_luong", t.get("qty", 0) * _unit_to_luong(t.get("unit", "luong"))))
-        tv = float(t.get("total_vnd", 0))
-        if t.get("type") == "buy":
+    try:
+        conn = _get_db_conn()
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT type, qty_luong, total_vnd FROM user_gold_trades "
+                "WHERE telegram_id=%s ORDER BY trade_date, id",
+                [tg_id]
+            )
+            rows = cur.fetchall()
+        conn.close()
+    except Exception as _e:
+        log.warning(f"[gold_portfolio] DB error: {_e}")
+        rows = []
+    for (tx_type, qty_luong, total_vnd) in rows:
+        ql = float(qty_luong or 0)
+        tv = float(total_vnd or 0)
+        if tx_type == "buy":
             total_luong += ql
             total_cost  += tv
-        elif t.get("type") == "sell":
+        elif tx_type == "sell":
             sell_frac    = ql / total_luong if total_luong > 0 else 0
             total_cost  -= total_cost * sell_frac
             total_luong -= ql
