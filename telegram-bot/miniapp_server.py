@@ -299,18 +299,23 @@ def _get_signals_for_codes(codes: list, cfg: dict) -> dict:
         # MA
         ma20 = sum(navs[-20:]) / min(len(navs), 20)
         ma50 = sum(navs[-50:]) / min(len(navs), 50) if len(navs) >= 20 else None
-        # Signal
+        # Signal — dùng cùng thang điểm với bot.py calc_signal
         score = 0
         if rsi is not None:
-            if rsi < 33:   score += 2
-            elif rsi < 48: score += 1
-            elif rsi > 70: score -= 2
-        if bb_pct < 25:    score += 1
-        elif bb_pct > 75:  score -= 1
+            if rsi < 33:    score += 3
+            elif rsi < 45:  score += 1
+            elif rsi > 70:  score -= 3
+            elif rsi > 60:  score -= 1
+        if bb_pct < 20:     score += 2
+        elif bb_pct < 35:   score += 1
+        elif bb_pct > 80:   score -= 2
+        elif bb_pct > 65:   score -= 1
         if ma50 and nav_now > ma50: score += 1
-        if score >= 3:      sig = "MUA 🟢"
-        elif score >= 1:    sig = "TÍCH LŨY 🟡"
-        elif score <= -2:   sig = "THẬN TRỌNG 🔴"
+        else:                       score -= 1
+        if score >= 6:      sig = "MUA MẠNH 🟢🟢"
+        elif score >= 3:    sig = "MUA 🟢"
+        elif score <= -6:   sig = "BÁN MẠNH 🔴🔴"
+        elif score <= -3:   sig = "BÁN 🔴"
         else:               sig = "HOLD ⚪"
         results[code] = {
             "signal": sig, "score": score, "nav": nav_now, "nav_date": nav_date,
