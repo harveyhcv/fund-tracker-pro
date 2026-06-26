@@ -249,9 +249,12 @@ try:
         get_nav_series as _get_nav_series_bot,
         job_check_signals as _job_check_signals_bot,
     )
+    import db as _db_mod
+    _db_mod.init_pool()
     _BOT_IMPORTED = True
 except Exception as _e:
     log.warning(f"[miniapp] Không import được bot.py: {_e}")
+    _db_mod = None
     _BOT_IMPORTED = False
 
 
@@ -264,56 +267,130 @@ _STRENGTH_TO_SIGNAL = {
 }
 
 
+def _row_to_signal(row) -> dict:
+    import json as _json
+    (code, strength, score, rsi, bb_pct, macd_hist,
+     nav, signal_date, chg_pct, chg7d, chg30d, details_raw, nav_date) = row
+    details = details_raw if isinstance(details_raw, list) else (
+        _json.loads(details_raw) if details_raw else []
+    )
+    return {
+        "signal":    _STRENGTH_TO_SIGNAL.get(strength, "HOLD ⚪"),
+        "score":     score or 0,
+        "nav":       float(nav or 0),
+        "nav_date":  nav_date or signal_date or "",
+        "rsi":       float(rsi) if rsi is not None else None,
+        "bb_pct":    float(bb_pct) if bb_pct is not None else None,
+        "macd_hist": float(macd_hist) if macd_hist is not None else None,
+        "chg_pct":   float(chg_pct or 0),
+        "chg7":      float(chg7d) if chg7d is not None else None,
+        "chg30":     float(chg30d) if chg30d is not None else None,
+        "details":   details,
+    }
+
+_SIGNAL_SELECT = """
+    SELECT DISTINCT ON (fund_code)
+        fund_code, strength, score,
+        rsi, bb_pct, macd_hist,
+        nav_at_signal, signal_date::text,
+        chg_pct, chg7d, chg30d, details,
+        nav_date::text
+    FROM buy_signals
+    WHERE fund_code IN ({ph})
+    ORDER BY fund_code, signal_date DESC
+"""
+
+
+def _compute_and_save(missing_codes: list, cfg: dict):
+    """Tính tín hiệu on-demand cho các quỹ chưa có trong buy_signals hôm nay."""
+    if not _BOT_IMPORTED or not missing_codes:
+        return
+    from datetime import date as _date
+    funds_cfg = cfg.get("funds", {})
+    today = _date.today()
+    strength_map = {
+        "MUA MẠNH": "strong_buy", "MUA": "buy",
+        "BÁN MẠNH": "strong_reduce", "BÁN": "reduce",
+    }
+    for code in missing_codes:
+        try:
+            fund_cfg = funds_cfg.get(code, {})
+            pts = _get_nav_series_bot(code, fund_cfg, cfg)
+            if not pts:
+                continue
+            d = _calc_signal_bot(code, pts)
+            sig = d.get("signal", "")
+            strength = next((v for k, v in strength_map.items() if k in sig), "hold")
+            settle = fund_cfg.get("settlement", "T2")
+            if _db_mod and _db_mod.is_available():
+                _db_mod.save_signal(
+                    fund_code=code,
+                    signal_date=today,
+                    strength=strength,
+                    score=d.get("score", 0),
+                    nav_at_signal=d.get("nav", 0),
+                    indicators={
+                        "rsi":          d.get("rsi"),
+                        "bb_pct":       d.get("bb_pct"),
+                        "macd_hist":    d.get("macd_hist"),
+                        "ma20_vs_ma50": (d.get("ma20") or 0) > (d.get("ma50") or 0),
+                        "momentum_30d": d.get("chg30"),
+                        "chg_pct":      d.get("chg_pct"),
+                        "chg7d":        d.get("chg7"),
+                        "chg30d":       d.get("chg30"),
+                        "details":      d.get("details", []),
+                        "nav_date":     d.get("nav_date"),
+                    },
+                    settlement_rule=settle,
+                )
+                log.info(f"[miniapp] on-demand signal {code}: {sig}")
+        except Exception as e:
+            log.warning(f"[miniapp] _compute_and_save {code}: {e}")
+
+
 def _get_signals_for_codes(codes: list, cfg: dict) -> dict:
-    """Đọc tín hiệu đã tính sẵn từ buy_signals — single source of truth với bot."""
+    """Đọc tín hiệu từ buy_signals. Quỹ thiếu → tính on-demand rồi đọc lại."""
     results = {}
     if not codes:
         return results
     db_url = os.environ.get("DATABASE_URL", cfg.get("database_url", ""))
     if not db_url:
         return results
+
+    def _query(cur, code_list):
+        ph = ",".join(["%s"] * len(code_list))
+        cur.execute(_SIGNAL_SELECT.format(ph=ph), code_list)
+        return cur.fetchall()
+
     try:
-        import psycopg2, json as _json
+        import psycopg2
         conn = psycopg2.connect(db_url, connect_timeout=8)
-        ph = ",".join(["%s"] * len(codes))
         with conn.cursor() as cur:
-            cur.execute(f"""
-                SELECT DISTINCT ON (fund_code)
-                    fund_code, strength, score,
-                    rsi, bb_pct, macd_hist,
-                    nav_at_signal, signal_date::text,
-                    chg_pct, chg7d, chg30d, details,
-                    nav_date::text
-                FROM buy_signals
-                WHERE fund_code IN ({ph})
-                ORDER BY fund_code, signal_date DESC
-            """, codes)
-            rows = cur.fetchall()
+            rows = _query(cur, codes)
         conn.close()
     except Exception as e:
         log.warning(f"[miniapp] _get_signals_for_codes DB: {e}")
         return results
 
     for row in rows:
-        (code, strength, score, rsi, bb_pct, macd_hist,
-         nav, signal_date, chg_pct, chg7d, chg30d, details_raw, nav_date) = row
-        details = details_raw if isinstance(details_raw, list) else (
-            _json.loads(details_raw) if details_raw else []
-        )
-        results[code] = {
-            "signal":    _STRENGTH_TO_SIGNAL.get(strength, "HOLD ⚪"),
-            "score":     score or 0,
-            "nav":       float(nav or 0),
-            "nav_date":  nav_date or signal_date or "",
-            "rsi":       float(rsi) if rsi is not None else None,
-            "bb_pct":    float(bb_pct) if bb_pct is not None else None,
-            "macd_hist": float(macd_hist) if macd_hist is not None else None,
-            "chg_pct":   float(chg_pct or 0),
-            "chg7":      float(chg7d) if chg7d is not None else None,
-            "chg30":     float(chg30d) if chg30d is not None else None,
-            "details":   details,
-        }
-    # Quỹ chưa có signal trong DB (bot chưa chạy hoặc không đủ data)
+        results[row[0]] = _row_to_signal(row)
+
+    # Quỹ chưa có signal nào → tính on-demand
+    missing = [c for c in codes if c not in results]
+    if missing:
+        _compute_and_save(missing, cfg)
+        # Đọc lại sau khi đã save
+        try:
+            conn = psycopg2.connect(db_url, connect_timeout=8)
+            with conn.cursor() as cur:
+                rows2 = _query(cur, missing)
+            conn.close()
+            for row in rows2:
+                results[row[0]] = _row_to_signal(row)
+        except Exception as e:
+            log.warning(f"[miniapp] re-query after compute: {e}")
+
+    # Fallback cho quỹ vẫn không có data (không đủ NAV)
     for code in codes:
         if code not in results:
             results[code] = {"signal": "N/A", "score": 0, "nav": 0, "nav_date": "",
