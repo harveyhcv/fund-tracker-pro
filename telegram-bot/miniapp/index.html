@@ -425,10 +425,11 @@ canvas{width:100%!important;height:100%!important}
     <!-- Gold product selector (hidden when ccq) -->
     <div id="hist-gold-product" style="display:none;margin-bottom:8px">
       <select id="hist-gold-src" onchange="loadGoldHistChart()" style="width:100%;padding:8px;font-size:13px;background:var(--bg3);border:1px solid var(--bdr);color:var(--txt);border-radius:8px">
-        <option value="SJC_ESTIMATE">SJC 9999 ước tính (XAU × tỷ giá + premium 12%)</option>
-        <option value="XAU_VND_LUONG">Vàng quốc tế (XAU/USD quy VND/lượng)</option>
+        <option value="XAU_VND_LUONG">Giá vàng QT quy VND/lượng (XAU/USD × tỷ giá)</option>
         <option value="XAU_USD">Giá XAU/USD (USD/troy oz)</option>
+        <option value="SJC_ACTUAL">SJC thực tế (thu thập từ bot hàng ngày)</option>
       </select>
+      <div id="hist-gold-note" style="font-size:10px;color:var(--txt2);margin-top:5px;font-family:var(--mono)"></div>
     </div>
     <div class="date-range">
       <div><label>Từ ngày</label><input type="date" id="hist-from"></div>
@@ -1711,11 +1712,18 @@ function switchHistAsset(asset){
 
 async function loadGoldHistChart(){
   const sel=document.getElementById('hist-gold-src');
-  const srcVal=sel?sel.value:'SJC_ESTIMATE';
-  const productMap={SJC_ESTIMATE:'SJC_1L',XAU_VND_LUONG:'XAU_VND_LUONG',XAU_USD:'XAU_USD'};
-  const sourceMap={SJC_ESTIMATE:'SJC_ESTIMATE',XAU_VND_LUONG:'INTERNATIONAL',XAU_USD:'INTERNATIONAL'};
+  const srcVal=sel?sel.value:'XAU_VND_LUONG';
+  const productMap={XAU_VND_LUONG:'XAU_VND_LUONG',XAU_USD:'XAU_USD',SJC_ACTUAL:'SJC_1L'};
+  const sourceMap={XAU_VND_LUONG:'INTERNATIONAL',XAU_USD:'INTERNATIONAL',SJC_ACTUAL:'SJC'};
   const product=productMap[srcVal];
   const source=sourceMap[srcVal];
+  // Update note
+  const noteEl=document.getElementById('hist-gold-note');
+  if(noteEl){
+    if(srcVal==='SJC_ACTUAL') noteEl.textContent='⚠️ Bot thu thập từ 2026-06-24 — chưa có lịch sử dài hạn.';
+    else if(srcVal==='XAU_VND_LUONG') noteEl.textContent='Giá vàng thế giới quy đổi. Giá SJC trong nước thường cao hơn 8–15% (premium).';
+    else noteEl.textContent='Giá spot XAU/USD từ thị trường quốc tế (Gold Futures GC=F).';
+  }
   const el=document.getElementById('hist-content');
   el.innerHTML='<div class="loading"><div class="spinner"></div>Đang tải dữ liệu vàng...</div>';
   try{
@@ -1740,9 +1748,9 @@ function applyGoldDateRange(){
   const change=(last.nav-first.nav)/first.nav*100;
   const minN=Math.min(...pts.map(p=>p.nav));const maxN=Math.max(...pts.map(p=>p.nav));
   const sel=document.getElementById('hist-gold-src');
-  const srcVal=sel?sel.value:'SJC_ESTIMATE';
+  const srcVal=sel?sel.value:'XAU_VND_LUONG';
   const unit=srcVal==='XAU_USD'?'USD/oz':'đ/lượng';
-  const isEstimate=srcVal==='SJC_ESTIMATE';
+  const isEstimate=false;
   el.innerHTML=`<div class="card">
     <div class="sum-row"><span class="sum-label">Giá mới nhất</span><span class="sum-val" style="color:#fbbf24">${srcVal==='XAU_USD'?last.nav.toLocaleString('en-US',{maximumFractionDigits:0}):fmt(Math.round(last.nav))} ${unit}</span></div>
     <div class="sum-row"><span class="sum-label">Ngày</span><span class="sum-val">${last.date}</span></div>
@@ -1750,7 +1758,7 @@ function applyGoldDateRange(){
     <div class="sum-row"><span class="sum-label">Cao nhất</span><span class="sum-val">${srcVal==='XAU_USD'?Math.round(maxN).toLocaleString():fmt(Math.round(maxN))} ${unit}</span></div>
     <div class="sum-row"><span class="sum-label">Thấp nhất</span><span class="sum-val">${srcVal==='XAU_USD'?Math.round(minN).toLocaleString():fmt(Math.round(minN))} ${unit}</span></div>
     <div class="sum-row"><span class="sum-label">Số điểm</span><span class="sum-val">${pts.length}</span></div>
-    ${isEstimate?'<div class="sum-row"><span style="font-size:10px;color:var(--txt2)">⚠️ SJC ước tính từ XAU/USD × tỷ giá + premium 12%. Giá thực tế có thể chênh lệch.</span></div>':''}
+    ${srcVal==='SJC_ACTUAL'&&pts.length<30?'<div class="sum-row"><span style="font-size:10px;color:#f59e0b">⚠️ Mới có '+pts.length+' ngày dữ liệu thực — bot đang thu thập hàng ngày.</span></div>':''}
   </div>`;
   drawChart(pts,'#fbbf24');
 }
