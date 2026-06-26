@@ -683,6 +683,33 @@ const sigLabel = s=>{
   return s.replace('🟢🟢','').replace('🟢','').replace('🔴🔴','').replace('🔴','').replace('⚪','').trim();
 }
 
+function _authHeaders(){
+  // Gửi initData (chữ ký Telegram) cho server xác thực chủ sở hữu
+  const h={'Content-Type':'application/json'};
+  const id=tg?.initData||'';
+  if(id) h['X-Init-Data']=id;
+  return h;
+}
+async function apiPost(path, body, timeoutMs=12000){
+  const ctrl=new AbortController();
+  const tid=setTimeout(()=>ctrl.abort(),timeoutMs);
+  try{
+    const res=await fetch(API_BASE+path,{method:'POST',headers:_authHeaders(),body:JSON.stringify(body),signal:ctrl.signal});
+    clearTimeout(tid);
+    if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.error||res.status);}
+    return res.json();
+  }catch(e){clearTimeout(tid);throw e.name==='AbortError'?new Error('Timeout'):e;}
+}
+async function apiDelete(path, body={}, timeoutMs=12000){
+  const ctrl=new AbortController();
+  const tid=setTimeout(()=>ctrl.abort(),timeoutMs);
+  try{
+    const res=await fetch(API_BASE+path,{method:'DELETE',headers:_authHeaders(),body:JSON.stringify(body),signal:ctrl.signal});
+    clearTimeout(tid);
+    if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.error||res.status);}
+    return res.json();
+  }catch(e){clearTimeout(tid);throw e.name==='AbortError'?new Error('Timeout'):e;}
+}
 async function apiFetch(path, timeoutMs=12000){
   const sep=path.includes('?')?'&':'?';
   const ctrl=new AbortController();
@@ -1289,8 +1316,7 @@ async function addNewFundAndWatch(){
   const watched=(_me?.watched_funds||[]);
   if(!watched.includes(code)) watched.push(code);
   try{
-    const res=await fetch(`${API_BASE}/api/me/watched_funds`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({telegram_id:USER_ID,watched_funds:watched})});
-    const d=await res.json();
+    const d=await apiPost('/api/me/watched_funds',{telegram_id:USER_ID,watched_funds:watched});
     if(d.ok){
       if(_me)_me.watched_funds=watched;
       _watchedSet=new Set(watched);
@@ -1343,9 +1369,7 @@ async function submitTrade(){
   const btn=document.getElementById('submit-trade');
   btn.disabled=true;
   try{
-    const res=await fetch(API_BASE+'/api/trade',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({telegram_id:USER_ID,code,type:_tradeType,units,amount,price_per_unit:price,date:tdate,nav_mismatch:navMismatch})});
-    const data=await res.json();
+    const data=await apiPost('/api/trade',{telegram_id:USER_ID,code,type:_tradeType,units,amount,price_per_unit:price,date:tdate,nav_mismatch:navMismatch});
     if(data.ok){
       const flag=navMismatch?' ⚠️':'';
       toast(`✓ ${_tradeType==='buy'?'Mua':'Bán'} ${units} CCQ ${code}${flag}`);
@@ -1638,9 +1662,7 @@ async function saveEditTrade(){
   if(!tdate){toast('Chọn ngày');return;}
   const amount=Math.round(units*price);
   try{
-    const res=await fetch(`${API_BASE}/api/trade/${idx}`,{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({type:_editType,units,price_per_unit:price,amount,date:tdate})});
-    const d=await res.json();
+    const d=await apiPost(`/api/trade/${idx}`,{type:_editType,units,price_per_unit:price,amount,date:tdate});
     if(d.ok){toast('✓ Đã cập nhật');closeEditModal();_me=null;await loadUnifiedHistory();}
     else toast('Lỗi: '+(d.error||'unknown'));
   }catch(e){toast('Lỗi kết nối: '+e.message);}
@@ -1650,8 +1672,7 @@ async function confirmDeleteTrade(idx){
   if(!t)return;
   if(!confirm(`Xóa giao dịch ${t.type==='buy'?'MUA':'BÁN'} ${t.units} CCQ ${t.code} ngày ${t.date}?`))return;
   try{
-    const res=await fetch(`${API_BASE}/api/trade/${idx}`,{method:'DELETE',headers:{'Content-Type':'application/json'},body:'{}'});
-    const d=await res.json();
+    const d=await apiDelete(`/api/trade/${idx}`);
     if(d.ok){toast('✓ Đã xóa');_me=null;await loadUnifiedHistory();}
     else toast('Lỗi: '+(d.error||'unknown'));
   }catch(e){toast('Lỗi kết nối: '+e.message);}
@@ -2297,12 +2318,8 @@ async function submitGoldTrade() {
   const btn   = document.getElementById('gold-submit-btn');
   btn.disabled = true;
   try {
-    const res = await fetch(`${API_BASE}/api/gold/trade`, {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({telegram_id:USER_ID, type:_goldType, unit:_goldUnit,
-                            product, qty, price_per_luong:price, total_vnd:total, date:dt})
-    });
-    const d = await res.json();
+    const d = await apiPost('/api/gold/trade',{telegram_id:USER_ID, type:_goldType, unit:_goldUnit,
+                            product, qty, price_per_luong:price, total_vnd:total, date:dt});
     if (d.ok) {
       const label = _goldType==='buy'?'Mua':'Bán';
       const pLabel = _GOLD_LABELS[product]||product;
@@ -2355,10 +2372,7 @@ async function saveEditGoldTrade() {
   if (!qty||qty<=0||!price||price<=0||!dt) { toast('Kiểm tra lại thông tin'); return; }
   const total = Math.round(qty * price);
   try {
-    const res = await fetch(`${API_BASE}/api/gold/trade/${idx}`,{method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({type:_editGoldType,unit:'luong',qty,price_per_luong:price,total_vnd:total,date:dt})});
-    const d = await res.json();
+    const d = await apiPost(`/api/gold/trade/${idx}`,{type:_editGoldType,unit:'luong',qty,price_per_luong:price,total_vnd:total,date:dt});
     if (d.ok) { toast('✓ Đã cập nhật'); closeEditGoldModal(); _goldData=null; await loadUnifiedHistory(); }
     else toast('Lỗi: '+(d.error||'unknown'));
   } catch(e) { toast('Lỗi: '+e.message); }
@@ -2368,9 +2382,7 @@ async function confirmDeleteGoldTrade(idx) {
   if (!t) return;
   if (!confirm(`Xóa giao dịch ${t.type==='buy'?'MUA':'BÁN'} ${t.qty_luong??t.qty} lượng ngày ${t.date}?`)) return;
   try {
-    const res = await fetch(`${API_BASE}/api/gold/trade/${idx}`,{method:'DELETE',
-      headers:{'Content-Type':'application/json'},body:'{}'});
-    const d = await res.json();
+    const d = await apiDelete(`/api/gold/trade/${idx}`);
     if (d.ok) { toast('✓ Đã xóa'); _goldData=null; await loadUnifiedHistory(); }
     else toast('Lỗi: '+(d.error||'unknown'));
   } catch(e) { toast('Lỗi: '+e.message); }
@@ -2424,11 +2436,7 @@ async function saveWatchedFunds() {
   const watched = [..._watchedSet];
   if (!watched.length) { toast('Chọn ít nhất 1 quỹ'); return; }
   try {
-    const res = await fetch(`${API_BASE}/api/me/watched_funds`, {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({telegram_id: USER_ID, watched_funds: watched}),
-    });
-    const d = await res.json();
+    const d = await apiPost('/api/me/watched_funds',{telegram_id: USER_ID, watched_funds: watched});
     if (d.ok) {
       toast(`✓ Đã lưu ${d.watched_funds.length} quỹ theo dõi`);
       closeWatchModal();

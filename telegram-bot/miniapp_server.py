@@ -13,11 +13,14 @@ Endpoints:
   GET  /api/dca       → DCA calculator result cho user
 """
 
+import hashlib
+import hmac
 import json
 import logging
 import os
 import sys
 import threading
+import urllib.parse as _uparse
 from datetime import date, datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
@@ -583,6 +586,163 @@ def _calc_dca(profile: dict, signals: dict, budget: float = 0, style: str = "dca
     }
 
 
+# ── Telegram initData auth ────────────────────────────────────────────────────
+
+def _validate_init_data(init_data_str: str, bot_token: str):
+    """Xác thực chữ ký HMAC của Telegram WebApp initData.
+    Returns parsed user dict nếu hợp lệ, None nếu không hợp lệ hoặc thiếu.
+    """
+    if not init_data_str or not bot_token:
+        return None
+    try:
+        params = dict(_uparse.parse_qsl(init_data_str, keep_blank_values=True))
+        hash_val = params.pop("hash", "")
+        if not hash_val:
+            return None
+        check_string = "\n".join(f"{k}={v}" for k, v in sorted(params.items()))
+        secret_key = hmac.new(b"WebAppData", bot_token.encode(), hashlib.sha256).digest()
+        computed   = hmac.new(secret_key, check_string.encode(), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(computed, hash_val):
+            return None
+        return json.loads(params.get("user", "{}"))
+    except Exception:
+        return None
+
+
+def _auth_write(handler, claimed_tg_id: str) -> bool:
+    """Kiểm tra quyền ghi: initData phải hợp lệ và user.id phải khớp claimed_tg_id.
+    Cho phép admin (admin_telegram_id trong config) bypass mọi user.
+    Trả về True nếu được phép, False và tự gửi 403 nếu bị từ chối.
+    """
+    cfg       = _load_cfg()
+    bot_token = cfg.get("bot_token") or os.environ.get("BOT_TOKEN", "")
+    admin_id  = str(cfg.get("admin_telegram_id", ""))
+
+    # Admin luôn được phép (dùng cho import script)
+    if claimed_tg_id and claimed_tg_id == admin_id:
+        return True
+
+    init_data = handler.headers.get("X-Init-Data", "")
+    if not init_data:
+        # Dev/local mode: nếu không có initData, kiểm tra môi trường
+        if os.environ.get("MINIAPP_NO_AUTH"):
+            return True
+        _json(handler, {"error": "Yêu cầu xác thực Telegram"}, 403)
+        return False
+
+    user = _validate_init_data(init_data, bot_token)
+    if not user:
+        _json(handler, {"error": "initData không hợp lệ"}, 403)
+        return False
+
+    if str(user.get("id", "")) != str(claimed_tg_id):
+        _json(handler, {"error": "Không có quyền thao tác trên tài khoản này"}, 403)
+        return False
+
+    return True
+
+
+# ── PostgreSQL trade tables ────────────────────────────────────────────────────
+
+_TRADE_TABLES_READY = False
+
+
+def _get_db_conn():
+    """Kết nối PostgreSQL từ DATABASE_URL."""
+    import psycopg2
+    db_url = os.environ.get("DATABASE_URL", _load_cfg().get("database_url", ""))
+    return psycopg2.connect(db_url, connect_timeout=8)
+
+
+def _init_trade_tables():
+    """Tạo bảng user_ccq_trades + user_gold_trades nếu chưa có."""
+    global _TRADE_TABLES_READY
+    if _TRADE_TABLES_READY:
+        return
+    try:
+        conn = _get_db_conn()
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS user_ccq_trades (
+                    id            SERIAL PRIMARY KEY,
+                    telegram_id   TEXT NOT NULL,
+                    code          TEXT NOT NULL,
+                    type          TEXT NOT NULL CHECK (type IN ('buy','sell')),
+                    trade_date    DATE NOT NULL,
+                    units         DOUBLE PRECISION NOT NULL,
+                    nav           DOUBLE PRECISION NOT NULL,
+                    amount        BIGINT NOT NULL,
+                    note          TEXT DEFAULT '',
+                    nav_mismatch  BOOLEAN DEFAULT FALSE,
+                    created_at    TIMESTAMPTZ DEFAULT NOW()
+                );
+                CREATE INDEX IF NOT EXISTS idx_ccq_tg  ON user_ccq_trades(telegram_id);
+                CREATE INDEX IF NOT EXISTS idx_ccq_code ON user_ccq_trades(code);
+
+                CREATE TABLE IF NOT EXISTS user_gold_trades (
+                    id              SERIAL PRIMARY KEY,
+                    telegram_id     TEXT NOT NULL,
+                    product         TEXT NOT NULL,
+                    type            TEXT NOT NULL CHECK (type IN ('buy','sell')),
+                    trade_date      DATE NOT NULL,
+                    unit            TEXT DEFAULT 'luong',
+                    qty             DOUBLE PRECISION NOT NULL,
+                    qty_luong       DOUBLE PRECISION NOT NULL,
+                    price_per_luong BIGINT NOT NULL,
+                    total_vnd       BIGINT NOT NULL,
+                    note            TEXT DEFAULT '',
+                    created_at      TIMESTAMPTZ DEFAULT NOW()
+                );
+                CREATE INDEX IF NOT EXISTS idx_gold_tg ON user_gold_trades(telegram_id);
+            """)
+        conn.commit()
+        conn.close()
+        _TRADE_TABLES_READY = True
+        log.info("[miniapp] Trade tables ready")
+    except Exception as e:
+        log.warning(f"[miniapp] _init_trade_tables: {e}")
+
+
+def _db_recalc_portfolio(cfg: dict, tg_id: str):
+    """Tính lại portfolio CCQ từ DB trade history và lưu vào profile."""
+    try:
+        conn = _get_db_conn()
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT code, type, units, nav
+                FROM user_ccq_trades
+                WHERE telegram_id = %s
+                ORDER BY trade_date, id
+            """, [tg_id])
+            rows = cur.fetchall()
+        conn.close()
+    except Exception as e:
+        log.warning(f"[miniapp] _db_recalc_portfolio: {e}")
+        return
+    holdings: dict = {}
+    for code, tx_type, units, nav in rows:
+        if tx_type == "buy":
+            if code not in holdings:
+                holdings[code] = {"units": 0.0, "total_cost": 0.0}
+            holdings[code]["units"]      += units
+            holdings[code]["total_cost"] += units * nav
+        elif tx_type == "sell" and code in holdings and holdings[code]["units"] > 0:
+            frac = min(units / holdings[code]["units"], 1.0)
+            holdings[code]["total_cost"] -= holdings[code]["total_cost"] * frac
+            holdings[code]["units"]      -= units
+            if holdings[code]["units"] < 0.001:
+                del holdings[code]
+    portfolio = [
+        {"code": c, "units": round(h["units"], 4),
+         "avg_cost": round(h["total_cost"] / h["units"], 2)}
+        for c, h in holdings.items() if h["units"] >= 0.001
+    ]
+    profile = _find_profile(cfg, tg_id)
+    if profile:
+        profile["portfolio"] = portfolio
+        _save_cfg(cfg)
+
+
 # ── Request Handler ────────────────────────────────────────────────────────────
 
 class MiniAppHandler(BaseHTTPRequestHandler):
@@ -594,7 +754,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-HTTP-Method-Override")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-HTTP-Method-Override, X-Init-Data")
         self.end_headers()
 
     def do_GET(self):
@@ -923,165 +1083,136 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         _json(self, result)
 
     def _api_add_trade(self, data: dict):
-        tg_id         = str(data.get("telegram_id", ""))
-        code          = str(data.get("code", "")).upper()
-        tx_type       = str(data.get("type", "")).lower()
-        units         = float(data.get("units", 0))
-        amount        = float(data.get("amount", 0))
-        tx_date       = str(data.get("date", date.today().isoformat()))
-        price_per_unit = float(data.get("price_per_unit", 0)) or (amount / units if units else 0)
-        nav_mismatch  = bool(data.get("nav_mismatch", False))
-
+        """POST /api/trade — thêm CCQ trade vào PostgreSQL."""
+        tg_id    = str(data.get("telegram_id", ""))
+        code     = str(data.get("code", "")).upper()
+        tx_type  = str(data.get("type", "")).lower()
+        units    = float(data.get("units", 0))
+        amount   = float(data.get("amount", 0))
+        tx_date  = str(data.get("date", date.today().isoformat()))
+        nav      = float(data.get("price_per_unit", 0)) or (amount / units if units else 0)
+        nav_mm   = bool(data.get("nav_mismatch", False))
+        note     = str(data.get("note", ""))
         if not all([tg_id, code, tx_type in ("buy", "sell"), units > 0, amount > 0]):
-            _json(self, {"error": "Thiếu hoặc sai thông tin giao dịch"}, 400)
-            return
-
-        cfg     = _load_cfg()
-        profile = _find_profile(cfg, tg_id)
-        if not profile:
-            _json(self, {"error": "Profile không tìm thấy"}, 404)
-            return
-
-        if "portfolio" not in profile:
-            profile["portfolio"] = []
-
-        # Tìm holding hiện tại
-        holding = next((h for h in profile["portfolio"] if h.get("code") == code), None)
-
-        if tx_type == "buy":
-            if holding:
-                old_units = float(holding["units"])
-                old_cost  = float(holding["avg_cost"])
-                new_units = old_units + units
-                new_cost  = (old_units * old_cost + amount) / new_units
-                holding["units"]    = round(new_units, 4)
-                holding["avg_cost"] = round(new_cost, 2)
-            else:
-                profile["portfolio"].append({
-                    "code": code,
-                    "units": round(units, 4),
-                    "avg_cost": round(price_per_unit or amount / units, 2),
-                })
-        elif tx_type == "sell":
-            if not holding:
-                _json(self, {"error": f"Không có {code} trong danh mục"}, 400)
-                return
-            new_units = float(holding["units"]) - units
-            if new_units < 0:
-                _json(self, {"error": f"Bán vượt số CCQ hiện có ({holding['units']})"}, 400)
-                return
-            if new_units < 0.001:
-                profile["portfolio"] = [h for h in profile["portfolio"] if h.get("code") != code]
-            else:
-                holding["units"] = round(new_units, 4)
-
-        # Lưu vào trade_log để có lịch sử đầy đủ + flag mismatch
-        trade_log = cfg.setdefault("trade_log", [])
-        trade_log.append({
-            "telegram_id": tg_id,
-            "code": code,
-            "type": tx_type,
-            "units": round(units, 4),
-            "price_per_unit": round(price_per_unit, 2),
-            "amount": round(amount, 0),
-            "date": tx_date,
-            "nav_mismatch": nav_mismatch,
-            "ts": datetime.now().isoformat(),
-        })
-        _save_cfg(cfg)
-        _json(self, {"ok": True, "code": code, "type": tx_type, "units": units, "amount": amount, "nav_mismatch": nav_mismatch})
+            _json(self, {"error": "Thiếu hoặc sai thông tin giao dịch"}, 400); return
+        if not _auth_write(self, tg_id): return
+        _init_trade_tables()
+        try:
+            conn = _get_db_conn()
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO user_ccq_trades
+                      (telegram_id, code, type, trade_date, units, nav, amount, note, nav_mismatch)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id
+                """, [tg_id, code, tx_type, tx_date, round(units,4), round(nav,2),
+                      round(amount), note, nav_mm])
+                new_id = cur.fetchone()[0]
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            _json(self, {"error": str(e)}, 500); return
+        cfg = _load_cfg()
+        _db_recalc_portfolio(cfg, tg_id)
+        _json(self, {"ok": True, "id": new_id, "code": code, "type": tx_type,
+                     "units": units, "amount": amount, "nav_mismatch": nav_mm})
 
     def _api_get_trades(self, qs: dict):
-        """GET /api/trades?user_id=... — trả về trade_log + portfolio holdings của user."""
+        """GET /api/trades?user_id=... — trả về CCQ trades từ DB."""
         tg_id = (qs.get("user_id") or qs.get("telegram_id") or [""])[0]
         if not tg_id:
-            _json(self, {"error": "user_id required"}, 400)
-            return
-        cfg = _load_cfg()
-        all_trades = cfg.get("trade_log", [])
-        user_trades = [
-            {"index": i, **t}
-            for i, t in enumerate(all_trades)
-            if str(t.get("telegram_id", "")) == tg_id
+            _json(self, {"error": "user_id required"}, 400); return
+        _init_trade_tables()
+        try:
+            conn = _get_db_conn()
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT id, code, type, trade_date::text, units, nav, amount, note, nav_mismatch
+                    FROM user_ccq_trades
+                    WHERE telegram_id = %s
+                    ORDER BY trade_date DESC, id DESC
+                """, [tg_id])
+                rows = cur.fetchall()
+            conn.close()
+        except Exception as e:
+            _json(self, {"error": str(e)}, 500); return
+        trades = [
+            {"index": r[0], "telegram_id": tg_id, "code": r[1], "type": r[2],
+             "date": r[3], "units": r[4], "nav": r[5], "price_per_unit": r[5],
+             "amount": r[6], "note": r[7], "nav_mismatch": r[8]}
+            for r in rows
         ]
-        # Bổ sung holdings từ profile.portfolio nếu chưa có trong trade_log
-        profile = _find_profile(cfg, tg_id)
-        if profile:
-            logged_codes = {t.get("code") for t in user_trades}
-            for h in profile.get("portfolio", []):
-                code = h.get("code", "")
-                if not code or code in logged_codes:
-                    continue
-                units = float(h.get("units", 0))
-                avg_cost = float(h.get("avg_cost", 0))
-                if units <= 0:
-                    continue
-                # Tổng hợp thành 1 lệnh MUA với avg_cost
-                user_trades.append({
-                    "index": -1,  # virtual — không có index thực
-                    "telegram_id": tg_id,
-                    "code": code,
-                    "type": "buy",
-                    "units": units,
-                    "nav": avg_cost,
-                    "amount": round(units * avg_cost),
-                    "date": "—",
-                    "_virtual": True,  # flag để FE biết không cho sửa/xóa
-                })
-        _json(self, {"trades": user_trades})
+        _json(self, {"trades": trades})
 
     def _api_delete_trade(self, raw_idx: str, data: dict):
-        """DELETE /api/trade/<index> — xóa 1 entry và tính lại portfolio."""
+        """DELETE /api/trade/<id> — xóa CCQ trade từ DB (chỉ chủ sở hữu)."""
         try:
-            idx = int(raw_idx)
+            trade_id = int(raw_idx)
         except (ValueError, TypeError):
-            _json(self, {"error": "Invalid index"}, 400)
-            return
+            _json(self, {"error": "Invalid id"}, 400); return
+        _init_trade_tables()
+        try:
+            conn = _get_db_conn()
+            with conn.cursor() as cur:
+                cur.execute("SELECT telegram_id FROM user_ccq_trades WHERE id=%s", [trade_id])
+                row = cur.fetchone()
+            conn.close()
+        except Exception as e:
+            _json(self, {"error": str(e)}, 500); return
+        if not row:
+            _json(self, {"error": "Giao dịch không tồn tại"}, 404); return
+        tg_id = row[0]
+        if not _auth_write(self, tg_id): return
+        try:
+            conn = _get_db_conn()
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM user_ccq_trades WHERE id=%s", [trade_id])
+            conn.commit(); conn.close()
+        except Exception as e:
+            _json(self, {"error": str(e)}, 500); return
         cfg = _load_cfg()
-        trades = cfg.get("trade_log", [])
-        if idx < 0 or idx >= len(trades):
-            _json(self, {"error": "Index out of range"}, 404)
-            return
-        entry = trades[idx]
-        tg_id = str(entry.get("telegram_id", ""))
-        trades.pop(idx)
-        cfg["trade_log"] = trades
-        _recalc_portfolio(cfg, tg_id)
-        _save_cfg(cfg)
-        _json(self, {"ok": True, "deleted_index": idx})
+        _db_recalc_portfolio(cfg, tg_id)
+        _json(self, {"ok": True, "deleted_id": trade_id})
 
     def _api_edit_trade(self, raw_idx: str, data: dict):
-        """POST /api/trade/<index> — cập nhật 1 entry và tính lại portfolio."""
+        """POST /api/trade/<id> — sửa CCQ trade trong DB (chỉ chủ sở hữu)."""
         try:
-            idx = int(raw_idx)
+            trade_id = int(raw_idx)
         except (ValueError, TypeError):
-            _json(self, {"error": "Invalid index"}, 400)
-            return
+            _json(self, {"error": "Invalid id"}, 400); return
+        _init_trade_tables()
+        try:
+            conn = _get_db_conn()
+            with conn.cursor() as cur:
+                cur.execute("SELECT telegram_id, units, nav, amount, trade_date::text, type, note, nav_mismatch FROM user_ccq_trades WHERE id=%s", [trade_id])
+                row = cur.fetchone()
+            conn.close()
+        except Exception as e:
+            _json(self, {"error": str(e)}, 500); return
+        if not row:
+            _json(self, {"error": "Giao dịch không tồn tại"}, 404); return
+        tg_id = row[0]
+        if not _auth_write(self, tg_id): return
+        units  = float(data.get("units",  row[1]))
+        nav    = float(data.get("price_per_unit", row[2]))
+        amount = float(data.get("amount", row[3])) or units * nav
+        tx_date= str(data.get("date",  row[4]))
+        tx_type= str(data.get("type",  row[5])).lower()
+        note   = str(data.get("note",  row[6] or ""))
+        nav_mm = bool(data.get("nav_mismatch", row[7]))
+        try:
+            conn = _get_db_conn()
+            with conn.cursor() as cur:
+                cur.execute("""
+                    UPDATE user_ccq_trades
+                    SET units=%s, nav=%s, amount=%s, trade_date=%s, type=%s, note=%s, nav_mismatch=%s
+                    WHERE id=%s
+                """, [round(units,4), round(nav,2), round(amount), tx_date, tx_type, note, nav_mm, trade_id])
+            conn.commit(); conn.close()
+        except Exception as e:
+            _json(self, {"error": str(e)}, 500); return
         cfg = _load_cfg()
-        trades = cfg.get("trade_log", [])
-        if idx < 0 or idx >= len(trades):
-            _json(self, {"error": "Index out of range"}, 404)
-            return
-        entry = trades[idx]
-        tg_id = str(entry.get("telegram_id", ""))
-        units  = float(data.get("units", entry["units"]))
-        amount = float(data.get("amount", entry["amount"]))
-        price_per_unit = float(data.get("price_per_unit", 0)) or (amount / units if units else entry["price_per_unit"])
-        trades[idx] = {
-            **entry,
-            "units":         round(units, 4),
-            "amount":        round(amount, 0),
-            "price_per_unit": round(price_per_unit, 2),
-            "date":          str(data.get("date", entry["date"])),
-            "type":          str(data.get("type", entry["type"])).lower(),
-            "nav_mismatch":  bool(data.get("nav_mismatch", entry.get("nav_mismatch", False))),
-            "ts":            entry["ts"],
-            "edited_ts":     datetime.now().isoformat(),
-        }
-        cfg["trade_log"] = trades
-        _recalc_portfolio(cfg, tg_id)
-        _save_cfg(cfg)
-        _json(self, {"ok": True, "index": idx, "trade": trades[idx]})
+        _db_recalc_portfolio(cfg, tg_id)
+        _json(self, {"ok": True, "id": trade_id})
 
     # ── Gold APIs ────────────────────────────────────────────────────────────────
 
@@ -1223,106 +1354,134 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             _json(self, {"error": str(e)}, 500)
 
     def _api_get_gold_trades(self, qs: dict):
-        """GET /api/gold/trades?user_id=..."""
+        """GET /api/gold/trades?user_id=... — đọc từ PostgreSQL."""
         tg_id = (qs.get("user_id") or [""])[0]
         if not tg_id:
-            _json(self, {"error": "user_id required"}, 400)
-            return
-        cfg = _load_cfg()
-        all_trades = cfg.get("gold_trades", [])
-        user_trades = [
-            {"index": i, **t}
-            for i, t in enumerate(all_trades)
-            if str(t.get("telegram_id", "")) == tg_id
+            _json(self, {"error": "user_id required"}, 400); return
+        _init_trade_tables()
+        try:
+            conn = _get_db_conn()
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT id, product, type, trade_date::text, unit, qty, qty_luong,
+                           price_per_luong, total_vnd, note
+                    FROM user_gold_trades
+                    WHERE telegram_id = %s
+                    ORDER BY trade_date DESC, id DESC
+                """, [tg_id])
+                rows = cur.fetchall()
+            conn.close()
+        except Exception as e:
+            _json(self, {"error": str(e)}, 500); return
+        trades = [
+            {"index": r[0], "telegram_id": tg_id, "product": r[1], "type": r[2],
+             "date": r[3], "unit": r[4], "qty": r[5], "qty_luong": r[6],
+             "price_per_luong": r[7], "total_vnd": r[8], "note": r[9]}
+            for r in rows
         ]
-        _json(self, {"trades": user_trades})
+        _json(self, {"trades": trades})
 
     def _api_add_gold_trade(self, data: dict):
-        """POST /api/gold/trade — thêm giao dịch vàng."""
-        tg_id    = str(data.get("telegram_id", ""))
-        tx_type  = str(data.get("type", "")).lower()
-        unit     = str(data.get("unit", "luong")).lower()   # luong | chi | gram
-        product  = str(data.get("product", "SJC_1L"))       # loại sản phẩm vàng
-        qty      = float(data.get("qty", 0))
-        price    = float(data.get("price_per_luong", 0))    # VND/lượng
-        total    = float(data.get("total_vnd", 0)) or round(qty * price * _unit_to_luong(unit))
-        tx_date  = str(data.get("date", date.today().isoformat()))
-
+        """POST /api/gold/trade — thêm giao dịch vàng vào PostgreSQL."""
+        tg_id   = str(data.get("telegram_id", ""))
+        tx_type = str(data.get("type", "")).lower()
+        unit    = str(data.get("unit", "luong")).lower()
+        product = str(data.get("product", "SJC_1L"))
+        qty     = float(data.get("qty", 0))
+        price   = float(data.get("price_per_luong", 0))
+        total   = float(data.get("total_vnd", 0)) or round(qty * price * _unit_to_luong(unit))
+        tx_date = str(data.get("date", date.today().isoformat()))
+        note    = str(data.get("note", ""))
         if not all([tg_id, tx_type in ("buy", "sell"), qty > 0, price > 0]):
-            _json(self, {"error": "Thiếu hoặc sai thông tin"}, 400)
-            return
-
-        cfg     = _load_cfg()
-        profile = _find_profile(cfg, tg_id)
-        if not profile:
-            _json(self, {"error": "Profile không tìm thấy"}, 404)
-            return
-
-        trades = cfg.setdefault("gold_trades", [])
-        trades.append({
-            "telegram_id":    tg_id,
-            "type":           tx_type,
-            "unit":           unit,
-            "product":        product,
-            "qty":            round(qty, 4),
-            "qty_luong":      round(qty * _unit_to_luong(unit), 4),
-            "price_per_luong": round(price, 0),
-            "total_vnd":      round(total, 0),
-            "date":           tx_date,
-            "ts":             datetime.now().isoformat(),
-        })
-        _save_cfg(cfg)
-        _json(self, {"ok": True, "type": tx_type, "qty": qty, "unit": unit,
+            _json(self, {"error": "Thiếu hoặc sai thông tin"}, 400); return
+        if not _auth_write(self, tg_id): return
+        _init_trade_tables()
+        try:
+            conn = _get_db_conn()
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO user_gold_trades
+                      (telegram_id, product, type, trade_date, unit, qty, qty_luong,
+                       price_per_luong, total_vnd, note)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id
+                """, [tg_id, product, tx_type, tx_date, unit,
+                      round(qty,4), round(qty * _unit_to_luong(unit),4),
+                      round(price), round(total), note])
+                new_id = cur.fetchone()[0]
+            conn.commit(); conn.close()
+        except Exception as e:
+            _json(self, {"error": str(e)}, 500); return
+        _json(self, {"ok": True, "id": new_id, "type": tx_type, "qty": qty,
                      "price_per_luong": price, "total_vnd": total})
 
     def _api_edit_gold_trade(self, raw_idx: str, data: dict):
-        """POST /api/gold/trade/<idx> — sửa giao dịch vàng."""
+        """POST /api/gold/trade/<id> — sửa giao dịch vàng (chỉ chủ sở hữu)."""
         try:
-            idx = int(raw_idx)
+            trade_id = int(raw_idx)
         except (ValueError, TypeError):
-            _json(self, {"error": "Invalid index"}, 400)
-            return
-        cfg = _load_cfg()
-        trades = cfg.get("gold_trades", [])
-        if idx < 0 or idx >= len(trades):
-            _json(self, {"error": "Index out of range"}, 404)
-            return
-        entry = trades[idx]
-        unit  = str(data.get("unit", entry["unit"])).lower()
-        qty   = float(data.get("qty", entry["qty"]))
-        price = float(data.get("price_per_luong", entry["price_per_luong"]))
+            _json(self, {"error": "Invalid id"}, 400); return
+        _init_trade_tables()
+        try:
+            conn = _get_db_conn()
+            with conn.cursor() as cur:
+                cur.execute("SELECT telegram_id, unit, qty, price_per_luong, total_vnd, trade_date::text, type, note FROM user_gold_trades WHERE id=%s", [trade_id])
+                row = cur.fetchone()
+            conn.close()
+        except Exception as e:
+            _json(self, {"error": str(e)}, 500); return
+        if not row:
+            _json(self, {"error": "Giao dịch không tồn tại"}, 404); return
+        tg_id = row[0]
+        if not _auth_write(self, tg_id): return
+        unit  = str(data.get("unit",  row[1])).lower()
+        qty   = float(data.get("qty",  row[2]))
+        price = float(data.get("price_per_luong", row[3]))
         total = float(data.get("total_vnd", 0)) or round(qty * price * _unit_to_luong(unit))
-        trades[idx] = {
-            **entry,
-            "type":            str(data.get("type", entry["type"])).lower(),
-            "unit":            unit,
-            "qty":             round(qty, 4),
-            "qty_luong":       round(qty * _unit_to_luong(unit), 4),
-            "price_per_luong": round(price, 0),
-            "total_vnd":       round(total, 0),
-            "date":            str(data.get("date", entry["date"])),
-            "edited_ts":       datetime.now().isoformat(),
-        }
-        cfg["gold_trades"] = trades
-        _save_cfg(cfg)
-        _json(self, {"ok": True, "index": idx, "trade": trades[idx]})
+        tx_date = str(data.get("date", row[5]))
+        tx_type = str(data.get("type", row[6])).lower()
+        note    = str(data.get("note", row[7] or ""))
+        try:
+            conn = _get_db_conn()
+            with conn.cursor() as cur:
+                cur.execute("""
+                    UPDATE user_gold_trades
+                    SET unit=%s, qty=%s, qty_luong=%s, price_per_luong=%s,
+                        total_vnd=%s, trade_date=%s, type=%s, note=%s
+                    WHERE id=%s
+                """, [unit, round(qty,4), round(qty*_unit_to_luong(unit),4),
+                      round(price), round(total), tx_date, tx_type, note, trade_id])
+            conn.commit(); conn.close()
+        except Exception as e:
+            _json(self, {"error": str(e)}, 500); return
+        _json(self, {"ok": True, "id": trade_id})
 
     def _api_delete_gold_trade(self, raw_idx: str, data: dict):
-        """DELETE /api/gold/trade/<idx> — xóa giao dịch vàng."""
+        """DELETE /api/gold/trade/<id> — xóa giao dịch vàng (chỉ chủ sở hữu)."""
         try:
-            idx = int(raw_idx)
+            trade_id = int(raw_idx)
         except (ValueError, TypeError):
-            _json(self, {"error": "Invalid index"}, 400)
-            return
-        cfg = _load_cfg()
-        trades = cfg.get("gold_trades", [])
-        if idx < 0 or idx >= len(trades):
-            _json(self, {"error": "Index out of range"}, 404)
-            return
-        trades.pop(idx)
-        cfg["gold_trades"] = trades
-        _save_cfg(cfg)
-        _json(self, {"ok": True, "deleted_index": idx})
+            _json(self, {"error": "Invalid id"}, 400); return
+        _init_trade_tables()
+        try:
+            conn = _get_db_conn()
+            with conn.cursor() as cur:
+                cur.execute("SELECT telegram_id FROM user_gold_trades WHERE id=%s", [trade_id])
+                row = cur.fetchone()
+            conn.close()
+        except Exception as e:
+            _json(self, {"error": str(e)}, 500); return
+        if not row:
+            _json(self, {"error": "Giao dịch không tồn tại"}, 404); return
+        tg_id = row[0]
+        if not _auth_write(self, tg_id): return
+        try:
+            conn = _get_db_conn()
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM user_gold_trades WHERE id=%s", [trade_id])
+            conn.commit(); conn.close()
+        except Exception as e:
+            _json(self, {"error": str(e)}, 500); return
+        _json(self, {"ok": True, "deleted_id": trade_id})
 
     def _api_fed_rate(self):
         """GET /api/fed-rate — lấy lãi suất Fed từ Yahoo Finance server-side (tránh CORS)."""
@@ -1346,50 +1505,52 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         _json(self, {"error": "Không lấy được lãi suất Fed"}, 503)
 
     def _api_admin_import_trades(self, data: dict):
-        """POST /api/admin/import-trades — bulk import CCQ trades vào trade_log.
+        """POST /api/admin/import-trades — bulk import CCQ trades vào PostgreSQL.
         Body: {telegram_id: str, trades: [{code, type, date, units, nav, amount}], replace: bool}
-        replace=true → xóa trade_log cũ của user trước khi import.
+        replace=true → xóa toàn bộ trades của user trước khi import (dùng khi import lần đầu).
         """
-        tg_id = str(data.get("telegram_id", "")).strip()
+        tg_id     = str(data.get("telegram_id", "")).strip()
         trades_in = data.get("trades", [])
-        replace = data.get("replace", False)
+        replace   = data.get("replace", False)
         if not tg_id or not trades_in:
-            _json(self, {"error": "telegram_id and trades required"}, 400)
-            return
+            _json(self, {"error": "telegram_id and trades required"}, 400); return
+        _init_trade_tables()
+        try:
+            conn = _get_db_conn()
+            with conn.cursor() as cur:
+                if replace:
+                    cur.execute("DELETE FROM user_ccq_trades WHERE telegram_id=%s", [tg_id])
+                inserted = 0
+                for t in trades_in:
+                    code   = str(t.get("code","")).upper().strip()
+                    tx     = str(t.get("type","buy")).lower()
+                    dt     = str(t.get("date",""))
+                    units  = float(t.get("units", 0))
+                    nav    = float(t.get("nav", 0))
+                    amount = float(t.get("amount", units * nav))
+                    note   = str(t.get("note", ""))
+                    if not code or units <= 0: continue
+                    # Deduplicate
+                    cur.execute("""
+                        SELECT 1 FROM user_ccq_trades
+                        WHERE telegram_id=%s AND code=%s AND trade_date=%s
+                          AND ABS(units-%s)<0.01
+                    """, [tg_id, code, dt, units])
+                    if cur.fetchone(): continue
+                    cur.execute("""
+                        INSERT INTO user_ccq_trades
+                          (telegram_id, code, type, trade_date, units, nav, amount, note)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+                    """, [tg_id, code, tx, dt, round(units,4), round(nav,2), round(amount), note])
+                    inserted += 1
+                cur.execute("SELECT COUNT(*) FROM user_ccq_trades WHERE telegram_id=%s", [tg_id])
+                total = cur.fetchone()[0]
+            conn.commit(); conn.close()
+        except Exception as e:
+            _json(self, {"error": str(e)}, 500); return
         cfg = _load_cfg()
-        trade_log = cfg.setdefault("trade_log", [])
-        if replace:
-            cfg["trade_log"] = [t for t in trade_log if str(t.get("telegram_id","")) != tg_id]
-            trade_log = cfg["trade_log"]
-        inserted = 0
-        for t in trades_in:
-            code  = str(t.get("code","")).upper().strip()
-            tx    = str(t.get("type","buy")).lower()
-            date  = str(t.get("date",""))
-            units = float(t.get("units", 0))
-            nav   = float(t.get("nav", 0))
-            amount= float(t.get("amount", units * nav))
-            if not code or units <= 0: continue
-            # Deduplicate: bỏ qua nếu trùng code+date+units
-            dup = any(
-                str(x.get("telegram_id",""))==tg_id and x.get("code")==code
-                and x.get("date")==date and abs(float(x.get("units",0))-units)<0.01
-                for x in trade_log
-            )
-            if dup: continue
-            trade_log.append({
-                "telegram_id": tg_id, "code": code, "type": tx,
-                "date": date, "units": units,
-                "nav": nav, "price_per_unit": nav,
-                "amount": round(amount),
-                "note": t.get("note",""),
-            })
-            inserted += 1
-        _recalc_portfolio(cfg, tg_id)
-        _save_cfg(cfg)
-        _json(self, {"ok": True, "inserted": inserted, "total_trade_log": len([
-            x for x in cfg["trade_log"] if str(x.get("telegram_id",""))==tg_id
-        ])})
+        _db_recalc_portfolio(cfg, tg_id)
+        _json(self, {"ok": True, "inserted": inserted, "total_trade_log": total})
 
     def _api_admin_settoken(self, data: dict):
         """POST /api/admin/settoken — cập nhật tcbs_token rồi fetch NAV ngay."""
@@ -1647,6 +1808,11 @@ class MiniAppHandler(BaseHTTPRequestHandler):
 # ── Start ──────────────────────────────────────────────────────────────────────
 
 def start_miniapp_server():
+    # Khởi tạo bảng PostgreSQL cho trades khi server start
+    try:
+        _init_trade_tables()
+    except Exception as e:
+        log.warning(f"[miniapp] trade tables init skipped: {e}")
     server = HTTPServer(("0.0.0.0", PORT_MINIAPP), MiniAppHandler)
     log.info(f"[miniapp] HTTP server started on :{PORT_MINIAPP}")
     server.serve_forever()
