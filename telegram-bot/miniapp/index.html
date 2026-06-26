@@ -1745,6 +1745,7 @@ function switchHistAsset(asset){
     goldBtn.style.cssText='flex:1;padding:7px 0;border-radius:8px;font-size:12px;font-family:var(--mono);cursor:pointer;font-weight:700;background:#78350f;color:#fbbf24;border:1px solid #fbbf24';
     goldSec.style.display='block';
     ccqCtrl.style.display='none';
+    if(tabBar)tabBar.style.display='none';
     if(chartWrap)chartWrap.style.display='none';
     if(adminBtns)adminBtns.style.display='none';
     if(autoStatus)autoStatus.style.display='none';
@@ -1760,6 +1761,7 @@ function switchHistAsset(asset){
     if(adminBtns)adminBtns.style.display='flex';
     if(autoStatus)autoStatus.style.display='';
     histContent.style.display='block';
+    if(tabBar)tabBar.style.display='';
     if(_histCode) loadHistChart(_histCode);
   }
 }
@@ -1786,9 +1788,17 @@ async function loadGoldChart(){
 }
 
 function setGoldPeriod(days){
-  // "Tất cả" — clear both date inputs
-  document.getElementById('gp-from').value='';
-  document.getElementById('gp-to').value='';
+  // "Tất cả" — set dates to full data range
+  if(_goldChartData){
+    const allDates=[...(_goldChartData.sjc_sell||[]),...(_goldChartData.xau_vnd||[])].map(p=>p.date).sort();
+    if(allDates.length){
+      document.getElementById('gp-from').value=allDates[0];
+      document.getElementById('gp-to').value=allDates[allDates.length-1];
+    }
+  } else {
+    document.getElementById('gp-from').value='2009-08-15';
+    document.getElementById('gp-to').value=new Date().toISOString().slice(0,10);
+  }
   renderGoldChart();
 }
 
@@ -1811,12 +1821,19 @@ function cycleGoldUnit(){
   _goldUnit=order[(idx+1)%3];
   document.getElementById('gold-unit-toggle').textContent=labels[_goldUnit];
   const xauUsdBtn=document.getElementById('gt-xau-usd');
+  const xauVndBtn=document.getElementById('gt-xau-vnd');
   if(_goldUnit==='usd'){
+    // USD mode: show XAU/USD (quốc tế raw), ẩn Vàng QT (VND) vì đã quy đổi sẽ trùng
     xauUsdBtn.style.display='inline-block';
     _goldSeriesOn.xau_usd=true;
+    if(xauVndBtn) xauVndBtn.style.display='none';
+    _goldSeriesOn.xau_vnd=false;
   } else {
+    // VND mode: show Vàng QT (VND) để so sánh với SJC, ẩn XAU/USD
     xauUsdBtn.style.display='none';
     _goldSeriesOn.xau_usd=false;
+    if(xauVndBtn) xauVndBtn.style.display='inline-block';
+    _goldSeriesOn.xau_vnd=true;
   }
   renderGoldChart();
 }
@@ -1836,12 +1853,25 @@ function _filterByPeriod(pts){
 }
 
 function _convertVal(vndVal, isXauUsd){
-  // vndVal stored as VND/luong; isXauUsd = raw USD/troy oz
-  // 1 luong = 37.5g, 1 chi = 3.75g, 1 troy oz = 31.1035g
-  if(_goldUnit==='chi')  return isXauUsd ? vndVal*_goldUsdVnd*31.1035/37.5/10 : vndVal/10;
-  if(_goldUnit==='gram') return isXauUsd ? vndVal*_goldUsdVnd*31.1035/37.5/37.5 : vndVal/37.5;
-  if(_goldUnit==='usd')  return isXauUsd ? vndVal : vndVal/_goldUsdVnd*37.5/31.1035;
-  return vndVal; // fallback luong
+  // vndVal: VND/luong (SJC/XAU_VND) hoặc USD/troy oz (XAU_USD)
+  // 1 luong = 37.5g, 1 chỉ = 3.75g, 1 troy oz = 31.1035g
+  // oz_per_luong = 37.5/31.1035 ≈ 1.2059
+  if(_goldUnit==='chi'){
+    // XAU_USD (USD/oz) → VND/chi: × usd_vnd × (37.5/31.1035) / 10
+    // VND/luong → VND/chi: / 10
+    return isXauUsd ? vndVal*_goldUsdVnd*(37.5/31.1035)/10 : vndVal/10;
+  }
+  if(_goldUnit==='gram'){
+    // XAU_USD (USD/oz) → VND/gram: × usd_vnd × (37.5/31.1035) / 37.5
+    // VND/luong → VND/gram: / 37.5
+    return isXauUsd ? vndVal*_goldUsdVnd*(37.5/31.1035)/37.5 : vndVal/37.5;
+  }
+  if(_goldUnit==='usd'){
+    // XAU_USD: already USD/oz → pass through
+    // VND/luong → USD/oz: / usd_vnd / (37.5/31.1035) = × (31.1035/37.5) / usd_vnd
+    return isXauUsd ? vndVal : vndVal*(31.1035/37.5)/_goldUsdVnd;
+  }
+  return vndVal;
 }
 
 function _fmtGoldVal(v){
