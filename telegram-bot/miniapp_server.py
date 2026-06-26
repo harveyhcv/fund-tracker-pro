@@ -565,6 +565,8 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             self._api_gold_chart(qs)
         elif path == "/api/gold/trades":
             self._api_get_gold_trades(qs)
+        elif path == "/api/fed-rate":
+            self._api_fed_rate()
         elif path == "/health":
             _json(self, {"ok": True, "ts": datetime.now().isoformat()})
         else:
@@ -1229,6 +1231,27 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         cfg["gold_trades"] = trades
         _save_cfg(cfg)
         _json(self, {"ok": True, "deleted_index": idx})
+
+    def _api_fed_rate(self):
+        """GET /api/fed-rate — lấy lãi suất Fed từ Yahoo Finance server-side (tránh CORS)."""
+        import urllib.request as _urlreq
+        urls = [
+            "https://query1.finance.yahoo.com/v8/finance/chart/%5EIRX?interval=1d&range=5d",
+            "https://query2.finance.yahoo.com/v8/finance/chart/%5EIRX?interval=1d&range=5d",
+        ]
+        for url in urls:
+            try:
+                req = _urlreq.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+                with _urlreq.urlopen(req, timeout=8) as resp:
+                    import json as _json_mod
+                    d = _json_mod.loads(resp.read())
+                rate = d.get("chart", {}).get("result", [{}])[0].get("meta", {}).get("regularMarketPrice")
+                if rate is not None:
+                    _json(self, {"rate": round(float(rate), 2), "source": "Yahoo ^IRX"})
+                    return
+            except Exception:
+                continue
+        _json(self, {"error": "Không lấy được lãi suất Fed"}, 503)
 
     def _api_admin_settoken(self, data: dict):
         """POST /api/admin/settoken — cập nhật tcbs_token rồi fetch NAV ngay."""

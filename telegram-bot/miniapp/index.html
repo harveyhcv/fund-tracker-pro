@@ -270,13 +270,10 @@ canvas{width:100%!important;height:100%!important}
               <span style="font-size:11px;color:var(--txt2)">Lãi suất Fed (%)</span>
               <span id="gp-fed-status" style="font-size:10px;color:var(--txt2);opacity:.6"></span>
             </div>
-            <div style="display:flex;gap:6px;align-items:center">
-              <input type="text" inputmode="decimal" id="gp-fed" placeholder="VD: 4.33" style="flex:1;background:var(--bg);border:1px solid var(--bdr);color:var(--txt);border-radius:8px;padding:7px 8px;font-size:13px;box-sizing:border-box" oninput="runGoldPrediction()">
-              <button onclick="fetchFedRate()" id="gp-fed-btn" style="flex-shrink:0;padding:7px 10px;background:var(--bg3);border:1px solid var(--bdr);color:var(--c0);border-radius:8px;font-size:11px;cursor:pointer;font-family:var(--mono);white-space:nowrap">⟳ Lấy</button>
-            </div>
+            <input type="text" inputmode="decimal" id="gp-fed" placeholder="Tự động điền khi nhấn nút bên dưới" style="width:100%;background:var(--bg);border:1px solid var(--bdr);color:var(--txt);border-radius:8px;padding:7px 8px;font-size:13px;box-sizing:border-box" oninput="runGoldPrediction()">
           </div>
         </div>
-        <button onclick="autoFillMarketData()" style="width:100%;padding:8px;background:var(--bg3);border:1px solid var(--bdr);color:var(--c0);border-radius:8px;font-size:12px;cursor:pointer;margin-bottom:4px;font-family:var(--mono)">⟳ Tự động điền tất cả</button>
+        <button onclick="autoFillMarketData()" id="autofill-btn" style="width:100%;padding:8px;background:var(--bg3);border:1px solid var(--bdr);color:var(--c0);border-radius:8px;font-size:12px;cursor:pointer;margin-bottom:4px;font-family:var(--mono)">⟳ Tự động điền tất cả (bao gồm Fed)</button>
       </div>
       <div id="gold-predict-result"></div>
     </div>
@@ -592,6 +589,16 @@ canvas{width:100%!important;height:100%!important}
 const tg = window.Telegram?.WebApp;
 if (tg) { tg.ready(); tg.expand(); document.body.classList.add('tg'); }
 const API_BASE = new URL(window.location.href).origin;
+function parseDecimal(s){
+  if(!s&&s!==0)return NaN;
+  s=String(s).trim();
+  // Comma as decimal sep: "4,33" → 4.33; remove thousand dots
+  if(s.includes(','))return parseFloat(s.replace(/\./g,'').replace(',','.'));
+  // Dot only: if last group after dot has ≤2 digits → decimal ("4.33"); ≥3 digits → thousands ("26.451")
+  const m=s.match(/\.(\d+)$/);
+  if(m&&m[1].length<=2)return parseFloat(s); // e.g. "4.33"
+  return parseFloat(s.replace(/\./g,'')); // e.g. "26.451" → 26451
+}
 const USER_ID  = tg?.initDataUnsafe?.user?.id || new URLSearchParams(location.search).get('user_id') || '';
 
 let _me=null, _signals=null, _tradeType='buy', _histCode=null, _histAllPoints=[];
@@ -1367,47 +1374,35 @@ function setGoldSchool(s){
   runGoldPrediction();
 }
 async function fetchFedRate(){
-  const btn = document.getElementById('gp-fed-btn');
   const status = document.getElementById('gp-fed-status');
-  if (btn) { btn.textContent = '...'; btn.disabled = true; }
   if (status) status.textContent = 'đang lấy...';
   try {
-    // Yahoo Finance ^IRX = 13-week T-Bill rate — proxy cho Fed Funds Rate
-    const r = await fetch('https://query1.finance.yahoo.com/v8/finance/chart/%5EIRX?interval=1d&range=5d');
-    const d = await r.json();
-    const rate = d?.chart?.result?.[0]?.meta?.regularMarketPrice;
-    if (rate != null) {
-      document.getElementById('gp-fed').value = rate.toFixed(2);
-      if (status) status.textContent = '≈ T-Bill 13W';
+    const d = await apiFetch('/api/fed-rate', 10000);
+    if (d.rate != null) {
+      document.getElementById('gp-fed').value = d.rate.toFixed(2);
+      if (status) status.textContent = '≈ T-Bill 13W ✓';
       runGoldPrediction();
-    } else if (status) status.textContent = 'không lấy được';
+    } else {
+      if (status) status.textContent = 'không lấy được';
+    }
   } catch(e) {
-    // CORS fallback: try alternative proxy
-    try {
-      const r2 = await fetch('https://query2.finance.yahoo.com/v8/finance/chart/%5EIRX?interval=1d&range=5d');
-      const d2 = await r2.json();
-      const rate2 = d2?.chart?.result?.[0]?.meta?.regularMarketPrice;
-      if (rate2 != null) {
-        document.getElementById('gp-fed').value = rate2.toFixed(2);
-        if (status) status.textContent = '≈ T-Bill 13W';
-        runGoldPrediction();
-      } else if (status) status.textContent = 'lỗi kết nối';
-    } catch { if (status) status.textContent = 'lỗi kết nối'; }
+    if (status) status.textContent = 'lỗi kết nối';
   }
-  if (btn) { btn.textContent = '⟳ Lấy'; btn.disabled = false; }
 }
-function autoFillMarketData(){
+async function autoFillMarketData(){
+  const btn = document.getElementById('autofill-btn');
+  if (btn) { btn.textContent = '⏳ Đang lấy dữ liệu...'; btn.disabled = true; }
   const prices = _goldData&&_goldData.prices ? _goldData.prices : {};
   const xau = prices['INTERNATIONAL:XAUUSD'] || Object.values(prices).find(function(p){return p.currency==='USD';});
   if (xau && xau.buy) document.getElementById('gp-xau').value = Number(xau.buy).toFixed(0);
   if (xau && xau.extra && xau.extra.usd_vnd) document.getElementById('gp-usd').value = Number(xau.extra.usd_vnd).toFixed(0);
   const btcEl = document.getElementById('gp-btc');
-  if (btcEl && !btcEl.value) {
-    fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT')
-      .then(r=>r.json()).then(d=>{if(d.price){btcEl.value=Number(d.price).toFixed(0);runGoldPrediction();}})
-      .catch(()=>{});
-  }
-  if (!document.getElementById('gp-fed').value) fetchFedRate();
+  const btcP = btcEl ? fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT')
+    .then(r=>r.json()).then(d=>{if(d.price)btcEl.value=Number(d.price).toFixed(0);})
+    .catch(()=>{}) : Promise.resolve();
+  const fedP = fetchFedRate();
+  await Promise.all([btcP, fedP]);
+  if (btn) { btn.textContent = '⟳ Tự động điền tất cả (bao gồm Fed)'; btn.disabled = false; }
   runGoldPrediction();
 }
 function calcGoldDCA(){ runGoldPrediction(); }
