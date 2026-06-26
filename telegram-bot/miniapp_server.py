@@ -242,10 +242,52 @@ except Exception as _e:
     _BOT_IMPORTED = False
 
 
+# ── Indicator helpers (mirror of bot.py — must stay in sync) ────────────────
+def _sig_ema(arr: list, period: int) -> float:
+    if not arr: return 0.0
+    k = 2.0 / (period + 1); e = arr[0]
+    for v in arr[1:]: e = v * k + e * (1 - k)
+    return e
+
+def _sig_rsi(navs: list, period: int = 14):
+    if len(navs) < period + 1: return None
+    window = navs[-(period + 1):]
+    gains = losses = 0.0
+    for i in range(1, len(window)):
+        d = window[i] - window[i-1]
+        if d > 0: gains += d
+        else:     losses -= d
+    if losses == 0: return 100.0
+    return round(100 - 100 / (1 + gains / losses), 2)
+
+def _sig_bb(navs: list, period: int = 20):
+    if len(navs) < period: return None
+    w = navs[-period:]
+    m = sum(w) / period
+    import math as _math
+    std = _math.sqrt(sum((x-m)**2 for x in w) / period)
+    upper, lower = m + 2*std, m - 2*std
+    pct = (navs[-1] - lower) / (upper - lower) * 100 if upper != lower else 50.0
+    return round(pct, 1)
+
+def _sig_ma(navs: list, period: int):
+    if len(navs) < period: return None
+    return sum(navs[-period:]) / period
+
+def _sig_macd(navs: list, fast=12, slow=26, signal_p=9):
+    if len(navs) < slow + signal_p + 5: return None
+    macd_line = _sig_ema(navs[-fast-5:], fast) - _sig_ema(navs[-slow-5:], slow)
+    n = len(navs)
+    macd_series = [
+        _sig_ema(navs[max(0, i-fast-4):i+1], fast) - _sig_ema(navs[max(0, i-slow-4):i+1], slow)
+        for i in range(n - signal_p - 1, n)
+    ]
+    sig_line = _sig_ema(macd_series, signal_p)
+    return round(macd_line - sig_line, 4)  # histogram
+
+
 def _get_signals_for_codes(codes: list, cfg: dict) -> dict:
-    """Tính tín hiệu từ nav_history DB — fast path, không gọi API ngoài.
-    Miniapp cần phản hồi nhanh; dữ liệu DB đã được bot cập nhật hàng ngày.
-    """
+    """Tính tín hiệu từ nav_history DB — logic giống hệt bot.py calc_signal."""
     results = {}
     if not codes:
         return results
@@ -257,12 +299,12 @@ def _get_signals_for_codes(codes: list, cfg: dict) -> dict:
         conn = psycopg2.connect(db_url, connect_timeout=8)
         with conn.cursor() as cur:
             ph = ",".join(["%s"] * len(codes))
-            # Lấy 120 ngày gần nhất cho mỗi quỹ để tính RSI/BB
+            # 250 ngày để có đủ data cho MACD(12,26,9) + momentum 30 ngày
             cur.execute(f"""
                 SELECT fund_code, nav_date::text, nav::float
                 FROM nav_history
                 WHERE fund_code IN ({ph})
-                  AND nav_date >= CURRENT_DATE - INTERVAL '120 days'
+                  AND nav_date >= CURRENT_DATE - INTERVAL '250 days'
                 ORDER BY fund_code, nav_date
             """, codes)
             rows = cur.fetchall()
@@ -271,57 +313,76 @@ def _get_signals_for_codes(codes: list, cfg: dict) -> dict:
         log.warning(f"[miniapp] _get_signals_for_codes DB: {e}")
         return results
 
-    # Group by fund_code
     from collections import defaultdict
     series = defaultdict(list)
     for code, dt, nav in rows:
-        series[code].append((dt, nav))
+        series[code].append((dt, float(nav)))
 
     for code in codes:
         pts = series.get(code, [])
-        if not pts:
+        if len(pts) < 60:
             results[code] = {"signal": "N/A", "score": 0, "nav": 0, "nav_date": "",
                              "rsi": None, "bb_pct": None, "chg_pct": 0}
             continue
-        navs = [p[1] for p in pts]
+        navs     = [p[1] for p in pts]
         nav_now  = navs[-1]
         nav_date = pts[-1][0]
         nav_prev = navs[-2] if len(navs) >= 2 else nav_now
         chg_pct  = (nav_now - nav_prev) / nav_prev * 100 if nav_prev else 0
-        # RSI(14)
-        rsi = _gold_rsi(navs)  # reuse same RSI helper
-        # BB(20)
-        window = navs[-20:] if len(navs) >= 20 else navs
-        mean = sum(window) / len(window)
-        std  = (sum((x - mean) ** 2 for x in window) / len(window)) ** 0.5
-        bb_pct = (nav_now - (mean - 2 * std)) / (4 * std) * 100 if std else 50
-        bb_pct = max(0, min(100, bb_pct))
-        # MA
-        ma20 = sum(navs[-20:]) / min(len(navs), 20)
-        ma50 = sum(navs[-50:]) / min(len(navs), 50) if len(navs) >= 20 else None
-        # Signal — dùng cùng thang điểm với bot.py calc_signal
-        score = 0
+        nav7_ref  = navs[-6]  if len(navs) >= 6  else navs[0]
+        nav30_ref = navs[-23] if len(navs) >= 23 else navs[0]
+        chg7  = round((nav_now / nav7_ref  - 1) * 100, 2) if nav7_ref  else None
+        chg30 = round((nav_now / nav30_ref - 1) * 100, 2) if nav30_ref else None
+
+        score = 0; details = []
+        # RSI — same thresholds as bot.py
+        rsi = _sig_rsi(navs)
         if rsi is not None:
-            if rsi < 33:    score += 3
-            elif rsi < 45:  score += 1
-            elif rsi > 70:  score -= 3
-            elif rsi > 60:  score -= 1
-        if bb_pct < 20:     score += 2
-        elif bb_pct < 35:   score += 1
-        elif bb_pct > 80:   score -= 2
-        elif bb_pct > 65:   score -= 1
-        if ma50 and nav_now > ma50: score += 1
-        else:                       score -= 1
-        if score >= 6:      sig = "MUA MẠNH 🟢🟢"
-        elif score >= 3:    sig = "MUA 🟢"
-        elif score <= -6:   sig = "BÁN MẠNH 🔴🔴"
-        elif score <= -3:   sig = "BÁN 🔴"
-        else:               sig = "HOLD ⚪"
+            if rsi < 30:   score += 3; details.append(f"RSI {rsi:.0f} 🟢🟢")
+            elif rsi < 40: score += 2; details.append(f"RSI {rsi:.0f} 🟢")
+            elif rsi < 48: score += 1; details.append(f"RSI {rsi:.0f} tích cực")
+            elif rsi > 75: score -= 3; details.append(f"RSI {rsi:.0f} 🔴🔴")
+            elif rsi > 65: score -= 2; details.append(f"RSI {rsi:.0f} 🔴")
+            else:          details.append(f"RSI {rsi:.0f}")
+        # MACD
+        macd_hist = _sig_macd(navs)
+        if macd_hist is not None:
+            if macd_hist > 0: score += 1; details.append("MACD ▲")
+            else:             score -= 1; details.append("MACD ▼")
+        # BB
+        bb_pct = _sig_bb(navs)
+        if bb_pct is not None:
+            if bb_pct < 10:   score += 3; details.append(f"BB {bb_pct:.0f}% 🟢🟢")
+            elif bb_pct < 20: score += 2; details.append(f"BB {bb_pct:.0f}% 🟢")
+            elif bb_pct > 90: score -= 3; details.append(f"BB {bb_pct:.0f}% 🔴🔴")
+            elif bb_pct > 80: score -= 2; details.append(f"BB {bb_pct:.0f}% 🔴")
+            else:             details.append(f"BB {bb_pct:.0f}%")
+        # MA20 vs MA50 crossover (same as bot.py)
+        ma20 = _sig_ma(navs, 20)
+        ma50 = _sig_ma(navs, 50)
+        if ma20 and ma50:
+            if ma20 > ma50: score += 1; details.append("MA✅")
+            else:           details.append("MA⬇")
+        # Momentum (30 ngày)
+        if len(navs) >= 31:
+            mom = (nav_now - navs[-31]) / navs[-31] * 100
+            if mom < -6:   score += 2; details.append(f"Dip {mom:.1f}%")
+            elif mom < -3: score += 1; details.append(f"Dip {mom:.1f}%")
+            elif mom > 6:  score -= 1; details.append(f"Mom +{mom:.1f}%")
+        # Final signal — same thresholds as bot.py
+        if score >= 6:    sig = "MUA MẠNH 🟢🟢"
+        elif score >= 3:  sig = "MUA 🟢"
+        elif score <= -6: sig = "BÁN MẠNH 🔴🔴"
+        elif score <= -3: sig = "BÁN 🔴"
+        else:             sig = "HOLD ⚪"
         results[code] = {
             "signal": sig, "score": score, "nav": nav_now, "nav_date": nav_date,
             "rsi": round(rsi, 1) if rsi else None,
-            "bb_pct": round(bb_pct, 1), "chg_pct": round(chg_pct, 2),
-            "ma20": round(ma20), "ma50": round(ma50) if ma50 else None,
+            "bb_pct": bb_pct, "macd_hist": macd_hist,
+            "chg_pct": round(chg_pct, 2), "chg7": chg7, "chg30": chg30,
+            "ma20": round(ma20) if ma20 else None,
+            "ma50": round(ma50) if ma50 else None,
+            "details": details,
         }
     return results
 
@@ -622,6 +683,8 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             self._api_admin_import_nav(data)
         elif path == "/api/admin/fixportfolio":
             self._api_admin_fixportfolio(data)
+        elif path == "/api/admin/import-trades":
+            self._api_admin_import_trades(data)
         else:
             _json(self, {"error": "Not found"}, 404)
 
@@ -1281,6 +1344,52 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             except Exception:
                 continue
         _json(self, {"error": "Không lấy được lãi suất Fed"}, 503)
+
+    def _api_admin_import_trades(self, data: dict):
+        """POST /api/admin/import-trades — bulk import CCQ trades vào trade_log.
+        Body: {telegram_id: str, trades: [{code, type, date, units, nav, amount}], replace: bool}
+        replace=true → xóa trade_log cũ của user trước khi import.
+        """
+        tg_id = str(data.get("telegram_id", "")).strip()
+        trades_in = data.get("trades", [])
+        replace = data.get("replace", False)
+        if not tg_id or not trades_in:
+            _json(self, {"error": "telegram_id and trades required"}, 400)
+            return
+        cfg = _load_cfg()
+        trade_log = cfg.setdefault("trade_log", [])
+        if replace:
+            cfg["trade_log"] = [t for t in trade_log if str(t.get("telegram_id","")) != tg_id]
+            trade_log = cfg["trade_log"]
+        inserted = 0
+        for t in trades_in:
+            code  = str(t.get("code","")).upper().strip()
+            tx    = str(t.get("type","buy")).lower()
+            date  = str(t.get("date",""))
+            units = float(t.get("units", 0))
+            nav   = float(t.get("nav", 0))
+            amount= float(t.get("amount", units * nav))
+            if not code or units <= 0: continue
+            # Deduplicate: bỏ qua nếu trùng code+date+units
+            dup = any(
+                str(x.get("telegram_id",""))==tg_id and x.get("code")==code
+                and x.get("date")==date and abs(float(x.get("units",0))-units)<0.01
+                for x in trade_log
+            )
+            if dup: continue
+            trade_log.append({
+                "telegram_id": tg_id, "code": code, "type": tx,
+                "date": date, "units": units,
+                "nav": nav, "price_per_unit": nav,
+                "amount": round(amount),
+                "note": t.get("note",""),
+            })
+            inserted += 1
+        _recalc_portfolio(cfg, tg_id)
+        _save_cfg(cfg)
+        _json(self, {"ok": True, "inserted": inserted, "total_trade_log": len([
+            x for x in cfg["trade_log"] if str(x.get("telegram_id",""))==tg_id
+        ])})
 
     def _api_admin_settoken(self, data: dict):
         """POST /api/admin/settoken — cập nhật tcbs_token rồi fetch NAV ngay."""
