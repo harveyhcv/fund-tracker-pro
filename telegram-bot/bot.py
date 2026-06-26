@@ -1150,7 +1150,7 @@ def fetch_all(config: dict, codes: set) -> dict:
     result = {}
     funds_cfg = config.get("funds", {})
     for code in sorted(codes):
-        fund_cfg = funds_cfg.get(code, {})
+        fund_cfg = funds_cfg.get(code) or FUND_CATALOG.get(code, {})
         pts = get_nav_series(code, fund_cfg, config)
         if pts:
             result[code] = calc_signal(code, pts)
@@ -1303,10 +1303,7 @@ def job_check_signals():
                 "BÁN MẠNH": "strong_reduce", "BÁN": "reduce",
             }
             strength = next((v for k, v in strength_map.items() if k in sig), "hold")
-            fund_cfg = next(
-                (f for f in config.get("funds", {}).values() if f.get("code") == code),
-                {}
-            )
+            fund_cfg = config.get("funds", {}).get(code) or FUND_CATALOG.get(code, {})
             settle = fund_cfg.get("settlement", "T2")
             try:
                 _db.save_signal(
