@@ -214,6 +214,7 @@ try:
         calc_signal as _calc_signal_bot,
         get_nav_series as _get_nav_series_bot,
         job_check_signals as _job_check_signals_bot,
+        FUND_CATALOG as _FUND_CATALOG,
     )
     import db as _db_mod
     _db_mod.init_pool()
@@ -272,7 +273,6 @@ def _compute_and_save(missing_codes: list, cfg: dict):
     if not _BOT_IMPORTED or not missing_codes:
         return
     from datetime import date as _date
-    funds_cfg = cfg.get("funds", {})
     today = _date.today()
     strength_map = {
         "MUA MẠNH": "strong_buy", "MUA": "buy",
@@ -280,7 +280,7 @@ def _compute_and_save(missing_codes: list, cfg: dict):
     }
     for code in missing_codes:
         try:
-            fund_cfg = funds_cfg.get(code, {})
+            fund_cfg = _FUND_CATALOG.get(code, cfg.get("funds", {}).get(code, {}))
             pts = _get_nav_series_bot(code, fund_cfg, cfg)
             if not pts:
                 continue
@@ -915,7 +915,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         if _BOT_IMPORTED:
             try:
                 from bot import get_nav_series as _gnv, _extended_stats
-                pts = _gnv(code, cfg.get("funds", {}).get(code, {}), cfg)
+                pts = _gnv(code, _FUND_CATALOG.get(code, cfg.get("funds", {}).get(code, {})), cfg)
                 if pts:
                     stats = _extended_stats(pts)
             except Exception as e:

@@ -97,6 +97,52 @@ def load_config() -> dict:
     return cfg
 
 
+FUND_CATALOG: dict = {
+    "TCBF":    {"name": "Quỹ Trái Phiếu Techcombank",              "fmarket_id": None, "tcbs": True},
+    "TCFF":    {"name": "Quỹ Tăng Trưởng Techcombank",             "fmarket_id": None, "tcbs": True},
+    "TCGF":    {"name": "Quỹ Tăng Trưởng Toàn Cầu Techcombank",   "fmarket_id": None, "tcbs": True},
+    "TCSME":   {"name": "Quỹ Cổ Phiếu SME Techcombank",            "fmarket_id": None, "tcbs": True},
+    "TCEF":    {"name": "Quỹ Cổ Phiếu Techcombank",                "fmarket_id": None, "tcbs": True},
+    "TCRES":   {"name": "Quỹ Bất Động Sản Techcombank",            "fmarket_id": None, "tcbs": True},
+    "TCFIN":   {"name": "Quỹ Tài Chính Techcombank",               "fmarket_id": None, "tcbs": True},
+    "VCBFTBF": {"name": "Quỹ TPDN Có Bảo Đảm VCB Fund",           "fmarket_id": 31,   "tcbs": True},
+    "VCBFBCF": {"name": "Quỹ Trái Phiếu Bền Vững VCB Fund",       "fmarket_id": 32,   "tcbs": True},
+    "VCBFFIF": {"name": "Quỹ Thu Nhập Cố Định VCB Fund",           "fmarket_id": None, "tcbs": True},
+    "VCBFMGF": {"name": "Quỹ Tăng Trưởng VCB Fund",               "fmarket_id": None, "tcbs": True},
+    "VCBFAIF": {"name": "Quỹ Cổ Phiếu VCB Fund",                  "fmarket_id": None, "tcbs": True},
+    "VCAMDF":  {"name": "Quỹ Cân Bằng VinaCapital",               "fmarket_id": None, "tcbs": True},
+    "VCAMBF":  {"name": "Quỹ Trái Phiếu VinaCapital",             "fmarket_id": None, "tcbs": True},
+    "SSISCA":  {"name": "Quỹ Tích Lũy Bền Vững SSI",              "fmarket_id": 11,   "tcbs": True},
+    "VDEF":    {"name": "Quỹ Đầu Tư Tăng Trưởng VietFund",        "fmarket_id": None, "tcbs": True},
+    "VEOF":    {"name": "Quỹ Cổ Phiếu Tăng Trưởng VietFund",      "fmarket_id": None, "tcbs": True},
+    "VESAF":   {"name": "Quỹ Cổ Phiếu VietFund",                  "fmarket_id": None, "tcbs": True},
+    "VIBF":    {"name": "Quỹ Trái Phiếu VietFund",                "fmarket_id": None, "tcbs": True},
+    "VMEEF":   {"name": "Quỹ Cổ Phiếu VietFund Emerging",         "fmarket_id": None, "tcbs": True},
+    "VMPF":    {"name": "Quỹ Cổ Phiếu VietFund Emerging (mã cũ)", "fmarket_id": None, "tcbs": True},
+    "UVDIF":   {"name": "Quỹ Đầu Tư Cổ Phiếu UOB",               "fmarket_id": None, "tcbs": True},
+    "UVEEF":   {"name": "Quỹ Cổ Phiếu Tăng Trưởng UOB",          "fmarket_id": None, "tcbs": True},
+    "DCAF":    {"name": "Quỹ Cân Bằng Dragon Capital",             "fmarket_id": None, "tcbs": True},
+    "DCDE":    {"name": "Quỹ Cổ Phiếu Dragon Capital",             "fmarket_id": None, "tcbs": True},
+    "DCDS":    {"name": "Quỹ Tăng Trưởng Dragon Capital",          "fmarket_id": 6,    "tcbs": True},
+    "DFIX":    {"name": "Quỹ Trái Phiếu Dragon Capital",           "fmarket_id": None, "tcbs": True},
+    "KDEF":    {"name": "Quỹ Cổ Phiếu KIM",                       "fmarket_id": None, "tcbs": True},
+    "LHCDF":   {"name": "Quỹ Cân Bằng Liên Hiệp",                 "fmarket_id": None, "tcbs": True},
+    "MAGEF":   {"name": "Quỹ Cổ Phiếu Manulife",                  "fmarket_id": 34,   "tcbs": True},
+    "PHVSF":   {"name": "Quỹ Cổ Phiếu Phú Hưng",                 "fmarket_id": None, "tcbs": True},
+    "NTPPF":   {"name": "Quỹ Cổ Phiếu NTP",                       "fmarket_id": None, "tcbs": True},
+    "TVPF":    {"name": "Quỹ Cổ Phiếu NTP (mã cũ)",              "fmarket_id": None, "tcbs": True},
+    "MAFPF1":  {"name": "Quỹ Tích Lũy Hưu Trí Manulife",          "fmarket_id": 45},
+    "MBBF":    {"name": "Quỹ Trái Phiếu MB Capital",              "fmarket_id": 40},
+    "MBVF":    {"name": "Quỹ Cổ Phiếu MB Capital",               "fmarket_id": 35},
+    "ESSCF":   {"name": "Quỹ Cổ Phiếu Eastspring VN",            "fmarket_id": 47},
+    "ESBF":    {"name": "Quỹ Trái Phiếu Eastspring VN",          "fmarket_id": 46},
+    "BVPF":    {"name": "Quỹ Tăng Trưởng Bảo Việt",              "fmarket_id": 20},
+    "MIRAEF":  {"name": "Quỹ Cổ Phiếu Mirae Asset VN",           "fmarket_id": 38},
+    "VNDAF":   {"name": "Quỹ Cổ Phiếu Năng Động VinaCapital",    "fmarket_id": 1},
+    "VNDBF":   {"name": "Quỹ Trái Phiếu VinaCapital",            "fmarket_id": 2},
+}
+
+
 def _ensure_config_exists():
     """Tạo config.json tối thiểu từ ENV nếu chưa có (first-run trên cloud)."""
     if CONFIG_FILE.exists():
@@ -110,60 +156,7 @@ def _ensure_config_exists():
         "admin_telegram_id": os.environ.get("ADMIN_TELEGRAM_ID", ""),
         "default_watched_funds": ["TCBF", "SSISCA", "VCBFBCF"],
         "profiles": [],
-        "funds": {
-            # ── Techcom Capital (TCinvest only) ──
-            "TCBF":    {"name": "Quỹ Trái Phiếu Techcombank",           "fmarket_id": None, "tcbs": True},  # fmarket_id=22 là quỹ khác
-            "TCFF":    {"name": "Quỹ Tăng Trưởng Techcombank",          "fmarket_id": None, "tcbs": True},
-            "TCGF":    {"name": "Quỹ Tăng Trưởng Toàn Cầu Techcombank","fmarket_id": None, "tcbs": True},
-            "TCSME":   {"name": "Quỹ Cổ Phiếu SME Techcombank",         "fmarket_id": None, "tcbs": True},
-            "TCEF":    {"name": "Quỹ Cổ Phiếu Techcombank",             "fmarket_id": None, "tcbs": True},
-            "TCRES":   {"name": "Quỹ Bất Động Sản Techcombank",         "fmarket_id": None, "tcbs": True},
-            "TCFIN":   {"name": "Quỹ Tài Chính Techcombank",            "fmarket_id": None, "tcbs": True},
-            # ── VCB Fund ──
-            "VCBFTBF": {"name": "Quỹ TPDN Có Bảo Đảm VCB Fund",        "fmarket_id": 31,   "tcbs": True},
-            "VCBFBCF": {"name": "Quỹ Trái Phiếu Bền Vững VCB Fund",    "fmarket_id": 32,   "tcbs": True},
-            "VCBFFIF": {"name": "Quỹ Thu Nhập Cố Định VCB Fund",        "fmarket_id": None, "tcbs": True},
-            "VCBFMGF": {"name": "Quỹ Tăng Trưởng VCB Fund",            "fmarket_id": None, "tcbs": True},
-            "VCBFAIF": {"name": "Quỹ Cổ Phiếu VCB Fund",               "fmarket_id": None, "tcbs": True},
-            # ── VinaCapital ──
-            "VCAMDF":  {"name": "Quỹ Cân Bằng VinaCapital",            "fmarket_id": None, "tcbs": True},
-            "VCAMBF":  {"name": "Quỹ Trái Phiếu VinaCapital",          "fmarket_id": None, "tcbs": True},
-            # ── SSIAM ──
-            "SSISCA":  {"name": "Quỹ Tích Lũy Bền Vững SSI",           "fmarket_id": 11,   "tcbs": True},
-            # ── VietFund Management ──
-            "VDEF":    {"name": "Quỹ Đầu Tư Tăng Trưởng VietFund",     "fmarket_id": None, "tcbs": True},
-            "VEOF":    {"name": "Quỹ Cổ Phiếu Tăng Trưởng VietFund",   "fmarket_id": None, "tcbs": True},
-            "VESAF":   {"name": "Quỹ Cổ Phiếu VietFund",               "fmarket_id": None, "tcbs": True},
-            "VIBF":    {"name": "Quỹ Trái Phiếu VietFund",             "fmarket_id": None, "tcbs": True},
-            "VMEEF":   {"name": "Quỹ Cổ Phiếu VietFund Emerging",      "fmarket_id": None, "tcbs": True},
-            "VMPF":    {"name": "Quỹ Cổ Phiếu VietFund Emerging (mã cũ)", "fmarket_id": None, "tcbs": True},
-            # ── UOB ──
-            "UVDIF":   {"name": "Quỹ Đầu Tư Cổ Phiếu UOB",            "fmarket_id": None, "tcbs": True},
-            "UVEEF":   {"name": "Quỹ Cổ Phiếu Tăng Trưởng UOB",       "fmarket_id": None, "tcbs": True},
-            # ── Dragon Capital ──
-            "DCAF":    {"name": "Quỹ Cân Bằng Dragon Capital",          "fmarket_id": None, "tcbs": True},
-            "DCDE":    {"name": "Quỹ Cổ Phiếu Dragon Capital",          "fmarket_id": None, "tcbs": True},
-            "DCDS":    {"name": "Quỹ Tăng Trưởng Dragon Capital",       "fmarket_id": 6,    "tcbs": True},
-            "DFIX":    {"name": "Quỹ Trái Phiếu Dragon Capital",        "fmarket_id": None, "tcbs": True},
-            # ── KIM Vietnam ──
-            "KDEF":    {"name": "Quỹ Cổ Phiếu KIM",                    "fmarket_id": None, "tcbs": True},
-            # ── Others ──
-            "LHCDF":   {"name": "Quỹ Cân Bằng Liên Hiệp",              "fmarket_id": None, "tcbs": True},
-            "MAGEF":   {"name": "Quỹ Cổ Phiếu Manulife",               "fmarket_id": 34,   "tcbs": True},
-            "PHVSF":   {"name": "Quỹ Cổ Phiếu Phú Hưng",              "fmarket_id": None, "tcbs": True},
-            "NTPPF":   {"name": "Quỹ Cổ Phiếu NTP",                    "fmarket_id": None, "tcbs": True},
-            "TVPF":    {"name": "Quỹ Cổ Phiếu NTP (mã cũ)",           "fmarket_id": None, "tcbs": True},
-            # ── Non-TCinvest (fmarket only) ──
-            "MAFPF1":  {"name": "Quỹ Tích Lũy Hưu Trí Manulife",       "fmarket_id": 45},
-            "MBBF":    {"name": "Quỹ Trái Phiếu MB Capital",            "fmarket_id": 40},
-            "MBVF":    {"name": "Quỹ Cổ Phiếu MB Capital",             "fmarket_id": 35},
-            "ESSCF":   {"name": "Quỹ Cổ Phiếu Eastspring VN",          "fmarket_id": 47},
-            "ESBF":    {"name": "Quỹ Trái Phiếu Eastspring VN",        "fmarket_id": 46},
-            "BVPF":    {"name": "Quỹ Tăng Trưởng Bảo Việt",            "fmarket_id": 20},
-            "MIRAEF":  {"name": "Quỹ Cổ Phiếu Mirae Asset VN",         "fmarket_id": 38},
-            "VNDAF":   {"name": "Quỹ Cổ Phiếu Năng Động VinaCapital",  "fmarket_id": 1},
-            "VNDBF":   {"name": "Quỹ Trái Phiếu VinaCapital",          "fmarket_id": 2},
-        },
+        "funds": FUND_CATALOG,
         "schedule": {
             "morning_report":               os.environ.get("MORNING_TIME", "08:00"),
             "evening_report":               os.environ.get("EVENING_TIME", "17:30"),
