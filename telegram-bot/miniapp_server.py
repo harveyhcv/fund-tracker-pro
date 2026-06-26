@@ -929,7 +929,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         _json(self, {"ok": True, "code": code, "type": tx_type, "units": units, "amount": amount, "nav_mismatch": nav_mismatch})
 
     def _api_get_trades(self, qs: dict):
-        """GET /api/trades?user_id=... — trả về trade_log của user."""
+        """GET /api/trades?user_id=... — trả về trade_log + portfolio holdings của user."""
         tg_id = (qs.get("user_id") or qs.get("telegram_id") or [""])[0]
         if not tg_id:
             _json(self, {"error": "user_id required"}, 400)
@@ -941,6 +941,30 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             for i, t in enumerate(all_trades)
             if str(t.get("telegram_id", "")) == tg_id
         ]
+        # Bổ sung holdings từ profile.portfolio nếu chưa có trong trade_log
+        profile = _find_profile(cfg, tg_id)
+        if profile:
+            logged_codes = {t.get("code") for t in user_trades}
+            for h in profile.get("portfolio", []):
+                code = h.get("code", "")
+                if not code or code in logged_codes:
+                    continue
+                units = float(h.get("units", 0))
+                avg_cost = float(h.get("avg_cost", 0))
+                if units <= 0:
+                    continue
+                # Tổng hợp thành 1 lệnh MUA với avg_cost
+                user_trades.append({
+                    "index": -1,  # virtual — không có index thực
+                    "telegram_id": tg_id,
+                    "code": code,
+                    "type": "buy",
+                    "units": units,
+                    "nav": avg_cost,
+                    "amount": round(units * avg_cost),
+                    "date": "—",
+                    "_virtual": True,  # flag để FE biết không cho sửa/xóa
+                })
         _json(self, {"trades": user_trades})
 
     def _api_delete_trade(self, raw_idx: str, data: dict):
@@ -1034,11 +1058,16 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         # Tính signals từ lịch sử SJC (30 ngày gần nhất)
         signals = _calc_gold_signals(db_url) if db_url else {}
 
-        # Portfolio vàng
+        # Portfolio vàng — tìm SJC_1L từ bất kỳ source nào
+        sjc_price_entry = (
+            prices.get("SJC:SJC_1L")
+            or prices.get("VANGTODAYAPI:SJC_1L")
+            or next((v for v in prices.values() if v.get("product") == "SJC_1L"), None)
+        )
         portfolio = None
         if tg_id:
             cfg = _load_cfg()
-            portfolio = _calc_gold_portfolio(cfg, tg_id, prices.get("SJC"))
+            portfolio = _calc_gold_portfolio(cfg, tg_id, sjc_price_entry)
 
         _json(self, {
             "prices":    prices,

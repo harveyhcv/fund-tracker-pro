@@ -270,10 +270,13 @@ canvas{width:100%!important;height:100%!important}
               <span style="font-size:11px;color:var(--txt2)">Lãi suất Fed (%)</span>
               <span id="gp-fed-status" style="font-size:10px;color:var(--txt2);opacity:.6"></span>
             </div>
-            <input type="text" inputmode="decimal" id="gp-fed" placeholder="Tự động điền khi nhấn nút bên dưới" style="width:100%;background:var(--bg);border:1px solid var(--bdr);color:var(--txt);border-radius:8px;padding:7px 8px;font-size:13px;box-sizing:border-box" oninput="runGoldPrediction()">
+            <div style="display:flex;gap:6px;align-items:center">
+              <input type="text" inputmode="decimal" id="gp-fed" placeholder="VD: 4.33" style="flex:1;background:var(--bg);border:1px solid var(--bdr);color:var(--txt);border-radius:8px;padding:7px 8px;font-size:13px;box-sizing:border-box" oninput="runGoldPrediction()">
+              <button onclick="autoFillMarketData()" id="autofill-btn" style="flex-shrink:0;padding:7px 10px;background:var(--bg3);border:1px solid var(--bdr);color:var(--c0);border-radius:8px;font-size:11px;cursor:pointer;font-family:var(--mono);white-space:nowrap">⟳ Tự động điền</button>
+            </div>
           </div>
         </div>
-        <button onclick="autoFillMarketData()" id="autofill-btn" style="width:100%;padding:8px;background:var(--bg3);border:1px solid var(--bdr);color:var(--c0);border-radius:8px;font-size:12px;cursor:pointer;margin-bottom:4px;font-family:var(--mono)">⟳ Tự động điền tất cả (bao gồm Fed)</button>
+        <button onclick="runGoldPrediction()" style="width:100%;padding:10px;background:var(--c0);border:none;color:#060b14;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:4px;font-family:var(--mono)">▶ DỰ BÁO XU HƯỚNG</button>
       </div>
       <div id="gold-predict-result"></div>
     </div>
@@ -1574,19 +1577,21 @@ function renderUnifiedHistory(){
   <button class="tlog-btn tlog-del" onclick="confirmDeleteGoldTrade(${t.index})">🗑️</button>
 </div></div>`;
     } else {
-      const price=Number(t.price_per_unit).toLocaleString('vi-VN');
-      const mismatch=t.nav_mismatch?'<div class="tlog-mismatch">⚠️ Giá lệch NAV DB</div>':'';
+      const navPrice = t.nav || t.price_per_unit || 0;
+      const price = Number(navPrice).toLocaleString('vi-VN');
+      const mismatch = t.nav_mismatch?'<div class="tlog-mismatch">⚠️ Giá lệch NAV DB</div>':'';
+      const virtualBadge = t._virtual ? '<span style="font-size:9px;color:var(--txt2);border:1px solid var(--bdr);border-radius:3px;padding:1px 4px;margin-left:4px">Nhập từ Bot</span>' : '';
+      const actions = t._virtual
+        ? `<div class="tlog-actions"><span style="font-size:10px;color:var(--txt2)">—</span></div>`
+        : `<div class="tlog-actions"><button class="tlog-btn tlog-edit" onclick="openEditModal(${t.index})">✏️</button><button class="tlog-btn tlog-del" onclick="confirmDeleteTrade(${t.index})">🗑️</button></div>`;
       return `<div class="tlog-row">
 <div class="tlog-left">
-  <div><span class="tlog-code">${t.code}</span> <span style="font-size:11px;color:${tColor};font-weight:700">${tLabel}</span></div>
+  <div><span class="tlog-code">${t.code}</span> <span style="font-size:11px;color:${tColor};font-weight:700">${tLabel}</span>${virtualBadge}</div>
   <div class="tlog-meta">${t.date} · ${t.units} CCQ · ${price} ₫/CCQ</div>
   <div class="tlog-meta">Tổng: <span style="color:var(--c0)">${fmt(t.amount)} ₫</span></div>
   ${mismatch}
 </div>
-<div class="tlog-actions">
-  <button class="tlog-btn tlog-edit" onclick="openEditModal(${t.index})">✏️</button>
-  <button class="tlog-btn tlog-del" onclick="confirmDeleteTrade(${t.index})">🗑️</button>
-</div></div>`;
+${actions}</div>`;
     }
   }).join('');
 }
