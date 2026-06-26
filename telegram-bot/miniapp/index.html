@@ -428,15 +428,13 @@ canvas{width:100%!important;height:100%!important}
     <div class="tab-bar" id="hist-tabs"></div>
     <!-- Gold chart (hidden when ccq) -->
     <div id="hist-gold-section" style="display:none">
-      <!-- Period buttons -->
-      <div style="display:flex;gap:5px;margin-bottom:8px">
-        <button onclick="setGoldPeriod(30)"  id="gp-30"  class="gp-btn">1T</button>
-        <button onclick="setGoldPeriod(90)"  id="gp-90"  class="gp-btn">3T</button>
-        <button onclick="setGoldPeriod(180)" id="gp-180" class="gp-btn">6T</button>
-        <button onclick="setGoldPeriod(365)" id="gp-365" class="gp-btn gp-active">1N</button>
-        <button onclick="setGoldPeriod(0)"   id="gp-0"   class="gp-btn">Tất cả</button>
-        <!-- Unit toggle -->
-        <button onclick="cycleGoldUnit()" id="gold-unit-toggle" style="margin-left:auto;padding:5px 10px;background:var(--bg3);border:1px solid var(--c0);color:var(--c0);border-radius:6px;font-size:11px;font-family:var(--mono);cursor:pointer;flex-shrink:0">VND/Chỉ</button>
+      <!-- Date range + All + Unit toggle -->
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px">
+        <input type="date" id="gp-from" onchange="renderGoldChart()" style="flex:1;min-width:0;height:32px;padding:0 6px;font-size:12px;background:var(--bg3);border:1px solid var(--bdr);color:var(--txt);border-radius:6px;box-sizing:border-box">
+        <span style="color:var(--txt2);font-size:11px;flex-shrink:0">→</span>
+        <input type="date" id="gp-to"   onchange="renderGoldChart()" style="flex:1;min-width:0;height:32px;padding:0 6px;font-size:12px;background:var(--bg3);border:1px solid var(--bdr);color:var(--txt);border-radius:6px;box-sizing:border-box">
+        <button onclick="setGoldPeriod(0)" style="flex-shrink:0;padding:0 8px;height:32px;background:var(--bg3);border:1px solid var(--bdr);color:var(--txt2);border-radius:6px;font-size:11px;font-family:var(--mono);cursor:pointer">Tất cả</button>
+        <button onclick="cycleGoldUnit()" id="gold-unit-toggle" style="flex-shrink:0;padding:0 8px;height:32px;background:var(--bg3);border:1px solid var(--c0);color:var(--c0);border-radius:6px;font-size:11px;font-family:var(--mono);cursor:pointer">VND/Chỉ</button>
       </div>
       <!-- Legend toggles -->
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
@@ -1766,9 +1764,9 @@ async function loadGoldChart(){
     const data=await apiFetch('/api/gold/chart?days=730');
     _goldChartData=data;
     if(data.usd_vnd) _goldUsdVnd=data.usd_vnd;
-    // Update live USD/VND note
     const note=document.getElementById('gold-usdvnd-note');
     if(note) note.textContent=`Tỷ giá USD/VND: ${Math.round(_goldUsdVnd).toLocaleString('vi-VN')} · ${new Date().toLocaleDateString('vi-VN')}`;
+    _initGoldDateRange();
     renderGoldChart();
   }catch(e){
     const canvas=document.getElementById('gold-hist-canvas');
@@ -1781,27 +1779,33 @@ async function loadGoldChart(){
 }
 
 function setGoldPeriod(days){
-  _goldPeriodDays=days;
-  document.querySelectorAll('.gp-btn').forEach(b=>b.classList.remove('gp-active'));
-  const id=days===0?'gp-0':'gp-'+days;
-  const btn=document.getElementById(id);
-  if(btn)btn.classList.add('gp-active');
-  // Show/hide XAU/USD toggle based on unit
+  // "Tất cả" — clear both date inputs
+  document.getElementById('gp-from').value='';
+  document.getElementById('gp-to').value='';
   renderGoldChart();
 }
 
+// Init date inputs to default 1-year range
+function _initGoldDateRange(){
+  const toEl=document.getElementById('gp-to');
+  const fromEl=document.getElementById('gp-from');
+  if(!toEl.value){
+    const today=new Date();
+    const ago=new Date(today);ago.setFullYear(ago.getFullYear()-1);
+    toEl.value=today.toISOString().slice(0,10);
+    fromEl.value=ago.toISOString().slice(0,10);
+  }
+}
+
 function cycleGoldUnit(){
-  const order=['chi','luong','usd'];
-  const labels={'chi':'VND/Chỉ','luong':'VND/Lượng','usd':'USD/oz'};
+  const order=['chi','gram','usd'];
+  const labels={'chi':'VND/Chỉ','gram':'VND/Gram','usd':'USD/oz'};
   const idx=order.indexOf(_goldUnit);
   _goldUnit=order[(idx+1)%3];
   document.getElementById('gold-unit-toggle').textContent=labels[_goldUnit];
-  // XAU/USD series only meaningful when unit=usd
   const xauUsdBtn=document.getElementById('gt-xau-usd');
-  const xauVndBtn=document.getElementById('gt-xau-vnd');
   if(_goldUnit==='usd'){
     xauUsdBtn.style.display='inline-block';
-    // In USD mode, xau_vnd is redundant (same as sjc in USD) — hide it
     _goldSeriesOn.xau_usd=true;
   } else {
     xauUsdBtn.style.display='none';
@@ -1818,28 +1822,30 @@ function toggleGoldSeries(key){
 }
 
 function _filterByPeriod(pts){
-  if(!_goldPeriodDays||!pts.length) return pts;
-  const cutoff=new Date();cutoff.setDate(cutoff.getDate()-_goldPeriodDays);
-  const cutStr=cutoff.toISOString().slice(0,10);
-  return pts.filter(p=>p.date>=cutStr);
+  const from=document.getElementById('gp-from')?.value;
+  const to=document.getElementById('gp-to')?.value;
+  if(!from&&!to) return pts;
+  return pts.filter(p=>(!from||p.date>=from)&&(!to||p.date<=to));
 }
 
 function _convertVal(vndVal, isXauUsd){
-  // vndVal in VND/luong, isXauUsd: raw USD/oz
-  if(_goldUnit==='chi') return isXauUsd ? vndVal*_goldUsdVnd/37.5*31.1035/10 : vndVal/10;
-  if(_goldUnit==='usd') return isXauUsd ? vndVal : vndVal/_goldUsdVnd*37.5/31.1035;
-  return isXauUsd ? vndVal*_goldUsdVnd*37.5/31.1035 : vndVal; // luong = raw
+  // vndVal stored as VND/luong; isXauUsd = raw USD/troy oz
+  // 1 luong = 37.5g, 1 chi = 3.75g, 1 troy oz = 31.1035g
+  if(_goldUnit==='chi')  return isXauUsd ? vndVal*_goldUsdVnd*31.1035/37.5/10 : vndVal/10;
+  if(_goldUnit==='gram') return isXauUsd ? vndVal*_goldUsdVnd*31.1035/37.5/37.5 : vndVal/37.5;
+  if(_goldUnit==='usd')  return isXauUsd ? vndVal : vndVal/_goldUsdVnd*37.5/31.1035;
+  return vndVal; // fallback luong
 }
 
 function _fmtGoldVal(v){
   if(_goldUnit==='usd') return '$'+v.toLocaleString('en-US',{maximumFractionDigits:0});
-  if(v>=1e9) return (v/1e9).toFixed(2)+'B';
-  if(v>=1e6) return (v/1e6).toFixed(1)+'M';
+  if(v>=1e9) return (v/1e9).toFixed(3)+'B';
+  if(v>=1e6) return (v/1e6).toFixed(2)+'M';
   return Math.round(v).toLocaleString('vi-VN');
 }
 
 function _unitLabel(){
-  return _goldUnit==='chi'?'VND/chỉ':_goldUnit==='usd'?'USD/oz':'VND/lượng';
+  return _goldUnit==='chi'?'VND/chỉ':_goldUnit==='gram'?'VND/gram':'USD/oz';
 }
 
 function renderGoldChart(){
