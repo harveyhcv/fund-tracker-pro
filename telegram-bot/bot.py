@@ -651,6 +651,51 @@ def fmt_chg(pct: float) -> str:
 LINE = "─" * 16
 
 
+def _get_portfolio_holdings(profile: dict) -> dict:
+    """Đọc CCQ holdings từ PostgreSQL. Fallback về config.json nếu DB không có."""
+    tg_id = str(profile.get("telegram_id", ""))
+    if tg_id and _DB_AVAILABLE and _db.is_available():
+        try:
+            db_url = os.environ.get("DATABASE_URL", "")
+            if db_url:
+                import psycopg2 as _pg2
+                _pc = _pg2.connect(db_url, connect_timeout=6)
+                with _pc.cursor() as _cur:
+                    _cur.execute("""
+                        SELECT code, type, units::float, nav::float
+                        FROM user_ccq_trades WHERE telegram_id=%s
+                        ORDER BY trade_date, id
+                    """, [tg_id])
+                    _hmap: dict = {}
+                    for _code, _tx, _u, _n in _cur.fetchall():
+                        _u = float(_u or 0); _n = float(_n or 0)
+                        if _tx == "buy":
+                            if _code not in _hmap:
+                                _hmap[_code] = {"units": 0.0, "total_cost": 0.0}
+                            _hmap[_code]["units"] += _u
+                            _hmap[_code]["total_cost"] += _u * _n
+                        elif _tx == "dividend":
+                            if _code not in _hmap:
+                                _hmap[_code] = {"units": 0.0, "total_cost": 0.0}
+                            _hmap[_code]["units"] += _u
+                        elif _tx == "sell" and _code in _hmap and _hmap[_code]["units"] > 0:
+                            _f = min(_u / _hmap[_code]["units"], 1.0)
+                            _hmap[_code]["total_cost"] -= _hmap[_code]["total_cost"] * _f
+                            _hmap[_code]["units"] -= _u
+                            if _hmap[_code]["units"] < 0.001:
+                                del _hmap[_code]
+                _pc.close()
+                return {
+                    c: {"code": c, "units": v["units"],
+                        "avg_cost": v["total_cost"] / v["units"] if v["units"] else 0}
+                    for c, v in _hmap.items() if v.get("units", 0) >= 0.001
+                }
+        except Exception as _pe:
+            log.warning(f"[portfolio] from DB: {_pe}")
+    return {h["code"]: h for h in profile.get("portfolio", [])
+            if h.get("units", 0) > 0 and h.get("avg_cost", 0) > 0}
+
+
 def msg_morning(profile: dict, nav_data: dict) -> str:
     now = datetime.now()
     weekday = ["Thứ Hai","Thứ Ba","Thứ Tư","Thứ Năm","Thứ Sáu","Thứ Bảy","Chủ Nhật"][now.weekday()]
@@ -680,11 +725,8 @@ def msg_morning(profile: dict, nav_data: dict) -> str:
         if "MUA" in sig or "BÁN" in sig:
             action_funds.append(code)
 
-    # Portfolio P&L tóm tắt
-    holdings = {
-        h["code"]: h for h in profile.get("portfolio", [])
-        if h.get("code") and h.get("units", 0) > 0 and h.get("avg_cost", 0) > 0
-    }
+    # Portfolio P&L — đọc từ PostgreSQL (single source of truth)
+    holdings = _get_portfolio_holdings(profile)
     if holdings:
         total_val = total_cost = 0.0
         for code, h in holdings.items():
@@ -757,20 +799,27 @@ def _morning_gold_summary(cfg: dict, profile: dict) -> list:
             rsi = 100 - 100/(1 + avg_g/avg_l) if avg_l else 100
             rsi_note = "🟢 Vùng tích lũy" if rsi < 40 else "🔴 Vùng cẩn thận" if rsi > 65 else "⚪ Trung tính"
             lines.append(f"   RSI {rsi:.0f} — {rsi_note}")
-        # P&L vàng
-        gold_trades = cfg.get("gold_trades", [])
+        # P&L vàng — đọc từ PostgreSQL user_gold_trades
         tg_id = str(profile.get("telegram_id", ""))
         total_l = total_cost = 0.0
-        for t in gold_trades:
-            if str(t.get("telegram_id","")) != tg_id:
-                continue
-            ql = float(t.get("qty_luong", t.get("qty", 0)))
-            tv = float(t.get("total_vnd", 0))
-            if t.get("type") == "buy":
-                total_l    += ql; total_cost += tv
-            elif t.get("type") == "sell":
-                frac = ql / total_l if total_l else 0
-                total_cost -= total_cost * frac; total_l -= ql
+        if tg_id:
+            try:
+                with conn.cursor() as cur_g:
+                    cur_g.execute("""
+                        SELECT type, qty_luong::float, total_vnd::float
+                        FROM user_gold_trades
+                        WHERE telegram_id = %s
+                        ORDER BY trade_date, id
+                    """, [tg_id])
+                    for tx_type, ql, tv in cur_g.fetchall():
+                        ql = float(ql or 0); tv = float(tv or 0)
+                        if tx_type == "buy":
+                            total_l += ql; total_cost += tv
+                        elif tx_type == "sell":
+                            frac = ql / total_l if total_l else 0
+                            total_cost -= total_cost * frac; total_l -= ql
+            except Exception as _ge:
+                log.warning(f"[gold_portfolio] {_ge}")
         if total_l > 0.001 and total_cost > 0:
             cur_val = total_l * sell
             pnl = cur_val - total_cost
@@ -811,11 +860,8 @@ def msg_evening(profile: dict, nav_data: dict, morning_nav: dict) -> str:
         if "MUA" in sig or "BÁN" in sig:
             action_funds.append(f"{code} {sig}")
 
-    # Portfolio P&L tóm tắt
-    holdings = {
-        h["code"]: h for h in profile.get("portfolio", [])
-        if h.get("code") and h.get("units", 0) > 0 and h.get("avg_cost", 0) > 0
-    }
+    # Portfolio P&L — đọc từ PostgreSQL (single source of truth)
+    holdings = _get_portfolio_holdings(profile)
     if holdings:
         total_val = total_cost = 0.0
         for code, h in holdings.items():

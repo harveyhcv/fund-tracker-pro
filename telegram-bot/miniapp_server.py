@@ -67,40 +67,6 @@ def _find_profile(cfg: dict, telegram_id: str):
     return None
 
 
-def _recalc_portfolio(cfg: dict, tg_id: str):
-    """Tính lại portfolio của user từ toàn bộ trade_log (sau khi sửa/xóa)."""
-    profile = _find_profile(cfg, tg_id)
-    if not profile:
-        return
-    holdings: dict[str, dict] = {}
-    for t in cfg.get("trade_log", []):
-        if str(t.get("telegram_id", "")) != tg_id:
-            continue
-        code   = t["code"]
-        units  = float(t["units"])
-        amount = float(t["amount"])
-        tx     = t.get("type", "buy")
-        if tx == "buy":
-            if code not in holdings:
-                holdings[code] = {"units": 0.0, "total_cost": 0.0}
-            h = holdings[code]
-            h["total_cost"] = h["total_cost"] + amount
-            h["units"]      = round(h["units"] + units, 4)
-        elif tx == "sell":
-            if code in holdings:
-                h = holdings[code]
-                h["units"] = round(h["units"] - units, 4)
-                if h["units"] <= 0:
-                    del holdings[code]
-    portfolio = []
-    for code, h in holdings.items():
-        if h["units"] > 0:
-            portfolio.append({
-                "code":     code,
-                "units":    round(h["units"], 4),
-                "avg_cost": round(h["total_cost"] / h["units"], 2),
-            })
-    profile["portfolio"] = portfolio
 
 
 # ── Gold helpers ──────────────────────────────────────────────────────────────
@@ -398,9 +364,48 @@ def _get_signals_for_codes(codes: list, cfg: dict) -> dict:
     return results
 
 
+def _db_get_ccq_holdings(tg_id: str) -> list:
+    """Tính holdings CCQ từ user_ccq_trades — luôn fresh từ DB."""
+    try:
+        conn = _get_db_conn()
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT code, type, units, nav
+                FROM user_ccq_trades
+                WHERE telegram_id = %s
+                ORDER BY trade_date, id
+            """, [tg_id])
+            rows = cur.fetchall()
+        conn.close()
+    except Exception as e:
+        log.warning(f"[portfolio] _db_get_ccq_holdings: {e}")
+        return []
+    h: dict = {}
+    for code, tx_type, units, nav in rows:
+        units = float(units or 0); nav = float(nav or 0)
+        if tx_type == "buy":
+            if code not in h: h[code] = {"units": 0.0, "total_cost": 0.0}
+            h[code]["units"]      += units
+            h[code]["total_cost"] += units * nav
+        elif tx_type == "dividend":
+            if code not in h: h[code] = {"units": 0.0, "total_cost": 0.0}
+            h[code]["units"] += units
+        elif tx_type == "sell" and code in h and h[code]["units"] > 0:
+            frac = min(units / h[code]["units"], 1.0)
+            h[code]["total_cost"] -= h[code]["total_cost"] * frac
+            h[code]["units"]      -= units
+            if h[code]["units"] < 0.001: del h[code]
+    return [
+        {"code": c, "units": round(v["units"], 4),
+         "avg_cost": round(v["total_cost"] / v["units"], 2)}
+        for c, v in h.items() if v["units"] >= 0.001
+    ]
+
+
 def _calc_portfolio(profile: dict, signals: dict) -> dict:
-    """Tính P&L từng quỹ và tổng danh mục."""
-    holdings = profile.get("portfolio", [])
+    """Tính P&L từng quỹ — holdings đọc thẳng từ DB (không dùng snapshot config)."""
+    tg_id = str(profile.get("telegram_id", ""))
+    holdings = _db_get_ccq_holdings(tg_id) if tg_id else profile.get("portfolio", [])
     items = []
     total_val = total_cost = 0.0
     for h in holdings:
@@ -712,48 +717,8 @@ def _init_trade_tables():
 
 
 def _db_recalc_portfolio(cfg: dict, tg_id: str):
-    """Tính lại portfolio CCQ từ DB trade history và lưu vào profile."""
-    try:
-        conn = _get_db_conn()
-        with conn.cursor() as cur:
-            cur.execute("""
-                SELECT code, type, units, nav
-                FROM user_ccq_trades
-                WHERE telegram_id = %s
-                ORDER BY trade_date, id
-            """, [tg_id])
-            rows = cur.fetchall()
-        conn.close()
-    except Exception as e:
-        log.warning(f"[miniapp] _db_recalc_portfolio: {e}")
-        return
-    holdings: dict = {}
-    for code, tx_type, units, nav in rows:
-        if tx_type == "buy":
-            if code not in holdings:
-                holdings[code] = {"units": 0.0, "total_cost": 0.0}
-            holdings[code]["units"]      += units
-            holdings[code]["total_cost"] += units * nav
-        elif tx_type == "dividend":
-            # Lợi tức tái đầu tư: thêm units không tốn chi phí mua vào
-            if code not in holdings:
-                holdings[code] = {"units": 0.0, "total_cost": 0.0}
-            holdings[code]["units"] += units
-        elif tx_type == "sell" and code in holdings and holdings[code]["units"] > 0:
-            frac = min(units / holdings[code]["units"], 1.0)
-            holdings[code]["total_cost"] -= holdings[code]["total_cost"] * frac
-            holdings[code]["units"]      -= units
-            if holdings[code]["units"] < 0.001:
-                del holdings[code]
-    portfolio = [
-        {"code": c, "units": round(h["units"], 4),
-         "avg_cost": round(h["total_cost"] / h["units"], 2)}
-        for c, h in holdings.items() if h["units"] >= 0.001
-    ]
-    profile = _find_profile(cfg, tg_id)
-    if profile:
-        profile["portfolio"] = portfolio
-        _save_cfg(cfg)
+    """No-op: portfolio giờ được tính on-demand từ DB trong _calc_portfolio."""
+    pass
 
 
 # ── Request Handler ────────────────────────────────────────────────────────────
