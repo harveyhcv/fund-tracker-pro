@@ -89,6 +89,10 @@ label{display:block;color:var(--txt2);font-size:11px;margin:10px 0 4px;text-tran
 .style-desc{background:var(--bg3);border-radius:8px;padding:10px;margin-bottom:12px;font-size:12px;color:var(--txt2);line-height:1.5}
 .style-desc b{color:var(--txt)}
 .tab-bar{display:flex;gap:6px;margin-bottom:12px;overflow-x:auto;padding-bottom:2px}
+.gp-btn{flex:1;padding:5px 0;border-radius:6px;border:1px solid var(--bdr);font-size:11px;font-family:var(--mono);color:var(--txt2);background:var(--bg3);cursor:pointer}
+.gp-btn.gp-active{background:var(--c0);color:#000;border-color:var(--c0);font-weight:700}
+.gt-btn{padding:4px 8px;border-radius:14px;border:1px solid;background:none;font-size:10px;font-family:var(--mono);cursor:pointer;opacity:1;transition:opacity .2s}
+.gt-btn.gt-off{opacity:0.3}
 .tab-bar::-webkit-scrollbar{display:none}
 .tab{padding:6px 14px;border-radius:20px;border:1px solid var(--bdr);font-size:12px;font-family:var(--mono);color:var(--txt2);background:none;cursor:pointer;white-space:nowrap}
 .tab.active{background:var(--c0);color:#000;border-color:var(--c0)}
@@ -422,25 +426,50 @@ canvas{width:100%!important;height:100%!important}
       <button id="hist-asset-gold" onclick="switchHistAsset('gold')" style="flex:1;padding:7px 0;border-radius:8px;font-size:12px;font-family:var(--mono);cursor:pointer;font-weight:700;background:var(--bg3);color:var(--txt2);border:1px solid var(--bdr)">VÀNG</button>
     </div>
     <div class="tab-bar" id="hist-tabs"></div>
-    <!-- Gold product selector (hidden when ccq) -->
-    <div id="hist-gold-product" style="display:none;margin-bottom:8px">
-      <select id="hist-gold-src" onchange="loadGoldHistChart()" style="width:100%;padding:8px;font-size:13px;background:var(--bg3);border:1px solid var(--bdr);color:var(--txt);border-radius:8px">
-        <option value="XAU_VND_LUONG">Giá vàng QT quy VND/lượng (XAU/USD × tỷ giá)</option>
-        <option value="XAU_USD">Giá XAU/USD (USD/troy oz)</option>
-        <option value="SJC_ACTUAL">SJC thực tế (thu thập từ bot hàng ngày)</option>
-      </select>
-      <div id="hist-gold-note" style="font-size:10px;color:var(--txt2);margin-top:5px;font-family:var(--mono)"></div>
+    <!-- Gold chart (hidden when ccq) -->
+    <div id="hist-gold-section" style="display:none">
+      <!-- Period buttons -->
+      <div style="display:flex;gap:5px;margin-bottom:8px">
+        <button onclick="setGoldPeriod(30)"  id="gp-30"  class="gp-btn">1T</button>
+        <button onclick="setGoldPeriod(90)"  id="gp-90"  class="gp-btn">3T</button>
+        <button onclick="setGoldPeriod(180)" id="gp-180" class="gp-btn">6T</button>
+        <button onclick="setGoldPeriod(365)" id="gp-365" class="gp-btn gp-active">1N</button>
+        <button onclick="setGoldPeriod(0)"   id="gp-0"   class="gp-btn">Tất cả</button>
+        <!-- Unit toggle -->
+        <button onclick="cycleGoldUnit()" id="gold-unit-toggle" style="margin-left:auto;padding:5px 10px;background:var(--bg3);border:1px solid var(--c0);color:var(--c0);border-radius:6px;font-size:11px;font-family:var(--mono);cursor:pointer;flex-shrink:0">VND/Chỉ</button>
+      </div>
+      <!-- Legend toggles -->
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+        <button onclick="toggleGoldSeries('sjc_sell')" id="gt-sjc-sell" class="gt-btn" style="border-color:#f87171;color:#f87171">● SJC Bán</button>
+        <button onclick="toggleGoldSeries('sjc_buy')"  id="gt-sjc-buy"  class="gt-btn" style="border-color:#4ade80;color:#4ade80">● SJC Mua</button>
+        <button onclick="toggleGoldSeries('xau_vnd')"  id="gt-xau-vnd"  class="gt-btn" style="border-color:#60a5fa;color:#60a5fa">● Vàng QT (VND)</button>
+        <button onclick="toggleGoldSeries('xau_usd')"  id="gt-xau-usd"  class="gt-btn" style="border-color:#a78bfa;color:#a78bfa;display:none">● XAU/USD</button>
+      </div>
+      <!-- Stat row -->
+      <div id="gold-stat-row" style="font-size:11px;color:var(--txt2);font-family:var(--mono);margin-bottom:6px;min-height:14px"></div>
+      <!-- Canvas chart -->
+      <div style="position:relative">
+        <canvas id="gold-hist-canvas" style="width:100%;display:block"></canvas>
+        <div id="gold-crosshair" style="display:none;position:absolute;top:0;left:0;width:1px;background:rgba(255,255,255,0.3);pointer-events:none"></div>
+        <div id="gold-tooltip" style="display:none;position:absolute;background:#0d1b2a;border:1px solid var(--bdr);border-radius:6px;padding:6px 8px;font-size:11px;font-family:var(--mono);color:var(--txt);pointer-events:none;white-space:nowrap;z-index:10"></div>
+      </div>
+      <!-- USD/VND rate -->
+      <div id="gold-usdvnd-note" style="font-size:10px;color:var(--txt2);margin-top:4px;font-family:var(--mono);text-align:right"></div>
     </div>
-    <div class="date-range">
-      <div><label>Từ ngày</label><input type="date" id="hist-from"></div>
-      <div><label>Đến ngày</label><input type="date" id="hist-to"></div>
-    </div>
-    <div style="display:flex;gap:8px;margin-bottom:10px">
-      <button class="btn btn-primary" style="flex:1;padding:8px" onclick="applyDateRange()">Áp dụng</button>
-      <button style="padding:8px 14px;background:var(--bg3);border:1px solid var(--bdr);color:var(--txt2);border-radius:8px;cursor:pointer;font-size:12px;font-family:var(--mono)" onclick="applyAllTime()">All time</button>
+
+    <!-- CCQ date range (hidden when gold) -->
+    <div id="hist-ccq-controls">
+      <div class="date-range">
+        <div><label>Từ ngày</label><input type="date" id="hist-from"></div>
+        <div><label>Đến ngày</label><input type="date" id="hist-to"></div>
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:10px">
+        <button class="btn btn-primary" style="flex:1;padding:8px" onclick="applyDateRange()">Áp dụng</button>
+        <button style="padding:8px 14px;background:var(--bg3);border:1px solid var(--bdr);color:var(--txt2);border-radius:8px;cursor:pointer;font-size:12px;font-family:var(--mono)" onclick="applyAllTime()">All time</button>
+      </div>
     </div>
     <div id="hist-content"></div>
-    <div class="chart-wrap"><canvas id="hist-chart"></canvas></div>
+    <div class="chart-wrap" id="hist-chart-wrap"><canvas id="hist-chart"></canvas></div>
     <!-- Admin action buttons below chart (CCQ only) -->
     <div id="hist-admin-btns" style="display:flex;gap:8px;margin-top:10px">
       <button onclick="openNavImport()" style="flex:1;padding:9px 0;background:var(--bg3);border:1px solid var(--bdr);color:var(--txt2);border-radius:8px;font-size:12px;cursor:pointer;font-family:var(--mono)">✏️ Nhập NAV thủ công</button>
@@ -1658,7 +1687,7 @@ function applyAllTime(){
   applyDateRange();
 }
 function applyDateRange(){
-  if(_histAsset==='gold'){applyGoldDateRange();return;}
+  if(_histAsset==='gold'){renderGoldChart();return;}
   if(!_histAllPoints.length){if(_histCode)loadHistChart(_histCode);return;}
   const from=document.getElementById('hist-from').value;
   const to=document.getElementById('hist-to').value;
@@ -1680,87 +1709,272 @@ function applyDateRange(){
   drawChart(pts);
 }
 
-// ── Gold History ──────────────────────────────────────────────────────────
-let _histAsset='ccq', _goldHistPoints=[];
+// ── Gold History Chart ────────────────────────────────────────────────────
+let _histAsset='ccq';
+let _goldChartData=null; // raw from /api/gold/chart
+let _goldPeriodDays=365;
+let _goldUnit='chi';    // 'chi' | 'luong' | 'usd'
+let _goldSeriesOn={sjc_sell:true,sjc_buy:true,xau_vnd:true,xau_usd:false};
+let _goldUsdVnd=25400;  // fallback, updated from API
+
+const SERIES_CFG={
+  sjc_sell:{color:'#f87171',label:'SJC Bán'},
+  sjc_buy: {color:'#4ade80',label:'SJC Mua'},
+  xau_vnd: {color:'#60a5fa',label:'Vàng QT'},
+  xau_usd: {color:'#a78bfa',label:'XAU/USD'},
+};
 
 function switchHistAsset(asset){
   _histAsset=asset;
   const ccqBtn=document.getElementById('hist-asset-ccq');
   const goldBtn=document.getElementById('hist-asset-gold');
+  const goldSec=document.getElementById('hist-gold-section');
+  const ccqCtrl=document.getElementById('hist-ccq-controls');
   const tabBar=document.getElementById('hist-tabs');
-  const goldProd=document.getElementById('hist-gold-product');
+  const chartWrap=document.getElementById('hist-chart-wrap');
   const adminBtns=document.getElementById('hist-admin-btns');
   const autoStatus=document.getElementById('hist-auto-status');
+  const histContent=document.getElementById('hist-content');
   if(asset==='gold'){
-    ccqBtn.style.background='var(--bg3)';ccqBtn.style.color='var(--txt2)';ccqBtn.style.border='1px solid var(--bdr)';
-    goldBtn.style.background='#78350f';goldBtn.style.color='#fbbf24';goldBtn.style.border='1px solid #fbbf24';
-    tabBar.style.display='none';
-    goldProd.style.display='block';
+    ccqBtn.style.cssText='flex:1;padding:7px 0;border-radius:8px;font-size:12px;font-family:var(--mono);cursor:pointer;font-weight:700;background:var(--bg3);color:var(--txt2);border:1px solid var(--bdr)';
+    goldBtn.style.cssText='flex:1;padding:7px 0;border-radius:8px;font-size:12px;font-family:var(--mono);cursor:pointer;font-weight:700;background:#78350f;color:#fbbf24;border:1px solid #fbbf24';
+    goldSec.style.display='block';
+    ccqCtrl.style.display='none';
+    if(chartWrap)chartWrap.style.display='none';
     if(adminBtns)adminBtns.style.display='none';
     if(autoStatus)autoStatus.style.display='none';
-    loadGoldHistChart();
+    histContent.style.display='none';
+    if(!_goldChartData) loadGoldChart();
+    else renderGoldChart();
   } else {
-    ccqBtn.style.background='var(--c0)';ccqBtn.style.color='#000';ccqBtn.style.border='none';
-    goldBtn.style.background='var(--bg3)';goldBtn.style.color='var(--txt2)';goldBtn.style.border='1px solid var(--bdr)';
-    tabBar.style.display='';
-    goldProd.style.display='none';
+    ccqBtn.style.cssText='flex:1;padding:7px 0;border-radius:8px;font-size:12px;font-family:var(--mono);cursor:pointer;font-weight:700;background:var(--c0);color:#000;border:none';
+    goldBtn.style.cssText='flex:1;padding:7px 0;border-radius:8px;font-size:12px;font-family:var(--mono);cursor:pointer;font-weight:700;background:var(--bg3);color:var(--txt2);border:1px solid var(--bdr)';
+    goldSec.style.display='none';
+    ccqCtrl.style.display='block';
+    if(chartWrap)chartWrap.style.display='block';
     if(adminBtns)adminBtns.style.display='flex';
     if(autoStatus)autoStatus.style.display='';
+    histContent.style.display='block';
     if(_histCode) loadHistChart(_histCode);
   }
 }
 
-async function loadGoldHistChart(){
-  const sel=document.getElementById('hist-gold-src');
-  const srcVal=sel?sel.value:'XAU_VND_LUONG';
-  const productMap={XAU_VND_LUONG:'XAU_VND_LUONG',XAU_USD:'XAU_USD',SJC_ACTUAL:'SJC_1L'};
-  const sourceMap={XAU_VND_LUONG:'INTERNATIONAL',XAU_USD:'INTERNATIONAL',SJC_ACTUAL:'SJC'};
-  const product=productMap[srcVal];
-  const source=sourceMap[srcVal];
-  // Update note
-  const noteEl=document.getElementById('hist-gold-note');
-  if(noteEl){
-    if(srcVal==='SJC_ACTUAL') noteEl.textContent='⚠️ Bot thu thập từ 2026-06-24 — chưa có lịch sử dài hạn.';
-    else if(srcVal==='XAU_VND_LUONG') noteEl.textContent='Giá vàng thế giới quy đổi. Giá SJC trong nước thường cao hơn 8–15% (premium).';
-    else noteEl.textContent='Giá spot XAU/USD từ thị trường quốc tế (Gold Futures GC=F).';
-  }
-  const el=document.getElementById('hist-content');
-  el.innerHTML='<div class="loading"><div class="spinner"></div>Đang tải dữ liệu vàng...</div>';
+async function loadGoldChart(){
+  const canvas=document.getElementById('gold-hist-canvas');
+  if(canvas) canvas.style.opacity='0.4';
   try{
-    const data=await apiFetch(`/api/gold/history?source=${source}&product=${product}&days=730`);
-    _goldHistPoints=(data.data||[]).map(r=>({
-      date:r.date,
-      nav:srcVal==='XAU_USD'?r.sell:r.sell  // sell = buy for international (same value)
-    }));
-    applyGoldDateRange();
-  }catch(e){el.innerHTML=renderErr(e.message);}
+    const data=await apiFetch('/api/gold/chart?days=730');
+    _goldChartData=data;
+    if(data.usd_vnd) _goldUsdVnd=data.usd_vnd;
+    // Update live USD/VND note
+    const note=document.getElementById('gold-usdvnd-note');
+    if(note) note.textContent=`Tỷ giá USD/VND: ${Math.round(_goldUsdVnd).toLocaleString('vi-VN')} · ${new Date().toLocaleDateString('vi-VN')}`;
+    renderGoldChart();
+  }catch(e){
+    const canvas=document.getElementById('gold-hist-canvas');
+    if(canvas){
+      const ctx=canvas.getContext('2d');
+      ctx.fillStyle='#f87171';ctx.font='13px IBM Plex Mono,monospace';
+      ctx.fillText('Lỗi tải dữ liệu: '+e.message,10,40);
+    }
+  }
 }
 
-function applyGoldDateRange(){
-  const from=document.getElementById('hist-from').value;
-  const to=document.getElementById('hist-to').value;
-  let pts=_goldHistPoints;
-  if(from)pts=pts.filter(p=>p.date>=from);
-  if(to)pts=pts.filter(p=>p.date<=to);
-  const el=document.getElementById('hist-content');
-  if(!pts.length){el.innerHTML='<div class="loading">Không có dữ liệu vàng. Bot sẽ cập nhật hàng ngày.</div>';return;}
-  const last=pts[pts.length-1];const first=pts[0];
-  const change=(last.nav-first.nav)/first.nav*100;
-  const minN=Math.min(...pts.map(p=>p.nav));const maxN=Math.max(...pts.map(p=>p.nav));
-  const sel=document.getElementById('hist-gold-src');
-  const srcVal=sel?sel.value:'XAU_VND_LUONG';
-  const unit=srcVal==='XAU_USD'?'USD/oz':'đ/lượng';
-  const isEstimate=false;
-  el.innerHTML=`<div class="card">
-    <div class="sum-row"><span class="sum-label">Giá mới nhất</span><span class="sum-val" style="color:#fbbf24">${srcVal==='XAU_USD'?last.nav.toLocaleString('en-US',{maximumFractionDigits:0}):fmt(Math.round(last.nav))} ${unit}</span></div>
-    <div class="sum-row"><span class="sum-label">Ngày</span><span class="sum-val">${last.date}</span></div>
-    <div class="sum-row"><span class="sum-label">Thay đổi kỳ</span><span class="sum-val pnl ${pnlC(change)}">${fmtP(change)}</span></div>
-    <div class="sum-row"><span class="sum-label">Cao nhất</span><span class="sum-val">${srcVal==='XAU_USD'?Math.round(maxN).toLocaleString():fmt(Math.round(maxN))} ${unit}</span></div>
-    <div class="sum-row"><span class="sum-label">Thấp nhất</span><span class="sum-val">${srcVal==='XAU_USD'?Math.round(minN).toLocaleString():fmt(Math.round(minN))} ${unit}</span></div>
-    <div class="sum-row"><span class="sum-label">Số điểm</span><span class="sum-val">${pts.length}</span></div>
-    ${srcVal==='SJC_ACTUAL'&&pts.length<30?'<div class="sum-row"><span style="font-size:10px;color:#f59e0b">⚠️ Mới có '+pts.length+' ngày dữ liệu thực — bot đang thu thập hàng ngày.</span></div>':''}
-  </div>`;
-  drawChart(pts,'#fbbf24');
+function setGoldPeriod(days){
+  _goldPeriodDays=days;
+  document.querySelectorAll('.gp-btn').forEach(b=>b.classList.remove('gp-active'));
+  const id=days===0?'gp-0':'gp-'+days;
+  const btn=document.getElementById(id);
+  if(btn)btn.classList.add('gp-active');
+  // Show/hide XAU/USD toggle based on unit
+  renderGoldChart();
+}
+
+function cycleGoldUnit(){
+  const order=['chi','luong','usd'];
+  const labels={'chi':'VND/Chỉ','luong':'VND/Lượng','usd':'USD/oz'};
+  const idx=order.indexOf(_goldUnit);
+  _goldUnit=order[(idx+1)%3];
+  document.getElementById('gold-unit-toggle').textContent=labels[_goldUnit];
+  // XAU/USD series only meaningful when unit=usd
+  const xauUsdBtn=document.getElementById('gt-xau-usd');
+  const xauVndBtn=document.getElementById('gt-xau-vnd');
+  if(_goldUnit==='usd'){
+    xauUsdBtn.style.display='inline-block';
+    // In USD mode, xau_vnd is redundant (same as sjc in USD) — hide it
+    _goldSeriesOn.xau_usd=true;
+  } else {
+    xauUsdBtn.style.display='none';
+    _goldSeriesOn.xau_usd=false;
+  }
+  renderGoldChart();
+}
+
+function toggleGoldSeries(key){
+  _goldSeriesOn[key]=!_goldSeriesOn[key];
+  const btn=document.getElementById('gt-'+key.replace('_','-'));
+  if(btn) btn.classList.toggle('gt-off',!_goldSeriesOn[key]);
+  renderGoldChart();
+}
+
+function _filterByPeriod(pts){
+  if(!_goldPeriodDays||!pts.length) return pts;
+  const cutoff=new Date();cutoff.setDate(cutoff.getDate()-_goldPeriodDays);
+  const cutStr=cutoff.toISOString().slice(0,10);
+  return pts.filter(p=>p.date>=cutStr);
+}
+
+function _convertVal(vndVal, isXauUsd){
+  // vndVal in VND/luong, isXauUsd: raw USD/oz
+  if(_goldUnit==='chi') return isXauUsd ? vndVal*_goldUsdVnd/37.5*31.1035/10 : vndVal/10;
+  if(_goldUnit==='usd') return isXauUsd ? vndVal : vndVal/_goldUsdVnd*37.5/31.1035;
+  return isXauUsd ? vndVal*_goldUsdVnd*37.5/31.1035 : vndVal; // luong = raw
+}
+
+function _fmtGoldVal(v){
+  if(_goldUnit==='usd') return '$'+v.toLocaleString('en-US',{maximumFractionDigits:0});
+  if(v>=1e9) return (v/1e9).toFixed(2)+'B';
+  if(v>=1e6) return (v/1e6).toFixed(1)+'M';
+  return Math.round(v).toLocaleString('vi-VN');
+}
+
+function _unitLabel(){
+  return _goldUnit==='chi'?'VND/chỉ':_goldUnit==='usd'?'USD/oz':'VND/lượng';
+}
+
+function renderGoldChart(){
+  if(!_goldChartData) return;
+  const d=_goldChartData;
+  const series={
+    sjc_sell: _filterByPeriod(d.sjc_sell||[]).map(p=>({date:p.date,v:_convertVal(p.val,false)})),
+    sjc_buy:  _filterByPeriod(d.sjc_buy||[]).map(p=>({date:p.date,v:_convertVal(p.val,false)})),
+    xau_vnd:  _filterByPeriod(d.xau_vnd||[]).map(p=>({date:p.date,v:_convertVal(p.val,false)})),
+    xau_usd:  _filterByPeriod(d.xau_usd||[]).map(p=>({date:p.date,v:_convertVal(p.val,true)})),
+  };
+
+  // Stat row: latest SJC sell
+  const sjcLast=series.sjc_sell.slice(-1)[0];
+  const sjcFirst=series.sjc_sell[0];
+  const statEl=document.getElementById('gold-stat-row');
+  if(statEl&&sjcLast&&sjcFirst){
+    const chg=(sjcLast.v-sjcFirst.v)/sjcFirst.v*100;
+    statEl.innerHTML=`SJC Bán: <span style="color:#fbbf24">${_fmtGoldVal(sjcLast.v)}</span> · kỳ: <span class="pnl ${pnlC(chg)}">${fmtP(chg)}</span> · ${_unitLabel()}`;
+  }
+
+  // Build unified date axis
+  const dateSet=new Set();
+  Object.values(series).forEach(pts=>pts.forEach(p=>dateSet.add(p.date)));
+  const dates=Array.from(dateSet).sort();
+  if(!dates.length) return;
+
+  // Map each series to date-indexed value
+  const valMap={};
+  Object.keys(series).forEach(k=>{
+    const m={};series[k].forEach(p=>m[p.date]=p.v);valMap[k]=m;
+  });
+
+  drawGoldMultiChart(dates, valMap, series);
+}
+
+function drawGoldMultiChart(dates, valMap, series){
+  const canvas=document.getElementById('gold-hist-canvas');
+  if(!canvas) return;
+  canvas.style.opacity='1';
+  const dpr=window.devicePixelRatio||1;
+  const W=canvas.parentElement.clientWidth||320;
+  const H=220;
+  canvas.width=W*dpr; canvas.height=H*dpr;
+  canvas.style.width=W+'px'; canvas.style.height=H+'px';
+  canvas.style.display='block';
+  const ctx=canvas.getContext('2d');
+  ctx.scale(dpr,dpr);
+  ctx.clearRect(0,0,W,H);
+
+  // Find global min/max of visible series
+  let allVals=[];
+  Object.keys(SERIES_CFG).forEach(k=>{
+    if(!_goldSeriesOn[k]) return;
+    dates.forEach(d=>{ const v=valMap[k]?.[d]; if(v!=null) allVals.push(v); });
+  });
+  if(!allVals.length) return;
+  const minV=Math.min(...allVals), maxV=Math.max(...allVals), range=maxV-minV||1;
+
+  const pad={t:8,r:8,b:22,l:_goldUnit==='usd'?52:62};
+  const gW=W-pad.l-pad.r, gH=H-pad.t-pad.b;
+  const xPos=i=>pad.l+i/(dates.length-1||1)*gW;
+  const yPos=v=>pad.t+(1-(v-minV)/range)*gH;
+
+  // Grid lines
+  ctx.strokeStyle='rgba(255,255,255,0.06)'; ctx.lineWidth=1;
+  [0,0.25,0.5,0.75,1].forEach(f=>{
+    const y=pad.t+f*gH;
+    ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(W-pad.r,y);ctx.stroke();
+  });
+
+  // Y-axis labels
+  ctx.fillStyle='#64748b'; ctx.font='9px IBM Plex Mono,monospace'; ctx.textAlign='right';
+  [minV,(minV+maxV)/2,maxV].forEach(v=>{
+    ctx.fillText(_fmtGoldVal(v), pad.l-3, yPos(v)+3);
+  });
+
+  // X-axis labels
+  ctx.textAlign='center'; ctx.fillStyle='#64748b';
+  const xStep=Math.max(1,Math.floor(dates.length/5));
+  for(let i=0;i<dates.length;i+=xStep){
+    ctx.fillText(dates[i].slice(2,7).replace('-','/'), xPos(i), H-4);
+  }
+
+  // Draw each series
+  Object.keys(SERIES_CFG).forEach(k=>{
+    if(!_goldSeriesOn[k]) return;
+    const cfg=SERIES_CFG[k];
+    const pts=dates.map((d,i)=>{const v=valMap[k]?.[d];return v!=null?{i,v}:null}).filter(Boolean);
+    if(pts.length<2) return;
+    ctx.beginPath();
+    pts.forEach((p,j)=>{ j===0?ctx.moveTo(xPos(p.i),yPos(p.v)):ctx.lineTo(xPos(p.i),yPos(p.v)); });
+    ctx.strokeStyle=cfg.color; ctx.lineWidth=1.5; ctx.stroke();
+  });
+
+  // Crosshair + tooltip on touch/mouse
+  setupGoldCrosshair(canvas, dates, valMap, pad, gW, gH, xPos, yPos, dpr);
+}
+
+function setupGoldCrosshair(canvas, dates, valMap, pad, gW, gH, xPos, yPos, dpr){
+  const wrap=canvas.parentElement;
+  const crosshair=document.getElementById('gold-crosshair');
+  const tooltip=document.getElementById('gold-tooltip');
+
+  function onMove(clientX){
+    const rect=canvas.getBoundingClientRect();
+    const x=clientX-rect.left;
+    if(x<pad.l||x>pad.l+gW){crosshair.style.display='none';tooltip.style.display='none';return;}
+    const idx=Math.round((x-pad.l)/gW*(dates.length-1));
+    const clampedIdx=Math.max(0,Math.min(dates.length-1,idx));
+    const date=dates[clampedIdx];
+    const xPx=xPos(clampedIdx);
+    crosshair.style.display='block';
+    crosshair.style.left=xPx+'px';
+    crosshair.style.top=pad.t+'px';
+    crosshair.style.height=gH+'px';
+    // Tooltip
+    let html=`<div style="color:var(--txt2);margin-bottom:3px">${date}</div>`;
+    Object.keys(SERIES_CFG).forEach(k=>{
+      if(!_goldSeriesOn[k]) return;
+      const v=valMap[k]?.[date];
+      if(v!=null) html+=`<div style="color:${SERIES_CFG[k].color}">${SERIES_CFG[k].label}: ${_fmtGoldVal(v)}</div>`;
+    });
+    tooltip.innerHTML=html;
+    tooltip.style.display='block';
+    const tip_w=tooltip.offsetWidth||120;
+    const left=xPx+8+tip_w>wrap.clientWidth ? xPx-tip_w-8 : xPx+8;
+    tooltip.style.left=left+'px';
+    tooltip.style.top=pad.t+'px';
+  }
+
+  canvas.ontouchmove=e=>{e.preventDefault();onMove(e.touches[0].clientX);};
+  canvas.ontouchend=()=>{setTimeout(()=>{crosshair.style.display='none';tooltip.style.display='none';},1500);};
+  canvas.onmousemove=e=>onMove(e.clientX);
+  canvas.onmouseleave=()=>{crosshair.style.display='none';tooltip.style.display='none';};
 }
 
 // ── Token update ──────────────────────────────────────────────────────────

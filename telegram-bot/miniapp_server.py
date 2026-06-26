@@ -519,6 +519,8 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             self._api_gold(qs)
         elif path == "/api/gold/history":
             self._api_gold_history(qs)
+        elif path == "/api/gold/chart":
+            self._api_gold_chart(qs)
         elif path == "/api/gold/trades":
             self._api_get_gold_trades(qs)
         elif path == "/health":
@@ -1026,6 +1028,46 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             data = [{"date": r[0], "buy": r[1], "sell": r[2],
                      "extra": r[3] or {}} for r in rows]
             _json(self, {"source": source, "product": product, "data": data})
+        except Exception as e:
+            _json(self, {"error": str(e)}, 500)
+
+    def _api_gold_chart(self, qs: dict):
+        """GET /api/gold/chart?days=365 — all 4 series for gold chart in one call.
+        Returns: sjc_buy[], sjc_sell[], xau_usd[], xau_vnd[], usd_vnd (latest)
+        """
+        days = int((qs.get("days") or ["365"])[0])
+        db_url = os.environ.get("DATABASE_URL", _load_cfg().get("database_url", ""))
+        if not db_url:
+            _json(self, {"error": "DATABASE_URL not set"}, 503); return
+        try:
+            import psycopg2
+            conn = psycopg2.connect(db_url, connect_timeout=8)
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT source, product, price_date::text, buy_price::float, sell_price::float, extra
+                    FROM gold_prices
+                    WHERE price_date >= CURRENT_DATE - INTERVAL %s
+                    ORDER BY price_date
+                """, (f"{days} days",))
+                rows = cur.fetchall()
+            conn.close()
+            sjc_buy, sjc_sell, xau_usd_pts, xau_vnd_pts = [], [], [], []
+            usd_vnd_latest = None
+            for src, prod, dt, buy, sell, extra in rows:
+                if src == "SJC" and prod == "SJC_1L":
+                    sjc_buy.append({"date": dt, "val": buy})
+                    sjc_sell.append({"date": dt, "val": sell})
+                elif src == "INTERNATIONAL" and prod == "XAU_USD":
+                    xau_usd_pts.append({"date": dt, "val": buy})
+                    if extra and "usd_vnd" in extra:
+                        usd_vnd_latest = extra["usd_vnd"]
+                elif src == "INTERNATIONAL" and prod == "XAU_VND_LUONG":
+                    xau_vnd_pts.append({"date": dt, "val": buy})
+            _json(self, {
+                "sjc_buy": sjc_buy, "sjc_sell": sjc_sell,
+                "xau_usd": xau_usd_pts, "xau_vnd": xau_vnd_pts,
+                "usd_vnd": usd_vnd_latest, "days": days
+            })
         except Exception as e:
             _json(self, {"error": str(e)}, 500)
 
