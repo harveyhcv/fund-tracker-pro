@@ -91,6 +91,22 @@ def get_nav_series(fund_code: str, days: int = 90) -> list[dict]:
 
 # ─── SIGNALS ────────────────────────────────────────────────────────────────
 
+def _ensure_signal_cols(conn) -> None:
+    """Add new columns to buy_signals if they don't exist yet (safe to call every startup)."""
+    new_cols = [
+        ("chg_pct",  "NUMERIC"),
+        ("chg7d",    "NUMERIC"),
+        ("chg30d",   "NUMERIC"),
+        ("details",  "JSONB"),
+        ("nav_date", "DATE"),
+    ]
+    with conn.cursor() as cur:
+        for col, typ in new_cols:
+            cur.execute(f"""
+                ALTER TABLE buy_signals ADD COLUMN IF NOT EXISTS {col} {typ}
+            """)
+
+
 def save_signal(
     fund_code: str,
     signal_date: date,
@@ -101,39 +117,57 @@ def save_signal(
     settlement_rule: str = "T2",
 ) -> str | None:
     """
-    Persist a buy signal. Returns signal UUID or None if DB unavailable.
-    indicators dict keys: rsi, bb_pct, macd_hist, ma20_vs_ma50, momentum_30d
+    Persist a signal for any strength (buy/hold/reduce/strong_buy/strong_reduce).
+    indicators dict keys: rsi, bb_pct, macd_hist, ma20_vs_ma50, momentum_30d,
+                          chg_pct, chg7d, chg30d, details (list), nav_date (str)
     """
     if not is_available():
         return None
+    import json as _json
     ind = indicators or {}
     exec_date = _calc_exec_date(signal_date, settlement_rule)
+    nav_date_val = None
+    if ind.get("nav_date"):
+        try:
+            nav_date_val = date.fromisoformat(str(ind["nav_date"]))
+        except (ValueError, TypeError):
+            pass
     with get_conn() as conn:
+        _ensure_signal_cols(conn)
         with conn.cursor() as cur:
             cur.execute("""
                 INSERT INTO buy_signals (
                     fund_code, signal_date, strength, score,
                     rsi, bb_pct, macd_hist, ma20_vs_ma50, momentum_30d,
-                    nav_at_signal, settlement_rule, est_exec_date
+                    nav_at_signal, settlement_rule, est_exec_date,
+                    chg_pct, chg7d, chg30d, details, nav_date
                 ) VALUES (
                     %s, %s, %s, %s,
                     %s, %s, %s, %s, %s,
-                    %s, %s, %s
+                    %s, %s, %s,
+                    %s, %s, %s, %s, %s
                 )
                 ON CONFLICT (fund_code, signal_date) DO UPDATE SET
-                    strength = EXCLUDED.strength,
-                    score = EXCLUDED.score,
-                    rsi = EXCLUDED.rsi,
-                    bb_pct = EXCLUDED.bb_pct,
-                    macd_hist = EXCLUDED.macd_hist,
+                    strength      = EXCLUDED.strength,
+                    score         = EXCLUDED.score,
+                    rsi           = EXCLUDED.rsi,
+                    bb_pct        = EXCLUDED.bb_pct,
+                    macd_hist     = EXCLUDED.macd_hist,
                     nav_at_signal = EXCLUDED.nav_at_signal,
-                    est_exec_date = EXCLUDED.est_exec_date
+                    est_exec_date = EXCLUDED.est_exec_date,
+                    chg_pct       = EXCLUDED.chg_pct,
+                    chg7d         = EXCLUDED.chg7d,
+                    chg30d        = EXCLUDED.chg30d,
+                    details       = EXCLUDED.details,
+                    nav_date      = EXCLUDED.nav_date
                 RETURNING id
             """, (
                 fund_code, signal_date, strength, score,
                 ind.get("rsi"), ind.get("bb_pct"), ind.get("macd_hist"),
                 ind.get("ma20_vs_ma50"), ind.get("momentum_30d"),
                 nav_at_signal, settlement_rule, exec_date,
+                ind.get("chg_pct"), ind.get("chg7d"), ind.get("chg30d"),
+                _json.dumps(ind.get("details") or []), nav_date_val,
             ))
             row = cur.fetchone()
             return str(row[0]) if row else None

@@ -1259,33 +1259,39 @@ def job_check_signals():
                 except Exception as e:
                     log.debug("upsert_nav %s: %s", code, e)
             sig = d.get("signal", "")
-            if "MUA" in sig or "BÁN" in sig:
-                strength_map = {
-                    "MUA MẠNH": "strong_buy", "MUA": "buy",
-                    "BÁN MẠNH": "strong_reduce", "BÁN": "reduce",
-                }
-                strength = next((v for k, v in strength_map.items() if k in sig), "hold")
-                fund_cfg = next(
-                    (f for f in config.get("funds", {}).values() if f.get("code") == code),
-                    {}
+            strength_map = {
+                "MUA MẠNH": "strong_buy", "MUA": "buy",
+                "BÁN MẠNH": "strong_reduce", "BÁN": "reduce",
+            }
+            strength = next((v for k, v in strength_map.items() if k in sig), "hold")
+            fund_cfg = next(
+                (f for f in config.get("funds", {}).values() if f.get("code") == code),
+                {}
+            )
+            settle = fund_cfg.get("settlement", "T2")
+            try:
+                _db.save_signal(
+                    fund_code=code,
+                    signal_date=today,
+                    strength=strength,
+                    score=d.get("score", 0),
+                    nav_at_signal=d.get("nav", 0),
+                    indicators={
+                        "rsi":          d.get("rsi"),
+                        "bb_pct":       d.get("bb_pct"),
+                        "macd_hist":    d.get("macd_hist"),
+                        "ma20_vs_ma50": (d.get("ma20") or 0) > (d.get("ma50") or 0),
+                        "momentum_30d": d.get("chg30"),
+                        "chg_pct":      d.get("chg_pct"),
+                        "chg7d":        d.get("chg7"),
+                        "chg30d":       d.get("chg30"),
+                        "details":      d.get("details", []),
+                        "nav_date":     d.get("nav_date"),
+                    },
+                    settlement_rule=settle,
                 )
-                settle = fund_cfg.get("settlement", "T2")
-                try:
-                    _db.save_signal(
-                        fund_code=code,
-                        signal_date=today,
-                        strength=strength,
-                        score=d.get("score", 0),
-                        nav_at_signal=d.get("nav", 0),
-                        indicators={
-                            "rsi": d.get("rsi"),
-                            "bb_pct": d.get("bb_pct"),
-                            "macd_hist": d.get("macd_hist"),
-                        },
-                        settlement_rule=settle,
-                    )
-                except Exception as e:
-                    log.debug("save_signal %s: %s", code, e)
+            except Exception as e:
+                log.debug("save_signal %s: %s", code, e)
 
 
 def job_backfill_settlement():
