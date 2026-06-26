@@ -1717,11 +1717,10 @@ function applyDateRange(){
 
 // ── Gold History Chart ────────────────────────────────────────────────────
 let _histAsset='ccq';
-let _goldChartData=null; // raw from /api/gold/chart
+let _goldChartData=null;
 let _goldPeriodDays=365;
-let _goldUnit='chi';    // 'chi' | 'luong' | 'usd'
 let _goldSeriesOn={sjc_sell:true,sjc_buy:true,xau_vnd:true,xau_usd:false};
-let _goldUsdVnd=25400;  // fallback, updated from API
+let _goldUsdVnd=25400;
 
 const SERIES_CFG={
   sjc_sell:{color:'#f87171',label:'SJC Bán'},
