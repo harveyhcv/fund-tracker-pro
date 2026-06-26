@@ -851,9 +851,12 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         if not profile:
             _json(self, {"error": "Profile không tìm thấy", "telegram_id": tg_id}, 404)
             return
-        # Lấy NAV + signals dùng cùng logic với bot.py
+        # Lấy signals cho watched_funds + tất cả quỹ trong portfolio
         watched  = profile.get("watched_funds", [])
-        signals  = _get_signals_for_codes(watched, cfg)
+        holdings = _db_get_ccq_holdings(tg_id)
+        portfolio_codes = [h["code"] for h in holdings]
+        all_codes = list(dict.fromkeys(watched + portfolio_codes))  # dedup, preserve order
+        signals  = _get_signals_for_codes(all_codes, cfg)
         portfolio = _calc_portfolio(profile, signals)
         _json(self, {
             "name": profile.get("name", ""),
@@ -1791,12 +1794,35 @@ class MiniAppHandler(BaseHTTPRequestHandler):
 
 # ── Start ──────────────────────────────────────────────────────────────────────
 
+def _ensure_buy_signal_cols():
+    """Thêm các cột mới vào buy_signals nếu chưa có (idempotent)."""
+    db_url = os.environ.get("DATABASE_URL", "")
+    if not db_url:
+        return
+    try:
+        import psycopg2
+        conn = psycopg2.connect(db_url, connect_timeout=6)
+        with conn.cursor() as cur:
+            for col, typ in [("chg_pct","NUMERIC"), ("chg7d","NUMERIC"),
+                              ("chg30d","NUMERIC"), ("details","JSONB"),
+                              ("nav_date","DATE")]:
+                cur.execute(f"ALTER TABLE buy_signals ADD COLUMN IF NOT EXISTS {col} {typ}")
+        conn.commit(); conn.close()
+        log.info("[miniapp] buy_signals schema ensured")
+    except Exception as e:
+        log.warning(f"[miniapp] buy_signals schema: {e}")
+
+
 def start_miniapp_server():
     # Khởi tạo bảng PostgreSQL cho trades khi server start
     try:
         _init_trade_tables()
     except Exception as e:
         log.warning(f"[miniapp] trade tables init skipped: {e}")
+    try:
+        _ensure_buy_signal_cols()
+    except Exception as e:
+        log.warning(f"[miniapp] buy_signals cols init skipped: {e}")
     server = HTTPServer(("0.0.0.0", PORT_MINIAPP), MiniAppHandler)
     log.info(f"[miniapp] HTTP server started on :{PORT_MINIAPP}")
     server.serve_forever()
