@@ -736,6 +736,11 @@ def _db_recalc_portfolio(cfg: dict, tg_id: str):
                 holdings[code] = {"units": 0.0, "total_cost": 0.0}
             holdings[code]["units"]      += units
             holdings[code]["total_cost"] += units * nav
+        elif tx_type == "dividend":
+            # Lợi tức tái đầu tư: thêm units không tốn chi phí mua vào
+            if code not in holdings:
+                holdings[code] = {"units": 0.0, "total_cost": 0.0}
+            holdings[code]["units"] += units
         elif tx_type == "sell" and code in holdings and holdings[code]["units"] > 0:
             frac = min(units / holdings[code]["units"], 1.0)
             holdings[code]["total_cost"] -= holdings[code]["total_cost"] * frac
@@ -1100,11 +1105,17 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         units    = float(data.get("units", 0))
         amount   = float(data.get("amount", 0))
         tx_date  = str(data.get("date", date.today().isoformat()))
-        nav      = float(data.get("price_per_unit", 0)) or (amount / units if units else 0)
         nav_mm   = bool(data.get("nav_mismatch", False))
         note     = str(data.get("note", ""))
-        if not all([tg_id, code, tx_type in ("buy", "sell"), units > 0, amount > 0]):
+        is_dividend = tx_type == "dividend"
+        # For dividend: nav may be 0 (cash dividend) or derived from amount/units
+        nav      = float(data.get("price_per_unit", 0)) or (amount / units if units > 0 else 0)
+        if not tg_id or not code or tx_type not in ("buy", "sell", "dividend"):
             _json(self, {"error": "Thiếu hoặc sai thông tin giao dịch"}, 400); return
+        if not is_dividend and (units <= 0 or amount <= 0):
+            _json(self, {"error": "Thiếu hoặc sai thông tin giao dịch"}, 400); return
+        if is_dividend and units <= 0 and amount <= 0:
+            _json(self, {"error": "Lợi tức cần có số CCQ hoặc số tiền"}, 400); return
         if not _auth_write(self, tg_id): return
         _init_trade_tables()
         try:

@@ -67,10 +67,13 @@ def parse_xlsx(xlsx_path: Path) -> list:
             continue
 
         # Loại giao dịch
-        if "mua" in tx_raw.lower():
+        tx_lower = tx_raw.lower()
+        if "mua" in tx_lower:
             tx_type = "buy"
-        elif "bán" in tx_raw.lower():
+        elif "bán" in tx_lower:
             tx_type = "sell"
+        elif tx_raw in ("null", "", "None") or "lợi tức" in tx_lower or "cổ tức" in tx_lower or "tái đầu tư" in tx_lower:
+            tx_type = "dividend"
         else:
             print(f"  ⚠️ Loại giao dịch không rõ '{tx_raw}': {code} {date_raw} — bỏ qua")
             continue
@@ -86,8 +89,11 @@ def parse_xlsx(xlsx_path: Path) -> list:
         units_f  = float(units   or 0)
         amount_f = float(amount  or 0)
 
-        if units_f <= 0:
+        if tx_type in ("buy", "sell") and units_f <= 0:
             print(f"  ⚠️ Số lượng 0: {code} {dt} — bỏ qua")
+            continue
+        if tx_type == "dividend" and units_f <= 0 and amount_f <= 0:
+            print(f"  ⚠️ Lợi tức không có số CCQ lẫn số tiền: {code} {dt} — bỏ qua")
             continue
 
         trades.append({
@@ -140,7 +146,10 @@ def main():
     trades = parse_xlsx(xlsx_path)
     print(f"✅ Parse xong: {len(trades)} giao dịch hợp lệ")
     for t in trades:
-        print(f"  {t['date']} {t['code']:10s} {t['type']:4s} {t['units']:10.2f} CCQ × {t['nav']:,.0f} đ = {t['amount']:,.0f} đ")
+        if t['type'] == 'dividend':
+            print(f"  {t['date']} {t['code']:10s} {'lợi tức':8s} {t['units']:10.4f} CCQ  giá trị: {t['amount']:,.0f} đ")
+        else:
+            print(f"  {t['date']} {t['code']:10s} {t['type']:4s} {t['units']:10.2f} CCQ × {t['nav']:,.0f} đ = {t['amount']:,.0f} đ")
 
     if args.dry_run:
         print("\nDry run — không POST lên server.")

@@ -1117,6 +1117,18 @@ def fetch_all(config: dict, codes: set) -> dict:
             result[code] = calc_signal(code, pts)
             sig = result[code]["signal"]
             log.info(f"  {code:12s}  NAV={result[code]['nav']:>10,.0f}  {sig}")
+            # Sync full history to DB so miniapp uses same data as bot
+            if _DB_AVAILABLE and _db.is_available():
+                src = "fmarket" if fund_cfg.get("fmarket_id") else "tcbs"
+                saved = 0
+                for p in pts:
+                    try:
+                        _db.upsert_nav(code, date.fromisoformat(p["date"]), p["nav"], src)
+                        saved += 1
+                    except Exception:
+                        pass
+                if saved:
+                    log.debug(f"  {code}  synced {saved} NAV points to DB")
         else:
             log.warning(f"  {code:12s}  ⚠ No data")
     return result

@@ -82,6 +82,7 @@ label{display:block;color:var(--txt2);font-size:11px;margin:10px 0 4px;text-tran
 .type-btn{padding:10px;border-radius:8px;border:1px solid var(--bdr);background:var(--bg3);color:var(--txt2);font-family:var(--sans);font-weight:600;font-size:14px;cursor:pointer;text-align:center;transition:all .15s}
 .type-btn.buy.active{background:#052e1a;border-color:var(--buy);color:var(--buy)}
 .type-btn.sell.active{background:#2d0a0a;border-color:var(--sell);color:var(--sell)}
+.type-btn.div.active{background:#1e0a3e;border-color:#7c3aed;color:#a78bfa}
 .style-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:12px}
 .style-btn{padding:8px 4px;border-radius:8px;border:1px solid var(--bdr);background:var(--bg3);color:var(--txt2);font-size:11px;font-family:var(--mono);cursor:pointer;text-align:center;line-height:1.3;transition:all .15s}
 .style-btn.active{background:#001a33;border-color:var(--c0);color:var(--c0)}
@@ -292,13 +293,13 @@ canvas{width:100%!important;height:100%!important}
     <!-- CCQ form -->
     <div id="trade-sub-ccq">
       <div class="card">
-        <!-- Hàng 1: Toggle + Quỹ + Ngày -->
-        <div style="display:flex;gap:8px;align-items:flex-end;margin-bottom:12px">
-          <!-- Pill toggle -->
-          <div id="ccq-type-pill" onclick="toggleTradeType()" style="flex-shrink:0;display:flex;align-items:center;width:100px;height:34px;border-radius:17px;border:1px solid var(--bdr);background:var(--bg2);position:relative;cursor:pointer;overflow:hidden">
-            <div id="ccq-pill-thumb" style="position:absolute;left:0;width:50px;height:100%;border-radius:17px;background:var(--buy);transition:left .2s,background .2s"></div>
-            <span id="ccq-pill-l" style="position:relative;flex:1;text-align:center;font-size:11px;font-weight:700;color:#000;z-index:1;font-family:var(--mono)">MUA</span>
-            <span id="ccq-pill-r" style="position:relative;flex:1;text-align:center;font-size:11px;font-weight:700;color:var(--txt2);z-index:1;font-family:var(--mono)">BÁN</span>
+        <!-- Hàng 1: Loại GD + Quỹ + Ngày -->
+        <div style="display:flex;gap:6px;align-items:flex-end;margin-bottom:12px;flex-wrap:wrap">
+          <!-- Type selector -->
+          <div style="display:flex;gap:4px;flex-shrink:0">
+            <div id="ccq-type-buy"  onclick="setTradeType('buy')"      class="type-btn buy active"     style="padding:6px 10px;font-size:11px">MUA</div>
+            <div id="ccq-type-sell" onclick="setTradeType('sell')"     class="type-btn sell"           style="padding:6px 10px;font-size:11px">BÁN</div>
+            <div id="ccq-type-div"  onclick="setTradeType('dividend')" class="type-btn"                style="padding:6px 10px;font-size:11px;border-color:#7c3aed;color:#a78bfa">LỢI TỨC</div>
           </div>
           <!-- Fund select -->
           <select id="trade-fund" onchange="onTradeFundChange()" style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--bdr);color:var(--txt);border-radius:8px;padding:6px 8px;font-size:13px;height:34px"></select>
@@ -310,10 +311,12 @@ canvas{width:100%!important;height:100%!important}
           <input type="text" id="trade-new-fund-code" placeholder="Mã quỹ (VD: TCBF)" style="flex:1;background:var(--bg);border:1px solid var(--bdr);color:var(--txt);border-radius:8px;padding:8px;font-size:13px;text-transform:uppercase">
           <button onclick="addNewFundAndWatch()" style="background:var(--c0);color:#000;border:none;border-radius:8px;padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">+ Thêm & Theo dõi</button>
         </div>
-        <label>Số CCQ nhận được</label>
+        <label id="trade-units-label">Số CCQ nhận được</label>
         <input type="text" inputmode="decimal" id="trade-units" placeholder="VD: 487.21" oninput="calcTradeAmount()">
+        <div id="trade-price-row">
         <label>Giá NAV / CCQ (VNĐ)</label>
         <input type="text" inputmode="decimal" id="trade-price" placeholder="VD: 20524.84" oninput="calcTradeAmount()">
+        </div>
         <div id="trade-amount-preview" style="display:none;justify-content:space-between;padding:6px 0;margin-top:8px;border-top:1px solid var(--bdr)">
           <span class="sum-label">Tổng tiền</span>
           <span class="sum-val" id="trade-amount-val" style="color:var(--c0)"></span>
@@ -400,15 +403,18 @@ canvas{width:100%!important;height:100%!important}
       <input type="hidden" id="edit-idx">
       <label>Loại</label>
       <div class="type-toggle" style="margin-bottom:12px">
-        <div class="type-btn buy active" id="edit-btn-buy" onclick="setEditType('buy')">ĐÃ MUA</div>
-        <div class="type-btn sell" id="edit-btn-sell" onclick="setEditType('sell')">ĐÃ BÁN</div>
+        <div class="type-btn buy active" id="edit-btn-buy"  onclick="setEditType('buy')">ĐÃ MUA</div>
+        <div class="type-btn sell"       id="edit-btn-sell" onclick="setEditType('sell')">ĐÃ BÁN</div>
+        <div class="type-btn div"        id="edit-btn-div"  onclick="setEditType('dividend')" style="border-color:#7c3aed;color:#a78bfa">LỢI TỨC</div>
       </div>
       <label>Ngày giao dịch</label>
       <input type="date" id="edit-date" style="width:100%;background:#060b14;border:1px solid #1e3a5f;color:#e2e8f0;border-radius:8px;padding:8px;margin-bottom:8px;box-sizing:border-box">
       <label>Số CCQ</label>
       <input type="text" inputmode="decimal" id="edit-units" placeholder="487.21" oninput="calcEditAmount()" style="width:100%;background:#060b14;border:1px solid #1e3a5f;color:#e2e8f0;border-radius:8px;padding:8px;margin-bottom:8px;box-sizing:border-box">
+      <div id="edit-price-wrap">
       <label>Giá NAV / CCQ</label>
       <input type="text" inputmode="decimal" id="edit-price" placeholder="20524.84" oninput="calcEditAmount()" style="width:100%;background:#060b14;border:1px solid #1e3a5f;color:#e2e8f0;border-radius:8px;padding:8px;margin-bottom:8px;box-sizing:border-box">
+      </div>
       <div id="edit-amount-preview" style="display:none;color:var(--c0);font-size:13px;margin-bottom:10px"></div>
       <div style="display:flex;gap:8px;margin-top:4px">
         <button class="btn" style="flex:1;background:#1e3a5f;color:#e2e8f0" onclick="closeEditModal()">Hủy</button>
@@ -1267,19 +1273,20 @@ function renderDCA(data){
 }
 
 // ── Trade ────────────────────────────────────────────────────────────────
-function toggleTradeType(){
-  _tradeType=_tradeType==='buy'?'sell':'buy';
-  const isBuy=_tradeType==='buy';
-  const thumb=document.getElementById('ccq-pill-thumb');
-  const l=document.getElementById('ccq-pill-l');
-  const r=document.getElementById('ccq-pill-r');
-  thumb.style.left=isBuy?'0':'50px';
-  thumb.style.background=isBuy?'var(--buy)':'var(--sell)';
-  l.style.color=isBuy?'#000':'var(--txt2)';
-  r.style.color=isBuy?'var(--txt2)':'#000';
+function setTradeType(type){
+  _tradeType=type;
+  const isDiv=type==='dividend';
+  const isBuy=type==='buy';
+  ['buy','sell','div'].forEach(k=>{
+    const el=document.getElementById('ccq-type-'+k);
+    if(el){el.className='type-btn '+(k==='div'?'div':k)+(type===(k==='div'?'dividend':k)?' active':'');}
+  });
   const btn=document.getElementById('submit-trade');
-  btn.textContent=isBuy?'XÁC NHẬN MUA':'XÁC NHẬN BÁN';
-  btn.className='btn btn-'+_tradeType;
+  if(isDiv){btn.textContent='GIAO DỊCH LỢI TỨC';btn.className='btn';btn.style.background='#1e0a3e';btn.style.color='#a78bfa';btn.style.border='1px solid #7c3aed';}
+  else{btn.style.background='';btn.style.color='';btn.style.border='';btn.textContent=isBuy?'XÁC NHẬN MUA':'XÁC NHẬN BÁN';btn.className='btn btn-'+(isBuy?'buy':'sell');}
+  // Ẩn/hiện giá NAV khi là lợi tức
+  const priceRow=document.getElementById('trade-price-row');
+  if(priceRow)priceRow.style.display=isDiv?'none':'';
 }
 function _refreshFundSelect(funds){
   const sel=document.getElementById('trade-fund');
@@ -1350,29 +1357,35 @@ async function checkNavMismatch(){
 }
 async function submitTrade(){
   const code=document.getElementById('trade-fund').value;
-  const units=parseDecimal(document.getElementById('trade-units').value);
-  const price=parseDecimal(document.getElementById('trade-price').value);
+  const units=parseDecimal(document.getElementById('trade-units').value)||0;
+  const price=parseDecimal(document.getElementById('trade-price').value)||0;
   const tdate=document.getElementById('trade-date').value;
+  const isDiv=_tradeType==='dividend';
   if(!code){toast('Chọn quỹ');return;}
-  if(!units||units<=0){toast('Nhập số CCQ');return;}
-  if(!price||price<=0){toast('Nhập giá NAV/CCQ');return;}
+  if(!isDiv&&units<=0){toast('Nhập số CCQ');return;}
+  if(!isDiv&&price<=0){toast('Nhập giá NAV/CCQ');return;}
+  if(isDiv&&units<=0){toast('Nhập số CCQ nhận được từ lợi tức');return;}
   if(!tdate){toast('Chọn ngày giao dịch');return;}
   if(!USER_ID){toast('Không xác định user');return;}
-  const amount=Math.round(units*price);
-  // Kiểm tra mismatch để đánh dấu
+  const amount=isDiv?0:Math.round(units*price);
+  // Kiểm tra mismatch (chỉ cho buy/sell)
   let navMismatch=false;
-  try{
-    const pts=await apiFetch(`/api/nav/${code}`);
-    const match=pts.find(p=>p.date===tdate);
-    if(match&&Math.abs(match.nav-price)/match.nav>0.005)navMismatch=true;
-  }catch{}
+  if(!isDiv&&price>0){
+    try{
+      const pts=await apiFetch(`/api/nav/${code}`);
+      const match=pts.find(p=>p.date===tdate);
+      if(match&&Math.abs(match.nav-price)/match.nav>0.005)navMismatch=true;
+    }catch{}
+  }
   const btn=document.getElementById('submit-trade');
   btn.disabled=true;
   try{
-    const data=await apiPost('/api/trade',{telegram_id:USER_ID,code,type:_tradeType,units,amount,price_per_unit:price,date:tdate,nav_mismatch:navMismatch});
+    const payload={telegram_id:USER_ID,code,type:_tradeType,units,amount,price_per_unit:price,date:tdate,nav_mismatch:navMismatch};
+    const data=await apiPost('/api/trade',payload);
     if(data.ok){
       const flag=navMismatch?' ⚠️':'';
-      toast(`✓ ${_tradeType==='buy'?'Mua':'Bán'} ${units} CCQ ${code}${flag}`);
+      const label=isDiv?`Lợi tức +${units} CCQ`:_tradeType==='buy'?`Mua ${units} CCQ`:`Bán ${units} CCQ`;
+      toast(`✓ ${label} ${code}${flag}`);
       document.getElementById('trade-fund').value='';
       document.getElementById('trade-units').value='';
       document.getElementById('trade-price').value='';
@@ -1579,9 +1592,10 @@ function renderUnifiedHistory(){
   if(!shown.length){el.innerHTML='<div style="color:var(--txt2);font-size:12px;padding:12px 0;text-align:center">Chưa có giao dịch nào</div>';return;}
 
   el.innerHTML=shown.map(t=>{
+    const isDividend=t.type==='dividend';
     const isBuy=t.type==='buy';
-    const tColor=isBuy?'var(--buy)':'var(--sell)';
-    const tLabel=isBuy?'MUA':'BÁN';
+    const tColor=isDividend?'#a78bfa':isBuy?'var(--buy)':'var(--sell)';
+    const tLabel=isDividend?'LỢI TỨC':isBuy?'MUA':'BÁN';
     if(t._asset==='gold'){
       const qtyL=t.qty_luong??t.qty;
       const priceM=t.price_per_luong>0?(t.price_per_luong/1e6).toFixed(2)+'M':'tặng';
@@ -1603,16 +1617,22 @@ function renderUnifiedHistory(){
     } else {
       const navPrice = t.nav || t.price_per_unit || 0;
       const price = Number(navPrice).toLocaleString('vi-VN');
-      const mismatch = t.nav_mismatch?'<div class="tlog-mismatch">⚠️ Giá lệch NAV DB</div>':'';
+      const mismatch = (!isDividend && t.nav_mismatch)?'<div class="tlog-mismatch">⚠️ Giá lệch NAV DB</div>':'';
       const virtualBadge = t._virtual ? '<span style="font-size:9px;color:var(--txt2);border:1px solid var(--bdr);border-radius:3px;padding:1px 4px;margin-left:4px">Nhập từ Bot</span>' : '';
       const actions = t._virtual
         ? `<div class="tlog-actions"><span style="font-size:10px;color:var(--txt2)">—</span></div>`
         : `<div class="tlog-actions"><button class="tlog-btn tlog-edit" onclick="openEditModal(${t.index})">✏️</button><button class="tlog-btn tlog-del" onclick="confirmDeleteTrade(${t.index})">🗑️</button></div>`;
+      const metaLine = isDividend
+        ? `${t.date}${t.units>0?' · +'+t.units+' CCQ':''}${t.amount>0?' · '+fmt(t.amount)+' ₫':''}`
+        : `${t.date} · ${t.units} CCQ · ${price} ₫/CCQ`;
+      const totalLine = isDividend
+        ? (t.units>0?`<div class="tlog-meta">Tái đầu tư: <span style="color:#a78bfa">+${t.units} CCQ</span>${t.amount>0?' ('+fmt(t.amount)+' ₫)':''}</div>`:'')
+        : `<div class="tlog-meta">Tổng: <span style="color:var(--c0)">${fmt(t.amount)} ₫</span></div>`;
       return `<div class="tlog-row">
 <div class="tlog-left">
   <div><span class="tlog-code">${t.code}</span> <span style="font-size:11px;color:${tColor};font-weight:700">${tLabel}</span>${virtualBadge}</div>
-  <div class="tlog-meta">${t.date} · ${t.units} CCQ · ${price} ₫/CCQ</div>
-  <div class="tlog-meta">Tổng: <span style="color:var(--c0)">${fmt(t.amount)} ₫</span></div>
+  <div class="tlog-meta">${metaLine}</div>
+  ${totalLine}
   ${mismatch}
 </div>
 ${actions}</div>`;
@@ -1641,6 +1661,10 @@ function _setEditType(type){
   _editType=type;
   document.getElementById('edit-btn-buy').classList.toggle('active',type==='buy');
   document.getElementById('edit-btn-sell').classList.toggle('active',type==='sell');
+  document.getElementById('edit-btn-div').classList.toggle('active',type==='dividend');
+  // Ẩn/hiện ô giá khi là lợi tức
+  const priceWrap=document.getElementById('edit-price-wrap');
+  if(priceWrap)priceWrap.style.display=type==='dividend'?'none':'';
 }
 function calcEditAmount(){
   const units=parseDecimal(document.getElementById('edit-units').value);
@@ -1654,13 +1678,14 @@ function calcEditAmount(){
 function closeEditModal(){document.getElementById('edit-trade-modal').style.display='none';}
 async function saveEditTrade(){
   const idx=parseInt(document.getElementById('edit-idx').value);
-  const units=parseDecimal(document.getElementById('edit-units').value);
-  const price=parseDecimal(document.getElementById('edit-price').value);
+  const units=parseDecimal(document.getElementById('edit-units').value)||0;
+  const price=parseDecimal(document.getElementById('edit-price').value)||0;
   const tdate=document.getElementById('edit-date').value;
-  if(!units||units<=0){toast('Nhập số CCQ');return;}
-  if(!price||price<=0){toast('Nhập giá');return;}
+  const isDiv=_editType==='dividend';
+  if(units<=0){toast('Nhập số CCQ');return;}
+  if(!isDiv&&price<=0){toast('Nhập giá');return;}
   if(!tdate){toast('Chọn ngày');return;}
-  const amount=Math.round(units*price);
+  const amount=isDiv?0:Math.round(units*price);
   try{
     const d=await apiPost(`/api/trade/${idx}`,{type:_editType,units,price_per_unit:price,amount,date:tdate});
     if(d.ok){toast('✓ Đã cập nhật');closeEditModal();_me=null;await loadUnifiedHistory();}
@@ -1670,7 +1695,8 @@ async function saveEditTrade(){
 async function confirmDeleteTrade(idx){
   const t=_tradeLog.find(x=>x.index===idx);
   if(!t)return;
-  if(!confirm(`Xóa giao dịch ${t.type==='buy'?'MUA':'BÁN'} ${t.units} CCQ ${t.code} ngày ${t.date}?`))return;
+  const typeLabel=t.type==='buy'?'MUA':t.type==='dividend'?'LỢI TỨC':'BÁN';
+  if(!confirm(`Xóa giao dịch ${typeLabel} ${t.units} CCQ ${t.code} ngày ${t.date}?`))return;
   try{
     const d=await apiDelete(`/api/trade/${idx}`);
     if(d.ok){toast('✓ Đã xóa');_me=null;await loadUnifiedHistory();}
