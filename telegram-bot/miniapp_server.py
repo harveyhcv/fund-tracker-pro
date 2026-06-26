@@ -1281,9 +1281,21 @@ class MiniAppHandler(BaseHTTPRequestHandler):
                     # 3. Save merged points
                     if pts_all and db_url:
                         try:
-                            saved = _bot.save_nav_to_db(db_url, code, pts_all)
-                            results[code] = saved
-                            log.info(f"[fetch-nav] saved {code}: +{saved}")
+                            import psycopg2
+                            _conn = psycopg2.connect(db_url)
+                            _cur = _conn.cursor()
+                            _saved = 0
+                            for _pt in pts_all:
+                                _cur.execute(
+                                    "INSERT INTO nav_history (fund_code, nav_date, nav, source) "
+                                    "VALUES (%s, %s, %s, %s) "
+                                    "ON CONFLICT (fund_code, nav_date) DO NOTHING",
+                                    (code, _pt['date'], float(_pt['nav']), 'tcinvest')
+                                )
+                                _saved += _cur.rowcount
+                            _conn.commit(); _conn.close()
+                            results[code] = _saved
+                            log.info(f"[fetch-nav] saved {code}: +{_saved}")
                         except Exception as ex:
                             errors[f"save_{code}"] = str(ex)
                             log.warning(f"save {code}: {ex}")
@@ -1308,17 +1320,17 @@ class MiniAppHandler(BaseHTTPRequestHandler):
 
         import psycopg2, psycopg2.extras
 
-        def _insert_pg(db_url, code, points):
-            """Insert NAV points to PostgreSQL, return count inserted."""
-            conn = psycopg2.connect(db_url, sslmode="require")
+        def _insert_pg(db_url, code, points, source='manual'):
+            """Insert NAV points to PostgreSQL nav_history, return count inserted."""
+            conn = psycopg2.connect(db_url)
             cur = conn.cursor()
             inserted = 0
             for pt in points:
                 cur.execute(
-                    "INSERT INTO nav_history (fund_code, date, nav, source, status) "
-                    "VALUES (%s, %s, %s, 'tcinvest', 'draft') "
-                    "ON CONFLICT (fund_code, date) DO NOTHING",
-                    (code, pt["date"], float(pt["nav"]))
+                    "INSERT INTO nav_history (fund_code, nav_date, nav, source) "
+                    "VALUES (%s, %s, %s, %s) "
+                    "ON CONFLICT (fund_code, nav_date) DO NOTHING",
+                    (code, pt["date"], float(pt["nav"]), source)
                 )
                 inserted += cur.rowcount
             conn.commit()

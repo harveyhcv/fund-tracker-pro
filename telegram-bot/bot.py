@@ -112,7 +112,7 @@ def _ensure_config_exists():
         "profiles": [],
         "funds": {
             # ── Techcom Capital (TCinvest only) ──
-            "TCBF":    {"name": "Quỹ Trái Phiếu Techcombank",           "fmarket_id": 22,   "tcbs": True},
+            "TCBF":    {"name": "Quỹ Trái Phiếu Techcombank",           "fmarket_id": None, "tcbs": True},  # fmarket_id=22 là quỹ khác
             "TCFF":    {"name": "Quỹ Tăng Trưởng Techcombank",          "fmarket_id": None, "tcbs": True},
             "TCGF":    {"name": "Quỹ Tăng Trưởng Toàn Cầu Techcombank","fmarket_id": None, "tcbs": True},
             "TCSME":   {"name": "Quỹ Cổ Phiếu SME Techcombank",         "fmarket_id": None, "tcbs": True},
