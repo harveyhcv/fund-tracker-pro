@@ -1724,7 +1724,7 @@ async function navImportSubmit(){
   rowEls.forEach(row => {
     const [dateInp, navInp] = row.querySelectorAll('input');
     const date = dateInp?.value;
-    const nav = parseFloat((navInp?.value||'').replace(/,/g,'').replace(/\./g,'').replace(/\s/g,''));
+    const nav = parseFloat((navInp?.value||'').replace(/,/g,'').replace(/\s/g,''));
     if (date && nav > 0) navList.push({ date, nav });
   });
   if (!navList.length) { statusEl.style.color='var(--sell)'; statusEl.textContent='Chưa có hàng hợp lệ'; return; }
@@ -1767,19 +1767,15 @@ async function crossCheckNav(code, manualList){
     });
     if (issues.length) {
       statusEl.style.color = '#f59e0b';
-      statusEl.textContent = 'CANH BAO chenh lech:
-' + issues.join('
-');
+      statusEl.textContent = 'CANH BAO chenh lech:\n' + issues.join('\n');
     } else {
       statusEl.style.color = 'var(--buy)';
-      statusEl.textContent += '
-Cross-check OK - du lieu khop.';
+      statusEl.textContent += '\nCross-check OK - du lieu khop.';
     }
     // Also reload the chart
     if (_histCode === code) { _histAllPoints = data.data||[]; applyDateRange(); }
   } catch(e) {
-    statusEl.textContent += '
-(Cross-check loi: ' + e.message + ')';
+    statusEl.textContent += '\n(Cross-check loi: ' + e.message + ')';
   }
 }
 
