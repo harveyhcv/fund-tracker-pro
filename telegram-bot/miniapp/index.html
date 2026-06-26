@@ -440,8 +440,7 @@ canvas{width:100%!important;height:100%!important}
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
         <button onclick="toggleGoldSeries('sjc_sell')" id="gt-sjc-sell" class="gt-btn" style="border-color:#f87171;color:#f87171">● SJC Bán</button>
         <button onclick="toggleGoldSeries('sjc_buy')"  id="gt-sjc-buy"  class="gt-btn" style="border-color:#4ade80;color:#4ade80">● SJC Mua</button>
-        <button onclick="toggleGoldSeries('xau_vnd')"  id="gt-xau-vnd"  class="gt-btn" style="border-color:#60a5fa;color:#60a5fa">● Vàng QT (VND)</button>
-        <button onclick="toggleGoldSeries('xau_usd')"  id="gt-xau-usd"  class="gt-btn" style="border-color:#a78bfa;color:#a78bfa;display:none">● XAU/USD</button>
+        <button onclick="toggleGoldSeries('xau_qt')"  id="gt-xau-qt"  class="gt-btn" style="border-color:#60a5fa;color:#60a5fa">● Vàng QT</button>
       </div>
       <!-- Stat row -->
       <div id="gold-stat-row" style="font-size:11px;color:var(--txt2);font-family:var(--mono);margin-bottom:6px;min-height:14px"></div>
@@ -1719,14 +1718,13 @@ function applyDateRange(){
 let _histAsset='ccq';
 let _goldChartData=null;
 let _goldPeriodDays=365;
-let _goldSeriesOn={sjc_sell:true,sjc_buy:true,xau_vnd:true,xau_usd:false};
+let _goldSeriesOn={sjc_sell:true,sjc_buy:true,xau_qt:true};
 let _goldUsdVnd=25400;
 
 const SERIES_CFG={
   sjc_sell:{color:'#f87171',label:'SJC Bán'},
   sjc_buy: {color:'#4ade80',label:'SJC Mua'},
-  xau_vnd: {color:'#60a5fa',label:'Vàng QT'},
-  xau_usd: {color:'#a78bfa',label:'XAU/USD'},
+  xau_qt:  {color:'#60a5fa',label:'Vàng QT'},
 };
 
 function switchHistAsset(asset){
@@ -1790,7 +1788,7 @@ async function loadGoldChart(){
 function setGoldPeriod(days){
   // "Tất cả" — set dates to full data range
   if(_goldChartData){
-    const allDates=[...(_goldChartData.sjc_sell||[]),...(_goldChartData.xau_vnd||[])].map(p=>p.date).sort();
+    const allDates=[...(_goldChartData.sjc_sell||[]),...(_goldChartData.xau_usd||[])].map(p=>p.date).sort();
     if(allDates.length){
       document.getElementById('gp-from').value=allDates[0];
       document.getElementById('gp-to').value=allDates[allDates.length-1];
@@ -1820,21 +1818,7 @@ function cycleGoldUnit(){
   const idx=order.indexOf(_goldUnit);
   _goldUnit=order[(idx+1)%3];
   document.getElementById('gold-unit-toggle').textContent=labels[_goldUnit];
-  const xauUsdBtn=document.getElementById('gt-xau-usd');
-  const xauVndBtn=document.getElementById('gt-xau-vnd');
-  if(_goldUnit==='usd'){
-    // USD mode: show XAU/USD (quốc tế raw), ẩn Vàng QT (VND) vì đã quy đổi sẽ trùng
-    xauUsdBtn.style.display='inline-block';
-    _goldSeriesOn.xau_usd=true;
-    if(xauVndBtn) xauVndBtn.style.display='none';
-    _goldSeriesOn.xau_vnd=false;
-  } else {
-    // VND mode: show Vàng QT (VND) để so sánh với SJC, ẩn XAU/USD
-    xauUsdBtn.style.display='none';
-    _goldSeriesOn.xau_usd=false;
-    if(xauVndBtn) xauVndBtn.style.display='inline-block';
-    _goldSeriesOn.xau_vnd=true;
-  }
+  // "Vàng QT" luôn hiện, tự đổi đơn vị theo toggle — không cần show/hide
   renderGoldChart();
 }
 
@@ -1891,8 +1875,8 @@ function renderGoldChart(){
   const series={
     sjc_sell: _filterByPeriod(d.sjc_sell||[]).map(p=>({date:p.date,v:_convertVal(p.val,false)})),
     sjc_buy:  _filterByPeriod(d.sjc_buy||[]).map(p=>({date:p.date,v:_convertVal(p.val,false)})),
-    xau_vnd:  _filterByPeriod(d.xau_vnd||[]).map(p=>({date:p.date,v:_convertVal(p.val,false)})),
-    xau_usd:  _filterByPeriod(d.xau_usd||[]).map(p=>({date:p.date,v:_convertVal(p.val,true)})),
+    // xau_qt: dùng xau_usd (USD/oz) làm nguồn, _convertVal tự đổi sang đơn vị hiện tại
+    xau_qt:   _filterByPeriod(d.xau_usd||[]).map(p=>({date:p.date,v:_convertVal(p.val,true)})),
   };
 
   // Stat row: latest SJC sell
