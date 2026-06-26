@@ -1761,7 +1761,7 @@ async function loadGoldChart(){
   const canvas=document.getElementById('gold-hist-canvas');
   if(canvas) canvas.style.opacity='0.4';
   try{
-    const data=await apiFetch('/api/gold/chart?days=730');
+    const data=await apiFetch('/api/gold/chart?days=0');
     _goldChartData=data;
     if(data.usd_vnd) _goldUsdVnd=data.usd_vnd;
     const note=document.getElementById('gold-usdvnd-note');
