@@ -674,11 +674,19 @@ const sigLabel = s=>{
   return s.replace('🟢🟢','').replace('🟢','').replace('🔴🔴','').replace('🔴','').replace('⚪','').trim();
 }
 
-async function apiFetch(path){
+async function apiFetch(path, timeoutMs=12000){
   const sep=path.includes('?')?'&':'?';
-  const res=await fetch(API_BASE+path+(USER_ID?sep+'user_id='+USER_ID:''));
-  if(!res.ok)throw new Error(res.status);
-  return res.json();
+  const ctrl=new AbortController();
+  const tid=setTimeout(()=>ctrl.abort(),timeoutMs);
+  try{
+    const res=await fetch(API_BASE+path+(USER_ID?sep+'user_id='+USER_ID:''),{signal:ctrl.signal});
+    clearTimeout(tid);
+    if(!res.ok)throw new Error(res.status);
+    return res.json();
+  }catch(e){
+    clearTimeout(tid);
+    throw e.name==='AbortError'?new Error('Timeout (>'+timeoutMs/1000+'s)'):e;
+  }
 }
 const renderErr=msg=>`<div class="card" style="color:var(--sell);text-align:center;padding:20px">${msg}</div>`;
 

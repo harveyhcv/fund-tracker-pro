@@ -243,44 +243,81 @@ except Exception as _e:
 
 
 def _get_signals_for_codes(codes: list, cfg: dict) -> dict:
-    """Tính tín hiệu dùng đúng hàm calc_signal từ bot.py."""
+    """Tính tín hiệu từ nav_history DB — fast path, không gọi API ngoài.
+    Miniapp cần phản hồi nhanh; dữ liệu DB đã được bot cập nhật hàng ngày.
+    """
     results = {}
-    funds_cfg = cfg.get("funds", {})
-    if _BOT_IMPORTED:
-        for code in codes:
-            try:
-                pts = _get_nav_series_bot(code, funds_cfg.get(code, {}), cfg)
-                if pts:
-                    sig = _calc_signal_bot(code, pts)
-                    results[code] = sig
-                else:
-                    results[code] = {"signal": "N/A", "score": 0, "nav": 0, "nav_date": "",
-                                     "rsi": None, "bb_pct": None, "chg_pct": 0}
-            except Exception as e:
-                log.warning(f"[miniapp] calc_signal {code}: {e}")
-                results[code] = {"signal": "N/A", "score": 0, "nav": 0, "nav_date": "",
-                                 "rsi": None, "bb_pct": None, "chg_pct": 0}
-    else:
-        # Fallback: lấy NAV mới nhất từ DB, trả N/A signal
-        db_url = os.environ.get("DATABASE_URL", cfg.get("database_url", ""))
-        if db_url:
-            try:
-                import psycopg2
-                conn = psycopg2.connect(db_url, connect_timeout=8)
-                with conn.cursor() as cur:
-                    ph = ",".join(["%s"] * len(codes))
-                    cur.execute(f"""
-                        SELECT DISTINCT ON (fund_code) fund_code, nav_date::text, nav::float
-                        FROM nav_history WHERE fund_code IN ({ph})
-                        ORDER BY fund_code, nav_date DESC
-                    """, codes)
-                    for code, nav_date, nav in cur.fetchall():
-                        results[code] = {"signal": "N/A", "score": 0,
-                                         "nav": nav, "nav_date": nav_date,
-                                         "rsi": None, "bb_pct": None, "chg_pct": 0}
-                conn.close()
-            except Exception as e:
-                log.warning(f"[miniapp] DB fallback: {e}")
+    if not codes:
+        return results
+    db_url = os.environ.get("DATABASE_URL", cfg.get("database_url", ""))
+    if not db_url:
+        return results
+    try:
+        import psycopg2
+        conn = psycopg2.connect(db_url, connect_timeout=8)
+        with conn.cursor() as cur:
+            ph = ",".join(["%s"] * len(codes))
+            # Lấy 120 ngày gần nhất cho mỗi quỹ để tính RSI/BB
+            cur.execute(f"""
+                SELECT fund_code, nav_date::text, nav::float
+                FROM nav_history
+                WHERE fund_code IN ({ph})
+                  AND nav_date >= CURRENT_DATE - INTERVAL '120 days'
+                ORDER BY fund_code, nav_date
+            """, codes)
+            rows = cur.fetchall()
+        conn.close()
+    except Exception as e:
+        log.warning(f"[miniapp] _get_signals_for_codes DB: {e}")
+        return results
+
+    # Group by fund_code
+    from collections import defaultdict
+    series = defaultdict(list)
+    for code, dt, nav in rows:
+        series[code].append((dt, nav))
+
+    for code in codes:
+        pts = series.get(code, [])
+        if not pts:
+            results[code] = {"signal": "N/A", "score": 0, "nav": 0, "nav_date": "",
+                             "rsi": None, "bb_pct": None, "chg_pct": 0}
+            continue
+        navs = [p[1] for p in pts]
+        nav_now  = navs[-1]
+        nav_date = pts[-1][0]
+        nav_prev = navs[-2] if len(navs) >= 2 else nav_now
+        chg_pct  = (nav_now - nav_prev) / nav_prev * 100 if nav_prev else 0
+        # RSI(14)
+        rsi = _gold_rsi(navs)  # reuse same RSI helper
+        # BB(20)
+        window = navs[-20:] if len(navs) >= 20 else navs
+        mean = sum(window) / len(window)
+        std  = (sum((x - mean) ** 2 for x in window) / len(window)) ** 0.5
+        bb_pct = (nav_now - (mean - 2 * std)) / (4 * std) * 100 if std else 50
+        bb_pct = max(0, min(100, bb_pct))
+        # MA
+        ma20 = sum(navs[-20:]) / min(len(navs), 20)
+        ma50 = sum(navs[-50:]) / min(len(navs), 50) if len(navs) >= 20 else None
+        # Signal
+        score = 0
+        if rsi is not None:
+            if rsi < 33:   score += 2
+            elif rsi < 48: score += 1
+            elif rsi > 70: score -= 2
+        if bb_pct < 25:    score += 1
+        elif bb_pct > 75:  score -= 1
+        if ma50 and nav_now > ma50: score += 1
+        if score >= 3:      sig = "MUA 🟢"
+        elif score >= 1:    sig = "TÍCH LŨY 🟡"
+        elif score <= -2:   sig = "THẬN TRỌNG 🔴"
+        else:               sig = "HOLD ⚪"
+        results[code] = {
+            "signal": sig, "score": score, "nav": nav_now, "nav_date": nav_date,
+            "rsi": round(rsi, 1) if rsi else None,
+            "bb_pct": round(bb_pct, 1), "chg_pct": round(chg_pct, 2),
+            "ma20": round(ma20), "ma50": round(ma50) if ma50 else None,
+        }
     return results
 
 
