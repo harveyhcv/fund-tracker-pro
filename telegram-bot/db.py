@@ -164,7 +164,7 @@ def save_signal(
             """, (
                 fund_code, signal_date, strength, score,
                 ind.get("rsi"), ind.get("bb_pct"), ind.get("macd_hist"),
-                ind.get("ma20_vs_ma50"), ind.get("momentum_30d"),
+                int(bool(ind.get("ma20_vs_ma50"))), ind.get("momentum_30d"),
                 nav_at_signal, settlement_rule, exec_date,
                 ind.get("chg_pct"), ind.get("chg7d"), ind.get("chg30d"),
                 _json.dumps(ind.get("details") or []), nav_date_val,
