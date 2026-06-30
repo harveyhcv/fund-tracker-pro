@@ -655,13 +655,13 @@ def _get_portfolio_holdings(profile: dict) -> dict:
                 _pc = _pg2.connect(db_url, connect_timeout=6)
                 with _pc.cursor() as _cur:
                     _cur.execute("""
-                        SELECT code, type, units::float, nav::float
+                        SELECT code, type, units::float, nav::float, amount::float
                         FROM user_ccq_trades WHERE telegram_id=%s
                         ORDER BY trade_date, id
                     """, [tg_id])
                     _hmap: dict = {}
-                    for _code, _tx, _u, _n in _cur.fetchall():
-                        _u = float(_u or 0); _n = float(_n or 0)
+                    for _code, _tx, _u, _n, _amt in _cur.fetchall():
+                        _u = float(_u or 0); _n = float(_n or 0); _amt = float(_amt or 0)
                         if _tx == "buy":
                             if _code not in _hmap:
                                 _hmap[_code] = {"units": 0.0, "total_cost": 0.0}
@@ -671,6 +671,8 @@ def _get_portfolio_holdings(profile: dict) -> dict:
                             if _code not in _hmap:
                                 _hmap[_code] = {"units": 0.0, "total_cost": 0.0}
                             _hmap[_code]["units"] += _u
+                            if _u <= 0 and _amt > 0:  # tiền mặt → giảm cost basis
+                                _hmap[_code]["total_cost"] -= _amt
                         elif _tx == "sell" and _code in _hmap and _hmap[_code]["units"] > 0:
                             _f = min(_u / _hmap[_code]["units"], 1.0)
                             _hmap[_code]["total_cost"] -= _hmap[_code]["total_cost"] * _f
@@ -880,8 +882,14 @@ def msg_evening(profile: dict, nav_data: dict, morning_nav: dict) -> str:
 
 
 def msg_signal_alert(profile: dict, code: str, old_sig: str, new_sig: str, d: dict) -> str:
-    is_buy = "MUA" in new_sig
-    header = "🚨🟢 TÍN HIỆU MUA" if is_buy else "🚨🔴 TÍN HIỆU BÁN"
+    if "MUA" in new_sig:
+        header = "🚨🟢 TÍN HIỆU MUA"
+    elif "BÁN" in new_sig:
+        header = "🚨🔴 TÍN HIỆU BÁN"
+    elif "MUA" in old_sig:
+        header = "🔔 HẾT TÍN HIỆU MUA"
+    else:
+        header = "🔔 TÍN HIỆU THAY ĐỔI"
     lines = [
         f"<b>{header} — <code>{code}</code></b>",
         f"👤 {profile['name']}",
@@ -1174,7 +1182,7 @@ def fetch_all(config: dict, codes: set) -> dict:
 
 
 def all_watched_codes(config: dict) -> set:
-    codes = set()
+    codes = set(FUND_CATALOG.keys())  # Luôn fetch tất cả 43 quỹ để DB nav_history đầy đủ
     for p in config.get("profiles", []):
         codes.update(p.get("watched_funds", []))
     return codes
@@ -1197,6 +1205,20 @@ def job_morning():
     if not token or token.startswith("NHAP"):
         log.error("Bot token chưa được cấu hình trong config.json")
         return
+    # Fetch giá vàng mỗi sáng (vang.today API, không cần auth)
+    try:
+        import sys as _sys
+        _gold_script = Path(__file__).parent.parent / "scripts" / "fetch_gold.py"
+        if _gold_script.exists():
+            _sys.path.insert(0, str(_gold_script.parent))
+            import importlib.util as _ilu
+            _gspec = _ilu.spec_from_file_location("fetch_gold", _gold_script)
+            _gmod  = _ilu.module_from_spec(_gspec)
+            _gspec.loader.exec_module(_gmod)
+            _gmod.run_daily(verbose=False)
+            log.info("[job_morning] Giá vàng đã cập nhật")
+    except Exception as _ge:
+        log.warning(f"[job_morning] fetch_gold: {_ge}")
     codes    = all_watched_codes(config)
     nav_data = fetch_all(config, codes)
     # Cảnh báo ngay nếu TCBS token hết hạn trong lúc fetch

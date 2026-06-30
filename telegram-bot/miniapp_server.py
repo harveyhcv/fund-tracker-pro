@@ -370,7 +370,7 @@ def _db_get_ccq_holdings(tg_id: str) -> list:
         conn = _get_db_conn()
         with conn.cursor() as cur:
             cur.execute("""
-                SELECT code, type, units, nav
+                SELECT code, type, units, nav, amount
                 FROM user_ccq_trades
                 WHERE telegram_id = %s
                 ORDER BY trade_date, id
@@ -381,15 +381,18 @@ def _db_get_ccq_holdings(tg_id: str) -> list:
         log.warning(f"[portfolio] _db_get_ccq_holdings: {e}")
         return []
     h: dict = {}
-    for code, tx_type, units, nav in rows:
-        units = float(units or 0); nav = float(nav or 0)
+    for code, tx_type, units, nav, amount in rows:
+        units = float(units or 0); nav = float(nav or 0); amount = float(amount or 0)
         if tx_type == "buy":
             if code not in h: h[code] = {"units": 0.0, "total_cost": 0.0}
             h[code]["units"]      += units
             h[code]["total_cost"] += units * nav
         elif tx_type == "dividend":
             if code not in h: h[code] = {"units": 0.0, "total_cost": 0.0}
+            # CCQ tái đầu tư → cộng units; tiền mặt (units=0) → giảm cost basis như TCinvest
             h[code]["units"] += units
+            if units <= 0 and amount > 0:
+                h[code]["total_cost"] -= amount
         elif tx_type == "sell" and code in h and h[code]["units"] > 0:
             frac = min(units / h[code]["units"], 1.0)
             h[code]["total_cost"] -= h[code]["total_cost"] * frac
@@ -1516,13 +1519,15 @@ class MiniAppHandler(BaseHTTPRequestHandler):
                     nav    = float(t.get("nav", 0))
                     amount = float(t.get("amount", units * nav))
                     note   = str(t.get("note", ""))
-                    if not code or units <= 0: continue
+                    is_div = tx == "dividend"
+                    if not code or (units <= 0 and not is_div): continue
+                    if is_div and units <= 0 and amount <= 0: continue
                     # Deduplicate
                     cur.execute("""
                         SELECT 1 FROM user_ccq_trades
                         WHERE telegram_id=%s AND code=%s AND trade_date=%s
-                          AND ABS(units-%s)<0.01
-                    """, [tg_id, code, dt, units])
+                          AND type=%s AND ABS(units-%s)<0.01
+                    """, [tg_id, code, dt, tx, units])
                     if cur.fetchone(): continue
                     cur.execute("""
                         INSERT INTO user_ccq_trades
