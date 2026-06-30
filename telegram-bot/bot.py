@@ -3045,16 +3045,17 @@ def main():
     schedule.every().day.at("18:30").do(job_harvest_nav)
     schedule.every().day.at("00:01").do(job_watchdog_ping)
 
-    log.info("Chạy signal check khởi động...")
-    job_check_signals()
-
-    # Start Telegram Mini App HTTP server
+    # Start Telegram Mini App HTTP server TRƯỚC để Railway health check pass
     try:
         from miniapp_server import start_in_thread as _start_miniapp
         _start_miniapp()
         log.info(f"[miniapp] Server started on :{os.environ.get('PORT_MINIAPP', 8443)}")
     except Exception as _e:
         log.warning(f"[miniapp] Could not start mini app server: {_e}")
+
+    # Chạy signal check khởi động ở background để không block HTTP server
+    threading.Thread(target=job_check_signals, daemon=True, name="startup-signal-check").start()
+    log.info("Chạy signal check khởi động (background)...")
 
     t = threading.Thread(target=command_handler, daemon=True, name="cmd-handler")
     t.start()
