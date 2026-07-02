@@ -1208,7 +1208,7 @@ def job_morning():
     # Fetch giá vàng mỗi sáng (vang.today API, không cần auth)
     try:
         import sys as _sys
-        _gold_script = Path(__file__).parent.parent / "scripts" / "fetch_gold.py"
+        _gold_script = Path(__file__).parent / "fetch_gold.py"
         if _gold_script.exists():
             _sys.path.insert(0, str(_gold_script.parent))
             import importlib.util as _ilu

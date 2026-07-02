@@ -9,9 +9,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy bot code
 COPY telegram-bot/ ./telegram-bot/
 
-# Copy scripts (fetch_gold.py, etc.) — cần thiết cho job_morning
-COPY scripts/ ./scripts/
-
 # /data = persistent volume (mount qua Railway Volumes UI)
 RUN mkdir -p /data
 
