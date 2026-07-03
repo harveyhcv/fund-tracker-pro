@@ -766,18 +766,18 @@ def _morning_gold_summary(cfg: dict, profile: dict) -> list:
         with conn.cursor() as cur:
             cur.execute("""
                 SELECT buy_price::float, sell_price::float, price_date::text
-                FROM gold_prices WHERE source='SJC'
-                ORDER BY price_date DESC LIMIT 1
+                FROM gold_prices WHERE product='SJC_1L'
+                ORDER BY price_date DESC, source DESC LIMIT 1
             """)
             row = cur.fetchone()
             # Tín hiệu RSI đơn giản
             cur.execute("""
                 SELECT sell_price::float FROM gold_prices
-                WHERE source='SJC' ORDER BY price_date DESC LIMIT 20
+                WHERE product='SJC_1L' ORDER BY price_date DESC LIMIT 20
             """)
             hist = [r[0] for r in cur.fetchall()]
-        conn.close()
         if not row:
+            conn.close()
             return []
         buy, sell, dt = row
         buy_m  = buy  / 1_000_000
@@ -824,6 +824,7 @@ def _morning_gold_summary(cfg: dict, profile: dict) -> list:
                 f"   Nắm: <b>{total_l:.4f} lượng</b>  "
                 f"{icon} {sign}{int(pnl):,}đ  ({sign}{pnl/total_cost*100:.2f}%)"
             )
+        conn.close()
     except Exception as e:
         log.warning(f"[gold_morning] {e}")
     return lines
