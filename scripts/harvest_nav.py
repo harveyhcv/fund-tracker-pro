@@ -498,7 +498,7 @@ def cmd_backfill(conn, only_code: Optional[str] = None) -> None:
 
 # ── Mode: DAILY ────────────────────────────────────────────────────────────────
 
-def cmd_daily(conn, only_code: Optional[str] = None) -> int:
+def cmd_daily(conn, only_code: Optional[str] = None, jwt: Optional[str] = None) -> int:
     """
     Chỉ fetch điểm NAV MỚI (từ nav_date cuối trong DB + 1 ngày đến hôm nay).
     Thiết kế để chạy hàng ngày lúc 18:30 — nhẹ, nhanh (~30-60s cho 50 quỹ).
@@ -512,7 +512,10 @@ def cmd_daily(conn, only_code: Optional[str] = None) -> int:
     # JWT cho quỹ TCinvest — endpoint public (apipubaws) đã chết (404), nên
     # quỹ tcbs phải fetch qua TCinvest chart-nav có token. Không có token thì
     # bỏ qua quỹ tcbs (fmarket vẫn chạy bình thường).
-    jwt = _load_jwt_from_config()
+    # Ưu tiên jwt truyền trực tiếp (vd: từ --jwt CLI arg, luôn mới nhất từ
+    # /admin settoken) hơn _load_jwt_from_config() (có thể đọc nhầm bản
+    # config.json cũ build-time nếu DATA_DIR không khớp).
+    jwt = jwt or _load_jwt_from_config()
     if jwt:
         log("🔑 Có JWT TCinvest — quỹ tcbs sẽ fetch qua chart-nav")
     else:
@@ -940,14 +943,28 @@ def cmd_tcinvest_nodb(jwt: str, out_path: Optional[str] = None) -> None:
 
 
 def _load_jwt_from_config() -> str:
-    """Đọc TCBS JWT từ config.json. Returns "" nếu không có."""
-    cfg_path = ROOT / "telegram-bot" / "config.json"
-    if cfg_path.exists():
-        try:
-            cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
-            return cfg.get("tcbs_token", "")
-        except Exception:
-            pass
+    """Đọc TCBS JWT từ config.json.
+
+    Ưu tiên $DATA_DIR/config.json (Railway volume — nơi bot.py/miniapp_server.py
+    thực sự đọc/ghi tcbs_token qua /admin settoken). Fallback về
+    telegram-bot/config.json (bản build-time trong Docker image, chỉ dùng khi
+    chạy local không có DATA_DIR) — bản này KHÔNG BAO GIỜ được cập nhật bởi
+    /admin settoken trên Railway nên có thể chứa token cũ/hết hạn.
+    """
+    candidates = []
+    data_dir = os.environ.get("DATA_DIR")
+    if data_dir:
+        candidates.append(Path(data_dir) / "config.json")
+    candidates.append(ROOT / "telegram-bot" / "config.json")
+    for cfg_path in candidates:
+        if cfg_path.exists():
+            try:
+                cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+                token = cfg.get("tcbs_token", "")
+                if token:
+                    return token
+            except Exception:
+                pass
     return ""
 
 
@@ -1038,7 +1055,7 @@ Kiểm tra:
         if args.backfill:
             cmd_backfill(conn, only_code=args.code)
         if args.daily:
-            cmd_daily(conn, only_code=args.code)
+            cmd_daily(conn, only_code=args.code, jwt=args.jwt)
     finally:
         conn.close()
 
