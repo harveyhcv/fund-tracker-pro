@@ -108,35 +108,59 @@ def _req(url: str, timeout: int = 12) -> bytes:
 
 def fetch_giavang_org(today: date) -> Optional[dict]:
     """
-    Scrape giavang.org main page — giá được nhúng trực tiếp trong HTML.
+    Scrape giavang.org main page — khối "GIÁ VÀNG SJC HÔM NAY" ở đầu trang chứa
+    đúng 2 <span class="gold-price"> đầu tiên: Mua vào rồi Bán ra của SJC Miếng.
     Giá dạng "145.400" = 145,400 nghìn đồng/lượng = 145,400,000 VND/lượng.
-    Chiến lược: lấy các cặp (buy, sell) nằm gần nhau (<10M VND) trong vùng 80-250M.
+
+    KHÔNG dùng heuristic quét toàn trang lấy cặp số đầu tiên trong khoảng hợp lệ —
+    cách đó từng vô tình bắt nhầm giá của tổ chức khác (PNJ/DOJI/Bảo Tín...) xuất
+    hiện sớm hơn trong HTML, cho ra giá sai ~3M VND/lượng so với giá SJC thật.
     """
     url = "https://giavang.org/"
     try:
         html = _req(url, timeout=15).decode("utf-8", errors="replace")
-        # Giá SJC dạng "145.400" (dấu chấm = phân cách nghìn, không phải thập phân)
-        nums_raw = re.findall(r"\b(\d{3}\.\d{3})\b", html)
-        prices = []
-        seen = set()
-        for n in nums_raw:
-            try:
-                v = int(n.replace(".", "")) * 1000  # 145.400 → 145400 → 145,400,000
-                if 80_000_000 < v < 250_000_000 and v not in seen:
-                    prices.append(v)
-                    seen.add(v)
-            except ValueError:
-                pass
-        # Tìm cặp (buy, sell) đầu tiên: buy < sell, chênh lệch 0.5M-10M
-        for i in range(len(prices) - 1):
-            buy  = prices[i]
-            sell = prices[i + 1]
-            diff = sell - buy
-            if 500_000 <= diff <= 10_000_000:
+        spans = re.findall(r'<span class="gold-price">\s*([\d.]+)', html)
+        if len(spans) >= 2:
+            buy  = int(spans[0].replace(".", "")) * 1000
+            sell = int(spans[1].replace(".", "")) * 1000
+            if 80_000_000 < buy < 250_000_000 and buy < sell:
                 return {"buy": buy, "sell": sell, "source_url": url}
     except Exception as e:
         print(f"  giavang.org: {e}", file=sys.stderr)
     return None
+
+
+def fetch_giavang_org_history(days: int = 14) -> "list[dict]":
+    """Lấy lịch sử SJC Mua/Bán từ biểu đồ nhúng sẵn trong trang (var seriesOptions).
+    Trả về [{date, buy, sell}] — dùng để backfill các ngày bị miss (vd: job chưa
+    chạy do bot restart/deploy). Giá trị chart tính theo triệu đồng (vd 148.4 → 148,400,000đ).
+    """
+    url = "https://giavang.org/"
+    try:
+        html = _req(url, timeout=15).decode("utf-8", errors="replace")
+        buy_m  = re.search(r'name:"Mua vào",data:(\[\[.*?\]\])', html)
+        sell_m = re.search(r'name:"Bán ra",data:(\[\[.*?\]\])', html)
+        if not (buy_m and sell_m):
+            return []
+        import json as _json
+        from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+        vn_tz = _tz(_td(hours=7))
+        buy_pts  = _json.loads(buy_m.group(1))
+        sell_pts = _json.loads(sell_m.group(1))
+        buy_by_date  = {_dt.fromtimestamp(t/1000, tz=vn_tz).date().isoformat(): v for t, v in buy_pts}
+        sell_by_date = {_dt.fromtimestamp(t/1000, tz=vn_tz).date().isoformat(): v for t, v in sell_pts}
+        result = []
+        for d in sorted(buy_by_date.keys())[-days:]:
+            if d in sell_by_date:
+                result.append({
+                    "date": d,
+                    "buy":  round(buy_by_date[d]  * 1_000_000),
+                    "sell": round(sell_by_date[d] * 1_000_000),
+                })
+        return result
+    except Exception as e:
+        print(f"  giavang.org history: {e}", file=sys.stderr)
+        return []
 
 
 # ── Nguồn 2: DOJI scrape (cross-check + nhẫn) ────────────────────────────────
@@ -258,6 +282,29 @@ def run_daily(verbose: bool = True) -> dict:
     return saved
 
 
+def run_backfill(days: int = 14, verbose: bool = True) -> int:
+    """Điền các ngày SJC_1L bị thiếu trong gold_prices (vd: bot restart/deploy làm
+    job_morning bỏ lỡ vài ngày) bằng lịch sử nhúng sẵn trong giavang.org."""
+    hist = fetch_giavang_org_history(days=days)
+    if not hist:
+        if verbose:
+            print("  Không lấy được lịch sử giavang.org")
+        return 0
+    conn = connect_db()
+    ensure_schema(conn)
+    filled = 0
+    for pt in hist:
+        d = date.fromisoformat(pt["date"])
+        upsert(conn, d, "VANGTODAYAPI", "SJC_1L", pt["buy"], pt["sell"],
+               extra={"source": "giavang.org", "source_url": "https://giavang.org/", "backfilled": True})
+        filled += 1
+        if verbose:
+            print(f"  ✅ {pt['date']}  Mua:{pt['buy']/1e6:.3f}M  Bán:{pt['sell']/1e6:.3f}M")
+    conn.commit()
+    conn.close()
+    return filled
+
+
 def run_status():
     conn = connect_db()
     with conn.cursor() as cur:
@@ -281,6 +328,7 @@ if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("--daily",  action="store_true")
     p.add_argument("--status", action="store_true")
+    p.add_argument("--backfill", type=int, metavar="DAYS", help="Điền N ngày gần nhất còn thiếu")
     args = p.parse_args()
     if args.daily:
         print(f"Fetch gold ({date.today()})...")
@@ -288,5 +336,9 @@ if __name__ == "__main__":
         print("Done")
     elif args.status:
         run_status()
+    elif args.backfill:
+        print(f"Backfill {args.backfill} ngày gần nhất từ giavang.org...")
+        n = run_backfill(days=args.backfill)
+        print(f"Done — {n} ngày đã điền")
     else:
         p.print_help()
