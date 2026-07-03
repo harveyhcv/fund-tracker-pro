@@ -144,7 +144,14 @@ FUND_CATALOG: dict = {
 
 
 def _ensure_config_exists():
-    """Tạo config.json tối thiểu từ ENV nếu chưa có (first-run trên cloud)."""
+    """Tạo config.json tối thiểu từ ENV nếu chưa có (first-run trên cloud).
+
+    CẢNH BÁO: nếu dòng log "[BOOTSTRAP]" xuất hiện SAU LẦN CHẠY ĐẦU TIÊN
+    (tức là bot đã từng có config.json với users đã đăng ký), điều đó có
+    nghĩa là Railway volume /data KHÔNG persistent — mỗi lần redeploy sẽ
+    mất toàn bộ profiles (users đăng ký qua /register) + tcbs_token đã lưu.
+    → Kiểm tra Railway Dashboard → Volumes → đảm bảo có volume mount tại /data.
+    """
     if CONFIG_FILE.exists():
         return
     bot_token = os.environ.get("BOT_TOKEN", "")
@@ -164,7 +171,12 @@ def _ensure_config_exists():
         },
     }
     save_config(cfg)
-    log.info(f"[BOOTSTRAP] config.json tạo từ ENV (admin={cfg['admin_telegram_id']})")
+    log.warning(
+        f"[BOOTSTRAP] ⚠️ config.json KHÔNG TỒN TẠI tại {CONFIG_FILE} — đã tạo mới rỗng "
+        f"(admin={cfg['admin_telegram_id']}). Nếu đây không phải lần deploy đầu tiên, "
+        f"volume /data đã bị mất dữ liệu — TẤT CẢ profiles đã đăng ký (vd: /register) "
+        f"và tcbs_token đã lưu đều bị XÓA. Kiểm tra Railway Volumes ngay."
+    )
 
 
 def save_config(cfg: dict):
@@ -3092,6 +3104,8 @@ def main():
         return
 
     config = load_config()
+    log.info(f"[STARTUP] config.json: {len(config.get('profiles', []))} profiles đã đăng ký — "
+             f"{[p.get('name') for p in config.get('profiles', [])]}")
     # Reconcile profile admin (Harvey): đảm bảo đủ 5 quỹ + portfolio trên /data volume
     if reconcile_admin_profile(config):
         save_config(config)
