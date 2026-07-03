@@ -1268,7 +1268,7 @@ def fetch_all(config: dict, codes: set) -> dict:
 
 def all_watched_codes(config: dict) -> set:
     codes = set(FUND_CATALOG.keys())  # Luôn fetch tất cả 43 quỹ để DB nav_history đầy đủ
-    for p in config.get("profiles", []):
+    for p in get_profiles(config):
         codes.update(p.get("watched_funds", []))
     return codes
 
@@ -1314,7 +1314,7 @@ def job_morning():
     state["last_morning"]      = datetime.now().isoformat()
     state["last_morning_date"] = today
     save_state(state)
-    for profile in config.get("profiles", []):
+    for profile in get_profiles(config):
         tg = profile.get("telegram_id", "")
         if not tg:
             log.warning(f"Profile '{profile['name']}' chưa có telegram_id")
@@ -1346,7 +1346,7 @@ def job_evening():
     state["last_evening"]      = datetime.now().isoformat()
     state["last_evening_date"] = today
     save_state(state)
-    for profile in config.get("profiles", []):
+    for profile in get_profiles(config):
         tg = profile.get("telegram_id", "")
         if not tg:
             continue
@@ -1382,7 +1382,7 @@ def job_check_signals():
             prev_signals[code] = new_sig
             continue
         log.info(f"  🔔 SIGNAL CHANGE: {code}  {old_sig!r} → {new_sig!r}")
-        for profile in config.get("profiles", []):
+        for profile in get_profiles(config):
             if code not in profile.get("watched_funds", []):
                 continue
             tg = profile.get("telegram_id", "")
@@ -1517,7 +1517,7 @@ def job_nav_change_alert():
         return
 
     log.info(f"[nav-alert] NAV mới: {sorted(newly_published.keys())}")
-    for profile in config.get("profiles", []):
+    for profile in get_profiles(config):
         tg = str(profile.get("telegram_id", ""))
         if not tg.lstrip("-").isdigit():
             continue
@@ -1554,7 +1554,7 @@ def job_dca_reminder():
     if not token or token.startswith("NHAP"):
         return
     log.info("══ JOB: DCA Monthly Reminder ══")
-    for profile in config.get("profiles", []):
+    for profile in get_profiles(config):
         budget = profile.get("monthly_dca", 0)
         if not budget:
             continue
@@ -2069,7 +2069,29 @@ def _cmd_add_trade(
 # TELEGRAM COMMAND HANDLER (long-polling)
 # ═══════════════════════════════════════
 
+def get_profiles(config: dict) -> list:
+    """Danh sách profiles (users đã /register). Nguồn chính: bảng bot_profiles trên
+    PostgreSQL (persistent, không phụ thuộc Railway volume). Fallback config.json
+    profiles nếu DB chưa sẵn sàng — giữ bot hoạt động được kể cả khi DB down.
+    """
+    if _DB_AVAILABLE and _db.is_available():
+        try:
+            db_profiles = _db.list_profiles()
+            if db_profiles:
+                return db_profiles
+        except Exception as e:
+            log.warning(f"[get_profiles] DB lỗi, fallback config.json: {e}")
+    return config.get("profiles", [])
+
+
 def find_profile_by_chat(config: dict, chat_id: str) -> Optional[dict]:
+    if _DB_AVAILABLE and _db.is_available():
+        try:
+            p = _db.find_profile(chat_id)
+            if p:
+                return p
+        except Exception as e:
+            log.warning(f"[find_profile_by_chat] DB lỗi, fallback config.json: {e}")
     for p in config.get("profiles", []):
         tg = str(p.get("telegram_id", "")).strip().lstrip("@")
         if tg and tg == chat_id.strip().lstrip("@"):
@@ -2096,12 +2118,28 @@ _ADMIN_PROFILE_SEED = {
 def reconcile_admin_profile(config: dict) -> bool:
     """Đảm bảo profile admin có đủ watched_funds + portfolio (seed).
 
-    Trả về True nếu config bị thay đổi (cần save). An toàn idempotent — chỉ bổ sung
+    Trả về True nếu config.json bị thay đổi (cần save). An toàn idempotent — chỉ bổ sung
     quỹ thiếu và thêm portfolio nếu chưa có, KHÔNG ghi đè dữ liệu user đã nhập.
+
+    Từ Giai đoạn 1 (scaling): nguồn thật của profile là bảng bot_profiles trên PostgreSQL
+    (persistent qua redeploy, không phụ thuộc Railway volume). Hàm này reconcile CẢ HAI —
+    DB là chính, config.json chỉ giữ để fallback khi DB down.
     """
     admin_id = str(config.get("admin_telegram_id", "")).strip()
     if not admin_id or admin_id.startswith("NHAP"):
         return False
+
+    if _DB_AVAILABLE and _db.is_available():
+        try:
+            result = _db.ensure_watched_funds(
+                admin_id, "Harvey", _ADMIN_PROFILE_SEED["watched_funds"], is_admin=True
+            )
+            if result.get("created"):
+                log.info(f"[reconcile] Tạo profile admin Harvey trong DB ({admin_id})")
+            elif result.get("changed"):
+                log.info(f"[reconcile] Bổ sung watched_funds admin trong DB: {result['watched_funds']}")
+        except Exception as e:
+            log.warning(f"[reconcile] DB lỗi, dùng config.json: {e}")
 
     profiles = config.setdefault("profiles", [])
     admin = None
@@ -2346,14 +2384,25 @@ def command_handler():
                         reg_name = parts[1].strip() if len(parts) > 1 else tg_name or f"User_{chat_id[-4:]}"
                         cfg_w = load_config()
                         default_funds = cfg_w.get("default_watched_funds", ["TCBF", "SSISCA", "VCBFBCF"])
-                        new_p = {"name": reg_name, "telegram_id": chat_id, "watched_funds": default_funds}
-                        cfg_w.setdefault("profiles", []).append(new_p)
-                        save_config(cfg_w)
-                        log.info(f"[REGISTER] New profile: {reg_name} ({chat_id})")
+                        # Nguồn chính: bảng bot_profiles trên PostgreSQL — persistent qua redeploy.
+                        # Fallback: config.json (nếu DB tạm thời không khả dụng).
+                        db_ok = False
+                        if _DB_AVAILABLE and _db.is_available():
+                            try:
+                                _db.create_profile(chat_id, reg_name, default_funds)
+                                db_ok = True
+                            except Exception as e:
+                                log.error(f"[REGISTER] DB lỗi, fallback config.json: {e}")
+                        if not db_ok:
+                            new_p = {"name": reg_name, "telegram_id": chat_id, "watched_funds": default_funds}
+                            cfg_w.setdefault("profiles", []).append(new_p)
+                            save_config(cfg_w)
+                        log.info(f"[REGISTER] New profile: {reg_name} ({chat_id}) db={db_ok}")
                         tg_send(token, chat_id, (f"✅ <b>Tài khoản đã tạo!</b>\n\nTên: <b>{reg_name}</b>\nChat ID: <code>{chat_id}</code>\nQuỹ theo dõi: {', '.join(default_funds)}\n\nGõ /portfolio để xem danh mục, /app để mở Mini App."))
                         admin_id = cfg_w.get("admin_telegram_id", "")
                         if admin_id and admin_id != chat_id:
-                            tg_send(token, admin_id, (f"🔔 <b>User mới đăng ký</b>\nTên: <b>{reg_name}</b>\nChat ID: <code>{chat_id}</code>\nTổng profiles: {len(cfg_w.get('profiles', []))}"))
+                            total_profiles = len(get_profiles(cfg_w))
+                            tg_send(token, admin_id, (f"🔔 <b>User mới đăng ký</b>\nTên: <b>{reg_name}</b>\nChat ID: <code>{chat_id}</code>\nTổng profiles: {total_profiles}"))
                         continue
 
                     if cmd in ("/start", "/help"):
@@ -2874,7 +2923,7 @@ def command_handler():
                             continue
                         sub = text.split()[1].lower() if len(text.split()) > 1 else ""
                         if sub == "users":
-                            profiles_list = config.get("profiles", [])
+                            profiles_list = get_profiles(config)
                             if not profiles_list:
                                 tg_send(token, chat_id, "📭 Chưa có user nào đăng ký.")
                             else:
@@ -2887,18 +2936,26 @@ def command_handler():
                                 tg_send(token, chat_id, "\n".join(lines))
                         elif sub == "kick" and len(text.split()) > 2:
                             target_id = text.split()[2]
+                            deleted = False
+                            if _DB_AVAILABLE and _db.is_available():
+                                try:
+                                    deleted = _db.delete_profile(target_id)
+                                except Exception as e:
+                                    log.error(f"[admin kick] DB lỗi: {e}")
                             cfg_w = load_config()
                             before = len(cfg_w.get("profiles", []))
                             cfg_w["profiles"] = [p for p in cfg_w.get("profiles", []) if str(p.get("telegram_id")) != target_id]
                             if len(cfg_w["profiles"]) < before:
                                 save_config(cfg_w)
+                                deleted = True
+                            if deleted:
                                 tg_send(token, chat_id, f"✅ Đã xóa profile <code>{target_id}</code>")
                             else:
                                 tg_send(token, chat_id, f"⚠️ Không tìm thấy <code>{target_id}</code>")
                         elif sub == "broadcast" and len(text.split()) > 2:
                             bcast_msg = " ".join(text.split()[2:])
                             sent_count = 0
-                            for p in config.get("profiles", []):
+                            for p in get_profiles(config):
                                 tg = str(p.get("telegram_id", ""))
                                 if tg.lstrip("-").isdigit():
                                     if tg_send(token, tg, f"📢 <b>Thông báo</b>\n\n{bcast_msg}"):
@@ -3104,19 +3161,21 @@ def main():
         return
 
     config = load_config()
-    log.info(f"[STARTUP] config.json: {len(config.get('profiles', []))} profiles đã đăng ký — "
-             f"{[p.get('name') for p in config.get('profiles', [])]}")
-    # Reconcile profile admin (Harvey): đảm bảo đủ 5 quỹ + portfolio trên /data volume
+    # Reconcile profile admin (Harvey): đảm bảo đủ 5 quỹ + portfolio, ghi vào DB (chính)
+    # + config.json (fallback) — xem reconcile_admin_profile() cho chi tiết.
     if reconcile_admin_profile(config):
         save_config(config)
         log.info("[reconcile] config.json đã cập nhật profile admin")
+    startup_profiles = get_profiles(config)
+    log.info(f"[STARTUP] {len(startup_profiles)} profiles đã đăng ký (nguồn: "
+             f"{'DB' if _DB_AVAILABLE and _db.is_available() else 'config.json'}) — "
+             f"{[p.get('name') for p in startup_profiles]}")
     sched  = config.get("schedule", {})
     t_morn = sched.get("morning_report", "08:00")
     t_eve  = sched.get("evening_report", "17:30")
     t_int  = int(sched.get("signal_check_interval_minutes", 60))
 
     log.info(f"Lịch: sáng={t_morn}, chiều={t_eve}, signal_check={t_int}m")
-    log.info(f"Profiles: {[p['name'] for p in config.get('profiles', [])]}")
     log.info(f"Tất cả quỹ theo dõi: {sorted(all_watched_codes(config))}")
 
     for day in (schedule.every().monday, schedule.every().tuesday,

@@ -61,6 +61,15 @@ def _json(handler, data, status=200):
 
 
 def _find_profile(cfg: dict, telegram_id: str):
+    """Tìm profile theo telegram_id. Nguồn chính: bảng bot_profiles trên PostgreSQL
+    (persistent qua redeploy) — cùng nguồn với bot.py. Fallback config.json nếu DB down."""
+    if _db_mod is not None and _db_mod.is_available():
+        try:
+            p = _db_mod.find_profile(telegram_id)
+            if p:
+                return p
+        except Exception as e:
+            log.warning(f"[_find_profile] DB lỗi, fallback config.json: {e}")
     for p in cfg.get("profiles", []):
         if str(p.get("telegram_id", "")) == str(telegram_id):
             return p

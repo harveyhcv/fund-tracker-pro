@@ -449,6 +449,148 @@ def get_nav_latest(fund_code: str) -> "dict | None":
             return dict(row) if row else None
 
 
+# ─── BOT PROFILES (users registered via /register) ──────────────────────────
+# Bảng nhẹ, KHÔNG dùng chung với `users` (bảng đó gắn với hệ mã hoá portfolio,
+# auth_hash/enc_salt NOT NULL — không phù hợp cho đăng ký công khai qua /register).
+
+def _ensure_bot_profiles_table(conn) -> None:
+    with conn.cursor() as cur:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS bot_profiles (
+                telegram_id   BIGINT PRIMARY KEY,
+                name          TEXT NOT NULL,
+                is_admin      BOOLEAN NOT NULL DEFAULT false,
+                is_active     BOOLEAN NOT NULL DEFAULT true,
+                watched_funds TEXT[] NOT NULL DEFAULT '{}',
+                monthly_dca   NUMERIC DEFAULT 0,
+                created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        """)
+
+
+def _row_to_profile(r: dict) -> dict:
+    return {
+        "name":          r["name"],
+        "telegram_id":   str(r["telegram_id"]),
+        "watched_funds": list(r["watched_funds"] or []),
+        "monthly_dca":   float(r["monthly_dca"] or 0),
+        "is_admin":      bool(r["is_admin"]),
+    }
+
+
+def list_profiles() -> "list[dict]":
+    """Tất cả profile đang active. Trả về [] nếu DB chưa sẵn sàng hoặc bảng rỗng."""
+    if not is_available():
+        return []
+    with get_conn() as conn:
+        _ensure_bot_profiles_table(conn)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT telegram_id, name, watched_funds, monthly_dca, is_admin
+                FROM bot_profiles WHERE is_active = true ORDER BY created_at
+            """)
+            return [_row_to_profile(r) for r in cur.fetchall()]
+
+
+def find_profile(telegram_id) -> "dict | None":
+    if not is_available():
+        return None
+    try:
+        tg = int(telegram_id)
+    except (TypeError, ValueError):
+        return None
+    with get_conn() as conn:
+        _ensure_bot_profiles_table(conn)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT telegram_id, name, watched_funds, monthly_dca, is_admin
+                FROM bot_profiles WHERE telegram_id = %s AND is_active = true
+            """, (tg,))
+            r = cur.fetchone()
+            return _row_to_profile(r) if r else None
+
+
+def create_profile(telegram_id, name: str, watched_funds: "list[str]", is_admin: bool = False) -> dict:
+    tg = int(telegram_id)
+    with get_conn() as conn:
+        _ensure_bot_profiles_table(conn)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                INSERT INTO bot_profiles (telegram_id, name, watched_funds, is_admin)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (telegram_id) DO UPDATE SET
+                    is_active = true, name = EXCLUDED.name, updated_at = NOW()
+                RETURNING telegram_id, name, watched_funds, monthly_dca, is_admin
+            """, (tg, name, watched_funds, is_admin))
+            return _row_to_profile(cur.fetchone())
+
+
+def delete_profile(telegram_id) -> bool:
+    """Soft-delete (is_active=false) — giữ lịch sử, /register có thể tạo lại."""
+    if not is_available():
+        return False
+    tg = int(telegram_id)
+    with get_conn() as conn:
+        _ensure_bot_profiles_table(conn)
+        with conn.cursor() as cur:
+            cur.execute("UPDATE bot_profiles SET is_active = false WHERE telegram_id = %s", (tg,))
+            return cur.rowcount > 0
+
+
+def ensure_watched_funds(telegram_id, name: str, funds: "list[str]", is_admin: bool = False) -> dict:
+    """Idempotent: tạo profile nếu chưa có, hoặc merge thêm watched_funds còn thiếu
+    (union, KHÔNG xoá quỹ user đã tự thêm). Dùng cho reconcile admin lúc startup."""
+    tg = int(telegram_id)
+    with get_conn() as conn:
+        _ensure_bot_profiles_table(conn)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT watched_funds FROM bot_profiles WHERE telegram_id = %s", (tg,))
+            row = cur.fetchone()
+            if row is None:
+                cur.execute("""
+                    INSERT INTO bot_profiles (telegram_id, name, watched_funds, is_admin)
+                    VALUES (%s, %s, %s, %s)
+                """, (tg, name, funds, is_admin))
+                return {"created": True, "changed": True, "watched_funds": funds}
+            existing = list(row["watched_funds"] or [])
+            merged = existing + [f for f in funds if f not in existing]
+            if merged != existing:
+                cur.execute(
+                    "UPDATE bot_profiles SET watched_funds = %s, updated_at = NOW() WHERE telegram_id = %s",
+                    (merged, tg),
+                )
+                return {"created": False, "changed": True, "watched_funds": merged}
+            return {"created": False, "changed": False, "watched_funds": existing}
+
+
+def migrate_profiles_from_config(profiles: "list[dict]", admin_telegram_id: str = "") -> int:
+    """One-time migration: nhận list profile dict từ config.json, insert vào bot_profiles
+    nếu chưa tồn tại (không ghi đè nếu đã có). Trả về số profile đã insert mới."""
+    if not is_available():
+        return 0
+    inserted = 0
+    with get_conn() as conn:
+        _ensure_bot_profiles_table(conn)
+        with conn.cursor() as cur:
+            for p in profiles:
+                tg_raw = str(p.get("telegram_id", "")).strip()
+                if not tg_raw.lstrip("-").isdigit():
+                    continue  # bỏ qua placeholder kiểu "CHUA_CO_ID"
+                tg = int(tg_raw)
+                name = p.get("name", f"User_{tg}")
+                funds = p.get("watched_funds", []) or []
+                dca = float(p.get("monthly_dca", 0) or 0)
+                is_admin = tg_raw == str(admin_telegram_id).strip()
+                cur.execute("""
+                    INSERT INTO bot_profiles (telegram_id, name, watched_funds, monthly_dca, is_admin)
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON CONFLICT (telegram_id) DO NOTHING
+                """, (tg, name, funds, dca, is_admin))
+                inserted += cur.rowcount
+    return inserted
+
+
 # ─── POOL ────────────────────────────────────────────────────────────────────
 
 def close_pool() -> None:
