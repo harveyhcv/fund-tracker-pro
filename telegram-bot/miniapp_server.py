@@ -1300,31 +1300,32 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             import psycopg2
             conn = psycopg2.connect(db_url, connect_timeout=8)
             with conn.cursor() as cur:
+                _all_sources = "('SJC','GIAVANG_ORG','INTERNATIONAL','VANGTODAYAPI','DOJI_SCRAPE')"
                 if days > 0:
-                    cur.execute("""
+                    cur.execute(f"""
                         SELECT source, product, price_date::text, buy_price::float, sell_price::float, extra
                         FROM gold_prices
                         WHERE price_date >= CURRENT_DATE - INTERVAL %s
-                          AND source IN ('SJC','GIAVANG_ORG','INTERNATIONAL')
+                          AND source IN {_all_sources}
                         ORDER BY price_date
                     """, (f"{days} days",))
                 else:
-                    cur.execute("""
+                    cur.execute(f"""
                         SELECT source, product, price_date::text, buy_price::float, sell_price::float, extra
                         FROM gold_prices
-                        WHERE source IN ('SJC','GIAVANG_ORG','INTERNATIONAL')
+                        WHERE source IN {_all_sources}
                         ORDER BY price_date
                     """)
                 rows = cur.fetchall()
             conn.close()
-            # SJC data: merge GIAVANG_ORG (monthly, long history) + SJC (daily, 1yr)
-            # SJC source takes priority over GIAVANG_ORG for same date
+            # Priority: VANGTODAYAPI=2 > SJC=1 > GIAVANG_ORG=0 (cho cùng ngày)
+            _SJC_PRIORITY = {"VANGTODAYAPI": 2, "DOJI_SCRAPE": 2, "SJC": 1, "GIAVANG_ORG": 0}
             sjc_map = {}   # date -> {buy, sell, priority}
             xau_usd_pts, xau_vnd_pts = [], []
             usd_vnd_latest = None
             for src, prod, dt, buy, sell, extra in rows:
-                if prod == "SJC_1L" and src in ("GIAVANG_ORG", "SJC"):
-                    priority = 1 if src == "SJC" else 0
+                if prod == "SJC_1L" and src in _SJC_PRIORITY:
+                    priority = _SJC_PRIORITY[src]
                     if dt not in sjc_map or priority > sjc_map[dt]["p"]:
                         sjc_map[dt] = {"buy": buy, "sell": sell, "p": priority}
                 elif src == "INTERNATIONAL" and prod == "XAU_USD":
@@ -1333,6 +1334,12 @@ class MiniAppHandler(BaseHTTPRequestHandler):
                         usd_vnd_latest = extra["usd_vnd"]
                 elif src == "INTERNATIONAL" and prod == "XAU_VND_LUONG":
                     xau_vnd_pts.append({"date": dt, "val": buy})
+                elif src == "VANGTODAYAPI" and prod == "XAUUSD" and buy:
+                    # XAUUSD từ vang.today — dùng khi không có INTERNATIONAL
+                    if extra and "usd_vnd" in extra:
+                        usd_vnd_latest = extra.get("usd_vnd") or usd_vnd_latest
+                    if extra and extra.get("xau_vnd_luong"):
+                        xau_vnd_pts.append({"date": dt, "val": extra["xau_vnd_luong"]})
             sjc_buy  = [{"date": dt, "val": v["buy"]}  for dt, v in sorted(sjc_map.items())]
             sjc_sell = [{"date": dt, "val": v["sell"]} for dt, v in sorted(sjc_map.items())]
             _json(self, {
