@@ -1614,7 +1614,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
                     from bot import fetch_all as _fa, tg_send as _ts
 
                     # ── 1. harvest_nav.py --daily --jwt TOKEN (toàn bộ funds_master) ──
-                    script = Path(__file__).parent.parent / "scripts" / "harvest_nav.py"
+                    script = Path(__file__).parent / "harvest_nav.py"
                     harvest_out, harvest_err = "", ""
                     total_new, updated_funds = 0, []
                     if script.exists():

@@ -1586,9 +1586,9 @@ def job_harvest_nav():
     # Chạy harvest_nav.py --daily qua subprocess để tận dụng toàn bộ logic ở đó.
     # Dùng sys.executable để đảm bảo đúng Python environment (Railway virtualenv).
     import subprocess
-    script = Path(__file__).parent.parent / "scripts" / "harvest_nav.py"
+    script = Path(__file__).parent / "harvest_nav.py"
     if not script.exists():
-        log.error("[harvest] scripts/harvest_nav.py không tìm thấy")
+        log.error("[harvest] harvest_nav.py không tìm thấy")
         return
 
     try:
