@@ -609,6 +609,7 @@ function parseDecimal(s){
   return parseFloat(s.replace(/\./g,'')); // e.g. "26.451" → 26451
 }
 const USER_ID  = tg?.initDataUnsafe?.user?.id || new URLSearchParams(location.search).get('user_id') || '';
+const USER_NAME = tg?.initDataUnsafe?.user?.first_name || new URLSearchParams(location.search).get('name') || '';
 
 let _me=null, _signals=null, _tradeType='buy', _histCode=null, _histAllPoints=[];
 let _dcaStyle='dca', _goldData=null, _goldType='buy', _goldUnit='chi', _goldTrades=[];
@@ -720,8 +721,10 @@ async function apiFetch(path, timeoutMs=12000){
   const sep=path.includes('?')?'&':'?';
   const ctrl=new AbortController();
   const tid=setTimeout(()=>ctrl.abort(),timeoutMs);
+  let qs=USER_ID?sep+'user_id='+USER_ID:'';
+  if(USER_ID&&USER_NAME)qs+='&name='+encodeURIComponent(USER_NAME);
   try{
-    const res=await fetch(API_BASE+path+(USER_ID?sep+'user_id='+USER_ID:''),{signal:ctrl.signal});
+    const res=await fetch(API_BASE+path+qs,{signal:ctrl.signal});
     clearTimeout(tid);
     if(!res.ok)throw new Error(res.status);
     return res.json();

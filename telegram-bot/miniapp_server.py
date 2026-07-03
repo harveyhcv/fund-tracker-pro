@@ -861,8 +861,19 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         cfg     = _load_cfg()
         profile = _find_profile(cfg, tg_id)
         if not profile:
-            _json(self, {"error": "Profile không tìm thấy", "telegram_id": tg_id}, 404)
-            return
+            # Tự động đăng ký ngay trong Mini App — không cần gõ /register qua chat nữa.
+            # name lấy từ query param (frontend truyền Telegram WebApp initData.user.first_name).
+            reg_name = (qs.get("name") or [""])[0].strip() or f"User_{str(tg_id)[-4:]}"
+            default_funds = cfg.get("default_watched_funds", ["TCBF", "SSISCA", "VCBFBCF"])
+            if _db_mod is not None and _db_mod.is_available():
+                try:
+                    profile = _db_mod.create_profile(tg_id, reg_name, default_funds)
+                    log.info(f"[miniapp][auto-register] {reg_name} ({tg_id})")
+                except Exception as e:
+                    log.error(f"[miniapp][auto-register] DB lỗi: {e}")
+            if not profile:
+                _json(self, {"error": "Profile không tìm thấy", "telegram_id": tg_id}, 404)
+                return
         # Lấy signals cho watched_funds + tất cả quỹ trong portfolio
         watched  = profile.get("watched_funds", [])
         holdings = _db_get_ccq_holdings(tg_id)
