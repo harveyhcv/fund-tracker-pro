@@ -1235,7 +1235,7 @@ def _push_nav_to_server(nav_data: dict, config: dict):
 def _handle_tcbs_auth_error(config: dict, failed_codes: set):
     """Log khi TCBS token hết hạn — không gửi Telegram (settoken flow đã thay thế)."""
     log.warning(f"[TCBS-AUTH] Token hết hạn, không fetch được: {', '.join(sorted(failed_codes))}"
-                f" — Dùng /admin settoken <TOKEN> để cập nhật.")
+                f" — Cập nhật token mới qua Mini App (Admin → Settings).")
 
 
 
@@ -2502,14 +2502,6 @@ def command_handler():
                                     if tg_send(token, tg, f"📢 <b>Thông báo</b>\n\n{bcast_msg}"):
                                         sent_count += 1
                             tg_send(token, chat_id, f"✅ Đã gửi tới {sent_count} users")
-                        elif sub == "settoken" and len(text.split()) > 2:
-                            new_token = text.split()[2]
-                            cfg_w = load_config()
-                            cfg_w["tcbs_token"] = new_token
-                            save_config(cfg_w)
-                            config["tcbs_token"] = new_token
-                            tg_send(token, chat_id, "✅ Đã cập nhật TCBS token mới vào config.")
-
                         elif sub == "fixportfolio" and len(text.split()) >= 4:
                             # /admin fixportfolio TCBF avg_cost [units]
                             parts_fp = text.split()
@@ -2551,8 +2543,8 @@ def command_handler():
                                 "<code>/admin users</code> — Xem tất cả users\n"
                                 "<code>/admin kick CHATID</code> — Xóa user\n"
                                 "<code>/admin broadcast TIN NHẮN</code> — Broadcast tới tất cả\n"
-                                "<code>/admin settoken TOKEN</code> — Cập nhật TCBS token\n"
                                 "<code>/admin fixportfolio MÃ avg_cost [units]</code> — Sửa portfolio\n"
+                                "\n📱 Cập nhật TCBS token: dùng <b>Mini App</b> (Admin → Settings)"
                             ))
 
                     elif cmd == "/morning":
