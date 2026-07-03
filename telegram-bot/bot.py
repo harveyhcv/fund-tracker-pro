@@ -9,7 +9,8 @@
 ║    • 17:30 T2–T6 → Báo cáo cuối ngày               ║
 ║    • Mỗi 60 phút → Kiểm tra tín hiệu,              ║
 ║      chỉ gửi khi có thay đổi MUA/BÁN               ║
-║  Lệnh:  /nav  /signal  /morning  /evening  /help    ║
+║  Lệnh:  /register  /app  /admin  /help              ║
+║  (Tất cả tính năng khác đã chuyển vào Mini App)      ║
 ╚══════════════════════════════════════════════════════╝
 """
 
@@ -2398,7 +2399,7 @@ def command_handler():
                             cfg_w.setdefault("profiles", []).append(new_p)
                             save_config(cfg_w)
                         log.info(f"[REGISTER] New profile: {reg_name} ({chat_id}) db={db_ok}")
-                        tg_send(token, chat_id, (f"✅ <b>Tài khoản đã tạo!</b>\n\nTên: <b>{reg_name}</b>\nChat ID: <code>{chat_id}</code>\nQuỹ theo dõi: {', '.join(default_funds)}\n\nGõ /portfolio để xem danh mục, /app để mở Mini App."))
+                        tg_send(token, chat_id, (f"✅ <b>Tài khoản đã tạo!</b>\n\nTên: <b>{reg_name}</b>\nChat ID: <code>{chat_id}</code>\nQuỹ theo dõi: {', '.join(default_funds)}\n\nGõ /app để mở Mini App — xem danh mục, tín hiệu, giao dịch."))
                         admin_id = cfg_w.get("admin_telegram_id", "")
                         if admin_id and admin_id != chat_id:
                             total_profiles = len(get_profiles(cfg_w))
@@ -2561,9 +2562,8 @@ def command_handler():
 
                     elif cmd == "/evening":
                         tg_send(token, chat_id,
-                            "ℹ️ Báo cáo chiều đã bỏ.\n"
-                            "Bot tự động gửi cảnh báo khi tín hiệu MUA/BÁN thay đổi.\n"
-                            "Gõ /portfolio để xem danh mục ngay.")
+                            "📱 Xem báo cáo NAV + danh mục mới nhất trong <b>Mini App</b>.\n"
+                            "Gõ /app để mở. (Bot vẫn tự động gửi báo cáo chiều T2–T6 lúc 17:30)")
 
                     elif cmd == "/app" or cmd == "/miniapp":
                         _cmd_app(token, chat_id, profile)
