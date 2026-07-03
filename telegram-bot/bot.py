@@ -830,32 +830,40 @@ def _morning_gold_summary(cfg: dict, profile: dict) -> list:
 
 
 def msg_evening(profile: dict, nav_data: dict, morning_nav: dict) -> str:
-    now = datetime.now()
+    now   = datetime.now()
+    today = now.date().isoformat()
     lines = [
         f"🌆 <b>Báo Cáo Chiều — {now.strftime('%d/%m/%Y')}</b>",
         f"👤 <b>{profile['name']}</b>",
         LINE,
     ]
-    action_funds = []
+    action_funds  = []
+    outdated_note = []
     for code in profile.get("watched_funds", []):
         d = nav_data.get(code)
         if not d or d["nav"] == 0:
+            lines.append(f"⚫ <code>{code}</code>  <i>Chưa có dữ liệu</i>")
             continue
-        sig   = d["signal"]
-        emoji = "🟢" if "MUA" in sig else "🔴" if "BÁN" in sig else "⚪"
-        # So vs hôm qua (T-1) — chg_pct từ calc_signal, có ý nghĩa hơn "so sáng"
-        chg   = d.get("chg_pct", 0) or 0
-        chg_s = f"{'+' if chg >= 0 else ''}{chg:.2f}%"
+        sig      = d["signal"]
+        emoji    = "🟢" if "MUA" in sig else "🔴" if "BÁN" in sig else "⚪"
+        chg      = d.get("chg_pct", 0) or 0
+        chg_s    = f"{'+' if chg >= 0 else ''}{chg:.2f}%"
         chg_arrow = "▲" if chg > 0.02 else "▼" if chg < -0.02 else "─"
-        rsi_s = f"{d['rsi']:.0f}" if d["rsi"] is not None else "—"
+        rsi_s    = f"{d['rsi']:.0f}" if d["rsi"] is not None else "—"
+        # Kiểm tra NAV có phải mới nhất không
+        nav_date = d.get("nav_date", "")
+        is_outdated = nav_date and nav_date < today
+        stale_tag   = f" ⚠️<i>NAV {fmt_date(nav_date)}</i>" if is_outdated else ""
         lines.append(
             f"{emoji} <code>{code}</code>  <b>{fmt_nav(d['nav'])}</b>  "
-            f"{chg_arrow} {chg_s}  RSI {rsi_s}"
+            f"{chg_arrow} {chg_s}  RSI {rsi_s}{stale_tag}"
         )
+        if is_outdated:
+            outdated_note.append(code)
         if "MUA" in sig or "BÁN" in sig:
             action_funds.append(f"{code} {sig}")
 
-    # Portfolio P&L — đọc từ PostgreSQL (single source of truth)
+    # Portfolio CCQ P&L
     holdings = _get_portfolio_holdings(profile)
     if holdings:
         total_val = total_cost = 0.0
@@ -870,15 +878,79 @@ def msg_evening(profile: dict, nav_data: dict, morning_nav: dict) -> str:
             sign    = "+" if pnl >= 0 else ""
             lines.append(LINE)
             lines.append(
-                f"💼 <b>Danh mục:</b> {int(total_val):,}đ  "
+                f"💼 <b>Danh mục CCQ:</b> {int(total_val):,}đ  "
                 f"({'📈' if pnl >= 0 else '📉'} {sign}{int(pnl):,}đ  {sign}{pnl_pct:.2f}%)"
             )
 
+    # Giá vàng — chỉ hiển thị nếu profile có gold holdings
+    tg_id = str(profile.get("telegram_id", ""))
+    gold_lines = _gold_summary_lines(tg_id)
+    if gold_lines:
+        lines.append(LINE)
+        lines.extend(gold_lines)
+
     lines.append(LINE)
+    if outdated_note:
+        lines.append(f"⚠️ <i>NAV chưa cập nhật: {', '.join(outdated_note)} — có thể chưa công bố hôm nay.</i>")
     if action_funds:
         lines.append(f"⚡ {' · '.join(action_funds)}")
     lines.append(f"<i>Quỹ Tracker Pro · {now.strftime('%H:%M')}</i>")
     return "\n".join(lines)
+
+
+def _gold_summary_lines(tg_id: str) -> list:
+    """Trả về dòng tóm tắt vàng cho báo cáo chiều nếu user có holdings vàng."""
+    if not tg_id:
+        return []
+    try:
+        import psycopg2 as _pg2
+        db_url = load_config().get("database_url", "") or os.environ.get("DATABASE_URL", "")
+        if not db_url:
+            return []
+        conn = _pg2.connect(db_url, connect_timeout=6)
+        with conn.cursor() as cur:
+            # Kiểm tra user có gold holdings không
+            cur.execute("SELECT type, qty_luong::float, total_vnd::float FROM user_gold_trades WHERE telegram_id=%s ORDER BY trade_date", [tg_id])
+            trades = cur.fetchall()
+            if not trades:
+                conn.close()
+                return []
+            total_l = total_cost = 0.0
+            for tx_type, ql, tv in trades:
+                ql = float(ql or 0); tv = float(tv or 0)
+                if tx_type == "buy":
+                    total_l += ql; total_cost += tv
+                elif tx_type == "sell":
+                    frac = ql / total_l if total_l else 0
+                    total_cost -= total_cost * frac; total_l -= ql
+            if total_l < 0.001:
+                conn.close()
+                return []
+            # Lấy giá vàng mới nhất
+            cur.execute("""
+                SELECT sell_price::float, price_date::text
+                FROM gold_prices
+                WHERE product = 'SJC_1L'
+                ORDER BY price_date DESC, source DESC
+                LIMIT 1
+            """)
+            row = cur.fetchone()
+        conn.close()
+        if not row:
+            return []
+        sell, gdate = float(row[0]), row[1]
+        cur_val = total_l * sell
+        pnl     = cur_val - total_cost
+        sign    = "+" if pnl >= 0 else ""
+        icon    = "📈" if pnl >= 0 else "📉"
+        stale   = f" <i>(giá {fmt_date(gdate)})</i>" if gdate < date.today().isoformat() else ""
+        return [
+            f"🥇 <b>Vàng SJC:</b> {sell/1e6:.3f}M/lượng{stale}",
+            f"   Nắm: <b>{total_l:.4f} lượng</b>  {icon} {sign}{int(pnl):,}đ  ({sign}{pnl/total_cost*100:.2f}%)",
+        ]
+    except Exception as e:
+        log.warning(f"[gold_summary] {e}")
+        return []
 
 
 def msg_signal_alert(profile: dict, code: str, old_sig: str, new_sig: str, d: dict) -> str:
@@ -3043,7 +3115,7 @@ def main():
     schedule.every().day.at("09:00").do(job_backfill_settlement)
     schedule.every().day.at("09:00").do(job_dca_reminder)
     schedule.every().day.at("18:30").do(job_harvest_nav)
-    schedule.every().day.at("00:01").do(job_watchdog_ping)
+    # job_watchdog_ping đã bỏ — tin nhắn "Bot alive" không cần thiết
 
     # Start Telegram Mini App HTTP server TRƯỚC để Railway health check pass
     try:
