@@ -98,21 +98,34 @@ def _unit_to_luong(unit: str) -> float:
 
 
 def _calc_gold_signals(db_url: str) -> dict:
-    """Tính RSI, BB, MA cho giá SJC từ 60 ngày gần nhất."""
+    """Tính RSI, BB, MA cho giá SJC từ 60 ngày gần nhất.
+
+    Dùng product='SJC_1L' từ MỌI nguồn (không khoá cứng source='SJC' — nguồn đó
+    (webgia.com) đã ngừng cập nhật). Khi nhiều nguồn có cùng ngày, ưu tiên
+    VANGTODAYAPI/DOJI_SCRAPE (đang chạy hàng ngày) hơn SJC/GIAVANG_ORG (cũ, tĩnh).
+    """
     try:
         import psycopg2
         conn = psycopg2.connect(db_url, connect_timeout=6)
         with conn.cursor() as cur:
             cur.execute("""
-                SELECT price_date::text, sell_price::float
-                FROM gold_prices WHERE source='SJC'
-                ORDER BY price_date DESC LIMIT 60
+                SELECT DISTINCT ON (price_date) price_date::text, sell_price::float
+                FROM gold_prices
+                WHERE product = 'SJC_1L'
+                ORDER BY price_date DESC,
+                         CASE source
+                             WHEN 'VANGTODAYAPI' THEN 2
+                             WHEN 'DOJI_SCRAPE'  THEN 2
+                             WHEN 'SJC'          THEN 1
+                             ELSE 0
+                         END DESC
+                LIMIT 60
             """)
             rows = cur.fetchall()
         conn.close()
         if len(rows) < 10:
             return {}
-        rows = list(reversed(rows))
+        rows = list(reversed(rows))  # DB trả DESC theo ngày, đảo lại thành ASC để tính RSI
         dates  = [r[0] for r in rows]
         prices = [r[1] for r in rows]
         # RSI(14)
@@ -1259,14 +1272,17 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             except Exception as e:
                 prices = {"error": str(e)}
 
-        # Tính signals từ lịch sử SJC (30 ngày gần nhất)
+        # Tính signals từ lịch sử SJC (60 ngày gần nhất, mọi nguồn — xem _calc_gold_signals)
         signals = _calc_gold_signals(db_url) if db_url else {}
 
-        # Portfolio vàng — tìm SJC_1L từ bất kỳ source nào
+        # Portfolio vàng — chọn SJC_1L có date MỚI NHẤT trong số các nguồn (không ưu tiên cứng
+        # theo tên source — nguồn "SJC" (webgia.com) có thể ngừng cập nhật bất kỳ lúc nào).
+        # Hoà ngày thì ưu tiên VANGTODAYAPI/DOJI_SCRAPE (nguồn đang chạy hàng ngày).
+        _SJC_SRC_PRIORITY = {"VANGTODAYAPI": 2, "DOJI_SCRAPE": 2, "SJC": 1, "GIAVANG_ORG": 0}
+        sjc_candidates = [v for v in prices.values() if v.get("product") == "SJC_1L"]
         sjc_price_entry = (
-            prices.get("SJC:SJC_1L")
-            or prices.get("VANGTODAYAPI:SJC_1L")
-            or next((v for v in prices.values() if v.get("product") == "SJC_1L"), None)
+            max(sjc_candidates, key=lambda v: (v.get("date", ""), _SJC_SRC_PRIORITY.get(v.get("source"), 0)))
+            if sjc_candidates else None
         )
         portfolio = None
         if tg_id:
