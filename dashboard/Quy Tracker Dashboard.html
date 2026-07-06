@@ -656,9 +656,9 @@ const FUND_MASTER_LIST=[
   // fmarketId:null = chưa tìm thấy trên Fmarket, bỏ qua khi fetch
 
   // ── Techcombank Capital ──────────────────────────────────────
-  {code:'TCBF',   fmarketId:22,   tcbs:true, name:'Quỹ Trái Phiếu Techcombank',       type:'Trái phiếu'},
+  {code:'TCBF',   fmarketId:null, tcbs:true, name:'Quỹ Trái Phiếu Techcombank',       type:'Trái phiếu'},
   {code:'TCFF',   fmarketId:null, tcbs:true, name:'Quỹ Tăng Trưởng Techcombank',       type:'Cân bằng'},
-  {code:'TCCF',   fmarketId:null, tcbs:true, name:'Quỹ Cân Bằng Techcombank',          type:'Cân bằng'},
+  {code:'TCGF',   fmarketId:null, tcbs:true, name:'Quỹ Tăng Trưởng Toàn Cầu Techcombank', type:'Cân bằng'},
 
   // ── VCB Fund ─────────────────────────────────────────────────
   {code:'VCBFTBF',fmarketId:31,   name:'Quỹ TPDN Có Bảo Đảm VCB Fund',     type:'Trái phiếu'},
@@ -694,12 +694,13 @@ const FUND_MASTER_LIST=[
   {code:'DCDS',   fmarketId:28,   name:'Quỹ Tăng Trưởng Dragon Capital',    type:'Cổ phiếu'},
   {code:'DCBF',   fmarketId:27,   name:'Quỹ Trái Phiếu Dragon Capital',     type:'Trái phiếu'},
 ];
+const FUND_META_BY_CODE=Object.fromEntries(FUND_MASTER_LIST.map(f=>[f.code,{name:f.name,fmarketId:f.fmarketId,type:f.type}]));
 
 function defState(){
   return{
     profiles:[{id:'p1',name:'Của Tôi',phone:'',telegramId:'',watchedFunds:['TCBF','VCBFTBF','SSISCA','VCBFBCF','TCFF'],txLedger:defTx()}],
     activeProfile:'p1',
-    funds:JSON.parse(JSON.stringify(HIST.meta.funds)),
+    funds:JSON.parse(JSON.stringify(FUND_META_BY_CODE)),
     cachedNav:{},lastRefresh:null,
     notifEnabled:false,
     notifSet:{buySignal:true,sellSignal:true,dipAlert:true,rsiBuy:true,macdCross:true,bbLow:true},
@@ -1686,7 +1687,7 @@ function renderAll(){
 }
 
 // Merge default funds
-Object.keys(HIST.meta.funds).forEach(c=>{if(!S.funds[c])S.funds[c]=HIST.meta.funds[c];});
+Object.keys(FUND_META_BY_CODE).forEach(c=>{if(!S.funds[c])S.funds[c]=FUND_META_BY_CODE[c];});
 // Migrate profiles: add watchedFunds, phone, telegramId if missing
 S.profiles.forEach(p=>{
   if(!p.watchedFunds)p.watchedFunds=Object.keys(S.funds);

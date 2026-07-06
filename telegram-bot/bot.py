@@ -1268,7 +1268,7 @@ def fetch_all(config: dict, codes: set) -> dict:
 
 
 def all_watched_codes(config: dict) -> set:
-    codes = set(FUND_CATALOG.keys())  # Luôn fetch tất cả 43 quỹ để DB nav_history đầy đủ
+    codes = set(FUND_CATALOG.keys())  # Luôn fetch tất cả các quỹ trong FUND_CATALOG để DB nav_history đầy đủ
     for p in get_profiles(config):
         codes.update(p.get("watched_funds", []))
     return codes
@@ -1303,7 +1303,9 @@ def job_morning():
             _gspec.loader.exec_module(_gmod)
             _gmod.run_daily(verbose=False)
             log.info("[job_morning] Giá vàng đã cập nhật")
-    except Exception as _ge:
+    except (Exception, SystemExit) as _ge:
+        # fetch_gold.py gọi sys.exit() khi DB lỗi (viết cho CLI độc lập) — bắt cả
+        # SystemExit ở đây để 1 lỗi DB tạm thời không làm chết cả scheduler loop.
         log.warning(f"[job_morning] fetch_gold: {_ge}")
     codes    = all_watched_codes(config)
     nav_data = fetch_all(config, codes)

@@ -46,7 +46,7 @@ FUNDS_CONFIG = {
     "VCBFTBF": {"source": "fmarket", "fmarket_id": 31},
     "SSISCA":  {"source": "fmarket", "fmarket_id": 11},
     "VCBFBCF": {"source": "fmarket", "fmarket_id": 32},
-    "TCBF":    {"source": "fmarket", "fmarket_id": 22, "tcbs_fallback": True},
+    "TCBF":    {"source": "tcbs",    "fmarket_id": None, "tcbs_fallback": True},  # id=22 là quỹ khác (xem df0c9be)
     "TCFF":    {"source": "tcbs",    "fmarket_id": None, "tcbs_fallback": True},
     "TCGF":    {"source": "tcbs",    "fmarket_id": None, "tcbs_fallback": True},
 }

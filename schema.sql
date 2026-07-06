@@ -255,7 +255,7 @@ CREATE POLICY capital_isolation ON capital_events
 -- SEED: Fund universe (19 funds from config.example.json)
 -- ============================================================
 INSERT INTO funds (code, name, fund_type, fmarket_id, tcbs_tradeable, settlement_rule) VALUES
-    ('TCBF',    'Quỹ Trái Phiếu Techcombank',           'bond',     22,   FALSE, 'T2'),
+    ('TCBF',    'Quỹ Trái Phiếu Techcombank',           'bond',     NULL, TRUE,  'T2'),
     ('TCFF',    'Quỹ Linh Hoạt Techcombank',             'balanced', NULL, TRUE,  'T2'),
     ('TCGF',    'Quỹ Tăng Trưởng Techcombank',           'equity',   NULL, TRUE,  'T3'),
     ('VCBFTBF', 'Quỹ TPDN Có Bảo Đảm VCB Fund',         'bond',     31,   FALSE, 'T2'),
