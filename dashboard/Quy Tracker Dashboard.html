@@ -420,7 +420,7 @@ textarea{resize:vertical;min-height:60px;line-height:1.5}
       <!-- TCBS NAV Sync -->
       <div class="card" style="margin-bottom:10px;border:1px solid #3b82f644">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-          <div class="ctitle" style="margin:0;flex:1">📥 Đồng Bộ NAV TCBS <span style="font-size:9px;color:var(--muted);font-weight:400">(TCFF, TCCF, TCBF)</span></div>
+          <div class="ctitle" style="margin:0;flex:1">📥 Đồng Bộ NAV TCBS <span style="font-size:9px;color:var(--muted);font-weight:400">(TCFF, TCGF, TCBF)</span></div>
           <span id="tcbsSyncStatus" style="font-size:9px;padding:2px 8px;border-radius:4px;background:var(--s3);color:var(--muted)">Chưa sync</span>
         </div>
         <div style="font-size:10px;color:var(--muted);margin-bottom:10px;line-height:1.8">
@@ -445,7 +445,7 @@ textarea{resize:vertical;min-height:60px;line-height:1.5}
       <!-- TCBS Token -->
       <div class="card" style="margin-bottom:10px;border:1px solid #ff6b3544">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-          <div class="ctitle" style="margin:0;flex:1">🔐 TCBS Token <span style="font-size:9px;color:var(--muted);font-weight:400">(cho quỹ Techcombank: TCFF, TCCF)</span></div>
+          <div class="ctitle" style="margin:0;flex:1">🔐 TCBS Token <span style="font-size:9px;color:var(--muted);font-weight:400">(cho quỹ Techcombank: TCFF, TCGF)</span></div>
           <span id="tcbsStatus" style="font-size:9px;padding:2px 8px;border-radius:4px;background:var(--s3);color:var(--muted)">Chưa cấu hình</span>
         </div>
         <div style="font-size:10px;color:var(--muted);margin-bottom:8px;line-height:1.7">
@@ -657,8 +657,8 @@ const FUND_MASTER_LIST=[
 
   // ── Techcombank Capital ──────────────────────────────────────
   {code:'TCBF',   fmarketId:22,   tcbs:true, name:'Quỹ Trái Phiếu Techcombank',       type:'Trái phiếu'},
-  {code:'TCFF',   fmarketId:null, tcbs:true, name:'Quỹ Tăng Trưởng Techcombank',       type:'Cân bằng'},
-  {code:'TCCF',   fmarketId:null, tcbs:true, name:'Quỹ Cân Bằng Techcombank',          type:'Cân bằng'},
+  {code:'TCFF',   fmarketId:null, tcbs:true, name:'Quỹ Cân Bằng Techcombank',          type:'Cân bằng'},
+  {code:'TCGF',   fmarketId:null, tcbs:true, name:'Quỹ Tăng Trưởng Techcombank',       type:'Cổ phiếu'},
 
   // ── VCB Fund ─────────────────────────────────────────────────
   {code:'VCBFTBF',fmarketId:31,   name:'Quỹ TPDN Có Bảo Đảm VCB Fund',     type:'Trái phiếu'},
@@ -1854,7 +1854,7 @@ async function tcbsVerifyOtp(){
       S.tcbsToken=d.token; save();
       _updateTcbsStatus();
       closeModal('mTcbsLogin');
-      toast('✓ Đăng nhập TCBS thành công! Thử "Cập nhật NAV" để lấy TCFF, TCCF');
+      toast('✓ Đăng nhập TCBS thành công! Thử "Cập nhật NAV" để lấy TCFF, TCGF');
     } else {
       // Hiển thị raw response để debug nếu cần
       const detail=d.detail?.message||d.error||JSON.stringify(d.raw||d).slice(0,120);

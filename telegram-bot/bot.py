@@ -99,9 +99,9 @@ def load_config() -> dict:
 
 
 FUND_CATALOG: dict = {
-    "TCBF":    {"name": "Quỹ Trái Phiếu Techcombank",              "fmarket_id": None, "tcbs": True},
-    "TCFF":    {"name": "Quỹ Tăng Trưởng Techcombank",             "fmarket_id": None, "tcbs": True},
-    "TCGF":    {"name": "Quỹ Tăng Trưởng Toàn Cầu Techcombank",   "fmarket_id": None, "tcbs": True},
+    "TCBF":    {"name": "Quỹ Trái Phiếu Techcombank",              "fmarket_id": 22,   "tcbs": True},
+    "TCFF":    {"name": "Quỹ Cân Bằng Techcombank",                "fmarket_id": None, "tcbs": True},
+    "TCGF":    {"name": "Quỹ Tăng Trưởng Techcombank",             "fmarket_id": None, "tcbs": True},
     "TCSME":   {"name": "Quỹ Cổ Phiếu SME Techcombank",            "fmarket_id": None, "tcbs": True},
     "TCEF":    {"name": "Quỹ Cổ Phiếu Techcombank",                "fmarket_id": None, "tcbs": True},
     "TCRES":   {"name": "Quỹ Bất Động Sản Techcombank",            "fmarket_id": None, "tcbs": True},
@@ -1268,7 +1268,7 @@ def fetch_all(config: dict, codes: set) -> dict:
 
 
 def all_watched_codes(config: dict) -> set:
-    codes = set(FUND_CATALOG.keys())  # Luôn fetch tất cả 43 quỹ để DB nav_history đầy đủ
+    codes = set(FUND_CATALOG.keys())  # Luôn fetch tất cả quỹ trong FUND_CATALOG để DB nav_history đầy đủ
     for p in get_profiles(config):
         codes.update(p.get("watched_funds", []))
     return codes
@@ -1303,6 +1303,10 @@ def job_morning():
             _gspec.loader.exec_module(_gmod)
             _gmod.run_daily(verbose=False)
             log.info("[job_morning] Giá vàng đã cập nhật")
+    except SystemExit as _ge:
+        # fetch_gold.py dùng sys.exit() cho lỗi cấu hình (vd: thiếu DATABASE_URL) —
+        # SystemExit không phải Exception nên phải bắt riêng, tránh crash cả job.
+        log.warning(f"[job_morning] fetch_gold: {_ge}")
     except Exception as _ge:
         log.warning(f"[job_morning] fetch_gold: {_ge}")
     codes    = all_watched_codes(config)

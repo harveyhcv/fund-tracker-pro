@@ -1713,7 +1713,7 @@ async function loadHistory(){
   if(!tabBar.children.length){
     let funds=_me?.watched_funds||[];
     if(!funds.length&&USER_ID){try{const d=await apiFetch('/api/me');_me=d;funds=d.watched_funds||[];}catch{}}
-    if(!funds.length)funds=['TCBF','VCBF-BCF','SSIBF'];
+    if(!funds.length)funds=['TCBF','VCBFBCF','SSISCA'];
     funds.forEach((code,i)=>{
       const t=document.createElement('button');
       t.className='tab'+(i===0?' active':'');t.textContent=code;

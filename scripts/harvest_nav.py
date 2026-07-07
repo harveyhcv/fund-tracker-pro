@@ -144,13 +144,13 @@ TCINVEST_FUNDS: dict[str, dict] = {
 }
 
 # KNOWN_FUNDS = TCINVEST_FUNDS + các quỹ khác không có trên TCinvest
-# (fmarket-only: MAFPF1, MBBF, ESSCF, ESBF, VNDAF, VCBFEF, TCCF)
+# (fmarket-only: MAFPF1, MBBF, ESSCF, ESBF, VNDAF, VCBFEF)
+# LƯU Ý: TCCF không tồn tại — đã xác nhận thay bằng TCGF (xem plan.md). Không thêm lại.
 KNOWN_FUNDS: dict[str, dict] = {
     **TCINVEST_FUNDS,
     # ── Có trên fmarket nhưng KHÔNG có trên TCinvest ─────────────────────────
     "MAFPF1":  {"name": "Quỹ Tiết Kiệm Manulife",               "category": "BOND"},
     "VCBFEF":  {"name": "Quỹ Cổ Phiếu VCB (cũ)",               "category": "STOCK"},
-    "TCCF":    {"name": "Quỹ Tiền Tệ Techcombank",              "category": "BOND"},
     "MBBF":    {"name": "Quỹ Trái Phiếu MB",                    "category": "BOND"},
     "ESSCF":   {"name": "Quỹ Cổ Phiếu Eastspring",              "category": "STOCK"},
     "ESBF":    {"name": "Quỹ Trái Phiếu Eastspring",            "category": "BOND"},
@@ -1047,7 +1047,7 @@ Kiểm tra:
             if not jwt:
                 sys.exit(
                     "❌ Cần TCBS JWT token.\n"
-                    "Cách lấy: Gõ /otp trong Telegram bot để refresh token,\n"
+                    "Cách lấy: Mini App → Admin → Settings để refresh token,\n"
                     "hoặc truyền trực tiếp: --jwt eyJhbGci...\n"
                     "Hoặc đảm bảo telegram-bot/config.json có 'tcbs_token'."
                 )
