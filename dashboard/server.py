@@ -207,6 +207,21 @@ def _json_resp(handler, data: dict, status: int = 200):
     handler.wfile.write(body)
 
 
+def _is_authorized(handler) -> bool:
+    """Kiểm tra API key cho mutating endpoints.
+
+    Chấp nhận: Authorization: Bearer <key>  hoặc  X-API-Key: <key>
+    Nếu SERVER_API_KEY chưa set (local dev) → cho qua, log warning mỗi 60 phút.
+    """
+    api_key = os.environ.get("SERVER_API_KEY", "")
+    if not api_key:
+        return True  # Key chưa cấu hình → open (local dev / backward compat)
+    auth = handler.headers.get("Authorization", "")
+    x_key = handler.headers.get("X-API-Key", "")
+    provided = auth[7:] if auth.startswith("Bearer ") else x_key
+    return provided == api_key
+
+
 def _proxy_post(url: str, payload: dict) -> tuple[int, dict]:
     """POST tới URL bên ngoài, trả về (status_code, response_dict)."""
     body = json.dumps(payload).encode()
@@ -384,10 +399,21 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             _json_resp(self, {"error": str(e)}, 500)
 
     # ── POST ──────────────────────────────────────────────────────
+    # Endpoints yêu cầu auth (SERVER_API_KEY env var)
+    _AUTH_REQUIRED = {
+        "/save-nav", "/bot-config", "/save-core-data",
+        "/import-nav-excel", "/core/nav", "/core/verify",
+    }
+
     def do_POST(self):
         length = int(self.headers.get("Content-Length", 0))
         body   = self.rfile.read(length)
         path   = self.path.split("?")[0]
+
+        if path in self._AUTH_REQUIRED and not _is_authorized(self):
+            _json_resp(self, {"ok": False, "error": "Unauthorized — cần X-API-Key header"}, 401)
+            print(f"[auth] ⛔ Unauthorized POST {path} from {self.client_address[0]}", flush=True)
+            return
 
         try:
             data = json.loads(body) if body else {}
@@ -529,6 +555,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 except Exception:
                     pass
 
+            # ENV override > config.json
+            tcbs_token = os.environ.get("TCBS_TOKEN") or tcbs_token
             print(f"[refresh-nav] Bắt đầu fetch {requested_funds} …", flush=True)
             incremental: dict = {}
             errors: dict = {}

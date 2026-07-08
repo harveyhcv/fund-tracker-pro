@@ -91,6 +91,8 @@ def load_config() -> dict:
         ("BOT_TOKEN",         "bot_token"),
         ("ADMIN_TELEGRAM_ID", "admin_telegram_id"),
         ("LOCAL_SERVER_URL",  "local_server_url"),
+        ("DATABASE_URL",      "database_url"),
+        ("TCBS_TOKEN",        "tcbs_token"),
     ]:
         val = os.environ.get(env_key)
         if val:
@@ -372,7 +374,7 @@ def get_nav_series(code: str, fund_cfg: dict, config: dict = None) -> list:
     fid = fund_cfg.get("fmarket_id")
     pts = fetch_fmarket(fid) if fid else []
     if not pts and fund_cfg.get("tcbs"):
-        tcbs_token = (config or {}).get("tcbs_token", "")
+        tcbs_token = os.environ.get("TCBS_TOKEN") or (config or {}).get("tcbs_token", "")
         # Không truyền from_date → full history → đủ điểm cho RSI/MACD/BB
         # fetch_tcbs() sẽ thử TCinvest endpoint mới trước, fallback về old nếu cần
         log.info(f"[Nav] {code} fetch full history (token={'yes' if tcbs_token else 'no'})")
@@ -462,6 +464,172 @@ def calc_macd(navs: list, fast=12, slow=26, signal_p=9) -> Optional[dict]:
     }
 
 
+def calc_cci(navs: list, period: int = 20) -> Optional[float]:
+    """Commodity Channel Index — dùng NAV thay Typical Price cho quỹ mở.
+
+    CCI > 100: quá mua. CCI < -100: quá bán.
+    """
+    if len(navs) < period:
+        return None
+    window = navs[-period:]
+    sma = _avg(window)
+    mean_dev = _avg([abs(v - sma) for v in window])
+    if mean_dev == 0:
+        return None
+    return round((navs[-1] - sma) / (0.015 * mean_dev), 1)
+
+
+def calc_roc(navs: list, period: int = 10) -> Optional[float]:
+    """Rate of Change (%) — đo momentum {period} ngày."""
+    if len(navs) < period + 1:
+        return None
+    base = navs[-(period + 1)]
+    if base == 0:
+        return None
+    return round((navs[-1] / base - 1) * 100, 2)
+
+
+def calc_volatility(navs: list, periods: int = 252) -> Optional[float]:
+    """Volatility annualized (%) — rolling {periods} ngày.
+
+    = std(daily_returns) × sqrt(252) × 100
+    """
+    window = navs[-min(periods + 1, len(navs)):]
+    if len(window) < 30:
+        return None
+    returns = [window[i] / window[i - 1] - 1 for i in range(1, len(window))]
+    n = len(returns)
+    mean_r = sum(returns) / n
+    std_r = (sum((r - mean_r) ** 2 for r in returns) / n) ** 0.5
+    return round(std_r * (252 ** 0.5) * 100, 2)
+
+
+def calc_sharpe_ratio(navs: list, periods: int = 252, rf_annual: float = 0.05) -> Optional[float]:
+    """Sharpe Ratio xấp xỉ, rolling {periods} ngày gần nhất (252 = 1 năm giao dịch VN).
+
+    rf_annual: lãi suất phi rủi ro — lãi suất tiền gửi 1Y VN ~5%
+    """
+    window = navs[-min(periods + 1, len(navs)):]
+    if len(window) < 30:
+        return None
+    returns = [window[i] / window[i - 1] - 1 for i in range(1, len(window))]
+    n = len(returns)
+    mean_r = sum(returns) / n
+    std_r = (sum((r - mean_r) ** 2 for r in returns) / n) ** 0.5
+    if std_r == 0:
+        return None
+    sharpe = (mean_r - rf_annual / 252) / std_r * (252 ** 0.5)
+    return round(sharpe, 2)
+
+
+def calc_sortino_ratio(navs: list, periods: int = 252, rf_annual: float = 0.05) -> Optional[float]:
+    """Sortino Ratio — chỉ dùng downside deviation (returns âm) thay vì total std.
+
+    Tốt hơn Sharpe cho tài sản có return không đối xứng (quỹ trái phiếu VN).
+    """
+    window = navs[-min(periods + 1, len(navs)):]
+    if len(window) < 30:
+        return None
+    returns = [window[i] / window[i - 1] - 1 for i in range(1, len(window))]
+    mean_r = sum(returns) / len(returns)
+    rf_daily = rf_annual / 252
+    neg_returns = [r for r in returns if r < rf_daily]
+    if not neg_returns:
+        return None  # Không có ngày lỗ → Sortino = infinity (không có ý nghĩa)
+    downside_var = sum((r - rf_daily) ** 2 for r in neg_returns) / len(neg_returns)
+    downside_std = downside_var ** 0.5
+    if downside_std == 0:
+        return None
+    return round((mean_r - rf_daily) / downside_std * (252 ** 0.5), 2)
+
+
+def calc_max_drawdown(navs: list, periods: int = 252) -> Optional[float]:
+    """Max Drawdown trong {periods} ngày gần nhất. Returns phần trăm (0–100)."""
+    window = navs[-min(periods, len(navs)):]
+    if len(window) < 5:
+        return None
+    peak = window[0]
+    max_dd = 0.0
+    for nav in window[1:]:
+        if nav > peak:
+            peak = nav
+        else:
+            dd = (peak - nav) / peak
+            if dd > max_dd:
+                max_dd = dd
+    return round(max_dd * 100, 2)
+
+
+def calc_stochastic(navs: list, k_period: int = 14, k_smooth: int = 3, d_period: int = 3) -> Optional[dict]:
+    """Stochastic oscillator (%K/%D) — dùng NAV thay OHLC (quỹ mở không có volume/OHLC).
+
+    k_period: lookback tìm highest/lowest
+    k_smooth: SMA tạo Slow %K
+    d_period: SMA tạo %D
+
+    Returns {"pct_k": float, "pct_d": float} hoặc None nếu thiếu data.
+    """
+    raw_k_count = k_smooth + d_period - 1  # số raw_k cần tính để có đủ %D
+    if len(navs) < k_period + raw_k_count - 1:
+        return None
+
+    raw_k = []
+    for i in range(len(navs) - raw_k_count, len(navs)):
+        window = navs[i - k_period + 1: i + 1]
+        lo, hi = min(window), max(window)
+        if hi == lo:
+            raw_k.append(50.0)
+        else:
+            raw_k.append((navs[i] - lo) / (hi - lo) * 100)
+
+    # Slow %K: SMA(raw_k, k_smooth)
+    smooth_k = [_avg(raw_k[j - k_smooth + 1: j + 1]) for j in range(k_smooth - 1, len(raw_k))]
+    if len(smooth_k) < d_period:
+        return None
+
+    return {
+        "pct_k": round(smooth_k[-1], 1),
+        "pct_d": round(_avg(smooth_k[-d_period:]), 1),
+    }
+
+
+def calc_golden_cross(navs: list, lookback: int = 5) -> Optional[dict]:
+    """Phát hiện Golden Cross / Death Cross (MA20 × MA50) trong lookback ngày gần nhất.
+
+    Returns dict với:
+      type: "golden" (MA20 cắt lên MA50), "death" (MA20 cắt xuống MA50),
+            "above" (MA20 đang trên, không cross gần đây), "below" (MA20 đang dưới)
+      ma20, ma50: giá trị hiện tại
+
+    Returns None nếu không đủ dữ liệu (cần ít nhất 50 + lookback điểm).
+    """
+    if len(navs) < 50 + lookback:
+        return None
+
+    n = len(navs)
+    # Tính (lookback+1) giá trị MA để phát hiện (lookback) lần chuyển trạng thái
+    indices = range(n - lookback - 1, n)
+    ma20_series = [_avg(navs[max(0, i - 19): i + 1]) for i in indices]
+    ma50_series = [_avg(navs[max(0, i - 49): i + 1]) for i in indices]
+    above = [m20 > m50 for m20, m50 in zip(ma20_series, ma50_series)]
+
+    # Tìm cross gần nhất (ưu tiên gần nhất)
+    cross_type = None
+    for i in range(len(above) - 1, 0, -1):
+        if not above[i - 1] and above[i]:
+            cross_type = "golden"
+            break
+        elif above[i - 1] and not above[i]:
+            cross_type = "death"
+            break
+
+    return {
+        "type": cross_type if cross_type else ("above" if above[-1] else "below"),
+        "ma20": round(ma20_series[-1], 2),
+        "ma50": round(ma50_series[-1], 2),
+    }
+
+
 def calc_signal(code: str, pts: list) -> dict:
     if not pts or len(pts) < 60:
         return {
@@ -508,6 +676,15 @@ def calc_signal(code: str, pts: list) -> dict:
         else:
             score -= 1; details.append("MACD ▼")
 
+    stoch = calc_stochastic(navs)
+    stoch_k = stoch_d = None
+    if stoch:
+        stoch_k, stoch_d = stoch["pct_k"], stoch["pct_d"]
+        if stoch_k < 20 and stoch_d < 20:
+            score += 1; details.append(f"Stoch {stoch_k:.0f}/{stoch_d:.0f} qua ban")
+        elif stoch_k > 80 and stoch_d > 80:
+            score -= 1; details.append(f"Stoch {stoch_k:.0f}/{stoch_d:.0f} qua mua")
+
     bb = calc_bb(navs)
     bb_pct = None
     if bb:
@@ -523,9 +700,21 @@ def calc_signal(code: str, pts: list) -> dict:
         else:
             details.append(f"BB {bb_pct:.0f}%")
 
-    ma20 = calc_ma(navs, 20)
-    ma50 = calc_ma(navs, 50)
-    if ma20 and ma50:
+    gc = calc_golden_cross(navs)
+    ma20 = gc["ma20"] if gc else calc_ma(navs, 20)
+    ma50 = gc["ma50"] if gc else calc_ma(navs, 50)
+    gc_type = None
+    if gc:
+        gc_type = gc["type"]
+        if gc_type == "golden":
+            score += 3; details.append("Golden Cross 🟢🟢")
+        elif gc_type == "death":
+            score -= 3; details.append("Death Cross 🔴🔴")
+        elif gc_type == "above":
+            score += 1; details.append("MA✅")
+        else:
+            details.append("MA⬇")
+    elif ma20 and ma50:
         if ma20 > ma50:
             score += 1; details.append("MA✅")
         else:
@@ -540,6 +729,20 @@ def calc_signal(code: str, pts: list) -> dict:
         elif mom > 6:
             score -= 1; details.append(f"Mom +{mom:.1f}%")
 
+    cci = calc_cci(navs)
+    if cci is not None:
+        if cci < -100:
+            score += 1; details.append(f"CCI {cci:.0f} qua ban")
+        elif cci > 100:
+            score -= 1; details.append(f"CCI {cci:.0f} qua mua")
+
+    roc = calc_roc(navs)
+    if roc is not None:
+        if roc < -5:
+            score += 1; details.append(f"ROC {roc:.1f}% dip")
+        elif roc > 5:
+            score -= 1; details.append(f"ROC +{roc:.1f}% hot")
+
     if score >= 6:
         sig = "MUA MẠNH 🟢🟢"
     elif score >= 3:
@@ -551,13 +754,22 @@ def calc_signal(code: str, pts: list) -> dict:
     else:
         sig = "HOLD ⚪"
 
+    sharpe  = calc_sharpe_ratio(navs)
+    sortino = calc_sortino_ratio(navs)
+    vol     = calc_volatility(navs)
+    max_dd  = calc_max_drawdown(navs)
+
     return {
         "signal": sig, "score": score, "rsi": rsi,
         "bb_pct": bb_pct, "macd_hist": macd_hist,
+        "stoch_k": stoch_k, "stoch_d": stoch_d,
+        "cci": cci, "roc": roc,
+        "sharpe": sharpe, "sortino": sortino,
+        "volatility": vol, "max_dd": max_dd,
         "nav": last, "nav_prev": prev, "chg_pct": round(chg_pct, 3),
         "nav_date": pts[-1]["date"],
         "details": details[:4],
-        "ma20": ma20, "ma50": ma50,
+        "ma20": ma20, "ma50": ma50, "gc_type": gc_type,
         "chg7": chg7, "chg30": chg30,
     }
 
@@ -773,6 +985,19 @@ def msg_morning(profile: dict, nav_data: dict) -> str:
                 f"💼 <b>Danh mục:</b> {int(total_val):,}đ  "
                 f"({'📈' if pnl >= 0 else '📉'} {sign}{int(pnl):,}đ  {sign}{pnl_pct:.2f}%)"
             )
+            # Risk metrics: Sharpe + Max Drawdown (từ calc_signal())
+            risk_parts = []
+            for code in holdings:
+                d = nav_data.get(code)
+                if not d:
+                    continue
+                if d.get("sharpe") is not None:
+                    risk_parts.append(f"{code} Sharpe {d['sharpe']:.1f}")
+                if d.get("max_dd") is not None:
+                    risk_parts.append(f"DD {d['max_dd']:.1f}%")
+                break  # Chỉ hiển thị quỹ đầu tiên trong portfolio để giữ ngắn
+            if risk_parts:
+                lines.append(f"📊 {' · '.join(risk_parts)}")
 
     # Gold summary
     gold_lines = _morning_gold_summary(load_config(), profile)
@@ -1254,10 +1479,54 @@ def _push_nav_to_server(nav_data: dict, config: dict):
         log.warning(f"[push-nav] Lỗi: {e}")
 
 
+def _decode_jwt_exp(token: str) -> Optional[int]:
+    """Decode JWT exp claim (unix timestamp) mà không cần verify signature.
+
+    TCBS JWT là HS256 — chúng ta không có secret key để verify,
+    nhưng chỉ cần exp để biết khi nào token hết hạn.
+    Returns Unix timestamp hoặc None nếu decode thất bại.
+    """
+    try:
+        import base64, json as _json
+        parts = token.split(".")
+        if len(parts) != 3:
+            return None
+        # Payload là phần thứ 2, base64url-encoded (không có padding)
+        payload_b64 = parts[1] + "=" * (4 - len(parts[1]) % 4)
+        payload = _json.loads(base64.urlsafe_b64decode(payload_b64))
+        return payload.get("exp")
+    except Exception:
+        return None
+
+
+def _check_tcbs_token_expiry(config: dict) -> Optional[dict]:
+    """Kiểm tra TCBS token có sắp hết hạn không.
+
+    Returns dict {"days_left": int, "expired": bool} hoặc None nếu không có token.
+    """
+    token = config.get("tcbs_token", "")
+    if not token or token.startswith("NHAP"):
+        return None
+    exp = _decode_jwt_exp(token)
+    if not exp:
+        return None
+    now_ts = int(time.time())
+    days_left = (exp - now_ts) // 86400
+    return {"days_left": days_left, "expired": days_left < 0, "exp_ts": exp}
+
+
 def _handle_tcbs_auth_error(config: dict, failed_codes: set):
-    """Log khi TCBS token hết hạn — không gửi Telegram (settoken flow đã thay thế)."""
+    """Gửi Telegram notification khi TCBS token hết hạn."""
     log.warning(f"[TCBS-AUTH] Token hết hạn, không fetch được: {', '.join(sorted(failed_codes))}"
                 f" — Cập nhật token mới qua Mini App (Admin → Settings).")
+    admin_id = config.get("admin_telegram_id", "")
+    if admin_id:
+        msg = (
+            f"⚠️ <b>TCBS Token hết hạn</b>\n"
+            f"Quỹ bị ảnh hưởng: {', '.join(f'<code>{c}</code>' for c in sorted(failed_codes))}\n"
+            f"→ Mở Mini App → Admin → Settings → Cập nhật TCBS Token"
+        )
+        _send(str(admin_id), msg)
 
 
 
@@ -1593,6 +1862,33 @@ def job_dca_reminder():
 # ═══════════════════════════════════════
 # MASTER NAV HARVEST JOB
 # ═══════════════════════════════════════
+
+def job_check_tcbs_token():
+    """Chạy lúc 07:30 hàng ngày — kiểm tra TCBS JWT còn hạn không, cảnh báo trước 3 ngày."""
+    config = load_config()
+    status = _check_tcbs_token_expiry(config)
+    if not status:
+        return  # Không có token hoặc không decode được — bỏ qua
+    admin_id = str(config.get("admin_telegram_id", ""))
+    if not admin_id:
+        return
+    days = status["days_left"]
+    if status["expired"]:
+        _send(admin_id, (
+            "🔴 <b>TCBS Token đã HẾT HẠN</b>\n"
+            "Quỹ TCBS (TCBF, TCFF, TCGF...) không fetch được NAV.\n"
+            "→ Mở Mini App → Admin → Settings → Cập nhật TCBS Token"
+        ))
+        log.warning("[token-check] TCBS token HET HAN — notified admin")
+    elif days <= 3:
+        _send(admin_id, (
+            f"⚠️ <b>TCBS Token sắp hết hạn</b> (còn {days} ngày)\n"
+            "→ Mở Mini App → Admin → Settings → Cập nhật TCBS Token trước khi hết hạn"
+        ))
+        log.warning(f"[token-check] TCBS token con {days} ngay — notified admin")
+    else:
+        log.debug(f"[token-check] TCBS token OK con {days} ngay")
+
 
 def job_harvest_nav():
     """
@@ -2746,6 +3042,7 @@ def main():
     schedule.every().day.at("09:00").do(job_backfill_settlement)
     schedule.every().day.at("09:00").do(job_dca_reminder)
     schedule.every().day.at("18:30").do(job_harvest_nav)
+    schedule.every().day.at("07:30").do(job_check_tcbs_token)
     # job_watchdog_ping đã bỏ — tin nhắn "Bot alive" không cần thiết
 
     # Start Telegram Mini App HTTP server TRƯỚC để Railway health check pass

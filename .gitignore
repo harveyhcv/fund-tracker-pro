@@ -1,28 +1,40 @@
-# Secrets & credentials
+# ── Secrets & credentials ─────────────────────────────────────
 telegram-bot/config.json
-telegram-bot/bot.log
 telegram-bot/state.json
 .env
 *.env
 
-# Docker
-.env
+# ── Log files ─────────────────────────────────────────────────
+*.log
+logs/
+health_log.md
 
-# SQLite database files
+# ── Runtime / generated data ──────────────────────────────────
+dashboard/nav_data.json
+scripts/tcinvest_nav_*.json
+daily_review_*.md
+backlog_*.md
+
+# ── SQLite / DB ───────────────────────────────────────────────
 core_data/*.db
 core_data/*.db-shm
 core_data/*.db-wal
 core_data/.fuse_hidden*
 
-# Python cache
+# ── Python cache ──────────────────────────────────────────────
 __pycache__/
+**/__pycache__/
 *.pyc
 *.pyo
+*.pyd
 .pytest_cache/
+.venv/
+venv/
 
-# macOS
+# ── macOS ─────────────────────────────────────────────────────
 .DS_Store
 **/.DS_Store
 
-# Backups
+# ── Backups ───────────────────────────────────────────────────
 *.bak
+*.tmp
