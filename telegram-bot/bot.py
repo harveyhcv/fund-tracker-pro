@@ -99,9 +99,9 @@ def load_config() -> dict:
 
 
 FUND_CATALOG: dict = {
-    "TCBF":    {"name": "Quỹ Trái Phiếu Techcombank",              "fmarket_id": None, "tcbs": True},
-    "TCFF":    {"name": "Quỹ Tăng Trưởng Techcombank",             "fmarket_id": None, "tcbs": True},
-    "TCGF":    {"name": "Quỹ Tăng Trưởng Toàn Cầu Techcombank",   "fmarket_id": None, "tcbs": True},
+    "TCBF":    {"name": "Quỹ Trái Phiếu Techcombank",              "fmarket_id": 22,   "tcbs": True},
+    "TCFF":    {"name": "Quỹ Linh Hoạt Techcombank",               "fmarket_id": None, "tcbs": True},
+    "TCGF":    {"name": "Quỹ Tăng Trưởng Techcombank",             "fmarket_id": None, "tcbs": True},
     "TCSME":   {"name": "Quỹ Cổ Phiếu SME Techcombank",            "fmarket_id": None, "tcbs": True},
     "TCEF":    {"name": "Quỹ Cổ Phiếu Techcombank",                "fmarket_id": None, "tcbs": True},
     "TCRES":   {"name": "Quỹ Bất Động Sản Techcombank",            "fmarket_id": None, "tcbs": True},

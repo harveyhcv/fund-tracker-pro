@@ -41,7 +41,8 @@ NAV_KEEP_POINTS = 500
 
 # ── Fund config cho /refresh-nav ──────────────────────────────
 # fmarket_id: từ config.json (nguồn chính xác nhất)
-# Quỹ TC (TCBF, TCFF, TCGF): TCBS only — fmarket_id=None
+# Quỹ TC: TCFF, TCGF chỉ có trên TCBS (fmarket_id=None).
+# TCBF có fmarket_id=22 nhưng dữ liệu fmarket chỉ từ 2019 → TCBS là fallback cho lịch sử cũ hơn.
 FUNDS_CONFIG = {
     "VCBFTBF": {"source": "fmarket", "fmarket_id": 31},
     "SSISCA":  {"source": "fmarket", "fmarket_id": 11},
