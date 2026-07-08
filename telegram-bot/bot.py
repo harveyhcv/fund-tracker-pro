@@ -573,6 +573,28 @@ def calc_signal(code: str, pts: list) -> dict:
 _TRADE_SESSIONS: dict = {}
 
 
+def _make_rate_checker(limit: int = 10, window: int = 60):
+    """Trả về hàm check_rate(chat_id) dùng state riêng cho 1 lần chạy command_handler().
+
+    State cục bộ (không phải module-global) để mỗi lần command_handler() khởi động
+    (1 lần duy nhất khi bot start, chạy vô hạn trong daemon thread) có sổ đếm sạch.
+    """
+    rate_state: dict = {}  # { chat_id: [timestamp, ...] } — timestamps trong window hiện tại
+
+    def check_rate(chat_id: str) -> bool:
+        """True nếu chat_id còn trong hạn mức (limit req / window giây), False nếu vượt quá."""
+        now = time.time()
+        hits = [t for t in rate_state.get(chat_id, []) if now - t < window]
+        if len(hits) >= limit:
+            rate_state[chat_id] = hits
+            return False
+        hits.append(now)
+        rate_state[chat_id] = hits
+        return True
+
+    return check_rate
+
+
 def tg_send_keyboard(token: str, chat_id: str, text: str, buttons: list[list[dict]]) -> bool:
     """Gửi tin nhắn với InlineKeyboardMarkup. buttons = [[{text, callback_data}, ...], ...]"""
     url = f"https://api.telegram.org/bot{token}/sendMessage"
@@ -2323,6 +2345,7 @@ def _handle_trade_wizard_text(token: str, chat_id: str, text: str, profile: dict
 
 def command_handler():
     offset = 0
+    check_rate = _make_rate_checker()
     while True:
         try:
             config = load_config()
@@ -2359,6 +2382,12 @@ def command_handler():
                 parts   = text.split()  # luôn định nghĩa sẵn, tránh NameError
                 cmd     = parts[0].lower().split("@")[0] if parts else ""
                 log.info(f"[CMD] {cmd!r} from chat {chat_id}")
+
+                # ── Rate limit: tối đa 10 request/phút mỗi chat_id ──────────
+                if cmd.startswith("/") and not check_rate(chat_id):
+                    log.warning(f"[RATE-LIMIT] {chat_id} vượt hạn mức, bỏ qua {cmd!r}")
+                    continue
+
                 profile = find_profile_by_chat(config, chat_id)
 
                 # ── Trade wizard: intercept free-text nếu đang trong session ──
@@ -2428,28 +2457,26 @@ def command_handler():
                             "Gõ /app để mở.")
 
                     elif cmd == "/portfolio":
-                        tg_send(token, chat_id,
-                            "📱 Xem danh mục + P&amp;L trong <b>Mini App</b>.\n"
-                            "Gõ /app để mở.")
+                        if not profile:
+                            tg_send(token, chat_id, "⚠️ Bạn chưa đăng ký.\nGõ <code>/register Tên</code> để đăng ký.")
+                            continue
+                        # Dùng config.json portfolio (đầy đủ avg_cost + units cho tất cả mã)
+                        port_codes = {h["code"] for h in profile.get("portfolio", []) if h.get("units", 0) > 0}
+                        if not port_codes:
+                            port_codes = set(profile.get("watched_funds", []))
+                        nav_data_port = fetch_all(config, port_codes)
+                        tg_send(token, chat_id, msg_portfolio(profile, nav_data_port))
 
                     elif cmd in ("/add-trade", "/buy", "/sell"):
                         tg_send(token, chat_id,
                             "📱 Giao dịch được quản lý trong <b>Mini App</b>.\n"
                             "Gõ /app để mở.")
 
-                    elif cmd == "/explain":
-                        tg_send(token, chat_id,
-                            "📱 Phân tích chi tiết từng quỹ có trong <b>Mini App</b>.\n"
-                            "Gõ /app để mở.")
-
-                    elif cmd in ("/research", "/explain2", "/rsi", "/macd", "/bb", "/stoch",
-                                  "/atr", "/sharpe", "/momentum", "/mom", "/mpt", "/kelly",
-                                  "/riskparity", "/rp", "/valueinvesting", "/contrarian",
-                                  "/momentuminvesting", "/dcainvesting", "/learn"):
-                        tg_send(token, chat_id,
-                            "📱 Phân tích chuyên sâu (RSI, MACD, 5 trường phái đầu tư...) "
-                            "đã chuyển vào <b>Mini App</b>.\n"
-                            "Gõ /app để mở.")
+                    elif cmd in ("/explain", "/research", "/explain2", "/rsi", "/macd", "/bb",
+                                  "/stoch", "/atr", "/sharpe", "/momentum", "/mom", "/mpt",
+                                  "/kelly", "/riskparity", "/rp", "/valueinvesting",
+                                  "/contrarian", "/momentuminvesting", "/dcainvesting", "/learn"):
+                        pass  # Đã bỏ — không còn hỗ trợ
 
 
                     elif cmd in ("/dca", "/funds", "/watch", "/unwatch"):
