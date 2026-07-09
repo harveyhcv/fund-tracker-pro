@@ -450,6 +450,27 @@ canvas{width:100%!important;height:100%!important}
   </div>
 
   <!-- History -->
+  <div class="page" id="page-admin" style="display:none">
+    <div class="hdr">ADMIN</div>
+    <div style="display:flex;flex-direction:column;gap:10px;padding:4px 0">
+      <div class="card" style="padding:16px">
+        <div style="font-size:11px;font-weight:700;color:var(--c0);font-family:var(--mono);margin-bottom:10px">TCBS TOKEN</div>
+        <div style="font-size:11px;color:var(--txt2);margin-bottom:10px;line-height:1.5">Paste JWT token từ TCInvest để fetch NAV mới nhất. Token thường hết hạn sau 12 giờ.</div>
+        <textarea id="admin-token-input" rows="4" placeholder="Paste token JWT ở đây..." style="width:100%;background:var(--bg);border:1px solid var(--bdr);color:var(--txt);border-radius:8px;padding:10px;font-size:11px;font-family:var(--mono);resize:none;box-sizing:border-box;margin-bottom:8px"></textarea>
+        <div id="admin-token-status" style="font-size:12px;color:var(--txt2);margin-bottom:8px;min-height:16px;font-family:var(--mono)"></div>
+        <button onclick="adminUpdateToken()" style="width:100%;padding:12px;background:var(--c0);color:#000;border:none;border-radius:8px;font-weight:700;font-size:14px;cursor:pointer;font-family:var(--mono)">CẬP NHẬT TOKEN & FETCH TCBS</button>
+      </div>
+      <div class="card" style="padding:16px">
+        <div style="font-size:11px;font-weight:700;color:var(--buy);font-family:var(--mono);margin-bottom:10px">FETCH NAV</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <button onclick="adminFetchAll()" style="width:100%;padding:10px;background:var(--bg3);color:var(--buy);border:1px solid var(--buy);border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;font-family:var(--mono)">⟳ Fetch tất cả quỹ (fmarket + TCBS)</button>
+          <button onclick="adminFetchFmarket()" style="width:100%;padding:10px;background:var(--bg3);color:var(--c0);border:1px solid var(--c0);border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;font-family:var(--mono)">⟳ Fetch fmarket only (không cần token)</button>
+        </div>
+        <div id="admin-fetch-status" style="font-size:12px;color:var(--txt2);margin-top:8px;min-height:16px;font-family:var(--mono);white-space:pre-wrap"></div>
+      </div>
+    </div>
+  </div>
+
   <div class="page" id="page-history">
     <div class="hdr">LỊCH SỬ</div>
     <!-- Asset type selector -->
@@ -618,6 +639,10 @@ canvas{width:100%!important;height:100%!important}
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/><circle cx="12" cy="12" r="10"/></svg>
     Lịch sử
   </button>
+  <button class="nav-btn" id="nav-admin" style="display:none" onclick="goPage('admin',this)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M12 14c-5 0-8 2-8 4v1h16v-1c0-2-3-4-8-4z"/><path d="M18 3l1.5 3L23 7l-2.5 2 .5 3L18 10.5 15 12l.5-3L13 7l3.5-1z"/></svg>
+    Admin
+  </button>
 </nav>
 
 <script>
@@ -769,10 +794,54 @@ async function loadMe(){
   }
   try{
     _me=await apiFetch('/api/me');
+    // Hiện nav Admin nếu là admin
+    if(_me?.is_admin) document.getElementById('nav-admin').style.display='';
     // Load gold data in parallel
     apiFetch(`/api/gold?user_id=${USER_ID}`).then(d=>{_goldData=d;renderPfBanner();renderPfAlloc();renderPfGoldSub();}).catch(()=>{});
     renderPortfolio(_me);
   }catch(e){document.getElementById('pf-sub-ccq').innerHTML=renderErr('Lỗi tải: '+e.message);}
+}
+
+// ── Admin page functions ───────────────────────────────────────────────────
+async function adminUpdateToken(){
+  const token=(document.getElementById('admin-token-input').value||'').trim();
+  const st=document.getElementById('admin-token-status');
+  if(!token){st.style.color='var(--sell)';st.textContent='Chưa nhập token';return;}
+  st.style.color='var(--txt2)';st.textContent='Đang lưu token...';
+  try{
+    const r=await fetch(`${API_BASE}/api/admin/settoken`,{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({token})});
+    const d=await r.json();
+    if(!r.ok){st.style.color='var(--sell)';st.textContent=d.error||'Lỗi';return;}
+    st.style.color='var(--buy)';st.textContent='✓ Token đã lưu. Đang fetch TCBS...';
+    const r2=await fetch(`${API_BASE}/api/admin/fetch-nav`,{method:'POST',
+      headers:{'Content-Type':'application/json'},body:'{}'});
+    const d2=await r2.json();
+    st.style.color='var(--buy)';
+    st.textContent=`✓ Xong! Fetch ${Object.keys(d2.results||{}).length} quỹ.`;
+    tg?.HapticFeedback?.notificationOccurred('success');
+  }catch(e){st.style.color='var(--sell)';st.textContent='Lỗi: '+e.message;}
+}
+async function adminFetchAll(){
+  const st=document.getElementById('admin-fetch-status');
+  st.style.color='var(--txt2)';st.textContent='Đang fetch tất cả quỹ...';
+  try{
+    const r=await fetch(`${API_BASE}/api/admin/fetch-nav`,{method:'POST',
+      headers:{'Content-Type':'application/json'},body:'{}'});
+    const d=await r.json();
+    st.style.color='var(--buy)';st.textContent=`✓ ${d.msg||'Fetch started'}`;
+  }catch(e){st.style.color='var(--sell)';st.textContent='Lỗi: '+e.message;}
+}
+async function adminFetchFmarket(){
+  const st=document.getElementById('admin-fetch-status');
+  st.style.color='var(--txt2)';st.textContent='Đang fetch fmarket...';
+  try{
+    const r=await fetch(`${API_BASE}/api/admin/fetch-nav`,{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({skip_tcbs:true})});
+    const d=await r.json();
+    st.style.color='var(--buy)';st.textContent=`✓ ${d.msg||'Fetch started (fmarket only)'}`;
+  }catch(e){st.style.color='var(--sell)';st.textContent='Lỗi: '+e.message;}
 }
 
 function renderPfBanner(){

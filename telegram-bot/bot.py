@@ -1524,14 +1524,14 @@ def _handle_tcbs_auth_error(config: dict, failed_codes: set):
         return
     _tcbs_auth_notified = True
     log.warning(f"[TCBS-AUTH] Token hết hạn, không fetch được: {', '.join(sorted(failed_codes))}"
-                f" — Cập nhật token mới qua Mini App (Admin → Settings).")
+                f" — Cập nhật token mới qua Mini App (tab Admin).")
     token = config.get("bot_token", "")
     admin_id = str(config.get("admin_telegram_id", ""))
     if token and admin_id:
         msg = (
             f"⚠️ <b>TCBS Token hết hạn</b>\n"
             f"Quỹ bị ảnh hưởng: {', '.join(f'<code>{c}</code>' for c in sorted(failed_codes))}\n"
-            f"→ Mở Mini App → Admin → Settings → Cập nhật TCBS Token"
+            f"→ Mở Mini App → tab Admin → Cập nhật TCBS Token"
         )
         tg_send(token, admin_id, msg)
 
@@ -1889,13 +1889,13 @@ def job_check_tcbs_token():
         tg_send(token, admin_id, (
             "🔴 <b>TCBS Token đã HẾT HẠN</b>\n"
             "Quỹ TCBS (TCBF, TCFF, TCGF...) không fetch được NAV.\n"
-            "→ Mở Mini App → Admin → Settings → Cập nhật TCBS Token"
+            "→ Mở Mini App → tab Admin → Cập nhật TCBS Token"
         ))
         log.warning("[token-check] TCBS token HET HAN — notified admin")
     elif days <= 3:
         tg_send(token, admin_id, (
             f"⚠️ <b>TCBS Token sắp hết hạn</b> (còn {days} ngày)\n"
-            "→ Mở Mini App → Admin → Settings → Cập nhật TCBS Token trước khi hết hạn"
+            "→ Mở Mini App → tab Admin → Cập nhật TCBS Token trước khi hết hạn"
         ))
         log.warning(f"[token-check] TCBS token con {days} ngay — notified admin")
     else:
@@ -2879,7 +2879,7 @@ def command_handler():
                                 "<code>/admin kick CHATID</code> — Xóa user\n"
                                 "<code>/admin broadcast TIN NHẮN</code> — Broadcast tới tất cả\n"
                                 "<code>/admin fixportfolio MÃ avg_cost [units]</code> — Sửa portfolio\n"
-                                "\n📱 Cập nhật TCBS token: dùng <b>Mini App</b> (Admin → Settings)"
+                                "\n📱 Cập nhật TCBS token: dùng <b>Mini App (tab Admin))"
                             ))
 
                     elif cmd == "/morning":
