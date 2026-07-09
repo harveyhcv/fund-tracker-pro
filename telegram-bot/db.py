@@ -20,12 +20,44 @@ _pool: ThreadedConnectionPool | None = None
 SETTLEMENT_DAYS = {"T1": 1, "T2": 2, "T3": 3}
 
 
+def _migrate_data_src_enum() -> None:
+    """Thêm 'manual' và 'fixed' vào enum data_src nếu chưa có.
+    ALTER TYPE ADD VALUE phải chạy ngoài transaction → dùng autocommit connection riêng."""
+    db_url = os.environ.get("DATABASE_URL")
+    if not db_url:
+        return
+    try:
+        conn = psycopg2.connect(db_url)
+        conn.set_isolation_level(0)  # autocommit
+        with conn.cursor() as cur:
+            # Kiểm tra xem source column có phải là ENUM không
+            cur.execute("""
+                SELECT udt_name FROM information_schema.columns
+                WHERE table_name = 'nav_history' AND column_name = 'source'
+            """)
+            row = cur.fetchone()
+            if not row or row[0] == 'text':
+                conn.close()
+                return  # TEXT column, không cần migrate
+            # Thêm các giá trị mới vào enum (IF NOT EXISTS từ PG 9.3+)
+            for val in ('manual', 'fixed'):
+                try:
+                    cur.execute(f"ALTER TYPE data_src ADD VALUE IF NOT EXISTS '{val}'")
+                    logger.info("Migrated data_src enum: added '%s'", val)
+                except Exception as e:
+                    logger.debug("data_src enum '%s' skip: %s", val, e)
+        conn.close()
+    except Exception as e:
+        logger.warning("_migrate_data_src_enum failed (non-fatal): %s", e)
+
+
 def init_pool(min_conn: int = 1, max_conn: int = 5) -> None:
     global _pool
     db_url = os.environ.get("DATABASE_URL")
     if not db_url:
         logger.warning("DATABASE_URL not set — PostgreSQL disabled")
         return
+    _migrate_data_src_enum()  # Chạy trước khi mở pool
     _pool = ThreadedConnectionPool(min_conn, max_conn, db_url)
     logger.info("PostgreSQL pool initialised (min=%d max=%d)", min_conn, max_conn)
 
