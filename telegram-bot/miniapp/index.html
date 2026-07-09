@@ -2066,14 +2066,21 @@ async function submitToken(){
   const token=(document.getElementById('token-input').value||'').trim();
   const statusEl=document.getElementById('token-status');
   if(!token){statusEl.textContent='Vui lòng paste token vào ô trên';return;}
-  statusEl.textContent='Đang cập nhật...';
+  statusEl.style.color='var(--c0)';statusEl.textContent='Đang lưu token...';
   try{
     const res=await fetch(`${API_BASE}/api/admin/settoken`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token})});
     const d=await res.json();
     if(d.ok){
-      statusEl.style.color='var(--buy)';
-      statusEl.textContent='✓ Token đã cập nhật! Đang fetch NAV trong nền...';
-      setTimeout(()=>{document.getElementById('token-modal').style.display='none';document.getElementById('token-input').value='';statusEl.textContent='';statusEl.style.color='var(--txt2)';},3000);
+      statusEl.style.color='var(--c0)';statusEl.textContent='✓ Đã lưu token. Đang fetch TCBS NAV...';
+      try{
+        await fetch(`${API_BASE}/api/admin/fetch-nav`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+      }catch(_){}
+      statusEl.style.color='var(--buy)';statusEl.textContent='✓ Xong! Làm mới app sau 1-2 phút.';
+      setTimeout(()=>{
+        document.getElementById('token-modal').style.display='none';
+        document.getElementById('token-input').value='';
+        statusEl.textContent='';statusEl.style.color='var(--txt2)';
+      },2000);
     } else {statusEl.style.color='var(--sell)';statusEl.textContent='Lỗi: '+(d.error||'unknown');}
   }catch(e){statusEl.style.color='var(--sell)';statusEl.textContent='Lỗi kết nối: '+e.message;}
 }
@@ -2239,16 +2246,23 @@ async function tcbsMiniSkip(){
 }
 async function triggerFetchAllNav(){
   const statusEl = document.getElementById('token-status') || document.getElementById('hist-auto-status');
-  if (statusEl) { statusEl.style.color='var(--c0)'; statusEl.textContent='Dang kich hoat fetch NAV tat ca quy...'; }
+  if (statusEl) { statusEl.style.color='var(--c0)'; statusEl.textContent='Đang fetch tất cả quỹ...'; }
   try {
     const res = await fetch(`${API_BASE}/api/admin/fetch-nav`, {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'});
     const d = await res.json();
     if (statusEl) {
       statusEl.style.color = d.ok ? 'var(--buy)' : 'var(--sell)';
-      statusEl.textContent = d.ok ? 'Dang fetch NAV trong nen. Doi 1-2 phut roi lam moi app.' : 'Loi: '+(d.error||'unknown');
+      statusEl.textContent = d.ok ? '✓ Xong! Làm mới app sau 1-2 phút.' : 'Lỗi: '+(d.error||'unknown');
+    }
+    if (d.ok) {
+      setTimeout(()=>{
+        const m = document.getElementById('token-modal');
+        if (m) { m.style.display='none'; }
+        if (statusEl) { statusEl.textContent=''; statusEl.style.color='var(--txt2)'; }
+      }, 2000);
     }
   } catch(e) {
-    if (statusEl) { statusEl.style.color='var(--sell)'; statusEl.textContent='Loi ket noi: '+e.message; }
+    if (statusEl) { statusEl.style.color='var(--sell)'; statusEl.textContent='Lỗi kết nối: '+e.message; }
   }
 }
 function drawChart(points, color){
