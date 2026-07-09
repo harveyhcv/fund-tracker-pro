@@ -76,6 +76,11 @@ def upsert_nav(fund_code: str, nav_date: date, nav: float, source: str = "fmarke
                 WHERE nav_history.source != 'fixed'
             """, (fund_code, nav_date, nav, source))
     logger.debug("upsert_nav %s %s %.4f src=%s", fund_code, nav_date, nav, source)
+    # Sau khi API data confirmed → unify pending Pro drafts nếu khớp
+    try:
+        unify_nav_drafts(fund_code, nav_date, nav)
+    except Exception as e:
+        logger.debug("unify_nav_drafts skip: %s", e)
 
 
 def get_nav_series(fund_code: str, days: int = 90) -> list[dict]:
@@ -667,6 +672,97 @@ def set_tier(telegram_id, tier: str, pro_expires_at=None) -> dict:
                 RETURNING telegram_id, tier, pro_expires_at
             """, (tg, tier, pro_expires_at))
             return dict(cur.fetchone())
+
+
+# ─── NAV DRAFTS (Pro user local NAV) ─────────────────────────────────────────
+
+def _ensure_nav_drafts_table(conn) -> None:
+    with conn.cursor() as cur:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS nav_drafts (
+                id              SERIAL PRIMARY KEY,
+                telegram_id     BIGINT NOT NULL,
+                fund_code       TEXT   NOT NULL,
+                nav_date        DATE   NOT NULL,
+                nav             FLOAT  NOT NULL,
+                status          TEXT   NOT NULL DEFAULT 'pending',
+                created_at      TIMESTAMPTZ DEFAULT NOW(),
+                UNIQUE(telegram_id, fund_code, nav_date)
+            )
+        """)
+
+
+def save_nav_draft(telegram_id, fund_code: str, nav_date: date, nav: float) -> None:
+    """Lưu NAV draft của Pro user — upsert nếu đã có pending draft cùng ngày."""
+    tg = int(telegram_id)
+    with get_conn() as conn:
+        _ensure_nav_drafts_table(conn)
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO nav_drafts (telegram_id, fund_code, nav_date, nav, status)
+                VALUES (%s, %s, %s, %s, 'pending')
+                ON CONFLICT (telegram_id, fund_code, nav_date) DO UPDATE
+                    SET nav = EXCLUDED.nav, created_at = NOW()
+                    WHERE nav_drafts.status = 'pending'
+            """, (tg, fund_code.upper(), nav_date, nav))
+
+
+def get_nav_drafts(telegram_id, fund_codes: list = None) -> list:
+    """Trả danh sách pending drafts của user, filter theo fund_codes nếu có."""
+    tg = int(telegram_id)
+    with get_conn() as conn:
+        _ensure_nav_drafts_table(conn)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            if fund_codes:
+                ph = ",".join(["%s"] * len(fund_codes))
+                cur.execute(
+                    f"SELECT fund_code, nav_date::text, nav, status FROM nav_drafts "
+                    f"WHERE telegram_id=%s AND fund_code IN ({ph}) AND status='pending' "
+                    f"ORDER BY fund_code, nav_date",
+                    [tg] + [c.upper() for c in fund_codes]
+                )
+            else:
+                cur.execute(
+                    "SELECT fund_code, nav_date::text, nav, status FROM nav_drafts "
+                    "WHERE telegram_id=%s AND status='pending' ORDER BY fund_code, nav_date",
+                    (tg,)
+                )
+            return [dict(r) for r in cur.fetchall()]
+
+
+def unify_nav_drafts(fund_code: str, nav_date: date, api_nav: float,
+                     tolerance_pct: float = 0.5) -> int:
+    """Sau khi API harvest xác nhận NAV, promote các pending drafts khớp về 'confirmed'.
+    Trả số lượng drafts được confirm.
+    Tolerance: nếu |draft - api| / api * 100 <= tolerance_pct → khớp.
+    """
+    confirmed = 0
+    with get_conn() as conn:
+        _ensure_nav_drafts_table(conn)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                "SELECT id, telegram_id, nav FROM nav_drafts "
+                "WHERE fund_code=%s AND nav_date=%s AND status='pending'",
+                (fund_code.upper(), nav_date)
+            )
+            rows = cur.fetchall()
+        for row in rows:
+            diff_pct = abs(row["nav"] - api_nav) / api_nav * 100 if api_nav else 100
+            new_status = "confirmed" if diff_pct <= tolerance_pct else "rejected"
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE nav_drafts SET status=%s WHERE id=%s",
+                    (new_status, row["id"])
+                )
+            if new_status == "confirmed":
+                confirmed += 1
+                logger.info("nav_draft confirmed: tg=%s %s %s nav=%.4f (api=%.4f)",
+                            row["telegram_id"], fund_code, nav_date, row["nav"], api_nav)
+            else:
+                logger.warning("nav_draft rejected: tg=%s %s %s draft=%.4f api=%.4f diff=%.2f%%",
+                               row["telegram_id"], fund_code, nav_date,
+                               row["nav"], api_nav, diff_pct)
+    return confirmed
 
 
 # ─── POOL ────────────────────────────────────────────────────────────────────

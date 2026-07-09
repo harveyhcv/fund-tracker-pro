@@ -2162,6 +2162,16 @@ async function navImportSubmit(){
   const code = (document.getElementById('nav-import-code').value||'').trim().toUpperCase();
   const statusEl = document.getElementById('nav-import-status');
   if (!code) { statusEl.style.color='var(--sell)'; statusEl.textContent='Chưa có mã quỹ'; return; }
+
+  // Kiểm tra quyền: chỉ Admin và Pro mới được nhập NAV thủ công
+  const tier = _me?.tier || 'free';
+  const isAdmin = _me?.is_admin || false;
+  if (!isAdmin && tier !== 'pro') {
+    statusEl.style.color='var(--sell)';
+    statusEl.textContent='Tính năng này dành cho tài khoản Pro. Nâng cấp để sử dụng.';
+    return;
+  }
+
   const rowEls = document.querySelectorAll('#nav-import-rows .nav-row');
   const navList = [];
   rowEls.forEach(row => {
@@ -2171,20 +2181,26 @@ async function navImportSubmit(){
     if (date && nav > 0) navList.push({ date, nav });
   });
   if (!navList.length) { statusEl.style.color='var(--sell)'; statusEl.textContent='Chưa có hàng hợp lệ'; return; }
-  statusEl.style.color='var(--txt2)'; statusEl.textContent=`Dang luu ${navList.length} diem NAV cho ${code}...`;
+
+  // Route: Admin → import thẳng vào DB tổng | Pro → draft tạm thời
+  const endpoint = isAdmin ? '/api/admin/import-nav' : '/api/nav/draft';
+  const label = isAdmin ? 'DB tổng' : 'bản nháp (chờ xác nhận)';
+  statusEl.style.color='var(--txt2)';
+  statusEl.textContent=`Đang lưu ${navList.length} điểm NAV vào ${label}...`;
   try {
-    const res = await fetch(`${API_BASE}/api/admin/import-nav`, {
+    const res = await fetch(`${API_BASE}${endpoint}`, {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ funds: { [code]: navList } })
+      body: JSON.stringify({ tg_id: String(USER_ID), funds: { [code]: navList } })
     });
     const d = await res.json();
-    const ins = d.inserted?.[code] ?? d.total ?? navList.length;
+    if (!res.ok) { statusEl.style.color='var(--sell)'; statusEl.textContent=d.error||'Lỗi server'; return; }
+    const ins = d.saved?.[code] ?? d.inserted?.[code] ?? d.total ?? navList.length;
+    const note = isAdmin ? '' : '\n⏳ Chờ harvest API xác nhận để vào DB tổng';
     statusEl.style.color = 'var(--buy)';
-    statusEl.textContent = `Luu ${ins} diem. Dang cross-check...`;
+    statusEl.textContent = `✓ Lưu ${ins} điểm NAV.${note}`;
     tg?.HapticFeedback?.notificationOccurred('success');
-    // Reload chart data then cross-check
     await crossCheckNav(code, navList);
-  } catch(e) { statusEl.style.color='var(--sell)'; statusEl.textContent='Loi ket noi: '+e.message; }
+  } catch(e) { statusEl.style.color='var(--sell)'; statusEl.textContent='Lỗi kết nối: '+e.message; }
 }
 // Legacy alias
 async function navSubmitImport(){ await navImportSubmit(); }

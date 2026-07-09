@@ -293,9 +293,10 @@ _SIGNAL_SELECT = """
 """
 
 
-def _compute_from_nav_history(codes: list, cfg: dict):
-    """Tính signal trực tiếp từ nav_history DB — dùng sau khi nhập NAV thủ công.
-    Không gọi API ngoài, đảm bảo dùng đúng data vừa import."""
+def _compute_from_nav_history(codes: list, cfg: dict, telegram_id: str = None):
+    """Tính signal từ nav_history DB.
+    Nếu telegram_id (Pro user): merge thêm pending nav_drafts của họ vào series.
+    Không gọi API ngoài — DB là nguồn duy nhất."""
     if not _BOT_IMPORTED or not codes:
         return
     db_url = os.environ.get("DATABASE_URL", cfg.get("database_url", ""))
@@ -307,6 +308,15 @@ def _compute_from_nav_history(codes: list, cfg: dict):
         "MUA MẠNH": "strong_buy", "MUA": "buy",
         "BÁN MẠNH": "strong_reduce", "BÁN": "reduce",
     }
+    # Load pending drafts của user (nếu có) để merge vào series
+    user_drafts: dict[str, dict] = {}  # {fund_code: {nav_date_str: nav}}
+    if telegram_id and _db_mod and _db_mod.is_available():
+        try:
+            for d in _db_mod.get_nav_drafts(telegram_id, codes):
+                user_drafts.setdefault(d["fund_code"], {})[d["nav_date"]] = d["nav"]
+        except Exception as e:
+            log.warning(f"[compute-from-db] load drafts: {e}")
+
     try:
         import psycopg2
         conn = psycopg2.connect(db_url, connect_timeout=8)
@@ -323,10 +333,14 @@ def _compute_from_nav_history(codes: list, cfg: dict):
                     (code,)
                 )
                 rows = cur.fetchall()
-            if not rows:
+            # Merge draft points: draft ghi đè nav_history cùng ngày, hoặc thêm ngày mới
+            pts_map = {r[0]: r[1] for r in rows}
+            for draft_date, draft_nav in user_drafts.get(code, {}).items():
+                pts_map[draft_date] = draft_nav
+            pts = [{"date": d, "nav": v} for d, v in sorted(pts_map.items())]
+            if not pts:
                 log.warning(f"[compute-from-db] {code}: không có data trong nav_history")
                 continue
-            pts = [{"date": r[0], "nav": r[1]} for r in rows]
             d = _calc_signal_bot(code, pts)
             sig = d.get("signal", "")
             strength = next((v for k, v in strength_map.items() if k in sig), "hold")
@@ -898,6 +912,8 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             self._api_admin_fetch_nav(data)
         elif path == "/api/admin/import-nav":
             self._api_admin_import_nav(data)
+        elif path == "/api/nav/draft":
+            self._api_nav_draft(data)
         elif path == "/api/admin/fixportfolio":
             self._api_admin_fixportfolio(data)
         elif path == "/api/admin/import-trades":
@@ -1842,8 +1858,60 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         _json(self, {"ok": True, "msg": "NAV fetch started",
                      "skip_tcbs": skip_tcbs, "funds": list(funds_cfg.keys())})
 
+    def _api_nav_draft(self, data: dict):
+        """POST /api/nav/draft — Pro user nhập NAV tạm thời vào nav_drafts.
+        Chỉ Pro/Admin. Sau khi API harvest confirm → tự động unify vào nav_history."""
+        tg_id = str(data.get("tg_id", ""))
+        if not _auth_write(self, tg_id):
+            return
+        if not _check_tier(self, tg_id, "pro"):
+            return
+        funds_data = data.get("funds", {})
+        if not funds_data:
+            _json(self, {"error": "funds required"}, 400)
+            return
+        if not (_db_mod and _db_mod.is_available()):
+            _json(self, {"error": "DB không khả dụng"}, 503)
+            return
+        from datetime import date as _date
+        saved, errors = {}, {}
+        for code, pts in funds_data.items():
+            code = code.upper()
+            count = 0
+            for pt in (pts or []):
+                try:
+                    nav_date = _date.fromisoformat(pt["date"])
+                    _db_mod.save_nav_draft(tg_id, code, nav_date, float(pt["nav"]))
+                    count += 1
+                except Exception as e:
+                    errors[f"{code}/{pt.get('date')}"] = str(e)
+            if count:
+                saved[code] = count
+        # Recompute signal của user từ nav_history + drafts
+        if saved and _BOT_IMPORTED:
+            try:
+                cfg = _load_cfg()
+                _compute_from_nav_history(list(saved.keys()), cfg, telegram_id=tg_id)
+                log.info(f"[nav-draft] {tg_id}: saved drafts={saved}, recomputed signals")
+            except Exception as e:
+                log.warning(f"[nav-draft] recompute: {e}")
+        _json(self, {"ok": True, "saved": saved, "errors": errors,
+                     "note": "NAV tạm thời. Sẽ được xác nhận khi API harvest khớp."})
+
     def _api_admin_import_nav(self, data: dict):
-        """POST /api/admin/import-nav — bulk import NAV data {funds: {CODE: [{date, nav}]}}."""
+        """POST /api/admin/import-nav — Admin-only bulk import NAV vào shared nav_history."""
+        # Admin-only guard
+        tg_id = str(data.get("tg_id", ""))
+        cfg = _load_cfg()
+        admin_id = str(cfg.get("admin_telegram_id", ""))
+        if not tg_id or tg_id != admin_id:
+            if not _auth_write(self, tg_id):
+                return
+            # Nếu auth OK nhưng không phải admin → từ chối
+            if tg_id != admin_id:
+                _json(self, {"error": "Chỉ admin mới được import NAV trực tiếp vào DB tổng. "
+                                      "Dùng /api/nav/draft nếu là tài khoản Pro."}, 403)
+                return
         funds_data = data.get("funds", {})
         if not funds_data:
             _json(self, {"error": "funds required"}, 400)
