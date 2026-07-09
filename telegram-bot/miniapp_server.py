@@ -359,50 +359,7 @@ def _compute_from_nav_history(codes: list, cfg: dict):
     conn.close()
 
 
-def _compute_and_save(missing_codes: list, cfg: dict):
-    """Tính tín hiệu on-demand cho các quỹ chưa có trong buy_signals hôm nay."""
-    if not _BOT_IMPORTED or not missing_codes:
-        return
-    from datetime import date as _date
-    today = _date.today()
-    strength_map = {
-        "MUA MẠNH": "strong_buy", "MUA": "buy",
-        "BÁN MẠNH": "strong_reduce", "BÁN": "reduce",
-    }
-    for code in missing_codes:
-        try:
-            fund_cfg = _FUND_CATALOG.get(code, cfg.get("funds", {}).get(code, {}))
-            pts = _get_nav_series_bot(code, fund_cfg, cfg)
-            if not pts:
-                continue
-            d = _calc_signal_bot(code, pts)
-            sig = d.get("signal", "")
-            strength = next((v for k, v in strength_map.items() if k in sig), "hold")
-            settle = fund_cfg.get("settlement", "T2")
-            if _db_mod and _db_mod.is_available():
-                _db_mod.save_signal(
-                    fund_code=code,
-                    signal_date=today,
-                    strength=strength,
-                    score=d.get("score", 0),
-                    nav_at_signal=d.get("nav", 0),
-                    indicators={
-                        "rsi":          d.get("rsi"),
-                        "bb_pct":       d.get("bb_pct"),
-                        "macd_hist":    d.get("macd_hist"),
-                        "ma20_vs_ma50": (d.get("ma20") or 0) > (d.get("ma50") or 0),
-                        "momentum_30d": d.get("chg30"),
-                        "chg_pct":      d.get("chg_pct"),
-                        "chg7d":        d.get("chg7"),
-                        "chg30d":       d.get("chg30"),
-                        "details":      d.get("details", []),
-                        "nav_date":     d.get("nav_date"),
-                    },
-                    settlement_rule=settle,
-                )
-                log.info(f"[miniapp] on-demand signal {code}: {sig}")
-        except Exception as e:
-            log.warning(f"[miniapp] _compute_and_save {code}: {e}")
+
 
 
 def _get_signals_for_codes(codes: list, cfg: dict) -> dict:
@@ -437,10 +394,11 @@ def _get_signals_for_codes(codes: list, cfg: dict) -> dict:
         if signal_date < today_str:
             stale.append(row[0])
 
-    # Quỹ chưa có signal hoặc signal_date cũ hơn hôm nay → tính on-demand
+    # Quỹ chưa có signal hoặc signal_date cũ hơn hôm nay → tính từ nav_history DB
+    # Không gọi API ngoài — DB là nguồn duy nhất; harvest job populate DB lúc 18:30
     missing = [c for c in codes if c not in results] + stale
     if missing:
-        _compute_and_save(missing, cfg)
+        _compute_from_nav_history(missing, cfg)
         # Đọc lại sau khi đã save
         try:
             conn = psycopg2.connect(db_url, connect_timeout=8)
