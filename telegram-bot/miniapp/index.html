@@ -2188,19 +2188,44 @@ async function navImportSubmit(){
   statusEl.style.color='var(--txt2)';
   statusEl.textContent=`Đang lưu ${navList.length} điểm NAV vào ${label}...`;
   try {
+    const body = { tg_id: String(USER_ID), funds: { [code]: navList } };
     const res = await fetch(`${API_BASE}${endpoint}`, {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ tg_id: String(USER_ID), funds: { [code]: navList } })
+      body: JSON.stringify(body)
     });
     const d = await res.json();
     if (!res.ok) { statusEl.style.color='var(--sell)'; statusEl.textContent=d.error||'Lỗi server'; return; }
     const ins = d.saved?.[code] ?? d.inserted?.[code] ?? d.total ?? navList.length;
+    const sk = d.skipped?.[code] ?? 0;
+    // Nếu có điểm bị skip (source=fixed) và là admin → hỏi có muốn force-overwrite không
+    if (isAdmin && sk > 0) {
+      statusEl.style.color='#fbbf24';
+      statusEl.textContent=`✓ ${ins} điểm đã lưu. ⚠️ ${sk} điểm bị bỏ qua (đã fixed). Ghi đè?`;
+      const confirmBtn = document.createElement('button');
+      confirmBtn.textContent='Ghi đè dữ liệu đã fixed';
+      confirmBtn.style.cssText='margin-top:8px;width:100%;padding:8px;background:#2d1500;color:#fbbf24;border:1px solid #fbbf24;border-radius:6px;font-size:12px;cursor:pointer;font-family:var(--mono)';
+      confirmBtn.onclick = async () => {
+        confirmBtn.remove();
+        statusEl.textContent='Đang ghi đè...';
+        const r2 = await fetch(`${API_BASE}${endpoint}`, {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({...body, force: true})
+        });
+        const d2 = await r2.json();
+        const ins2 = d2.inserted?.[code] ?? 0;
+        statusEl.style.color='var(--buy)';
+        statusEl.textContent=`✓ Ghi đè ${ins2} điểm (đã reset về manual, chờ API re-confirm).`;
+        await crossCheckNav(code, navList);
+      };
+      statusEl.after(confirmBtn);
+      tg?.HapticFeedback?.notificationOccurred('warning');
+      return;
+    }
     const note = isAdmin ? '' : '\n⏳ Chờ harvest API xác nhận để vào DB tổng';
     statusEl.style.color = 'var(--buy)';
     statusEl.textContent = `✓ Lưu ${ins} điểm NAV.${note}`;
     tg?.HapticFeedback?.notificationOccurred('success');
     await crossCheckNav(code, navList);
-  } catch(e) { statusEl.style.color='var(--sell)'; statusEl.textContent='Lỗi kết nối: '+e.message; }
 }
 // Legacy alias
 async function navSubmitImport(){ await navImportSubmit(); }

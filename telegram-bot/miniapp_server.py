@@ -1923,55 +1923,72 @@ class MiniAppHandler(BaseHTTPRequestHandler):
 
         import psycopg2, psycopg2.extras
 
-        def _insert_pg(db_url, code, points, source='manual'):
-            """Insert manual NAV vào nav_history.
-            - Nếu chưa có data → INSERT source='manual'
-            - Nếu đã có source='manual' → UPDATE (cho phép sửa lại)
-            - Nếu đã có source='fmarket'/'tcbs'/'fixed' → DO NOTHING (API data ưu tiên hơn)
-            """
+        force = bool(data.get("force", False))  # Admin xác nhận ghi đè kể cả 'fixed'
+
+        def _insert_pg(db_url, code, points):
             conn = psycopg2.connect(db_url)
             cur = conn.cursor()
-            inserted = 0
+            skipped = inserted = 0
             for pt in points:
-                cur.execute(
-                    "INSERT INTO nav_history (fund_code, nav_date, nav, source) "
-                    "VALUES (%s, %s, %s, 'manual') "
-                    "ON CONFLICT (fund_code, nav_date) DO UPDATE "
-                    "SET nav=EXCLUDED.nav, fetched_at=NOW() "
-                    "WHERE nav_history.source = 'manual'",
-                    (code, pt["date"], float(pt["nav"]))
-                )
-                inserted += cur.rowcount
+                if force:
+                    # Ghi đè mọi source kể cả 'fixed' — reset về 'manual' để API re-confirm
+                    cur.execute(
+                        "INSERT INTO nav_history (fund_code, nav_date, nav, source) "
+                        "VALUES (%s, %s, %s, 'manual') "
+                        "ON CONFLICT (fund_code, nav_date) DO UPDATE "
+                        "SET nav=EXCLUDED.nav, source='manual', fetched_at=NOW()",
+                        (code, pt["date"], float(pt["nav"]))
+                    )
+                    inserted += cur.rowcount
+                else:
+                    # Bình thường: chỉ ghi nếu chưa có hoặc source='manual'
+                    cur.execute(
+                        "INSERT INTO nav_history (fund_code, nav_date, nav, source) "
+                        "VALUES (%s, %s, %s, 'manual') "
+                        "ON CONFLICT (fund_code, nav_date) DO UPDATE "
+                        "SET nav=EXCLUDED.nav, fetched_at=NOW() "
+                        "WHERE nav_history.source = 'manual'",
+                        (code, pt["date"], float(pt["nav"]))
+                    )
+                    if cur.rowcount:
+                        inserted += 1
+                    else:
+                        skipped += 1
             conn.commit()
             conn.close()
-            return inserted
+            return inserted, skipped
 
         results = {}
+        skipped_map = {}
         errors = {}
         for code, pts in funds_data.items():
             if not pts:
                 continue
             try:
-                n = _insert_pg(db_url, code.upper(), pts)
+                n, sk = _insert_pg(db_url, code.upper(), pts)
                 results[code.upper()] = n
-                log.info(f"[import-nav] {code}: +{n} records")
+                if sk:
+                    skipped_map[code.upper()] = sk
+                log.info(f"[import-nav] {code}: +{n} inserted, {sk} skipped (force={force})")
             except Exception as ex:
                 errors[code] = str(ex)
                 log.warning(f"[import-nav] {code} error: {ex}")
 
-        # Recompute buy_signals từ nav_history ngay sau import — không qua API ngoài
-        # để đảm bảo dùng đúng data vừa nhập (API ngoài có thể chưa publish NAV mới)
+        # Recompute buy_signals từ nav_history ngay sau import
         imported_codes = [c.upper() for c in results]
         if imported_codes and _BOT_IMPORTED:
             try:
                 cfg = _load_cfg()
                 _compute_from_nav_history(imported_codes, cfg)
-                log.info(f"[import-nav] Recomputed signals from DB for {imported_codes}")
             except Exception as ex:
                 log.warning(f"[import-nav] recompute signals failed: {ex}")
 
-        _json(self, {"ok": True, "inserted": results, "errors": errors,
-                     "total": sum(results.values())})
+        resp = {"ok": True, "inserted": results, "errors": errors,
+                "total": sum(results.values()), "force": force}
+        if skipped_map:
+            resp["skipped"] = skipped_map
+            resp["hint"] = "Một số điểm đã có source=fixed/api, bị bỏ qua. Dùng force=true để ghi đè."
+        _json(self, resp)
 
     def _api_admin_fixportfolio(self, data: dict):
         """POST /api/admin/fixportfolio — sửa portfolio admin."""
