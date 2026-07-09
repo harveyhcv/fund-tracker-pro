@@ -1241,7 +1241,7 @@ def msg_signal_alert(profile: dict, code: str, old_sig: str, new_sig: str, d: di
     lines.append(LINE)
     note = (
         "💡 Cân nhắc tích lũy thêm (DCA) nếu phù hợp kế hoạch của bạn."
-        if is_buy else
+        if "MUA" in new_sig else
         "💡 Cân nhắc giảm tỷ trọng nếu cần bảo toàn vốn."
     )
     lines.append(note)
