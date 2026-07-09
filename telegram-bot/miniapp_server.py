@@ -1898,16 +1898,22 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         import psycopg2, psycopg2.extras
 
         def _insert_pg(db_url, code, points, source='manual'):
-            """Insert NAV points to PostgreSQL nav_history, return count inserted."""
+            """Insert manual NAV vào nav_history.
+            - Nếu chưa có data → INSERT source='manual'
+            - Nếu đã có source='manual' → UPDATE (cho phép sửa lại)
+            - Nếu đã có source='fmarket'/'tcbs'/'fixed' → DO NOTHING (API data ưu tiên hơn)
+            """
             conn = psycopg2.connect(db_url)
             cur = conn.cursor()
             inserted = 0
             for pt in points:
                 cur.execute(
                     "INSERT INTO nav_history (fund_code, nav_date, nav, source) "
-                    "VALUES (%s, %s, %s, %s) "
-                    "ON CONFLICT (fund_code, nav_date) DO NOTHING",
-                    (code, pt["date"], float(pt["nav"]), source)
+                    "VALUES (%s, %s, %s, 'manual') "
+                    "ON CONFLICT (fund_code, nav_date) DO UPDATE "
+                    "SET nav=EXCLUDED.nav, fetched_at=NOW() "
+                    "WHERE nav_history.source = 'manual'",
+                    (code, pt["date"], float(pt["nav"]))
                 )
                 inserted += cur.rowcount
             conn.commit()

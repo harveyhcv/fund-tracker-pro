@@ -66,11 +66,16 @@ def upsert_nav(fund_code: str, nav_date: date, nav: float, source: str = "fmarke
                 INSERT INTO nav_history (fund_code, nav_date, nav, source)
                 VALUES (%s, %s, %s, %s)
                 ON CONFLICT (fund_code, nav_date) DO UPDATE
-                    SET nav = EXCLUDED.nav,
-                        source = EXCLUDED.source,
+                    SET nav        = EXCLUDED.nav,
+                        source     = CASE
+                            WHEN nav_history.source = 'fixed'  THEN 'fixed'
+                            WHEN nav_history.source = 'manual' THEN 'fixed'
+                            ELSE EXCLUDED.source
+                        END,
                         fetched_at = NOW()
+                WHERE nav_history.source != 'fixed'
             """, (fund_code, nav_date, nav, source))
-    logger.debug("upsert_nav %s %s %.4f", fund_code, nav_date, nav)
+    logger.debug("upsert_nav %s %s %.4f src=%s", fund_code, nav_date, nav, source)
 
 
 def get_nav_series(fund_code: str, days: int = 90) -> list[dict]:
