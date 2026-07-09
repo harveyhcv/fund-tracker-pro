@@ -377,8 +377,11 @@ def _compute_from_nav_history(codes: list, cfg: dict, telegram_id: str = None):
 
 
 
-def _get_signals_for_codes(codes: list, cfg: dict) -> dict:
-    """Đọc tín hiệu từ buy_signals. Quỹ thiếu → tính on-demand rồi đọc lại."""
+def _get_signals_for_codes(codes: list, cfg: dict, background_compute: bool = True) -> dict:
+    """Đọc tín hiệu từ buy_signals.
+    background_compute=True (default): stale/missing → trigger tính ngầm, trả về ngay cached.
+    background_compute=False: block cho đến khi tính xong (chỉ dùng từ /api/signals tab).
+    """
     results = {}
     if not codes:
         return results
@@ -409,23 +412,31 @@ def _get_signals_for_codes(codes: list, cfg: dict) -> dict:
         if signal_date < today_str:
             stale.append(row[0])
 
-    # Quỹ chưa có signal hoặc signal_date cũ hơn hôm nay → tính từ nav_history DB
-    # Không gọi API ngoài — DB là nguồn duy nhất; harvest job populate DB lúc 18:30
     missing = [c for c in codes if c not in results] + stale
     if missing:
-        _compute_from_nav_history(missing, cfg)
-        # Đọc lại sau khi đã save
-        try:
-            conn = psycopg2.connect(db_url, connect_timeout=8)
-            with conn.cursor() as cur:
-                rows2 = _query(cur, missing)
-            conn.close()
-            for row in rows2:
-                results[row[0]] = _row_to_signal(row)
-        except Exception as e:
-            log.warning(f"[miniapp] re-query after compute: {e}")
+        if background_compute:
+            # Trả về ngay với cached data; tính ngầm trong background thread
+            threading.Thread(
+                target=_compute_from_nav_history,
+                args=(missing, cfg),
+                daemon=True,
+                name="compute-signals-bg",
+            ).start()
+            log.info(f"[signals] background compute triggered for {len(missing)} codes")
+        else:
+            # Block: đợi tính xong rồi đọc lại (chỉ dùng từ /api/signals)
+            _compute_from_nav_history(missing, cfg)
+            try:
+                conn = psycopg2.connect(db_url, connect_timeout=8)
+                with conn.cursor() as cur:
+                    rows2 = _query(cur, missing)
+                conn.close()
+                for row in rows2:
+                    results[row[0]] = _row_to_signal(row)
+            except Exception as e:
+                log.warning(f"[miniapp] re-query after compute: {e}")
 
-    # Fallback cho quỹ vẫn không có data (không đủ NAV)
+    # Fallback cho quỹ vẫn không có data
     for code in codes:
         if code not in results:
             results[code] = {"signal": "N/A", "score": 0, "nav": 0, "nav_date": "",
@@ -983,7 +994,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         cfg     = _load_cfg()
         profile = _find_profile(cfg, tg_id) if tg_id else None
         watched = profile.get("watched_funds", []) if profile else list(cfg.get("funds", {}).keys())[:10]
-        signals = _get_signals_for_codes(watched, cfg)
+        signals = _get_signals_for_codes(watched, cfg, background_compute=False)
         all_funds = {code: info.get("name", code) for code, info in cfg.get("funds", {}).items()}
         _json(self, {"signals": signals, "updated": datetime.now().isoformat(),
                      "watched": watched, "all_funds": all_funds})
