@@ -485,10 +485,19 @@ def _db_get_ccq_holdings(tg_id: str) -> list:
     ]
 
 
+def _calc_portfolio_with_holdings(holdings: list, signals: dict) -> dict:
+    """Tính P&L từ holdings đã có sẵn — không query DB thêm."""
+    return _calc_portfolio_core(holdings, signals)
+
+
 def _calc_portfolio(profile: dict, signals: dict) -> dict:
     """Tính P&L từng quỹ — holdings đọc thẳng từ DB (không dùng snapshot config)."""
     tg_id = str(profile.get("telegram_id", ""))
     holdings = _db_get_ccq_holdings(tg_id) if tg_id else profile.get("portfolio", [])
+    return _calc_portfolio_core(holdings, signals)
+
+
+def _calc_portfolio_core(holdings: list, signals: dict) -> dict:
     items = []
     total_val = total_cost = 0.0
     for h in holdings:
@@ -949,15 +958,16 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         self.wfile.write(content)
 
     def _api_me(self, qs: dict):
+        import time as _time
+        t0 = _time.time()
         tg_id = (qs.get("user_id") or qs.get("telegram_id") or [""])[0]
         if not tg_id:
             _json(self, {"error": "user_id required"}, 400)
             return
         cfg     = _load_cfg()
         profile = _find_profile(cfg, tg_id)
+        log.info(f"[/api/me] {tg_id} find_profile={_time.time()-t0:.2f}s")
         if not profile:
-            # Tự động đăng ký ngay trong Mini App — không cần gõ /register qua chat nữa.
-            # name lấy từ query param (frontend truyền Telegram WebApp initData.user.first_name).
             reg_name = (qs.get("name") or [""])[0].strip() or f"User_{str(tg_id)[-4:]}"
             default_funds = cfg.get("default_watched_funds", ["TCBF", "SSISCA", "VCBFBCF"])
             if _db_mod is not None and _db_mod.is_available():
@@ -969,14 +979,16 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             if not profile:
                 _json(self, {"error": "Profile không tìm thấy", "telegram_id": tg_id}, 404)
                 return
-        # Lấy signals cho watched_funds + tất cả quỹ trong portfolio
         watched  = profile.get("watched_funds", [])
-        holdings = _db_get_ccq_holdings(tg_id)
+        holdings = _db_get_ccq_holdings(tg_id)  # 1 lần duy nhất
+        log.info(f"[/api/me] {tg_id} holdings={len(holdings)} t={_time.time()-t0:.2f}s")
         portfolio_codes = [h["code"] for h in holdings]
-        all_codes = list(dict.fromkeys(watched + portfolio_codes))  # dedup, preserve order
-        signals  = _get_signals_for_codes(all_codes, cfg)
-        portfolio = _calc_portfolio(profile, signals)
+        all_codes = list(dict.fromkeys(watched + portfolio_codes))
+        signals  = _get_signals_for_codes(all_codes, cfg)  # background, trả về ngay
+        log.info(f"[/api/me] {tg_id} signals cached={len([s for s in signals.values() if s.get('nav')])} t={_time.time()-t0:.2f}s")
+        portfolio = _calc_portfolio_with_holdings(holdings, signals)  # tái dùng holdings
         tier_info = _get_tier(tg_id)
+        log.info(f"[/api/me] {tg_id} DONE t={_time.time()-t0:.2f}s")
         _json(self, {
             "name": profile.get("name", ""),
             "telegram_id": tg_id,
