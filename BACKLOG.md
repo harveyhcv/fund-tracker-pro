@@ -14,15 +14,15 @@
 
 ## CẦN LÀM — P1 (Important)
 
-- [TODO] USR-001 · Multi-user registration: lưu DB thay vì config.json | P1 | 5h | SEC-002
 
 ## CẦN LÀM — P2 (Nice-to-have)
 
-- [TODO] DASH-001 · Multi-fund selector trên Dashboard (thay vì hardcode) | P2 | 4h | none
-- [TODO] FMKT-001 · fmarket_id cho các mã chưa có (tra thủ công hoặc scrape) | P2 | 2h | none
+- [DONE] FMKT-001 · fmarket_id mapping: fix 3 sai (BVPF→14, DCDS→28, VNDBF→37), thêm 15 mã mới qua /res/products/{id} | 2026-07-09
 
 ## XONG (DONE)
 
+- [DONE] DASH-001 · Multi-fund selector: renderFundSearchList/addFundToProfile/removeFundFromProfile đã có trong Dashboard.html | 2026-07-08
+- [DONE] USR-001 · Multi-user registration via bot_profiles bảng DB (PostgreSQL), config.json fallback khi DB down | 2026-07-08
 - [DONE] JWT-001 · TCBS token expiry: decode JWT exp, job 07:30 notify admin 3 ngày trước khi hết | 2026-07-08
 - [DONE] DB-001 · Scheduled NAV harvest 18:30 daily — job_harvest_nav() + harvest_nav.py đã implement | 2026-07-08
 - [DONE] SIG-006 · Sortino Ratio (rolling 1Y, rf=5%) vào calc_signal() return dict | 2026-07-08
