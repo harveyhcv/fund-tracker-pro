@@ -328,6 +328,27 @@ theo kiến trúc `dashboard/miniapp/` + endpoint gộp vào `server.py`. Nhưng
 **Việc tiếp theo (GATE-004)**: modal "Nâng cấp Pro" trong `telegram-bot/miniapp/index.html`
 khi nhận response 403 `pro_required` — dùng `tier`/`free_fund_limit` đã có sẵn từ `/api/me`.
 
+## ✅ GATE-004 — Upgrade-to-Pro Modal (2026-07-09, autonomous run)
+
+- `telegram-bot/miniapp/index.html`: thêm modal `#upgrade-modal` (cùng pattern
+  `.modal-overlay`/`.modal-sheet` với modal phân tích quỹ có sẵn, z-index:300 để nổi
+  trên `#watch-modal` z-index:1000 — phải gọi `closeWatchModal()` trước khi mở để tránh
+  bị che khuất do watch-modal cao hơn)
+- `showUpgradeModal(info)` — hiện lý do (dùng `info.limit` nếu có) + list tính năng Pro tĩnh
+- `apiPost`/`apiDelete`: giờ đính kèm `err.body` (parsed JSON) + `err.status` vào Error ném
+  ra khi `!res.ok`, để caller phân biệt được `pro_required` với lỗi khác (trước đây chỉ có
+  `err.message = e.error||res.status`, không đủ để phân biệt loại lỗi chương trình)
+- Wire vào 2 nơi gọi `POST /api/me/watched_funds` (nơi duy nhất hiện trigger GATE-003):
+  `addNewFundAndWatch()` và `saveWatchedFunds()` — catch block check `isProRequired(e)`
+- **CTA "NÂNG CẤP NGAY"** hiện chỉ đóng modal + toast "sắp ra mắt" vì PAY-001..003 (Telegram
+  Stars invoice) CHƯA implement — không có route thật để điều hướng tới. Khi PAY-001 xong,
+  sửa `startUpgrade()` để gọi endpoint/deep-link thật thay vì toast placeholder
+- Verify: `node -e "new Function(...)"` parse script tag OK; preview static server
+  (`telegram-bot/miniapp/`) qua `preview_start miniapp` — gọi `showUpgradeModal({limit:2})`
+  và `startUpgrade()` trực tiếp qua `preview_eval`, xác nhận modal render đúng nội dung
+  (snapshot) và toast/close hoạt động đúng, không có console error
+- Task tiếp theo trong BACKLOG: PAY-001 (`/buy_pro` Telegram Stars invoice)
+
 ---
 
-*Cập nhật: 2026-07-09 — Audit Mini App thực tế + Freemium Gate (GATE-001/002/003)*
+*Cập nhật: 2026-07-09 — GATE-004 Upgrade-to-Pro Modal (autonomous run)*
