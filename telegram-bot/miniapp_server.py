@@ -293,6 +293,72 @@ _SIGNAL_SELECT = """
 """
 
 
+def _compute_from_nav_history(codes: list, cfg: dict):
+    """Tính signal trực tiếp từ nav_history DB — dùng sau khi nhập NAV thủ công.
+    Không gọi API ngoài, đảm bảo dùng đúng data vừa import."""
+    if not _BOT_IMPORTED or not codes:
+        return
+    db_url = os.environ.get("DATABASE_URL", cfg.get("database_url", ""))
+    if not db_url:
+        return
+    from datetime import date as _date
+    today = _date.today()
+    strength_map = {
+        "MUA MẠNH": "strong_buy", "MUA": "buy",
+        "BÁN MẠNH": "strong_reduce", "BÁN": "reduce",
+    }
+    try:
+        import psycopg2
+        conn = psycopg2.connect(db_url, connect_timeout=8)
+    except Exception as e:
+        log.warning(f"[compute-from-db] DB connect failed: {e}")
+        return
+
+    for code in codes:
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT nav_date::text, nav::float FROM nav_history "
+                    "WHERE fund_code=%s ORDER BY nav_date",
+                    (code,)
+                )
+                rows = cur.fetchall()
+            if not rows:
+                log.warning(f"[compute-from-db] {code}: không có data trong nav_history")
+                continue
+            pts = [{"date": r[0], "nav": r[1]} for r in rows]
+            d = _calc_signal_bot(code, pts)
+            sig = d.get("signal", "")
+            strength = next((v for k, v in strength_map.items() if k in sig), "hold")
+            fund_cfg = _FUND_CATALOG.get(code, cfg.get("funds", {}).get(code, {}))
+            settle = fund_cfg.get("settlement", "T2")
+            if _db_mod and _db_mod.is_available():
+                _db_mod.save_signal(
+                    fund_code=code,
+                    signal_date=today,
+                    strength=strength,
+                    score=d.get("score", 0),
+                    nav_at_signal=d.get("nav", 0),
+                    indicators={
+                        "rsi":          d.get("rsi"),
+                        "bb_pct":       d.get("bb_pct"),
+                        "macd_hist":    d.get("macd_hist"),
+                        "ma20_vs_ma50": (d.get("ma20") or 0) > (d.get("ma50") or 0),
+                        "momentum_30d": d.get("chg30"),
+                        "chg_pct":      d.get("chg_pct"),
+                        "chg7d":        d.get("chg7"),
+                        "chg30d":       d.get("chg30"),
+                        "details":      d.get("details", []),
+                        "nav_date":     d.get("nav_date"),
+                    },
+                    settlement_rule=settle,
+                )
+                log.info(f"[compute-from-db] {code}: signal={sig}, nav_date={d.get('nav_date')}")
+        except Exception as e:
+            log.warning(f"[compute-from-db] {code}: {e}")
+    conn.close()
+
+
 def _compute_and_save(missing_codes: list, cfg: dict):
     """Tính tín hiệu on-demand cho các quỹ chưa có trong buy_signals hôm nay."""
     if not _BOT_IMPORTED or not missing_codes:
@@ -1861,13 +1927,14 @@ class MiniAppHandler(BaseHTTPRequestHandler):
                 errors[code] = str(ex)
                 log.warning(f"[import-nav] {code} error: {ex}")
 
-        # Recompute buy_signals ngay cho các fund vừa import — tránh cache cũ
+        # Recompute buy_signals từ nav_history ngay sau import — không qua API ngoài
+        # để đảm bảo dùng đúng data vừa nhập (API ngoài có thể chưa publish NAV mới)
         imported_codes = [c.upper() for c in results]
         if imported_codes and _BOT_IMPORTED:
             try:
                 cfg = _load_cfg()
-                _compute_and_save(imported_codes, cfg)
-                log.info(f"[import-nav] Recomputed signals for {imported_codes}")
+                _compute_from_nav_history(imported_codes, cfg)
+                log.info(f"[import-nav] Recomputed signals from DB for {imported_codes}")
             except Exception as ex:
                 log.warning(f"[import-nav] recompute signals failed: {ex}")
 
