@@ -23,6 +23,7 @@ import threading
 import urllib.parse as _uparse
 from datetime import date, datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from socketserver import ThreadingMixIn
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
@@ -2052,7 +2053,9 @@ def start_miniapp_server():
         _ensure_buy_signal_cols()
     except Exception as e:
         log.warning(f"[miniapp] buy_signals cols init skipped: {e}")
-    server = HTTPServer(("0.0.0.0", PORT_MINIAPP), MiniAppHandler)
+    class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
+        daemon_threads = True
+    server = ThreadingHTTPServer(("0.0.0.0", PORT_MINIAPP), MiniAppHandler)
     log.info(f"[miniapp] HTTP server started on :{PORT_MINIAPP}")
     server.serve_forever()
 
