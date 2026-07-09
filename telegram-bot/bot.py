@@ -74,8 +74,7 @@ STATE_FILE  = DATA_DIR / "state.json"
 # Tập hợp mã quỹ bị 401/403 trong chu kỳ fetch hiện tại.
 # Được reset trước mỗi job, kiểm tra sau fetch_all để gửi cảnh báo.
 _tcbs_auth_fail_codes: set = set()
-_tcbs_auth_last_notify: float = 0.0   # epoch seconds — throttle spam
-_TCBS_AUTH_NOTIFY_COOLDOWN = 7200     # 2 giờ giữa các lần notify
+_tcbs_auth_notified: bool = False  # True sau khi đã notify; reset khi token hoạt động lại
 
 
 def load_config() -> dict:
@@ -1518,14 +1517,12 @@ def _check_tcbs_token_expiry(config: dict) -> Optional[dict]:
 
 
 def _handle_tcbs_auth_error(config: dict, failed_codes: set):
-    """Gửi Telegram notification khi TCBS token hết hạn — tối đa 1 lần / 2 giờ."""
-    global _tcbs_auth_last_notify
-    import time as _time
-    now = _time.time()
-    if now - _tcbs_auth_last_notify < _TCBS_AUTH_NOTIFY_COOLDOWN:
-        log.debug(f"[TCBS-AUTH] Bỏ qua notify (cooldown {_TCBS_AUTH_NOTIFY_COOLDOWN//60}m)")
+    """Gửi Telegram notification khi TCBS token hết hạn — chỉ 1 lần cho đến khi token được update."""
+    global _tcbs_auth_notified
+    if _tcbs_auth_notified:
+        log.debug("[TCBS-AUTH] Đã notify rồi, bỏ qua cho đến khi token được cập nhật")
         return
-    _tcbs_auth_last_notify = now
+    _tcbs_auth_notified = True
     log.warning(f"[TCBS-AUTH] Token hết hạn, không fetch được: {', '.join(sorted(failed_codes))}"
                 f" — Cập nhật token mới qua Mini App (Admin → Settings).")
     token = config.get("bot_token", "")
@@ -1611,6 +1608,9 @@ def job_morning():
     # Cảnh báo ngay nếu TCBS token hết hạn trong lúc fetch
     if _tcbs_auth_fail_codes:
         _handle_tcbs_auth_error(config, _tcbs_auth_fail_codes.copy())
+    else:
+        global _tcbs_auth_notified
+        _tcbs_auth_notified = False  # Token hoạt động → reset để notify lần sau nếu hết hạn lại
     state = load_state()
     state["morning_nav"]       = {k: {"nav": v["nav"], "date": v["nav_date"]} for k, v in nav_data.items()}
     state["last_morning"]      = datetime.now().isoformat()
@@ -1666,10 +1666,11 @@ def job_check_signals():
         return
     codes    = all_watched_codes(config)
     nav_data = fetch_all(config, codes)
-    # Chỉ cảnh báo TCBS auth 1 lần/ngày — tránh spam; morning job đã gửi rồi,
-    # check_signals bổ sung phòng khi token hết hạn giữa ngày
     if _tcbs_auth_fail_codes:
         _handle_tcbs_auth_error(config, _tcbs_auth_fail_codes.copy())
+    else:
+        global _tcbs_auth_notified
+        _tcbs_auth_notified = False  # Token hoạt động → reset để notify lần sau nếu hết hạn lại
     state        = load_state()
     prev_signals = state.get("signals", {})
     new_signals  = {k: v["signal"] for k, v in nav_data.items()}
