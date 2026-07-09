@@ -287,6 +287,47 @@ navSeries(code)  → HIST.chart + cachedNav.filter(date > lastH)  ← merge poin
 - Inline keyboard (Reply keyboard buttons) cho UX tốt hơn
 - Webhook mode thay long-polling (giảm latency)
 
+## ⚠️ AUDIT 2026-07-09 — BACKLOG.md không khớp thực tế
+
+BACKLOG.md (viết trước đó, có lẽ bởi phiên plan khác) mô tả Phase 1 Mini App
+theo kiến trúc `dashboard/miniapp/` + endpoint gộp vào `server.py`. Nhưng thực tế
+**Mini App đã được xây dựng từ trước** với kiến trúc khác hẳn:
+
+- `telegram-bot/miniapp/index.html` (158KB) — Telegram WebApp SDK, không phải `dashboard/miniapp/`
+- `telegram-bot/miniapp_server.py` (~1900 dòng) — server HTTP riêng, port `PORT_MINIAPP`/8443,
+  khởi động qua thread trong `bot.py main()` (`from miniapp_server import start_in_thread`)
+- Auth: verify HMAC `X-Init-Data` header **mỗi request** (`_validate_init_data`, `_auth_write`)
+  — KHÔNG trao đổi session-token 1 lần như spec BACKLOG, nhưng tương đương bảo mật
+- Đã có: `/api/me`, `/api/signals`, `/api/dca`, `/api/trades`, `/api/gold*`, `/api/admin/*`,
+  auto-register user khi mở app lần đầu, portfolio P&L on-demand từ DB
+
+**Bài học**: Luôn audit code thực tế trước khi tin BACKLOG.md — file này có thể lỗi thời nếu
+được viết ra trước một phiên implement khác không cập nhật lại nó.
+
+## ✅ Phase 2 — Freemium Gate (GATE-001/002/003, 2026-07-09)
+
+- `telegram-bot/db.py`: thêm `_ensure_user_tiers_table()` (lazy-create, cùng pattern
+  `bot_profiles`), `get_tier(telegram_id)` (tự downgrade 'pro'→'free' khi `pro_expires_at`
+  đã qua), `set_tier(telegram_id, tier, pro_expires_at)` (upsert, gọi sau khi thanh toán)
+- `telegram-bot/db.py`: thêm `set_watched_funds(telegram_id, funds)` — REPLACE watched_funds
+  (khác `ensure_watched_funds` là UNION merge)
+- `telegram-bot/miniapp_server.py`: thêm `FREE_FUND_LIMIT = 2`, `_get_tier()`, `_check_tier()`
+  (middleware GATE-002, gửi 403 `{"error":"pro_required","upgrade_url":"/buy"}`)
+- **Bug tìm thấy + fix**: `_api_update_watched` (POST `/api/me/watched_funds`) trước đó lấy
+  `profile` từ DB (`_find_profile` ưu tiên `bot_profiles` table) nhưng mutate + `_save_cfg()`
+  chỉ ghi vào `config.json` → add-fund KHÔNG persist khi chạy production trên Railway
+  (DATABASE_URL set). Đã sửa: gọi `db.set_watched_funds()` khi `db_backed=True`.
+- `/api/me` giờ trả thêm `tier`, `pro_expires_at`, `free_fund_limit` để frontend dùng cho GATE-004
+- **Chưa verify integration thật** (không có DATABASE_URL trong môi trường agent) — cần
+  deploy Railway để test `user_tiers` table tạo đúng + tier check hoạt động end-to-end
+- Test suite: 55/280 fail nhưng **KHÔNG liên quan** đến thay đổi này — đã xác nhận bằng cách
+  chạy test không đụng db.py/miniapp_server.py (test_commands.py JWT expiry) vẫn fail tương tự;
+  nguyên nhân là lệch encoding console Windows (mangled Vietnamese text "C� ph�p") + JWT
+  test dùng token mẫu đã hết hạn theo ngày hệ thống hiện tại — pre-existing, không phải do session này
+
+**Việc tiếp theo (GATE-004)**: modal "Nâng cấp Pro" trong `telegram-bot/miniapp/index.html`
+khi nhận response 403 `pro_required` — dùng `tier`/`free_fund_limit` đã có sẵn từ `/api/me`.
+
 ---
 
-*Cập nhật: 2026-06-21 — Phase 5C: /buy /sell /navall /research + job_nav_change_alert*
+*Cập nhật: 2026-07-09 — Audit Mini App thực tế + Freemium Gate (GATE-001/002/003)*

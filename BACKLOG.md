@@ -4,43 +4,120 @@
 # Priority: P0 (blocker) / P1 (important) / P2 (nice-to-have)
 # Claude đọc file này ĐẦU TIÊN mỗi session. Pick task IN_PROGRESS nếu có, nếu không pick P0 cao nhất.
 #
-# Last updated: 2026-07-08
+# Last updated: 2026-07-09 (autonomous run)
 
 ## ĐANG LÀM (IN_PROGRESS)
-# Không có task đang chạy — pick P0 đầu tiên
+- [ ] GATE-004 · Mini App upgrade prompt khi bị 403 pro_required (xem chi tiết ở PHASE 2 bên dưới) — chưa bắt đầu, pick tiếp phiên sau
 
-## CẦN LÀM — P0 (Blockers, phải xong trước khi public)
+---
 
+## ═══════════════════════════════════════════
+## PHASE 1 — TELEGRAM MINI APP SCAFFOLD
+## ═══════════════════════════════════════════
+# ⚠️ Audit 2026-07-09: Phase 1 đã được implement từ trước dưới kiến trúc KHÁC với
+# spec gốc bên dưới — không phải `dashboard/miniapp/` + endpoint trong `server.py`,
+# mà là app riêng: `telegram-bot/miniapp/index.html` + `telegram-bot/miniapp_server.py`
+# (port riêng PORT_MINIAPP/8443, khởi động qua thread trong `bot.py main()`).
+# Auth dùng per-request `X-Init-Data` header (verify HMAC mỗi request qua
+# `_validate_init_data`), KHÔNG dùng session-token đổi 1 lần như spec — tương đương
+# về bảo mật, chỉ khác cơ chế. Đánh dấu DONE theo triển khai thực tế.
 
-## CẦN LÀM — P1 (Important)
+- [DONE] MA-001 · Mini App HTML shell dùng Telegram WebApp JS SDK — `telegram-bot/miniapp/index.html` | 2026-07-09 (audit, code có sẵn)
+- [DONE] MA-002 · HMAC-SHA256 verify initData — `_validate_init_data()` trong `telegram-bot/miniapp_server.py:629` | 2026-07-09 (audit)
+- [DONE] MA-003 · Auth mỗi request qua `X-Init-Data` header — `_auth_write()` `miniapp_server.py:650` (thay vì session-token riêng, cùng mục đích) | 2026-07-09 (audit)
+- [DONE] MA-004 · Mini App CSS dùng design system chung — `telegram-bot/miniapp/index.html` | 2026-07-09 (audit)
+- [DONE] MA-005 · Fund signals UI — `/api/signals`, `/api/me` trong `miniapp_server.py` | 2026-07-09 (audit)
+- [DONE] MA-006 · Portfolio view (NAV + signals + P&L) — `_calc_portfolio()` + `/api/me` | 2026-07-09 (audit)
 
+---
 
-## CẦN LÀM — P2 (Nice-to-have)
+## ═══════════════════════════════════════════
+## PHASE 2 — FREEMIUM GATE
+## ═══════════════════════════════════════════
 
-- [DONE] FMKT-001 · fmarket_id mapping: fix 3 sai (BVPF→14, DCDS→28, VNDBF→37), thêm 15 mã mới qua /res/products/{id} | 2026-07-09
+- [DONE-LOCAL] GATE-001 · DB migration: bảng `user_tiers (telegram_id BIGINT PK, tier TEXT DEFAULT 'free', pro_expires_at TIMESTAMPTZ, created_at TIMESTAMPTZ)` — `_ensure_user_tiers_table()` trong `telegram-bot/db.py` (lazy-create, cùng pattern với `bot_profiles`, tự chạy khi `get_tier`/`set_tier` được gọi lần đầu) | 2026-07-09 | cần DATABASE_URL thật trên Railway để verify
+- [DONE-LOCAL] GATE-002 · Middleware `_check_tier(handler, telegram_id, required_tier)` trong `telegram-bot/miniapp_server.py` — trả 403 `{"error":"pro_required","upgrade_url":"/buy"}` nếu thiếu quyền; `get_tier()`/`set_tier()` trong `db.py` (tự downgrade khi `pro_expires_at` hết hạn) | 2026-07-09 | cần DATABASE_URL thật để verify integration
+- [DONE-LOCAL] GATE-003 · Free limit enforcement: `POST /api/me/watched_funds` trả 403 `pro_required` khi user free có > `FREE_FUND_LIMIT` (=2) mã. Bonus fix: endpoint trước đó có bug — khi profile lấy từ DB (`bot_profiles`) thì mutate + `_save_cfg()` không ghi gì cả (chỉ sửa config.json), tức add-fund KHÔNG persist trên production (Railway dùng DB). Đã thêm `db.set_watched_funds()` để ghi đúng vào DB khi `db_backed=True` | 2026-07-09 | cần DATABASE_URL thật để verify
+- [ ] GATE-004 · Mini App upgrade prompt: khi bị 403 `pro_required`, hiện modal "Nâng cấp Pro" với list tính năng + nút mở `/buy` trong `telegram-bot/miniapp/index.html`. `/api/me` đã trả sẵn `tier`, `pro_expires_at`, `free_fund_limit` để frontend dùng | P0 | 2h | GATE-003
+
+---
+
+## ═══════════════════════════════════════════
+## PHASE 3 — PAYMENT (dễ trước, khó sau)
+## ═══════════════════════════════════════════
+
+### 3a. Telegram Stars (làm trước — đơn giản nhất)
+
+- [ ] PAY-001 · `/buy_pro` command: bot gửi invoice `send_invoice(title="Fund Tracker Pro", currency="XTR", prices=[{amount:250}], provider_token="")` | P0 | 2h
+- [ ] PAY-002 · `pre_checkout_query` handler: trả lời OK trong <10s | P0 | 30m | PAY-001
+- [ ] PAY-003 · `successful_payment` handler: upsert `user_tiers` set tier='pro', pro_expires_at = NOW()+30d | P0 | 1h | PAY-002
+
+### 3b. MoMo (VN market)
+
+- [ ] PAY-004 · `/payment/momo/create` endpoint: tạo MoMo payment request v2 (requestId, amount, redirectUrl, ipnUrl), trả `payUrl` cho Mini App redirect | P1 | 4h
+- [ ] PAY-005 · `/payment/momo/ipn` IPN handler: verify HMAC signature MoMo, khi `resultCode=0` → upsert `user_tiers` | P1 | 2h | PAY-004
+
+### 3c. VNPay + Stripe (làm sau)
+
+- [ ] PAY-006 · VNPay: `/payment/vnpay/create` + `/payment/vnpay/return` theo spec VNPay 2.1.0 | P2 | 4h
+- [ ] PAY-007 · Stripe Checkout: session tạo qua Stripe API, webhook `/payment/stripe/webhook` xác nhận | P2 | 3h
+
+---
+
+## ═══════════════════════════════════════════
+## PHASE 4 — PRO FEATURES
+## ═══════════════════════════════════════════
+
+- [ ] PRO-001 · Deep analysis endpoint `/miniapp/analysis/{fund_code}`: trả full signal dict (RSI, MACD, BB, Stochastic %K/%D, CCI, ROC, Sharpe, Sortino, MaxDD, Golden/Death Cross) | P1 | 3h | GATE-002
+- [ ] PRO-002 · Gold analysis: trend + RSI + MA signal cho giá vàng (SJC/DOJI từ giavang.org), riêng cho mã quỹ loại vàng | P1 | 2h | PRO-001
+- [ ] PRO-003 · Unlimited fund tracking: bỏ giới hạn 2 mã khi tier=pro, `/miniapp/add-fund` skip GATE-003 | P1 | 30m | GATE-002
+- [ ] PRO-004 · Alert system: bảng `alerts (id, user_id, fund_code, condition ENUM('nav_up','nav_down','signal_buy','signal_sell'), threshold FLOAT, last_triggered TIMESTAMPTZ)`, job check 18:31 sau harvest, gửi Telegram message | P1 | 4h
+
+---
+
+## ═══════════════════════════════════════════
+## PHASE 5 — T+2 FORECAST ENGINE
+## (Core competitive moat — accuracy = revenue)
+## ═══════════════════════════════════════════
+
+### 5a. Infrastructure
+
+- [ ] T2-001 · DB schema: `nav_predictions (id SERIAL PK, fund_code TEXT, predicted_for_date DATE, predicted_nav FLOAT, model_version TEXT, ci_low FLOAT, ci_high FLOAT, created_at TIMESTAMPTZ)` + `prediction_actuals (prediction_id INT FK, actual_nav FLOAT, error_pct FLOAT, logged_at TIMESTAMPTZ)` | P0 | 1h
+- [ ] T2-002 · Feature pipeline `scripts/t2_features.py`: build DataFrame per fund với features: `nav_lag_1..5`, `vnindex_return_t1` (scrape từ vn-index API), `gold_return_t1`, `fund_category` (equity/bond/balanced/gold), `day_of_week`, `days_to_month_end`, `days_to_quarter_end` | P0 | 4h
+
+### 5b. Models (baseline → ML → ensemble)
+
+- [ ] T2-003 · Baseline `scripts/t2_baseline.py`: ARIMA(2,1,2) per fund via `statsmodels`, predict T+2, insert vào `nav_predictions` với `model_version='arima-v1'` | P1 | 3h | T2-002
+- [ ] T2-004 · ML model `scripts/t2_xgboost.py`: XGBoostRegressor với feature vector T2-002, train/test split theo thời gian (80/20), evaluate MAPE trước khi deploy, insert predictions với `model_version='xgb-v1'` | P1 | 5h | T2-002, T2-003
+- [ ] T2-005 · Ensemble: weighted average ARIMA + XGBoost (init weights 0.3/0.7), CI = ±1.5 × rolling prediction std (30 ngày) | P1 | 2h | T2-003, T2-004
+
+### 5c. Self-improvement loop
+
+- [ ] T2-006 · Daily scorer `scripts/t2_score.py`: chạy 18:31 (sau NAV harvest), với mỗi prediction có `predicted_for_date = TODAY`, join với NAV thực tế vừa harvest, ghi `error_pct = (actual-predicted)/actual*100` vào `prediction_actuals` | P1 | 2h | T2-001
+- [ ] T2-007 · Weekly retrain job: Chủ nhật 02:00, retrain XGBoost với toàn bộ data kể cả actuals mới nhất, bump `model_version='xgb-v{N+1}'`, ghi MAPE vào `model_metrics` table | P1 | 2h | T2-004, T2-006
+- [ ] T2-008 · Adaptive ensemble weights: mỗi 30 ngày, tính MAPE(ARIMA) vs MAPE(XGBoost) trên tháng qua, set `w_arima = mape_xgb/(mape_arima+mape_xgb)` và ngược lại | P1 | 2h | T2-005, T2-006
+
+### 5d. User-facing (Mini App)
+
+- [ ] T2-009 · T+2 display: trong portfolio view, hiện `Dự báo T+2: X,XXX đ (↑/↓Y%)` với confidence bar, disclaimer "Tham khảo — không phải khuyến nghị đầu tư" | P2 | 2h | T2-005
+- [ ] T2-010 · Accuracy dashboard: tab "Độ chính xác" hiện MAPE 7d/30d/all-time per quỹ + biểu đồ dự báo vs thực tế, model version | P2 | 3h | T2-006
+
+---
 
 ## XONG (DONE)
 
-- [DONE] DASH-001 · Multi-fund selector: renderFundSearchList/addFundToProfile/removeFundFromProfile đã có trong Dashboard.html | 2026-07-08
-- [DONE] USR-001 · Multi-user registration via bot_profiles bảng DB (PostgreSQL), config.json fallback khi DB down | 2026-07-08
-- [DONE] JWT-001 · TCBS token expiry: decode JWT exp, job 07:30 notify admin 3 ngày trước khi hết | 2026-07-08
-- [DONE] DB-001 · Scheduled NAV harvest 18:30 daily — job_harvest_nav() + harvest_nav.py đã implement | 2026-07-08
-- [DONE] SIG-006 · Sortino Ratio (rolling 1Y, rf=5%) vào calc_signal() return dict | 2026-07-08
-- [DONE] SIG-005 · Volatility annualized (rolling 252 ngày) vào calc_signal() return dict | 2026-07-08
-- [DONE] SIG-004 · CCI(20) + ROC(10) vào calc_signal() scoring + return dict | 2026-07-08
-- [DONE] GIT-001 · .gitignore hardening: *.log, nav_data.json, daily_review_*.md, __pycache__, .venv | 2026-07-08
-- [DONE] SIG-003 · Sharpe Ratio (rolling 1Y, rf=5%) + Max Drawdown 1Y vào calc_signal() + morning report | 2026-07-08
-- [DONE] SIG-002 · Stochastic %K/%D (14,3,3) vào calc_signal() + stoch_k/stoch_d trong return dict | 2026-07-08
-- [DONE] SIG-001 · Golden Cross / Death Cross (MA20xMA50) vào calc_signal() + gc_type trong return dict | 2026-07-08
-- [DONE] SEC-003 · Auth header (X-API-Key) cho server.py mutating endpoints, backward-compat khi key chưa set | 2026-07-08
-- [DONE] SEC-002 · Move secrets khỏi config.json sang env vars (BOT_TOKEN, DATABASE_URL, TCBS_TOKEN) | 2026-07-08
-- [DONE] BUG-001 · /portfolio chỉ hiện 3/5 mã Harvey (DB path intercept, bỏ qua config.json) | 2026-07-08
-- [DONE] BUG-002 · NameError: parts chưa được define trước khi dùng trong loop | 2026-07-08
-- [DONE] BUG-003 · /explain và /research bị restore nhầm — đã revert về pass (no-op) | 2026-07-08
-- [DONE] BUG-004 · fetch_tcinvest() dùng endpoint sai — đã fix sang apiextaws.tcbs.com.vn | 2026-07-08
-- [DONE] BUG-005 · Gold signal stuck 7 ngày vì source SJC dead — đã fix sang giavang.org | 2026-07-08
-- [DONE] DATA-001 · Import 91,747 NAV datapoints cho 38 quỹ vào Railway PostgreSQL | 2026-07-08
-- [DONE] SEC-001 · Rate limiting cho bot commands (max 10 req/min per user, sliding window per chat_id) | 2026-07-08
+- [DONE] GATE-001/002/003 · Freemium gate: `user_tiers` table + `check_tier` middleware + free-fund-limit enforcement trên `/api/me/watched_funds` (xem note DONE-LOCAL phía trên) | 2026-07-09
+- [DONE] MA-001..006 · Telegram Mini App (audit — code đã tồn tại từ trước, xem note ở PHASE 1) | 2026-07-09
+- [DONE] FMKT-001 · fmarket_id mapping: fix 3 sai, thêm 15 mã mới | 2026-07-09
+- [DONE] DASH-001 · Multi-fund selector | 2026-07-08
+- [DONE] USR-001 · Multi-user registration via bot_profiles | 2026-07-08
+- [DONE] JWT-001 · TCBS token expiry check + admin notify | 2026-07-08
+- [DONE] DB-001 · Scheduled NAV harvest 18:30 daily | 2026-07-08
+- [DONE] SIG-001..006 · Technical indicators (Golden Cross, Stochastic, Sharpe, Sortino, Volatility, CCI/ROC) | 2026-07-08
+- [DONE] SEC-001..003 · Rate limiting, env vars, API key auth | 2026-07-08
+- [DONE] BUG-001..005 · Portfolio, NameError, /explain restore, TCBS endpoint, Gold signal | 2026-07-08
+- [DONE] DATA-001 · Import 91,747 NAV datapoints cho 38 quỹ | 2026-07-08
+- [DONE] GIT-001 · .gitignore hardening | 2026-07-08
 
 ## BLOCKED
 

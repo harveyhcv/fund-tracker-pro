@@ -7,7 +7,7 @@ Usage:
 import os
 import logging
 from contextlib import contextmanager
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 import psycopg2
 from psycopg2.pool import ThreadedConnectionPool
@@ -564,6 +564,22 @@ def ensure_watched_funds(telegram_id, name: str, funds: "list[str]", is_admin: b
             return {"created": False, "changed": False, "watched_funds": existing}
 
 
+def set_watched_funds(telegram_id, funds: "list[str]") -> dict:
+    """Ghi đè (replace, KHÔNG merge) watched_funds cho user. Dùng khi user tự sửa
+    danh sách theo dõi qua Mini App (khác với ensure_watched_funds — union merge)."""
+    tg = int(telegram_id)
+    with get_conn() as conn:
+        _ensure_bot_profiles_table(conn)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                UPDATE bot_profiles SET watched_funds = %s, updated_at = NOW()
+                WHERE telegram_id = %s
+                RETURNING telegram_id, name, watched_funds, monthly_dca, is_admin
+            """, (funds, tg))
+            row = cur.fetchone()
+            return _row_to_profile(row) if row else {}
+
+
 def migrate_profiles_from_config(profiles: "list[dict]", admin_telegram_id: str = "") -> int:
     """One-time migration: nhận list profile dict từ config.json, insert vào bot_profiles
     nếu chưa tồn tại (không ghi đè nếu đã có). Trả về số profile đã insert mới."""
@@ -589,6 +605,63 @@ def migrate_profiles_from_config(profiles: "list[dict]", admin_telegram_id: str 
                 """, (tg, name, funds, dca, is_admin))
                 inserted += cur.rowcount
     return inserted
+
+
+# ─── USER TIERS (freemium gate — GATE-001/002) ───────────────────────────────
+# Free = giới hạn watched_funds (xem FREE_FUND_LIMIT trong miniapp_server.py).
+# Pro = unlimited + deep analysis + gold + alerts. pro_expires_at NULL = vĩnh viễn
+# (vd admin cấp tay); có giá trị = hết hạn tự động downgrade khi get_tier() chạy.
+
+def _ensure_user_tiers_table(conn) -> None:
+    with conn.cursor() as cur:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS user_tiers (
+                telegram_id     BIGINT PRIMARY KEY,
+                tier            TEXT NOT NULL DEFAULT 'free',
+                pro_expires_at  TIMESTAMPTZ,
+                created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        """)
+
+
+def get_tier(telegram_id) -> dict:
+    """Trả {tier, pro_expires_at}. Tự downgrade về 'free' nếu pro đã hết hạn.
+    Mặc định 'free' nếu DB chưa sẵn sàng hoặc user chưa có row."""
+    if not is_available():
+        return {"tier": "free", "pro_expires_at": None}
+    try:
+        tg = int(telegram_id)
+    except (TypeError, ValueError):
+        return {"tier": "free", "pro_expires_at": None}
+    with get_conn() as conn:
+        _ensure_user_tiers_table(conn)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                "SELECT tier, pro_expires_at FROM user_tiers WHERE telegram_id = %s", (tg,)
+            )
+            row = cur.fetchone()
+            if not row:
+                return {"tier": "free", "pro_expires_at": None}
+            if row["tier"] == "pro" and row["pro_expires_at"] and row["pro_expires_at"] < datetime.now(timezone.utc):
+                cur.execute("UPDATE user_tiers SET tier = 'free' WHERE telegram_id = %s", (tg,))
+                return {"tier": "free", "pro_expires_at": row["pro_expires_at"]}
+            return {"tier": row["tier"], "pro_expires_at": row["pro_expires_at"]}
+
+
+def set_tier(telegram_id, tier: str, pro_expires_at=None) -> dict:
+    """Upsert tier — gọi sau khi thanh toán thành công (Stars/MoMo/VNPay/Stripe)."""
+    tg = int(telegram_id)
+    with get_conn() as conn:
+        _ensure_user_tiers_table(conn)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                INSERT INTO user_tiers (telegram_id, tier, pro_expires_at)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (telegram_id) DO UPDATE SET
+                    tier = EXCLUDED.tier, pro_expires_at = EXCLUDED.pro_expires_at
+                RETURNING telegram_id, tier, pro_expires_at
+            """, (tg, tier, pro_expires_at))
+            return dict(cur.fetchone())
 
 
 # ─── POOL ────────────────────────────────────────────────────────────────────

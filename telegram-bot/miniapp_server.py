@@ -36,6 +36,9 @@ HTML_FILE = Path(__file__).parent / "miniapp" / "index.html"
 # Railway inject PORT; fallback PORT_MINIAPP cho local dev
 PORT_MINIAPP = int(os.environ.get("PORT_MINIAPP") or os.environ.get("PORT") or 8443)
 
+# Freemium gate (GATE-003): free tier tối đa 2 mã theo dõi
+FREE_FUND_LIMIT = 2
+
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -680,6 +683,28 @@ def _auth_write(handler, claimed_tg_id: str) -> bool:
     return True
 
 
+def _get_tier(telegram_id: str) -> dict:
+    """Trả {tier, pro_expires_at}. 'free' nếu DB module không sẵn sàng."""
+    if _db_mod is not None and _db_mod.is_available():
+        try:
+            return _db_mod.get_tier(telegram_id)
+        except Exception as e:
+            log.warning(f"[miniapp] get_tier lỗi: {e}")
+    return {"tier": "free", "pro_expires_at": None}
+
+
+def _check_tier(handler, telegram_id: str, required_tier: str = "pro") -> bool:
+    """Middleware (GATE-002): chặn request nếu user chưa đủ tier.
+    Trả True nếu đủ quyền; nếu không, tự gửi 403 pro_required và trả False."""
+    if required_tier == "free":
+        return True
+    info = _get_tier(telegram_id)
+    if info.get("tier") == required_tier:
+        return True
+    _json(handler, {"error": "pro_required", "upgrade_url": "/buy"}, 403)
+    return False
+
+
 # ── PostgreSQL trade tables ────────────────────────────────────────────────────
 
 _TRADE_TABLES_READY = False
@@ -894,6 +919,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         all_codes = list(dict.fromkeys(watched + portfolio_codes))  # dedup, preserve order
         signals  = _get_signals_for_codes(all_codes, cfg)
         portfolio = _calc_portfolio(profile, signals)
+        tier_info = _get_tier(tg_id)
         _json(self, {
             "name": profile.get("name", ""),
             "telegram_id": tg_id,
@@ -901,6 +927,9 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             "monthly_dca": profile.get("monthly_dca", 0),
             "portfolio": portfolio,
             "signals": signals,
+            "tier": tier_info.get("tier", "free"),
+            "pro_expires_at": tier_info.get("pro_expires_at").isoformat() if tier_info.get("pro_expires_at") else None,
+            "free_fund_limit": FREE_FUND_LIMIT,
         })
 
     def _api_signals(self, qs: dict):
@@ -930,8 +959,27 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         if not valid:
             _json(self, {"error": "Không có mã hợp lệ"}, 400)
             return
-        profile["watched_funds"] = valid
-        _save_cfg(cfg)
+
+        # GATE-003: free tier giới hạn FREE_FUND_LIMIT mã theo dõi
+        if _get_tier(tg_id).get("tier") != "pro" and len(valid) > FREE_FUND_LIMIT:
+            _json(self, {
+                "error": "pro_required",
+                "upgrade_url": "/buy",
+                "limit": FREE_FUND_LIMIT,
+            }, 403)
+            return
+
+        db_backed = _db_mod is not None and _db_mod.is_available()
+        if db_backed:
+            try:
+                _db_mod.set_watched_funds(tg_id, valid)
+            except Exception as e:
+                log.error(f"[miniapp] set_watched_funds DB lỗi: {e}")
+                _json(self, {"error": "Lỗi lưu vào DB"}, 500)
+                return
+        else:
+            profile["watched_funds"] = valid
+            _save_cfg(cfg)
         _json(self, {"ok": True, "watched_funds": valid})
 
     def _api_research(self, code: str, qs: dict):
@@ -1704,7 +1752,9 @@ class MiniAppHandler(BaseHTTPRequestHandler):
                 log.warning(f"[fetch-nav] token probe lỗi (bỏ qua): {ex}")
 
         db_url = os.environ.get("DATABASE_URL", cfg.get("database_url", ""))
-        funds_cfg = cfg.get("funds", {})
+        # Luôn dùng FUND_CATALOG từ bot.py (đã có fmarket_id mới nhất),
+        # fallback về config.json funds nếu không import được.
+        funds_cfg = _FUND_CATALOG if _FUND_CATALOG else cfg.get("funds", {})
 
         def _do_fetch():
             results, errors = {}, {}
