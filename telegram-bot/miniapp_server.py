@@ -1861,6 +1861,16 @@ class MiniAppHandler(BaseHTTPRequestHandler):
                 errors[code] = str(ex)
                 log.warning(f"[import-nav] {code} error: {ex}")
 
+        # Recompute buy_signals ngay cho các fund vừa import — tránh cache cũ
+        imported_codes = [c.upper() for c in results]
+        if imported_codes and _BOT_IMPORTED:
+            try:
+                cfg = _load_cfg()
+                _compute_and_save(imported_codes, cfg)
+                log.info(f"[import-nav] Recomputed signals for {imported_codes}")
+            except Exception as ex:
+                log.warning(f"[import-nav] recompute signals failed: {ex}")
+
         _json(self, {"ok": True, "inserted": results, "errors": errors,
                      "total": sum(results.values())})
 
