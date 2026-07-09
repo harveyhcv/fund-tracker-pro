@@ -74,6 +74,8 @@ STATE_FILE  = DATA_DIR / "state.json"
 # Tập hợp mã quỹ bị 401/403 trong chu kỳ fetch hiện tại.
 # Được reset trước mỗi job, kiểm tra sau fetch_all để gửi cảnh báo.
 _tcbs_auth_fail_codes: set = set()
+_tcbs_auth_last_notify: float = 0.0   # epoch seconds — throttle spam
+_TCBS_AUTH_NOTIFY_COOLDOWN = 7200     # 2 giờ giữa các lần notify
 
 
 def load_config() -> dict:
@@ -1516,7 +1518,14 @@ def _check_tcbs_token_expiry(config: dict) -> Optional[dict]:
 
 
 def _handle_tcbs_auth_error(config: dict, failed_codes: set):
-    """Gửi Telegram notification khi TCBS token hết hạn."""
+    """Gửi Telegram notification khi TCBS token hết hạn — tối đa 1 lần / 2 giờ."""
+    global _tcbs_auth_last_notify
+    import time as _time
+    now = _time.time()
+    if now - _tcbs_auth_last_notify < _TCBS_AUTH_NOTIFY_COOLDOWN:
+        log.debug(f"[TCBS-AUTH] Bỏ qua notify (cooldown {_TCBS_AUTH_NOTIFY_COOLDOWN//60}m)")
+        return
+    _tcbs_auth_last_notify = now
     log.warning(f"[TCBS-AUTH] Token hết hạn, không fetch được: {', '.join(sorted(failed_codes))}"
                 f" — Cập nhật token mới qua Mini App (Admin → Settings).")
     token = config.get("bot_token", "")
