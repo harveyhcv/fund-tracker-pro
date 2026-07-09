@@ -159,6 +159,8 @@ canvas{width:100%!important;height:100%!important}
 .school-action.sell{background:#2d0a0a;color:var(--sell);border-left:2px solid var(--sell)}
 .school-action.hold{background:var(--bg2);color:var(--hold);border-left:2px solid var(--hold)}
 .school-target{font-family:var(--mono);font-size:12px;margin-top:5px}
+.upgrade-feature{display:flex;align-items:center;gap:8px;font-size:13px;padding:6px 0;color:var(--txt)}
+.upgrade-feature .chk{color:var(--buy);font-weight:700}
 </style>
 </head>
 <body>
@@ -175,6 +177,30 @@ canvas{width:100%!important;height:100%!important}
     </div>
     <div class="modal-body" id="modal-body">
       <div class="loading"><div class="spinner"></div>Đang phân tích...</div>
+    </div>
+  </div>
+</div>
+
+<!-- Upgrade to Pro Modal -->
+<div class="modal-overlay" id="upgrade-modal" style="z-index:300" onclick="closeUpgradeModal(event)">
+  <div class="modal-sheet" id="upgrade-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <div class="modal-title">⭐ Nâng cấp Pro</div>
+      <button class="modal-close" onclick="closeUpgradeModalBtn()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="upgrade-reason" style="font-size:13px;color:var(--txt2);margin-bottom:14px"></div>
+      <div class="section">
+        <div class="section-hdr">TÍNH NĂNG PRO</div>
+        <div class="upgrade-feature"><span class="chk">✓</span> Theo dõi không giới hạn số quỹ</div>
+        <div class="upgrade-feature"><span class="chk">✓</span> Phân tích chuyên sâu (RSI, MACD, Sharpe, Sortino...)</div>
+        <div class="upgrade-feature"><span class="chk">✓</span> Phân tích chuyên sâu giá vàng</div>
+        <div class="upgrade-feature"><span class="chk">✓</span> Cảnh báo tự động theo ngưỡng</div>
+        <div class="upgrade-feature"><span class="chk">✓</span> Dự báo NAV T+2</div>
+      </div>
+      <button class="btn btn-primary" onclick="startUpgrade()">NÂNG CẤP NGAY</button>
+      <button class="btn" style="background:transparent;border:1px solid var(--bdr);color:var(--txt2)" onclick="closeUpgradeModalBtn()">Để sau</button>
     </div>
   </div>
 </div>
@@ -703,7 +729,7 @@ async function apiPost(path, body, timeoutMs=12000){
   try{
     const res=await fetch(API_BASE+path,{method:'POST',headers:_authHeaders(),body:JSON.stringify(body),signal:ctrl.signal});
     clearTimeout(tid);
-    if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.error||res.status);}
+    if(!res.ok){const e=await res.json().catch(()=>({}));const err=new Error(e.error||res.status);err.body=e;err.status=res.status;throw err;}
     return res.json();
   }catch(e){clearTimeout(tid);throw e.name==='AbortError'?new Error('Timeout'):e;}
 }
@@ -713,7 +739,7 @@ async function apiDelete(path, body={}, timeoutMs=12000){
   try{
     const res=await fetch(API_BASE+path,{method:'DELETE',headers:_authHeaders(),body:JSON.stringify(body),signal:ctrl.signal});
     clearTimeout(tid);
-    if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.error||res.status);}
+    if(!res.ok){const e=await res.json().catch(()=>({}));const err=new Error(e.error||res.status);err.body=e;err.status=res.status;throw err;}
     return res.json();
   }catch(e){clearTimeout(tid);throw e.name==='AbortError'?new Error('Timeout'):e;}
 }
@@ -1205,6 +1231,22 @@ function renderResearch(d){
 function closeModal(e){if(e.target===document.getElementById('modal'))closeModalBtn();}
 function closeModalBtn(){document.getElementById('modal').classList.remove('open');}
 
+// ── Upgrade to Pro (GATE-004) ───────────────────────────────────────────
+function showUpgradeModal(info){
+  const limit=info?.limit;
+  document.getElementById('upgrade-reason').textContent = limit
+    ? `Bạn đã đạt giới hạn ${limit} mã theo dõi của gói Free. Nâng cấp Pro để theo dõi không giới hạn.`
+    : 'Tính năng này chỉ dành cho tài khoản Pro.';
+  document.getElementById('upgrade-modal').classList.add('open');
+}
+function closeUpgradeModal(e){if(e.target===document.getElementById('upgrade-modal'))closeUpgradeModalBtn();}
+function closeUpgradeModalBtn(){document.getElementById('upgrade-modal').classList.remove('open');}
+function startUpgrade(){
+  closeUpgradeModalBtn();
+  toast('Thanh toán Pro sắp ra mắt — theo dõi thông báo từ Bot 🚀');
+}
+function isProRequired(e){return e?.body?.error==='pro_required'||e?.status===403;}
+
 // ── DCA ──────────────────────────────────────────────────────────────────
 const STYLE_DESC={
   dca:       '<b>DCA Thông Minh (Graham)</b> — Mua nhiều hơn khi quỹ rẻ (RSI thấp, score tốt). Chia đều tối thiểu, ưu tiên tín hiệu tốt. <i>Weight = max(0, score+6)</i>',
@@ -1335,8 +1377,12 @@ async function addNewFundAndWatch(){
       document.getElementById('trade-add-fund-row').style.display='none';
       document.getElementById('trade-new-fund-code').value='';
       toast(`✓ Đã thêm ${code} vào danh sách theo dõi`);
-    } else toast('Lỗi: '+(d.error||'unknown'));
-  }catch(e){toast('Lỗi: '+e.message);}
+    } else if(d.error==='pro_required') showUpgradeModal(d);
+    else toast('Lỗi: '+(d.error||'unknown'));
+  }catch(e){
+    if(isProRequired(e)) showUpgradeModal(e.body);
+    else toast('Lỗi: '+e.message);
+  }
 }
 async function onTradeDateChange(){
   await checkNavMismatch();
@@ -2485,8 +2531,12 @@ async function saveWatchedFunds() {
       closeWatchModal();
       _sigData = null;
       loadSignals();
-    } else toast('Lỗi: ' + (d.error||'unknown'));
-  } catch(e) { toast('Lỗi: ' + e.message); }
+    } else if (d.error==='pro_required') { closeWatchModal(); showUpgradeModal(d); }
+    else toast('Lỗi: ' + (d.error||'unknown'));
+  } catch(e) {
+    if (isProRequired(e)) { closeWatchModal(); showUpgradeModal(e.body); }
+    else toast('Lỗi: ' + e.message);
+  }
 }
 
 // ── Init ─────────────────────────────────────────────────────────────────
