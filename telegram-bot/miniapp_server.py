@@ -363,11 +363,16 @@ def _get_signals_for_codes(codes: list, cfg: dict) -> dict:
         log.warning(f"[miniapp] _get_signals_for_codes DB: {e}")
         return results
 
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    stale = []
     for row in rows:
         results[row[0]] = _row_to_signal(row)
+        signal_date = row[7] or ""  # signal_date::text, index 7
+        if signal_date < today_str:
+            stale.append(row[0])
 
-    # Quỹ chưa có signal nào → tính on-demand
-    missing = [c for c in codes if c not in results]
+    # Quỹ chưa có signal hoặc signal_date cũ hơn hôm nay → tính on-demand
+    missing = [c for c in codes if c not in results] + stale
     if missing:
         _compute_and_save(missing, cfg)
         # Đọc lại sau khi đã save
