@@ -98,14 +98,17 @@ def upsert_nav(fund_code: str, nav_date: date, nav: float, source: str = "fmarke
                 INSERT INTO nav_history (fund_code, nav_date, nav, source)
                 VALUES (%s, %s, %s, %s)
                 ON CONFLICT (fund_code, nav_date) DO UPDATE
-                    SET nav        = EXCLUDED.nav,
+                    SET nav        = CASE
+                            WHEN nav_history.source IN ('fixed', 'manual') THEN nav_history.nav
+                            ELSE EXCLUDED.nav
+                        END,
                         source     = CASE
                             WHEN nav_history.source = 'fixed'  THEN 'fixed'
                             WHEN nav_history.source = 'manual' THEN 'fixed'
                             ELSE EXCLUDED.source
                         END,
                         fetched_at = NOW()
-                WHERE nav_history.source != 'fixed'
+                WHERE nav_history.source NOT IN ('fixed', 'manual')
             """, (fund_code, nav_date, nav, source))
     logger.debug("upsert_nav %s %s %.4f src=%s", fund_code, nav_date, nav, source)
     # Sau khi API data confirmed → unify pending Pro drafts nếu khớp

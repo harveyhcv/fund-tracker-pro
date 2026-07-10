@@ -1547,7 +1547,10 @@ def fetch_all(config: dict, codes: set) -> dict:
         if pts:
             result[code] = calc_signal(code, pts)
             sig = result[code]["signal"]
-            log.info(f"  {code:12s}  NAV={result[code]['nav']:>10,.0f}  {sig}")
+            nav_dt = result[code]["nav_date"]
+            today_str = date.today().isoformat()
+            stale_warn = f"  ⚠ NAV date={nav_dt} (stale, today={today_str})" if nav_dt < today_str else ""
+            log.info(f"  {code:12s}  NAV={result[code]['nav']:>10,.0f}  {sig}{stale_warn}")
             # Sync full history to DB so miniapp uses same data as bot
             if _DB_AVAILABLE and _db.is_available():
                 src = "fmarket" if fund_cfg.get("fmarket_id") else "tcbs"
