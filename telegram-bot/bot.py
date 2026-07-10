@@ -2065,6 +2065,16 @@ def job_t2_retrain():
     _run_t2_script("t2_retrain", "t2_xgboost.py", ["--train"], timeout=900)
 
 
+def job_t2_reweight():
+    """T2-008: Tính lại trọng số ensemble (W_ARIMA/W_XGB) mỗi 30 ngày dựa trên
+    MAPE 30 ngày qua của arima-v1 vs xgb-v1 — model lỗi ít hơn được trọng số cao hơn."""
+    if not (_DB_AVAILABLE and _db.is_available()):
+        log.debug("[t2_reweight] DB không khả dụng — bỏ qua")
+        return
+    log.info("══ JOB: T+2 Ensemble Reweight ══")
+    _run_t2_script("t2_reweight", "t2_ensemble.py", ["--reweight"], timeout=60)
+
+
 def job_check_alerts():
     """PRO-004: Kiểm tra ngưỡng cảnh báo user tự đặt (bảng `alerts`), chạy 18:33
     sau daily harvest (18:30) + T+2 predict/score (18:31/18:32) để có NAV mới nhất.
@@ -3362,6 +3372,7 @@ def main():
     # Second pass: sửa giá trị provisional sau khi TCinvest finalize NAV (~19:30-20:00)
     schedule.every().day.at("20:00").do(job_harvest_nav)
     schedule.every().sunday.at("02:00").do(job_t2_retrain)
+    schedule.every(30).days.at("03:00").do(job_t2_reweight)
     schedule.every().day.at("07:30").do(job_check_tcbs_token)
     # job_watchdog_ping đã bỏ — tin nhắn "Bot alive" không cần thiết
 
