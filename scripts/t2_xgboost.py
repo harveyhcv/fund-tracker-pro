@@ -45,7 +45,7 @@ MODEL_DIR  = os.path.join(os.path.dirname(__file__), "models")
 MODEL_PATH = os.path.join(MODEL_DIR, "xgb_t2.json")
 META_PATH  = os.path.join(MODEL_DIR, "xgb_t2_meta.json")
 
-MODEL_VERSION = "xgb-v1"
+DEFAULT_MODEL_VERSION = "xgb-v1"   # dùng khi chưa từng train (model_metrics rỗng)
 MIN_HISTORY   = 60   # khớp t2_arima — quỹ cần ≥60 điểm NAV để dự báo
 MIN_TRAIN_LEN = 25   # điểm tối thiểu để bắt đầu build training rows cho 1 quỹ
 
@@ -116,10 +116,27 @@ def _time_split_8020(codes_of_row: list) -> tuple:
 
 # ── Commands ──────────────────────────────────────────────────────────────
 
+def _next_version(conn) -> str:
+    """T2-007: tìm xgb-vN lớn nhất đã từng ghi model_metrics, trả về xgb-v{N+1}.
+    Chưa train lần nào → DEFAULT_MODEL_VERSION (xgb-v1)."""
+    with conn.cursor() as cur:
+        cur.execute("SELECT DISTINCT model_version FROM model_metrics WHERE model_version LIKE 'xgb-v%'")
+        versions = [r[0] for r in cur.fetchall()]
+    max_n = 0
+    for v in versions:
+        try:
+            max_n = max(max_n, int(v[len("xgb-v"):]))
+        except ValueError:
+            continue
+    return f"xgb-v{max_n + 1}" if max_n > 0 else DEFAULT_MODEL_VERSION
+
+
 def cmd_train():
     import xgboost as xgb
 
     conn = _get_conn()
+    model_version = _next_version(conn)
+    print(f"Model version cho lần train này: {model_version}")
     with conn.cursor() as cur:
         cur.execute("SELECT DISTINCT fund_code FROM nav_history ORDER BY fund_code")
         codes = [r[0] for r in cur.fetchall()]
@@ -176,7 +193,7 @@ def cmd_train():
     booster.save_model(MODEL_PATH)
     with open(META_PATH, "w", encoding="utf-8") as f:
         json.dump({
-            "model_version": MODEL_VERSION,
+            "model_version": model_version,
             "feature_keys": FEATURE_KEYS,
             "fund_idx_map": fund_idx_map,
             "best_iteration": booster.best_iteration,
@@ -197,10 +214,10 @@ def cmd_train():
             cur.execute(
                 "INSERT INTO model_metrics (model_version, fund_code, window_days, mape, sample_size) "
                 "VALUES (%s, NULL, %s, %s, %s)",
-                (MODEL_VERSION, 0, mape, len(abs_pct_errors)),
+                (model_version, 0, mape, len(abs_pct_errors)),
             )
     conn.close()
-    print("\nTrain xong. Chạy --predict để dự báo T+2 với model mới.")
+    print(f"\nTrain xong ({model_version}). Chạy --predict để dự báo T+2 với model mới.")
 
 
 def _load_model():
@@ -219,8 +236,9 @@ def cmd_predict(only_code: str = None):
     import xgboost as xgb
 
     booster, meta = _load_model()
-    fund_idx_map = meta["fund_idx_map"]
-    best_iter = meta.get("best_iteration", 0)
+    fund_idx_map  = meta["fund_idx_map"]
+    best_iter     = meta.get("best_iteration", 0)
+    model_version = meta.get("model_version", DEFAULT_MODEL_VERSION)
 
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../telegram-bot"))
     import db
@@ -274,7 +292,7 @@ def cmd_predict(only_code: str = None):
                 fund_code           = code,
                 predicted_for_date  = t2_date,
                 predicted_nav       = t2_nav,
-                model_version       = MODEL_VERSION,
+                model_version       = model_version,
             )
             print(f"  {code}: T+2={t2_date} nav={t2_nav:.4f} (pred_chg={pred_pct:+.3f}%) id={pred_id}")
             ok += 1
@@ -287,29 +305,47 @@ def cmd_predict(only_code: str = None):
 
 
 def cmd_status():
+    current_version = DEFAULT_MODEL_VERSION
+    if os.path.exists(META_PATH):
+        with open(META_PATH, encoding="utf-8") as f:
+            meta = json.load(f)
+        current_version = meta.get("model_version", DEFAULT_MODEL_VERSION)
+        print(f"Model hiện tại (deployed): {current_version} — trained_at={meta.get('trained_at')} "
+              f"train_rows={meta.get('train_rows')} test_mape={meta.get('test_mape'):.3f}%")
+    else:
+        print("Chưa có model đã train.")
+
     conn = _get_conn()
     with conn.cursor() as cur:
+        # Lịch sử tất cả retrain (xgb-v1, xgb-v2, ...) — MAPE test-set lúc train
+        cur.execute("""
+            SELECT model_version, mape, sample_size, evaluated_at
+            FROM model_metrics
+            WHERE model_version LIKE 'xgb-v%'
+            ORDER BY evaluated_at DESC
+            LIMIT 20
+        """)
+        train_history = cur.fetchall()
+        # MAPE live (đã chấm điểm thực tế) cho model đang deploy
         cur.execute("""
             SELECT ROUND(AVG(ABS(error_pct))::numeric, 2) AS mape, COUNT(*) AS n
             FROM prediction_actuals pa
             JOIN nav_predictions np ON np.id = pa.prediction_id
             WHERE np.model_version = %s
-        """, (MODEL_VERSION,))
+        """, (current_version,))
         row = cur.fetchone()
     conn.close()
 
-    if os.path.exists(META_PATH):
-        with open(META_PATH, encoding="utf-8") as f:
-            meta = json.load(f)
-        print(f"Model: {MODEL_VERSION} — trained_at={meta.get('trained_at')} "
-              f"train_rows={meta.get('train_rows')} test_mape={meta.get('test_mape'):.3f}%")
-    else:
-        print("Chưa có model đã train.")
+    if train_history:
+        print("\nLịch sử retrain (test MAPE lúc train):")
+        for mv, mape, n, ts in train_history:
+            print(f"  {mv}: MAPE={mape:.3f}% (n={n}) @ {ts}")
 
     if row and row[0] is not None:
-        print(f"Live MAPE ({MODEL_VERSION}, từ prediction_actuals): {row[0]}% (n={row[1]})")
+        print(f"\nLive MAPE ({current_version}, từ prediction_actuals): {row[0]}% (n={row[1]})")
     else:
-        print("Chưa có dữ liệu chấm điểm live cho model này (chạy scripts/t2_arima.py --score sau khi có actuals).")
+        print(f"\nChưa có dữ liệu chấm điểm live cho {current_version} "
+              "(chạy scripts/t2_arima.py --score sau khi có actuals).")
 
 
 # ── Main ──────────────────────────────────────────────────────────────────

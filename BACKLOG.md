@@ -96,7 +96,7 @@
 ### 5c. Self-improvement loop
 
 - [DONE] T2-006 · score_predictions() trong db.py + --score mode trong t2_arima.py, job_t2_score 18:32 | 2026-07-10
-- [ ] T2-007 · Weekly retrain job: Chủ nhật 02:00, retrain XGBoost với toàn bộ data kể cả actuals mới nhất, bump `model_version='xgb-v{N+1}'`, ghi MAPE vào `model_metrics` table | P1 | 2h | T2-004, T2-006
+- [DONE-LOCAL] T2-007 · Weekly retrain — `scripts/t2_xgboost.py::_next_version(conn)` tìm `xgb-vN` lớn nhất trong `model_metrics` (LIKE 'xgb-v%'), trả `xgb-v{N+1}` (hoặc `xgb-v1` nếu chưa train lần nào); `cmd_train()` giờ dùng version động này thay vì hardcode, ghi vào `meta.json` + `model_metrics`. `cmd_predict()`/`cmd_status()` đọc `model_version` từ `meta.json` (không hardcode nữa) nên tự động dùng model mới nhất sau mỗi lần retrain. `bot.py`: `job_t2_retrain()` (mới) chạy `t2_xgboost.py --train` qua `_run_t2_script()`, schedule Chủ nhật 02:00 (timeout 900s — train chậm dần khi data lớn lên) | 2026-07-10 | Version-bump logic smoke-tested (fake cursor, 3 case: rỗng/v1/v1+v2+v3 → đúng v1/v2/v4). Cần DATABASE_URL thật để verify retrain thật trên Railway (chạy `railway run python scripts/t2_xgboost.py --train` để tạo model xgb-v1 đầu tiên trước khi cron Chủ nhật kích hoạt)
 - [ ] T2-008 · Adaptive ensemble weights: mỗi 30 ngày, tính MAPE(ARIMA) vs MAPE(XGBoost) trên tháng qua, set `w_arima = mape_xgb/(mape_arima+mape_xgb)` và ngược lại | P1 | 2h | T2-005, T2-006
 
 ### 5d. User-facing (Mini App)
