@@ -351,4 +351,71 @@ khi nhận response 403 `pro_required` — dùng `tier`/`free_fund_limit` đã c
 
 ---
 
-*Cập nhật: 2026-07-09 — GATE-004 Upgrade-to-Pro Modal (autonomous run)*
+## ✅ Session 4 — Ca sáng autonomous: MoMo + Alert system + NAV confidence audit (2026-07-10)
+
+**Audit trước khi code (BACKLOG.md lỗi thời — bài học lặp lại từ session trước):**
+- **PRO-002** (gold analysis) và **PRO-003** (unlimited fund cho pro) đã được implement từ
+  trước trong 1 phiên khác không update BACKLOG — `_calc_gold_signals()` (RSI/BB/MA/score,
+  `miniapp_server.py:104`) và bypass FREE_FUND_LIMIT cho pro/admin (`_api_update_watched`
+  `miniapp_server.py:1087`) đã hoạt động đầy đủ. Chỉ cần đánh dấu DONE, không cần code thêm.
+- **Bài học**: LUÔN grep code thực tế trước khi bắt đầu 1 task trong BACKLOG — có thể đã
+  được làm bởi phiên khác mà quên update trạng thái.
+
+**PAY-004/005 — MoMo payment (mới, code thật):**
+- `miniapp_server.py`: `POST /api/payment/momo/create` (MoMo v2 `captureWallet`,
+  HMAC-SHA256 sign, orderId format `FTP-<tgid>-<ts>` để IPN parse lại được telegram_id
+  không cần thêm bảng mapping), `POST /api/payment/momo/ipn` (verify signature trước khi
+  tin field nào, `resultCode=0` → `db.set_tier(pro, +30d)` + Telegram confirm)
+- Dùng MoMo test/sandbox credentials công khai làm default (`MOMO_PARTNER_CODE=MOMO`,
+  `MOMO_ACCESS_KEY`/`MOMO_SECRET_KEY`) — **PHẢI** override bằng ENV thật khi có merchant
+  MoMo đăng ký ở business.momo.vn, nếu không mọi giao dịch sẽ chạy ở sandbox test endpoint
+- Frontend: nút "💗 THANH TOÁN QUA MOMO" trong `#upgrade-modal`, `startUpgradeMomo()` mở
+  `pay_url` qua `tg.openLink()`
+- **Bug tìm thấy + fix (không liên quan MoMo nhưng cùng khu vực payment)**: `do_POST` gọi
+  `self._api_create_stars_invoice(user)` nhưng `user` chưa từng gán trong scope `do_POST`
+  → NameError mỗi lần bấm "NÂNG CẤP PRO NGAY" trong Mini App kể từ khi `startUpgrade()`
+  được wire (code này có sẵn nhưng chưa test qua UI thật nên bug chưa lộ ra). Đã sửa:
+  `_api_create_stars_invoice()` tự validate `X-Init-Data` để lấy `user`, cùng pattern
+  `_auth_write()`. **Nhắc nhở**: mọi endpoint miniapp mới PHẢI test qua `preview_*` tools
+  (không chỉ py_compile) vì lỗi kiểu NameError-do-thiếu-tham-số không lộ ra khi compile.
+
+**PRO-004 — Alert system (mới):**
+- `db.py`: bảng `alerts` (telegram_id, fund_code, condition, threshold, last_triggered,
+  active) + `create_alert`/`list_alerts`/`delete_alert`/`get_active_alerts`/
+  `mark_alert_triggered`
+- `bot.py job_check_alerts()` — 18:33 (sau harvest 18:30 + T2 predict/score 18:31/18:32),
+  tái dùng `fetch_all()` (không query DB trực tiếp) để lấy signal/chg_pct mới nhất, debounce
+  1 lần/ngày/alert qua so sánh `last_triggered.date()`
+- API `GET/POST /api/alerts`, `DELETE /api/alerts/<id>` — pro-gated qua `_check_tier`
+- UI: mục "🔔 Cảnh báo" gắn vào **cuối modal Nghiên cứu** (cùng chỗ PRO-001, vì modal đó đã
+  pro-gated sẵn nên không cần thêm logic ẩn/hiện theo tier ở phía client) — đặt/xóa cảnh báo
+  nav_up/nav_down/signal_buy/signal_sell cho quỹ đang xem, không tạo trang/nav-bar riêng
+  (giữ UI đơn giản, tránh phình bottom-nav vốn đã có 6 tab)
+
+**Phát hiện quan trọng: có 1 tính năng lớn "mồ côi" trong working tree lúc bắt đầu session —**
+`telegram-bot/db.py`, `bot.py`, `harvest_nav.py` có ~450 dòng thay đổi CHƯA COMMIT từ 1 phiên
+trước (NAV confidence workflow: `provisional`/`pending_confirm`/`confirmed`/`fixed` state
+machine, tên hàm khớp với title commit `aad06a0` đã có nhưng nội dung thực tế trong working
+tree đã đi xa hơn commit đó). Đã audit kỹ để tách bạch (không lẫn vào commit PRO-004 của
+mình), rồi commit riêng có ghi rõ nguồn gốc "uncommitted work from prior session". Sau đó
+hoàn thiện nốt phần API còn thiếu (`GET /api/admin/nav/pending`, `POST
+/api/admin/nav/confirm`) + sửa bug `tg_send(...,buttons=)` sai chữ ký (phải là
+`tg_send_keyboard`) mà workflow đó cần để hoạt động end-to-end.
+
+**⚠️ Quy tắc mới cho session sau**: Trước khi `git add`/commit, LUÔN chạy
+`git status --short` + `git diff --stat` để phát hiện file có thay đổi KHÔNG PHẢI của mình
+trộn chung (nhất là sau khi resume 1 session dài hoặc sau `git stash`). Nếu thấy, tách commit
+riêng theo từng nguồn gốc thay vì gộp bừa — tránh làm mất dấu vết ai/tại sao thay đổi.
+
+**Test suite**: 228/280 pass — 52 fail là **pre-existing** (đã xác nhận bằng cách so sánh
+`git stash` trước/sau các thay đổi trong session này, số lượng fail giống hệt). KHÔNG do
+session này gây ra — encoding Windows console + JWT token mẫu hết hạn (xem note session 2).
+
+**Việc tiếp theo trong BACKLOG**: T2-004 (XGBoost model, 5h — task lớn, chưa bắt đầu),
+PAY-006/007 (VNPay/Stripe, P2), T2-010 (accuracy dashboard, P2). Deploy: cần set
+`MOMO_PARTNER_CODE`/`MOMO_ACCESS_KEY`/`MOMO_SECRET_KEY` thật trên Railway trước khi nhận
+thanh toán MoMo thật (hiện đang dùng sandbox credentials mặc định).
+
+---
+
+*Cập nhật: 2026-07-10 — Session 4: PAY-004/005 MoMo, PRO-004 Alert system, NAV confidence audit (autonomous run)*
