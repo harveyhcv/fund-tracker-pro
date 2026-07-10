@@ -395,11 +395,16 @@ def _get_signals_for_codes(codes: list, cfg: dict, background_compute: bool = Tr
         return cur.fetchall()
 
     try:
-        import psycopg2
-        conn = psycopg2.connect(db_url, connect_timeout=8)
-        with conn.cursor() as cur:
-            rows = _query(cur, codes)
-        conn.close()
+        if _db_mod is not None and _db_mod.is_available():
+            with _db_mod.get_conn() as conn:
+                with conn.cursor() as cur:
+                    rows = _query(cur, codes)
+        else:
+            import psycopg2
+            conn = psycopg2.connect(db_url, connect_timeout=8)
+            with conn.cursor() as cur:
+                rows = _query(cur, codes)
+            conn.close()
     except Exception as e:
         log.warning(f"[miniapp] _get_signals_for_codes DB: {e}")
         return results
@@ -427,10 +432,16 @@ def _get_signals_for_codes(codes: list, cfg: dict, background_compute: bool = Tr
             # Block: đợi tính xong rồi đọc lại (chỉ dùng từ /api/signals)
             _compute_from_nav_history(missing, cfg)
             try:
-                conn = psycopg2.connect(db_url, connect_timeout=8)
-                with conn.cursor() as cur:
-                    rows2 = _query(cur, missing)
-                conn.close()
+                if _db_mod is not None and _db_mod.is_available():
+                    with _db_mod.get_conn() as conn:
+                        with conn.cursor() as cur:
+                            rows2 = _query(cur, missing)
+                else:
+                    import psycopg2
+                    conn = psycopg2.connect(db_url, connect_timeout=8)
+                    with conn.cursor() as cur:
+                        rows2 = _query(cur, missing)
+                    conn.close()
                 for row in rows2:
                     results[row[0]] = _row_to_signal(row)
             except Exception as e:
@@ -447,16 +458,27 @@ def _get_signals_for_codes(codes: list, cfg: dict, background_compute: bool = Tr
 def _db_get_ccq_holdings(tg_id: str) -> list:
     """Tính holdings CCQ từ user_ccq_trades — luôn fresh từ DB."""
     try:
-        conn = _get_db_conn()
-        with conn.cursor() as cur:
-            cur.execute("""
-                SELECT code, type, units, nav, amount
-                FROM user_ccq_trades
-                WHERE telegram_id = %s
-                ORDER BY trade_date, id
-            """, [tg_id])
-            rows = cur.fetchall()
-        conn.close()
+        if _db_mod is not None and _db_mod.is_available():
+            with _db_mod.get_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT code, type, units, nav, amount
+                        FROM user_ccq_trades
+                        WHERE telegram_id = %s
+                        ORDER BY trade_date, id
+                    """, [tg_id])
+                    rows = cur.fetchall()
+        else:
+            conn = _get_db_conn()
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT code, type, units, nav, amount
+                    FROM user_ccq_trades
+                    WHERE telegram_id = %s
+                    ORDER BY trade_date, id
+                """, [tg_id])
+                rows = cur.fetchall()
+            conn.close()
     except Exception as e:
         log.warning(f"[portfolio] _db_get_ccq_holdings: {e}")
         return []
