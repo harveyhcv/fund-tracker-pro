@@ -1076,9 +1076,13 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         _json(self, {"ok": True, "watched_funds": valid})
 
     def _api_research(self, code: str, qs: dict):
-        """Phân tích sâu 5 trường phái cho 1 quỹ — dùng msg_research logic từ bot."""
+        """Phân tích sâu 5 trường phái cho 1 quỹ — PRO-001, yêu cầu tier=pro."""
         if not code or len(code) > 10:
             _json(self, {"error": "Invalid code"}, 400)
+            return
+        tg_id = qs.get("user_id", [""])[0]
+        if _get_tier(tg_id).get("tier") != "pro":
+            _json(self, {"error": "pro_required", "upgrade_url": "/buy"}, 403)
             return
         cfg = _load_cfg()
         sigs = _get_signals_for_codes([code], cfg)

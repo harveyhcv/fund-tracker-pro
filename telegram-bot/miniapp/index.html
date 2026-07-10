@@ -779,7 +779,7 @@ async function apiFetch(path, timeoutMs=12000){
   try{
     const res=await fetch(API_BASE+path+qs,{signal:ctrl.signal});
     clearTimeout(tid);
-    if(!res.ok)throw new Error(res.status);
+    if(!res.ok){const b=await res.json().catch(()=>({}));const err=new Error(b.error||res.status);err.body=b;err.status=res.status;throw err;}
     return res.json();
   }catch(e){
     clearTimeout(tid);
@@ -1201,7 +1201,12 @@ async function openResearch(code){
     const d=await apiFetch('/api/research/'+code);
     renderResearch(d);
   }catch(e){
-    document.getElementById('modal-body').innerHTML=renderErr('Lỗi: '+e.message);
+    if(isProRequired(e)){
+      document.getElementById('modal').classList.remove('open');
+      showUpgradeModal({limit:null});
+    } else {
+      document.getElementById('modal-body').innerHTML=renderErr('Lỗi: '+e.message);
+    }
   }
 }
 
