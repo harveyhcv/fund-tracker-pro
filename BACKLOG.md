@@ -4,10 +4,10 @@
 # Priority: P0 (blocker) / P1 (important) / P2 (nice-to-have)
 # Claude đọc file này ĐẦU TIÊN mỗi session. Pick task IN_PROGRESS nếu có, nếu không pick P0 cao nhất.
 #
-# Last updated: 2026-07-09 (autonomous run 2)
+# Last updated: 2026-07-10 (session 3)
 
 ## ĐANG LÀM (IN_PROGRESS)
-- [ ] PAY-001 · `/buy_pro` command: bot gửi invoice Telegram Stars — pick tiếp phiên sau (xem PHASE 3a)
+# Không có — tất cả P0/P1 đã DONE hoặc blocked chờ Railway deploy
 
 ---
 
@@ -48,9 +48,9 @@
 
 ### 3a. Telegram Stars (làm trước — đơn giản nhất)
 
-- [ ] PAY-001 · `/buy_pro` command: bot gửi invoice `send_invoice(title="Fund Tracker Pro", currency="XTR", prices=[{amount:250}], provider_token="")` | P0 | 2h
-- [ ] PAY-002 · `pre_checkout_query` handler: trả lời OK trong <10s | P0 | 30m | PAY-001
-- [ ] PAY-003 · `successful_payment` handler: upsert `user_tiers` set tier='pro', pro_expires_at = NOW()+30d | P0 | 1h | PAY-002
+- [DONE] PAY-001 · `/buy_pro` command gửi sendInvoice XTR 250 Stars | 2026-07-10
+- [DONE] PAY-002 · `pre_checkout_query` handler answerPreCheckoutQuery | 2026-07-10
+- [DONE] PAY-003 · `successful_payment` → set_tier(pro, NOW()+30d) + confirm message | 2026-07-10
 
 ### 3b. MoMo (VN market)
 
@@ -68,7 +68,7 @@
 ## PHASE 4 — PRO FEATURES
 ## ═══════════════════════════════════════════
 
-- [ ] PRO-001 · Deep analysis endpoint `/miniapp/analysis/{fund_code}`: trả full signal dict (RSI, MACD, BB, Stochastic %K/%D, CCI, ROC, Sharpe, Sortino, MaxDD, Golden/Death Cross) | P1 | 3h | GATE-002
+- [DONE] PRO-001 · /api/research/{code} gated pro_required + apiFetch error body fix + openResearch upgrade modal | 2026-07-10
 - [ ] PRO-002 · Gold analysis: trend + RSI + MA signal cho giá vàng (SJC/DOJI từ giavang.org), riêng cho mã quỹ loại vàng | P1 | 2h | PRO-001
 - [ ] PRO-003 · Unlimited fund tracking: bỏ giới hạn 2 mã khi tier=pro, `/miniapp/add-fund` skip GATE-003 | P1 | 30m | GATE-002
 - [ ] PRO-004 · Alert system: bảng `alerts (id, user_id, fund_code, condition ENUM('nav_up','nav_down','signal_buy','signal_sell'), threshold FLOAT, last_triggered TIMESTAMPTZ)`, job check 18:31 sau harvest, gửi Telegram message | P1 | 4h
@@ -82,24 +82,24 @@
 
 ### 5a. Infrastructure
 
-- [ ] T2-001 · DB schema: `nav_predictions (id SERIAL PK, fund_code TEXT, predicted_for_date DATE, predicted_nav FLOAT, model_version TEXT, ci_low FLOAT, ci_high FLOAT, created_at TIMESTAMPTZ)` + `prediction_actuals (prediction_id INT FK, actual_nav FLOAT, error_pct FLOAT, logged_at TIMESTAMPTZ)` | P0 | 1h
-- [ ] T2-002 · Feature pipeline `scripts/t2_features.py`: build DataFrame per fund với features: `nav_lag_1..5`, `vnindex_return_t1` (scrape từ vn-index API), `gold_return_t1`, `fund_category` (equity/bond/balanced/gold), `day_of_week`, `days_to_month_end`, `days_to_quarter_end` | P0 | 4h
+- [DONE] T2-001 · nav_predictions + prediction_actuals + model_metrics tables trong db.py | 2026-07-10
+- [DONE] T2-002 · Feature pipeline (nav_lag_1..5, chg_1d/5d/21d, vol_5d/21d, day_of_week, days_to_month/quarter_end) trong t2_arima.py | 2026-07-10
 
 ### 5b. Models (baseline → ML → ensemble)
 
-- [ ] T2-003 · Baseline `scripts/t2_baseline.py`: ARIMA(2,1,2) per fund via `statsmodels`, predict T+2, insert vào `nav_predictions` với `model_version='arima-v1'` | P1 | 3h | T2-002
+- [DONE] T2-003 · ARIMA(2,1,2) trong scripts/t2_arima.py --predict, sanity clip ±10%, CI 80% | 2026-07-10
 - [ ] T2-004 · ML model `scripts/t2_xgboost.py`: XGBoostRegressor với feature vector T2-002, train/test split theo thời gian (80/20), evaluate MAPE trước khi deploy, insert predictions với `model_version='xgb-v1'` | P1 | 5h | T2-002, T2-003
 - [ ] T2-005 · Ensemble: weighted average ARIMA + XGBoost (init weights 0.3/0.7), CI = ±1.5 × rolling prediction std (30 ngày) | P1 | 2h | T2-003, T2-004
 
 ### 5c. Self-improvement loop
 
-- [ ] T2-006 · Daily scorer `scripts/t2_score.py`: chạy 18:31 (sau NAV harvest), với mỗi prediction có `predicted_for_date = TODAY`, join với NAV thực tế vừa harvest, ghi `error_pct = (actual-predicted)/actual*100` vào `prediction_actuals` | P1 | 2h | T2-001
+- [DONE] T2-006 · score_predictions() trong db.py + --score mode trong t2_arima.py, job_t2_score 18:32 | 2026-07-10
 - [ ] T2-007 · Weekly retrain job: Chủ nhật 02:00, retrain XGBoost với toàn bộ data kể cả actuals mới nhất, bump `model_version='xgb-v{N+1}'`, ghi MAPE vào `model_metrics` table | P1 | 2h | T2-004, T2-006
 - [ ] T2-008 · Adaptive ensemble weights: mỗi 30 ngày, tính MAPE(ARIMA) vs MAPE(XGBoost) trên tháng qua, set `w_arima = mape_xgb/(mape_arima+mape_xgb)` và ngược lại | P1 | 2h | T2-005, T2-006
 
 ### 5d. User-facing (Mini App)
 
-- [ ] T2-009 · T+2 display: trong portfolio view, hiện `Dự báo T+2: X,XXX đ (↑/↓Y%)` với confidence bar, disclaimer "Tham khảo — không phải khuyến nghị đầu tư" | P2 | 2h | T2-005
+- [DONE] T2-009 · fund-row hiện T+2 pred (↑/↓X%) từ /api/me predictions{}, chỉ Pro | 2026-07-10
 - [ ] T2-010 · Accuracy dashboard: tab "Độ chính xác" hiện MAPE 7d/30d/all-time per quỹ + biểu đồ dự báo vs thực tế, model version | P2 | 3h | T2-006
 
 ---
