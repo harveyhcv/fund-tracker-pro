@@ -2682,10 +2682,25 @@ def command_handler():
                         log.error(f"[CALLBACK] {_cbe}", exc_info=True)
                     continue
 
+                # ── Pre-checkout query (PAY-002: Stars payment confirm) ──────
+                pq = upd.get("pre_checkout_query")
+                if pq:
+                    _handle_pre_checkout(token, pq)
+                    continue
+
                 msg    = upd.get("message") or upd.get("edited_message") or {}
                 if not msg:
                     continue
                 chat_id = str(msg["chat"]["id"])
+
+                # ── Successful payment (PAY-003: upgrade tier) ───────────────
+                if msg.get("successful_payment"):
+                    try:
+                        _handle_successful_payment(token, chat_id, msg)
+                    except Exception as _pe:
+                        log.error(f"[PAY] successful_payment error: {_pe}", exc_info=True)
+                    continue
+
                 text    = msg.get("text", "").strip()
                 parts   = text.split()  # luôn định nghĩa sẵn, tránh NameError
                 cmd     = parts[0].lower().split("@")[0] if parts else ""
@@ -2745,7 +2760,6 @@ def command_handler():
 
                     if cmd in ("/start", "/help"):
                         profile_note = (f"\n\n✅ Xin chào <b>{profile['name']}</b>! Bot đã nhận diện bạn." if profile else f"\n\n👤 Bạn chưa có tài khoản. Gõ:\n<code>/register Tên Của Bạn</code>\nđể tạo tài khoản.")
-                        n_funds = len(config.get("funds", {}))
                         tg_send(token, chat_id, (
                             "👋 <b>Quỹ Tracker Pro Bot</b>\n\n"
                             "📱 /app — Mở Mini App: danh mục, NAV, tín hiệu, nghiên cứu 5 trường phái, "
@@ -2753,6 +2767,7 @@ def command_handler():
                             "<b>Tài khoản:</b>\n"
                             "✍️ /register [tên] — Tạo tài khoản\n"
                             "🪪 /getid — Xem Chat ID\n\n"
+                            "⭐ /buy_pro — Nâng cấp Pro (250 Stars/30 ngày)\n\n"
                             "🔔 <b>Tự động:</b>\n"
                             "• Sáng T2–T6: báo cáo NAV + tín hiệu danh mục\n"
                             "• Cảnh báo ngay khi tín hiệu MUA/BÁN thay đổi\n\n"
@@ -2895,6 +2910,9 @@ def command_handler():
                     elif cmd == "/app" or cmd == "/miniapp":
                         _cmd_app(token, chat_id, profile)
 
+                    elif cmd == "/buy_pro":
+                        _cmd_buy_pro(token, chat_id, profile)
+
                     else:
                         if text.startswith("/"):
                             tg_send(token, chat_id, f"❓ Lệnh <code>{cmd}</code> không tồn tại. Gõ /help để xem danh sách.")
@@ -2911,6 +2929,110 @@ def command_handler():
         except Exception as e:
             log.error(f"[command_handler] {e}")
             time.sleep(10)
+
+
+# ═══════════════════════════════════════
+# PAYMENT — TELEGRAM STARS
+# ═══════════════════════════════════════
+
+_STARS_PRICE = 250  # Stars per 30 ngày
+_PRO_DAYS    = 30
+
+
+def _handle_pre_checkout(token: str, pq: dict) -> None:
+    """PAY-002: Xác nhận pre_checkout_query trong <10s — bắt buộc để payment proceed."""
+    pq_id = pq.get("id", "")
+    try:
+        r = requests.post(
+            f"https://api.telegram.org/bot{token}/answerPreCheckoutQuery",
+            json={"pre_checkout_query_id": pq_id, "ok": True},
+            timeout=8
+        )
+        if not r.ok:
+            log.error(f"[PAY] answerPreCheckoutQuery fail: {r.text[:200]}")
+        else:
+            log.info(f"[PAY] pre_checkout OK for query {pq_id}")
+    except Exception as e:
+        log.error(f"[PAY] answerPreCheckoutQuery exception: {e}")
+
+
+def _handle_successful_payment(token: str, chat_id: str, msg: dict) -> None:
+    """PAY-003: Nâng cấp tier=pro 30 ngày sau khi Stars payment thành công."""
+    from datetime import datetime, timezone, timedelta
+    sp         = msg["successful_payment"]
+    stars      = sp.get("total_amount", 0)
+    charge_id  = sp.get("telegram_payment_charge_id", "")
+    payload    = sp.get("invoice_payload", "")
+    log.info(f"[PAY] successful_payment: chat={chat_id} stars={stars} charge={charge_id} payload={payload}")
+
+    expires_at = datetime.now(timezone.utc) + timedelta(days=_PRO_DAYS)
+    try:
+        if _DB_AVAILABLE and _db.is_available():
+            _db.set_tier(chat_id, "pro", expires_at)
+            log.info(f"[PAY] tier=pro set for {chat_id}, expires {expires_at.date()}")
+        else:
+            log.error(f"[PAY] DB unavailable — cannot persist tier for {chat_id}")
+    except Exception as e:
+        log.error(f"[PAY] set_tier error: {e}", exc_info=True)
+
+    exp_str = expires_at.strftime("%d/%m/%Y")
+    tg_send(token, chat_id, (
+        f"🌟 <b>Chào mừng bạn đến với Fund Tracker Pro!</b>\n\n"
+        f"✅ Thanh toán {stars} ⭐ Stars thành công\n"
+        f"📅 Gói Pro có hiệu lực đến: <b>{exp_str}</b>\n\n"
+        f"🔓 <b>Đã mở khóa:</b>\n"
+        f"• Theo dõi không giới hạn số quỹ\n"
+        f"• Phân tích chuyên sâu RSI/MACD/Sharpe/Sortino\n"
+        f"• Phân tích giá vàng\n"
+        f"• Cảnh báo tự động\n"
+        f"• Dự báo NAV T+2 (sắp ra mắt)\n\n"
+        f"Gõ /app để mở Mini App ngay. 🚀"
+    ))
+
+
+def _cmd_buy_pro(token: str, chat_id: str, profile: Optional[dict]) -> None:
+    """PAY-001: Gửi Telegram Stars invoice."""
+    # Kiểm tra tier hiện tại
+    if _DB_AVAILABLE and _db.is_available():
+        try:
+            tier_info = _db.get_tier(chat_id)
+            if tier_info.get("tier") == "pro":
+                exp = tier_info.get("pro_expires_at")
+                exp_str = exp.strftime("%d/%m/%Y") if exp else "vĩnh viễn"
+                tg_send(token, chat_id,
+                    f"✅ Bạn đã là thành viên <b>Pro</b> rồi!\n"
+                    f"📅 Hiệu lực đến: <b>{exp_str}</b>\n\n"
+                    f"Gõ /app để mở Mini App.")
+                return
+        except Exception:
+            pass
+
+    try:
+        r = requests.post(
+            f"https://api.telegram.org/bot{token}/sendInvoice",
+            json={
+                "chat_id": chat_id,
+                "title": "Fund Tracker Pro",
+                "description": (
+                    f"30 ngày không giới hạn: theo dõi không giới hạn quỹ, "
+                    f"phân tích sâu RSI/MACD/Sharpe/Sortino, cảnh báo tự động, "
+                    f"phân tích giá vàng."
+                ),
+                "payload": f"pro_30d:{chat_id}",
+                "currency": "XTR",
+                "prices": [{"label": f"Fund Tracker Pro — {_PRO_DAYS} ngày", "amount": _STARS_PRICE}],
+            },
+            timeout=15
+        )
+        if not r.ok:
+            err = r.json().get("description", r.text[:200])
+            log.error(f"[PAY] sendInvoice fail: {err}")
+            tg_send(token, chat_id, "⚠️ Không thể tạo invoice. Vui lòng thử lại sau.")
+        else:
+            log.info(f"[PAY] sendInvoice sent to {chat_id}")
+    except Exception as e:
+        log.error(f"[PAY] sendInvoice exception: {e}")
+        tg_send(token, chat_id, "⚠️ Lỗi kết nối. Vui lòng thử lại sau.")
 
 
 # ═══════════════════════════════════════

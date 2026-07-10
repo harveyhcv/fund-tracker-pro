@@ -199,7 +199,9 @@ canvas{width:100%!important;height:100%!important}
         <div class="upgrade-feature"><span class="chk">✓</span> Cảnh báo tự động theo ngưỡng</div>
         <div class="upgrade-feature"><span class="chk">✓</span> Dự báo NAV T+2</div>
       </div>
-      <button class="btn btn-primary" onclick="startUpgrade()">NÂNG CẤP NGAY</button>
+      <div style="text-align:center;margin:12px 0 4px;font-family:var(--mono);font-size:22px;color:var(--c0);font-weight:700">250 ⭐</div>
+      <div style="text-align:center;font-size:12px;color:var(--txt2);margin-bottom:16px">30 ngày · Telegram Stars · Gia hạn bất kỳ lúc nào</div>
+      <button class="btn btn-primary" id="upgrade-cta-btn" onclick="startUpgrade()">⭐ NÂNG CẤP PRO NGAY</button>
       <button class="btn" style="background:transparent;border:1px solid var(--bdr);color:var(--txt2)" onclick="closeUpgradeModalBtn()">Để sau</button>
     </div>
   </div>
@@ -1310,9 +1312,33 @@ function showUpgradeModal(info){
 }
 function closeUpgradeModal(e){if(e.target===document.getElementById('upgrade-modal'))closeUpgradeModalBtn();}
 function closeUpgradeModalBtn(){document.getElementById('upgrade-modal').classList.remove('open');}
-function startUpgrade(){
-  closeUpgradeModalBtn();
-  toast('Thanh toán Pro sắp ra mắt — theo dõi thông báo từ Bot 🚀');
+async function startUpgrade(){
+  const btn = document.getElementById('upgrade-cta-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Đang tạo invoice...'; }
+  try {
+    const d = await apiPost('/api/payment/stars/create', {});
+    if (!d.invoice_link) throw new Error('Không nhận được invoice link');
+    closeUpgradeModalBtn();
+    if (tg?.openInvoice) {
+      tg.openInvoice(d.invoice_link, (status) => {
+        if (status === 'paid') {
+          toast('🌟 Thanh toán thành công! Đang cập nhật tài khoản...');
+          setTimeout(() => loadMe(), 2500);
+        } else if (status === 'cancelled') {
+          toast('Đã hủy thanh toán.');
+        } else if (status === 'failed') {
+          toast('Thanh toán thất bại. Vui lòng thử lại.');
+        }
+      });
+    } else {
+      // Fallback: mở link trong browser (không phải trong Telegram)
+      window.open(d.invoice_link, '_blank');
+    }
+  } catch(e) {
+    toast('Lỗi: ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '⭐ NÂNG CẤP PRO NGAY'; }
+  }
 }
 function isProRequired(e){return e?.body?.error==='pro_required'||e?.status===403;}
 

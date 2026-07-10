@@ -961,6 +961,8 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             self._api_admin_fixportfolio(data)
         elif path == "/api/admin/import-trades":
             self._api_admin_import_trades(data)
+        elif path == "/api/payment/stars/create":
+            self._api_create_stars_invoice(user)
         else:
             _json(self, {"error": "Not found"}, 404)
 
@@ -2065,6 +2067,43 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         _save_cfg(cfg)
         log.info(f"[admin] fixportfolio {code}: avg_cost {old['avg_cost']} → {avg_cost}")
         _json(self, {"ok": True, "code": code, "old": old, "new": entry})
+
+    def _api_create_stars_invoice(self, user: dict):
+        """POST /api/payment/stars/create — tạo Telegram Stars invoice link để Mini App mở."""
+        import requests as _req
+        cfg       = _load_cfg()
+        bot_token = cfg.get("bot_token") or os.environ.get("BOT_TOKEN", "")
+        if not bot_token or bot_token.startswith("NHAP"):
+            _json(self, {"error": "bot_token chưa cấu hình"}, 500)
+            return
+        user_id = user.get("id", 0)
+        payload = {
+            "title": "Fund Tracker Pro",
+            "description": (
+                "30 ngày không giới hạn: theo dõi không giới hạn quỹ, "
+                "phân tích sâu RSI/MACD/Sharpe/Sortino, cảnh báo tự động, "
+                "phân tích giá vàng."
+            ),
+            "payload": f"pro_30d:{user_id}",
+            "currency": "XTR",
+            "prices": [{"label": "Fund Tracker Pro — 30 ngày", "amount": 250}],
+        }
+        try:
+            r = _req.post(
+                f"https://api.telegram.org/bot{bot_token}/createInvoiceLink",
+                json=payload, timeout=15
+            )
+            d = r.json()
+            if d.get("ok"):
+                log.info(f"[PAY] createInvoiceLink OK for user {user_id}")
+                _json(self, {"invoice_link": d["result"]})
+            else:
+                err = d.get("description", "Telegram API error")
+                log.error(f"[PAY] createInvoiceLink fail: {err}")
+                _json(self, {"error": err}, 502)
+        except Exception as e:
+            log.error(f"[PAY] createInvoiceLink exception: {e}")
+            _json(self, {"error": str(e)}, 500)
 
 
 # ── Start ──────────────────────────────────────────────────────────────────────
