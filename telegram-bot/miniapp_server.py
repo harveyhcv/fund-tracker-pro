@@ -1012,6 +1012,15 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         log.info(f"[/api/me] {tg_id} signals cached={len([s for s in signals.values() if s.get('nav')])} t={_time.time()-t0:.2f}s")
         portfolio = _calc_portfolio_with_holdings(holdings, signals)  # tái dùng holdings
         tier_info = _get_tier(tg_id)
+
+        # T2-009: Dự báo T+2 cho Pro users
+        predictions = {}
+        if tier_info.get("tier") == "pro" and _db_mod is not None and _db_mod.is_available():
+            try:
+                predictions = _db_mod.get_predictions(all_codes)
+            except Exception as e:
+                log.debug(f"[/api/me] get_predictions error (non-fatal): {e}")
+
         log.info(f"[/api/me] {tg_id} DONE t={_time.time()-t0:.2f}s")
         _json(self, {
             "name": profile.get("name", ""),
@@ -1023,6 +1032,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             "tier": tier_info.get("tier", "free"),
             "pro_expires_at": tier_info.get("pro_expires_at").isoformat() if tier_info.get("pro_expires_at") else None,
             "free_fund_limit": FREE_FUND_LIMIT,
+            "predictions": predictions,
         })
 
     def _api_signals(self, qs: dict):

@@ -1941,6 +1941,56 @@ def job_harvest_nav():
         log.error("[harvest] %s", e)
 
 
+def job_t2_predict():
+    """T2-003: Chạy ARIMA forecast sau harvest lúc 18:31."""
+    if not (_DB_AVAILABLE and _db.is_available()):
+        log.debug("[t2_predict] DB không khả dụng — bỏ qua")
+        return
+    log.info("══ JOB: T+2 ARIMA Predict ══")
+    script = Path(__file__).parent.parent / "scripts" / "t2_arima.py"
+    if not script.exists():
+        log.error("[t2_predict] t2_arima.py không tìm thấy")
+        return
+    try:
+        result = __import__("subprocess").run(
+            [sys.executable, str(script), "--predict"],
+            capture_output=True, text=True, timeout=300,
+            env={**__import__("os").environ},
+        )
+        summary = (result.stdout or "").strip().splitlines()[-1] if result.stdout.strip() else "OK"
+        if result.returncode == 0:
+            log.info("[t2_predict] %s", summary)
+        else:
+            log.error("[t2_predict] exit=%d err=%s", result.returncode, (result.stderr or "")[:300])
+    except Exception as e:
+        log.error("[t2_predict] %s", e)
+
+
+def job_t2_score():
+    """T2-006: Chấm điểm dự báo T+2 sau khi NAV hôm nay đã về (18:32)."""
+    if not (_DB_AVAILABLE and _db.is_available()):
+        log.debug("[t2_score] DB không khả dụng — bỏ qua")
+        return
+    log.info("══ JOB: T+2 Score ══")
+    script = Path(__file__).parent.parent / "scripts" / "t2_arima.py"
+    if not script.exists():
+        log.error("[t2_score] t2_arima.py không tìm thấy")
+        return
+    try:
+        result = __import__("subprocess").run(
+            [sys.executable, str(script), "--score"],
+            capture_output=True, text=True, timeout=120,
+            env={**__import__("os").environ},
+        )
+        if result.returncode == 0:
+            for line in (result.stdout or "").strip().splitlines()[-3:]:
+                log.info("[t2_score] %s", line)
+        else:
+            log.error("[t2_score] exit=%d err=%s", result.returncode, (result.stderr or "")[:300])
+    except Exception as e:
+        log.error("[t2_score] %s", e)
+
+
 # ═══════════════════════════════════════
 # DB USER HELPERS
 # ═══════════════════════════════════════
@@ -3137,6 +3187,8 @@ def main():
     schedule.every().day.at("09:00").do(job_backfill_settlement)
     schedule.every().day.at("09:00").do(job_dca_reminder)
     schedule.every().day.at("18:30").do(job_harvest_nav)
+    schedule.every().day.at("18:31").do(job_t2_predict)
+    schedule.every().day.at("18:32").do(job_t2_score)
     schedule.every().day.at("07:30").do(job_check_tcbs_token)
     # job_watchdog_ping đã bỏ — tin nhắn "Bot alive" không cần thiết
 

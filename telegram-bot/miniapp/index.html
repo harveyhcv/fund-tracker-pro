@@ -894,13 +894,20 @@ function renderPortfolio(me){
     html=`<div class="card" style="text-align:center;color:var(--txt2);padding:24px">Chưa có giao dịch CCQ.<br>Thêm ở tab Giao dịch.</div>`;
   } else {
     html='<div class="card">';
+    const preds=me.predictions||{};
     for(const h of pf.items){
       const chg=h.chg_pct||0;
+      const pred=preds[h.code];
+      const predHtml=pred?`<div style="font-size:10px;color:var(--txt2);margin-top:2px">
+        T+2: <span style="color:${pred.predicted_nav>h.nav?'var(--buy)':'var(--sell)'};font-weight:600">${fmt(pred.predicted_nav)}</span>
+        <span style="color:var(--txt2)">(${pred.predicted_nav>h.nav?'↑':'↓'}${Math.abs((pred.predicted_nav-h.nav)/h.nav*100).toFixed(1)}%)</span>
+      </div>`:'';
       html+=`<div class="fund-row" onclick="openResearch('${h.code}')">
         <div class="fund-code">${h.code}</div>
         <div class="fund-info">
           <div class="fund-nav">NAV ${fmt(h.nav)} đ <span class="pnl ${pnlC(chg)}" style="font-size:11px">${fmtP(chg)}</span></div>
           <div style="font-size:11px;color:var(--txt2)">${fmt(h.units)} CCQ · CP ${fmt(h.avg_cost)}</div>
+          ${predHtml}
         </div>
         <div class="fund-right">
           <div class="badge ${sigC(h.signal)}">${sigLabel(h.signal)}</div>

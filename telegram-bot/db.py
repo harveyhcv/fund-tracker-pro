@@ -797,6 +797,151 @@ def unify_nav_drafts(fund_code: str, nav_date: date, api_nav: float,
     return confirmed
 
 
+# ─── T+2 FORECAST ENGINE — T2-001 ────────────────────────────────────────────
+
+def _ensure_prediction_tables(conn) -> None:
+    """T2-001: Tạo nav_predictions + prediction_actuals + model_metrics nếu chưa có."""
+    with conn.cursor() as cur:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS nav_predictions (
+                id               SERIAL PRIMARY KEY,
+                fund_code        TEXT        NOT NULL,
+                predicted_for_date DATE      NOT NULL,
+                predicted_nav    FLOAT       NOT NULL,
+                model_version    TEXT        NOT NULL DEFAULT 'arima-v1',
+                ci_low           FLOAT,
+                ci_high          FLOAT,
+                created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                UNIQUE (fund_code, predicted_for_date, model_version)
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS prediction_actuals (
+                id              SERIAL PRIMARY KEY,
+                prediction_id   INT         NOT NULL REFERENCES nav_predictions(id) ON DELETE CASCADE,
+                actual_nav      FLOAT       NOT NULL,
+                error_pct       FLOAT       NOT NULL,
+                logged_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS model_metrics (
+                id             SERIAL PRIMARY KEY,
+                model_version  TEXT        NOT NULL,
+                fund_code      TEXT,
+                window_days    INT         NOT NULL DEFAULT 30,
+                mape           FLOAT       NOT NULL,
+                sample_size    INT         NOT NULL,
+                evaluated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        """)
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_navpred_code_date ON nav_predictions (fund_code, predicted_for_date)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_predact_pred ON prediction_actuals (prediction_id)")
+
+
+def save_prediction(fund_code: str, predicted_for_date: date, predicted_nav: float,
+                    model_version: str = "arima-v1",
+                    ci_low: float = None, ci_high: float = None) -> int:
+    """Upsert một dự báo NAV. Trả prediction_id."""
+    with get_conn() as conn:
+        _ensure_prediction_tables(conn)
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO nav_predictions (fund_code, predicted_for_date, predicted_nav, model_version, ci_low, ci_high)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (fund_code, predicted_for_date, model_version) DO UPDATE SET
+                    predicted_nav = EXCLUDED.predicted_nav,
+                    ci_low        = EXCLUDED.ci_low,
+                    ci_high       = EXCLUDED.ci_high,
+                    created_at    = NOW()
+                RETURNING id
+            """, (fund_code.upper(), predicted_for_date, predicted_nav, model_version, ci_low, ci_high))
+            return cur.fetchone()[0]
+
+
+def score_predictions(target_date: date) -> list:
+    """T2-006: Với mỗi prediction có predicted_for_date=target_date, tính error_pct từ NAV thực tế.
+    Trả list dict {fund_code, predicted_nav, actual_nav, error_pct, prediction_id}."""
+    results = []
+    with get_conn() as conn:
+        _ensure_prediction_tables(conn)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # Join với nav_history để lấy NAV thực tế
+            cur.execute("""
+                SELECT np.id, np.fund_code, np.predicted_nav, np.model_version,
+                       nh.nav AS actual_nav
+                FROM nav_predictions np
+                JOIN nav_history nh ON nh.fund_code = np.fund_code AND nh.nav_date = np.predicted_for_date
+                WHERE np.predicted_for_date = %s
+                  AND NOT EXISTS (
+                      SELECT 1 FROM prediction_actuals pa WHERE pa.prediction_id = np.id
+                  )
+            """, (target_date,))
+            rows = cur.fetchall()
+        for row in rows:
+            if not row["actual_nav"]:
+                continue
+            err_pct = (row["actual_nav"] - row["predicted_nav"]) / row["actual_nav"] * 100
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO prediction_actuals (prediction_id, actual_nav, error_pct) VALUES (%s, %s, %s)",
+                    (row["id"], row["actual_nav"], err_pct)
+                )
+            results.append({
+                "fund_code": row["fund_code"],
+                "model_version": row["model_version"],
+                "predicted_nav": row["predicted_nav"],
+                "actual_nav": row["actual_nav"],
+                "error_pct": err_pct,
+                "prediction_id": row["id"],
+            })
+    return results
+
+
+def get_predictions(fund_codes: list, target_date: date = None) -> dict:
+    """Lấy dự báo mới nhất cho danh sách quỹ. Trả {fund_code: {predicted_nav, ci_low, ci_high, model_version}}."""
+    if not fund_codes:
+        return {}
+    with get_conn() as conn:
+        _ensure_prediction_tables(conn)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            placeholders = ",".join(["%s"] * len(fund_codes))
+            if target_date:
+                cur.execute(f"""
+                    SELECT DISTINCT ON (fund_code) fund_code, predicted_nav, ci_low, ci_high,
+                           model_version, predicted_for_date
+                    FROM nav_predictions
+                    WHERE fund_code IN ({placeholders}) AND predicted_for_date = %s
+                    ORDER BY fund_code, created_at DESC
+                """, [c.upper() for c in fund_codes] + [target_date])
+            else:
+                cur.execute(f"""
+                    SELECT DISTINCT ON (fund_code) fund_code, predicted_nav, ci_low, ci_high,
+                           model_version, predicted_for_date
+                    FROM nav_predictions
+                    WHERE fund_code IN ({placeholders})
+                    ORDER BY fund_code, predicted_for_date DESC, created_at DESC
+                """, [c.upper() for c in fund_codes])
+            return {r["fund_code"]: dict(r) for r in cur.fetchall()}
+
+
+def get_model_mape(model_version: str = None, fund_code: str = None, window_days: int = 30) -> list:
+    """Lấy MAPE lịch sử theo model/quỹ/window. Dùng cho T2-010 accuracy dashboard."""
+    with get_conn() as conn:
+        _ensure_prediction_tables(conn)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            filters = []
+            params = []
+            if model_version:
+                filters.append("model_version = %s"); params.append(model_version)
+            if fund_code:
+                filters.append("fund_code = %s"); params.append(fund_code.upper())
+            filters.append("window_days = %s"); params.append(window_days)
+            where = "WHERE " + " AND ".join(filters) if filters else ""
+            cur.execute(f"SELECT * FROM model_metrics {where} ORDER BY evaluated_at DESC LIMIT 100", params)
+            return [dict(r) for r in cur.fetchall()]
+
+
 # ─── POOL ────────────────────────────────────────────────────────────────────
 
 def close_pool() -> None:
