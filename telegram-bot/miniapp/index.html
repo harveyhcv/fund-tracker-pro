@@ -216,6 +216,7 @@ canvas{width:100%!important;height:100%!important}
       <div style="text-align:center;margin:12px 0 4px;font-family:var(--mono);font-size:22px;color:var(--c0);font-weight:700">250 ⭐</div>
       <div style="text-align:center;font-size:12px;color:var(--txt2);margin-bottom:16px">30 ngày · Telegram Stars · Gia hạn bất kỳ lúc nào</div>
       <button class="btn btn-primary" id="upgrade-cta-btn" onclick="startUpgrade()">⭐ NÂNG CẤP PRO NGAY</button>
+      <button class="btn btn-primary" id="upgrade-momo-btn" style="background:#a50064;margin-top:8px" onclick="startUpgradeMomo()">💗 THANH TOÁN QUA MOMO</button>
       <button class="btn" style="background:transparent;border:1px solid var(--bdr);color:var(--txt2)" onclick="closeUpgradeModalBtn()">Để sau</button>
     </div>
   </div>
@@ -1411,6 +1412,26 @@ async function startUpgrade(){
   }
 }
 function isProRequired(e){return e?.body?.error==='pro_required'||e?.status===403;}
+
+async function startUpgradeMomo(){
+  const btn = document.getElementById('upgrade-momo-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Đang tạo giao dịch...'; }
+  try {
+    const d = await apiPost('/api/payment/momo/create', {});
+    if (!d.pay_url) throw new Error('Không nhận được link thanh toán');
+    closeUpgradeModalBtn();
+    if (tg?.openLink) {
+      tg.openLink(d.pay_url);
+    } else {
+      window.open(d.pay_url, '_blank');
+    }
+    toast('Hoàn tất thanh toán trên MoMo, tài khoản sẽ tự nâng cấp sau vài giây.', 4000);
+  } catch(e) {
+    toast('Lỗi: ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '💗 THANH TOÁN QUA MOMO'; }
+  }
+}
 
 // ── DCA ──────────────────────────────────────────────────────────────────
 const STYLE_DESC={

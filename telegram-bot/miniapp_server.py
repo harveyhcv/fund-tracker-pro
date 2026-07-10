@@ -40,6 +40,15 @@ PORT_MINIAPP = int(os.environ.get("PORT_MINIAPP") or os.environ.get("PORT") or 8
 # Freemium gate (GATE-003): free tier tối đa 2 mã theo dõi
 FREE_FUND_LIMIT = 2
 
+# PAY-004/005: MoMo payment v2. Test/sandbox credentials mặc định theo tài liệu
+# công khai của MoMo (https://developers.momo.vn) — override bằng ENV khi có
+# merchant thật (đăng ký tại business.momo.vn).
+_MOMO_ENDPOINT     = os.environ.get("MOMO_ENDPOINT", "https://test-payment.momo.vn/v2/gateway/api/create")
+_MOMO_PARTNER_CODE = os.environ.get("MOMO_PARTNER_CODE", "MOMO")
+_MOMO_ACCESS_KEY   = os.environ.get("MOMO_ACCESS_KEY", "F8BBA842ECF85")
+_MOMO_SECRET_KEY   = os.environ.get("MOMO_SECRET_KEY", "K951B6PE1waDMi640xX08PD3vg6EkVlz")
+_MOMO_AMOUNT_VND   = int(os.environ.get("MOMO_AMOUNT_VND", "99000"))  # giá gói Pro 30 ngày
+
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -976,7 +985,11 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         elif path == "/api/admin/import-trades":
             self._api_admin_import_trades(data)
         elif path == "/api/payment/stars/create":
-            self._api_create_stars_invoice(user)
+            self._api_create_stars_invoice()
+        elif path == "/api/payment/momo/create":
+            self._api_momo_create(data)
+        elif path == "/api/payment/momo/ipn":
+            self._api_momo_ipn(data)
         else:
             _json(self, {"error": "Not found"}, 404)
 
@@ -2101,13 +2114,20 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         log.info(f"[admin] fixportfolio {code}: avg_cost {old['avg_cost']} → {avg_cost}")
         _json(self, {"ok": True, "code": code, "old": old, "new": entry})
 
-    def _api_create_stars_invoice(self, user: dict):
+    def _api_create_stars_invoice(self):
         """POST /api/payment/stars/create — tạo Telegram Stars invoice link để Mini App mở."""
         import requests as _req
         cfg       = _load_cfg()
         bot_token = cfg.get("bot_token") or os.environ.get("BOT_TOKEN", "")
         if not bot_token or bot_token.startswith("NHAP"):
             _json(self, {"error": "bot_token chưa cấu hình"}, 500)
+            return
+        init_data = self.headers.get("X-Init-Data", "")
+        user = _validate_init_data(init_data, bot_token)
+        if not user and os.environ.get("MINIAPP_NO_AUTH"):
+            user = {"id": 0}
+        if not user:
+            _json(self, {"error": "initData không hợp lệ"}, 403)
             return
         user_id = user.get("id", 0)
         payload = {
@@ -2137,6 +2157,160 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         except Exception as e:
             log.error(f"[PAY] createInvoiceLink exception: {e}")
             _json(self, {"error": str(e)}, 500)
+
+    def _api_momo_create(self, data: dict):
+        """POST /api/payment/momo/create — PAY-004: tạo MoMo v2 payment request, trả payUrl.
+
+        Yêu cầu Mini App xác thực bằng X-Init-Data (giống /api/payment/stars/create) — không
+        tin telegram_id do client gửi lên, tránh nâng cấp tier hộ người khác.
+        """
+        import requests as _req
+        cfg       = _load_cfg()
+        bot_token = cfg.get("bot_token") or os.environ.get("BOT_TOKEN", "")
+        init_data = self.headers.get("X-Init-Data", "")
+        user = _validate_init_data(init_data, bot_token)
+        if not user and os.environ.get("MINIAPP_NO_AUTH"):
+            user = {"id": data.get("telegram_id", 0)}
+        if not user:
+            _json(self, {"error": "initData không hợp lệ"}, 403)
+            return
+        user_id = str(user.get("id", 0))
+
+        base = os.environ.get("MINIAPP_URL", f"https://{os.environ.get('RAILWAY_PUBLIC_DOMAIN', 'localhost:8443')}")
+        request_id  = f"{user_id}-{int(datetime.now().timestamp())}"
+        order_id    = f"FTP-{user_id}-{int(datetime.now().timestamp())}"
+        order_info  = "Fund Tracker Pro - Nang cap 30 ngay"
+        redirect_url = f"{base}?user_id={user_id}&momo_return=1"
+        ipn_url      = f"{base}/api/payment/momo/ipn"
+        amount       = _MOMO_AMOUNT_VND
+        request_type = "captureWallet"
+        extra_data   = ""
+
+        raw_sig = (
+            f"accessKey={_MOMO_ACCESS_KEY}"
+            f"&amount={amount}"
+            f"&extraData={extra_data}"
+            f"&ipnUrl={ipn_url}"
+            f"&orderId={order_id}"
+            f"&orderInfo={order_info}"
+            f"&partnerCode={_MOMO_PARTNER_CODE}"
+            f"&redirectUrl={redirect_url}"
+            f"&requestId={request_id}"
+            f"&requestType={request_type}"
+        )
+        signature = hmac.new(_MOMO_SECRET_KEY.encode(), raw_sig.encode(), hashlib.sha256).hexdigest()
+
+        payload = {
+            "partnerCode": _MOMO_PARTNER_CODE,
+            "partnerName": "Fund Tracker Pro",
+            "storeId":     "FundTrackerPro",
+            "requestId":   request_id,
+            "amount":      amount,
+            "orderId":     order_id,
+            "orderInfo":   order_info,
+            "redirectUrl": redirect_url,
+            "ipnUrl":      ipn_url,
+            "lang":        "vi",
+            "extraData":   extra_data,
+            "requestType": request_type,
+            "signature":   signature,
+        }
+        try:
+            r = _req.post(_MOMO_ENDPOINT, json=payload, timeout=15)
+            d = r.json()
+            if d.get("resultCode") == 0 and d.get("payUrl"):
+                log.info(f"[PAY][MoMo] create OK user={user_id} orderId={order_id}")
+                _json(self, {"pay_url": d["payUrl"], "order_id": order_id})
+            else:
+                err = d.get("message", "MoMo API error")
+                log.error(f"[PAY][MoMo] create fail: {err} (resultCode={d.get('resultCode')})")
+                _json(self, {"error": err}, 502)
+        except Exception as e:
+            log.error(f"[PAY][MoMo] create exception: {e}")
+            _json(self, {"error": str(e)}, 500)
+
+    def _api_momo_ipn(self, data: dict):
+        """POST /api/payment/momo/ipn — PAY-005: MoMo server-to-server callback.
+
+        Verify chữ ký HMAC-SHA256 trước khi tin bất kỳ field nào. Khi resultCode=0
+        (thanh toán thành công) → nâng cấp user_tiers lên 'pro' 30 ngày.
+        Luôn trả 200 (MoMo sẽ retry nếu không nhận được response) trừ khi chữ ký sai.
+        """
+        partner_code = str(data.get("partnerCode", ""))
+        order_id     = str(data.get("orderId", ""))
+        request_id   = str(data.get("requestId", ""))
+        amount       = str(data.get("amount", ""))
+        order_info   = str(data.get("orderInfo", ""))
+        order_type   = str(data.get("orderType", ""))
+        trans_id     = str(data.get("transId", ""))
+        result_code  = data.get("resultCode")
+        message      = str(data.get("message", ""))
+        pay_type     = str(data.get("payType", ""))
+        response_time = str(data.get("responseTime", ""))
+        extra_data   = str(data.get("extraData", ""))
+        signature    = str(data.get("signature", ""))
+
+        raw_sig = (
+            f"accessKey={_MOMO_ACCESS_KEY}"
+            f"&amount={amount}"
+            f"&extraData={extra_data}"
+            f"&message={message}"
+            f"&orderId={order_id}"
+            f"&orderInfo={order_info}"
+            f"&orderType={order_type}"
+            f"&partnerCode={partner_code}"
+            f"&payType={pay_type}"
+            f"&requestId={request_id}"
+            f"&responseTime={response_time}"
+            f"&resultCode={result_code}"
+            f"&transId={trans_id}"
+        )
+        computed = hmac.new(_MOMO_SECRET_KEY.encode(), raw_sig.encode(), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(computed, signature):
+            log.error(f"[PAY][MoMo] IPN chữ ký không hợp lệ, orderId={order_id}")
+            _json(self, {"error": "invalid signature"}, 400)
+            return
+
+        log.info(f"[PAY][MoMo] IPN orderId={order_id} resultCode={result_code} transId={trans_id}")
+
+        if result_code == 0:
+            # orderId format: FTP-<telegram_id>-<ts>
+            parts = order_id.split("-")
+            tg_id = parts[1] if len(parts) >= 3 and parts[0] == "FTP" else ""
+            if tg_id and _db_mod is not None and _db_mod.is_available():
+                from datetime import timezone, timedelta
+                expires_at = datetime.now(timezone.utc) + timedelta(days=30)
+                try:
+                    _db_mod.set_tier(tg_id, "pro", expires_at)
+                    log.info(f"[PAY][MoMo] tier=pro set for {tg_id}, expires {expires_at.date()}")
+                except Exception as e:
+                    log.error(f"[PAY][MoMo] set_tier error: {e}")
+                cfg = _load_cfg()
+                bot_token = cfg.get("bot_token") or os.environ.get("BOT_TOKEN", "")
+                if bot_token and not bot_token.startswith("NHAP"):
+                    try:
+                        import requests as _req
+                        exp_str = expires_at.strftime("%d/%m/%Y")
+                        _req.post(
+                            f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                            json={
+                                "chat_id": tg_id,
+                                "parse_mode": "HTML",
+                                "text": (
+                                    f"🌟 <b>Chào mừng bạn đến với Fund Tracker Pro!</b>\n\n"
+                                    f"✅ Thanh toán MoMo {int(amount):,} đ thành công\n"
+                                    f"📅 Gói Pro có hiệu lực đến: <b>{exp_str}</b>\n\n"
+                                    f"Gõ /app để mở Mini App ngay. 🚀"
+                                ),
+                            },
+                            timeout=8,
+                        )
+                    except Exception as e:
+                        log.error(f"[PAY][MoMo] sendMessage exception: {e}")
+            elif not tg_id:
+                log.error(f"[PAY][MoMo] Không parse được telegram_id từ orderId={order_id}")
+
+        _json(self, {"resultCode": 0, "message": "success"})
 
 
 # ── Start ──────────────────────────────────────────────────────────────────────

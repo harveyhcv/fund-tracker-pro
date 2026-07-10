@@ -54,8 +54,10 @@
 
 ### 3b. MoMo (VN market)
 
-- [ ] PAY-004 · `/payment/momo/create` endpoint: tạo MoMo payment request v2 (requestId, amount, redirectUrl, ipnUrl), trả `payUrl` cho Mini App redirect | P1 | 4h
-- [ ] PAY-005 · `/payment/momo/ipn` IPN handler: verify HMAC signature MoMo, khi `resultCode=0` → upsert `user_tiers` | P1 | 2h | PAY-004
+- [DONE-LOCAL] PAY-004 · `POST /api/payment/momo/create` trong `miniapp_server.py` — auth qua X-Init-Data (không tin telegram_id client gửi), build MoMo v2 `captureWallet` request (requestId/orderId có prefix `FTP-<tgid>-<ts>`, HMAC-SHA256 signature), trả `pay_url`. Dùng MoMo test/sandbox credentials mặc định (`MOMO_PARTNER_CODE=MOMO`, `MOMO_ACCESS_KEY`, `MOMO_SECRET_KEY` — override bằng ENV khi có merchant thật) | 2026-07-10 | cần merchant MoMo thật + `MINIAPP_URL`/`RAILWAY_PUBLIC_DOMAIN` set để verify end-to-end
+- [DONE-LOCAL] PAY-005 · `POST /api/payment/momo/ipn` — verify HMAC-SHA256 signature (constant-time compare) trước khi tin field nào; khi `resultCode=0` → parse telegram_id từ `orderId`, gọi `db.set_tier(tg_id, "pro", +30d)` + gửi Telegram confirm message | 2026-07-10 | PAY-004
+- Frontend: nút "💗 THANH TOÁN QUA MOMO" trong `#upgrade-modal` (`telegram-bot/miniapp/index.html`) → `startUpgradeMomo()` gọi `/api/payment/momo/create`, mở `pay_url` qua `tg.openLink()` | 2026-07-10
+- **Bug tìm thấy + fix (không thuộc PAY-004/005 nhưng cùng khu vực code)**: `do_POST` gọi `self._api_create_stars_invoice(user)` nhưng `user` chưa từng được gán trong scope `do_POST` → NameError mỗi khi user bấm "NÂNG CẤP PRO NGAY" qua Mini App (endpoint `/api/payment/stars/create`, khác với `/buy_pro` command trong bot.py vẫn hoạt động bình thường). Đã sửa: `_api_create_stars_invoice()` tự validate `X-Init-Data` để lấy `user`, cùng pattern với `_auth_write()` | 2026-07-10
 
 ### 3c. VNPay + Stripe (làm sau)
 
@@ -69,8 +71,8 @@
 ## ═══════════════════════════════════════════
 
 - [DONE] PRO-001 · /api/research/{code} gated pro_required + apiFetch error body fix + openResearch upgrade modal | 2026-07-10
-- [ ] PRO-002 · Gold analysis: trend + RSI + MA signal cho giá vàng (SJC/DOJI từ giavang.org), riêng cho mã quỹ loại vàng | P1 | 2h | PRO-001
-- [ ] PRO-003 · Unlimited fund tracking: bỏ giới hạn 2 mã khi tier=pro, `/miniapp/add-fund` skip GATE-003 | P1 | 30m | GATE-002
+- [DONE] PRO-002 · Gold analysis: trend + RSI(14) + MA20/50 + BB signal cho SJC/DOJI — audit 2026-07-10, code có sẵn: `_calc_gold_signals()` `miniapp_server.py:104`, hiển thị "3 trường phái" (Lướt sóng/Trung/Dài hạn) trong `renderGoldSignalFull()` (`miniapp/index.html:1005`) | 2026-07-10 (audit, code có sẵn)
+- [DONE] PRO-003 · Unlimited fund tracking: bỏ giới hạn khi tier=pro — audit 2026-07-10, đã implement sẵn trong GATE-003 (`_api_update_watched` `miniapp_server.py:1087`: `if not _is_admin(tg_id) and _get_tier(tg_id).get("tier") != "pro" and len(valid) > FREE_FUND_LIMIT`) | 2026-07-10 (audit, code có sẵn)
 - [ ] PRO-004 · Alert system: bảng `alerts (id, user_id, fund_code, condition ENUM('nav_up','nav_down','signal_buy','signal_sell'), threshold FLOAT, last_triggered TIMESTAMPTZ)`, job check 18:31 sau harvest, gửi Telegram message | P1 | 4h
 
 ---
