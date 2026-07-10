@@ -3192,6 +3192,8 @@ def main():
     schedule.every().day.at("18:30").do(job_harvest_nav)
     schedule.every().day.at("18:31").do(job_t2_predict)
     schedule.every().day.at("18:32").do(job_t2_score)
+    # Second pass: sửa giá trị provisional sau khi TCinvest finalize NAV (~19:30-20:00)
+    schedule.every().day.at("20:00").do(job_harvest_nav)
     schedule.every().day.at("07:30").do(job_check_tcbs_token)
     # job_watchdog_ping đã bỏ — tin nhắn "Bot alive" không cần thiết
 

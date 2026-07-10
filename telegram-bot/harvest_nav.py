@@ -537,8 +537,19 @@ def cmd_daily(conn, only_code: Optional[str] = None, jwt: Optional[str] = None) 
         else:
             next_day = (last + timedelta(days=1)).isoformat()
             if next_day > TODAY_ISO:
-                continue  # đã cập nhật đến hôm nay
-            from_date = next_day
+                # Đã có dữ liệu đến hôm nay. Nếu record hôm nay là provisional
+                # (tcbs/fmarket), cho phép re-fetch để sửa giá trị chưa finalize.
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT source FROM nav_history WHERE fund_code=%s AND nav_date=%s",
+                        (code, TODAY_ISO)
+                    )
+                    row = cur.fetchone()
+                if row is None or row[0] in ('manual', 'fixed'):
+                    continue  # confirmed hoặc không có → skip
+                from_date = TODAY_ISO  # re-fetch today để correction
+            else:
+                from_date = next_day
 
         if fmarket_id:
             # Ưu tiên fmarket (không cần token) cho quỹ có fmarket_id
@@ -647,13 +658,15 @@ def _get_fetchable_funds(conn, only_code: Optional[str]) -> list[tuple]:
 
 def _insert_nav_points(conn, fund_code: str, pts: list[dict], source: str) -> int:
     """
-    Upsert NAV points. Append-only: ON CONFLICT DO NOTHING để bảo toàn history.
-    Returns: số rows thực sự mới (không tính duplicate).
+    Upsert NAV points với smart conflict policy:
+    - 'manual'/'fixed' không bao giờ bị ghi đè bởi auto-harvest
+    - 'fmarket'/'tcbs' có thể được cập nhật khi API trả về giá trị mới hơn
+      (dùng cho correction pass lúc 20:00 sau khi NAV đã finalize)
+    Returns: số rows thực sự thay đổi (insert + update).
     """
     inserted = 0
     with conn.cursor() as cur:
-        # Guard FK: nav_history.fund_code phải tồn tại trong `funds`. Nếu chưa có
-        # (vd mã placeholder/chưa map) → bỏ qua để không abort transaction.
+        # Guard FK: nav_history.fund_code phải tồn tại trong `funds`.
         cur.execute("SELECT 1 FROM funds WHERE code = %s", (fund_code,))
         if cur.fetchone() is None:
             log(f"  ⚠ {fund_code}: chưa có trong bảng funds — bỏ qua insert")
@@ -662,7 +675,17 @@ def _insert_nav_points(conn, fund_code: str, pts: list[dict], source: str) -> in
             cur.execute("""
                 INSERT INTO nav_history (fund_code, nav_date, nav, source)
                 VALUES (%s, %s, %s, %s)
-                ON CONFLICT (fund_code, nav_date) DO NOTHING
+                ON CONFLICT (fund_code, nav_date) DO UPDATE
+                    SET nav        = CASE
+                                       WHEN nav_history.source IN ('fixed', 'manual') THEN nav_history.nav
+                                       ELSE EXCLUDED.nav
+                                     END,
+                        source     = CASE
+                                       WHEN nav_history.source IN ('fixed', 'manual') THEN nav_history.source
+                                       ELSE EXCLUDED.source
+                                     END,
+                        fetched_at = NOW()
+                WHERE nav_history.source NOT IN ('fixed', 'manual')
             """, (fund_code, p["date"], p["nav"], source))
             if cur.rowcount > 0:
                 inserted += 1
