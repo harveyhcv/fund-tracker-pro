@@ -1994,29 +1994,38 @@ def job_harvest_nav():
         log.error("[harvest] %s", e)
 
 
-def job_t2_predict():
-    """T2-003: Chạy ARIMA forecast sau harvest lúc 18:31."""
-    if not (_DB_AVAILABLE and _db.is_available()):
-        log.debug("[t2_predict] DB không khả dụng — bỏ qua")
-        return
-    log.info("══ JOB: T+2 ARIMA Predict ══")
-    script = Path(__file__).parent.parent / "scripts" / "t2_arima.py"
+def _run_t2_script(name: str, script_name: str, args: list, timeout: int = 300) -> None:
+    """Helper chạy 1 script scripts/*.py qua subprocess, log kết quả. Không raise
+    — lỗi ở 1 model (vd XGBoost chưa train) không được chặn model khác chạy."""
+    script = Path(__file__).parent.parent / "scripts" / script_name
     if not script.exists():
-        log.error("[t2_predict] t2_arima.py không tìm thấy")
+        log.error("[%s] %s không tìm thấy", name, script_name)
         return
     try:
         result = __import__("subprocess").run(
-            [sys.executable, str(script), "--predict"],
-            capture_output=True, text=True, timeout=300,
+            [sys.executable, str(script)] + args,
+            capture_output=True, text=True, timeout=timeout,
             env={**__import__("os").environ},
         )
-        summary = (result.stdout or "").strip().splitlines()[-1] if result.stdout.strip() else "OK"
         if result.returncode == 0:
-            log.info("[t2_predict] %s", summary)
+            summary = (result.stdout or "").strip().splitlines()[-1] if result.stdout.strip() else "OK"
+            log.info("[%s] %s", name, summary)
         else:
-            log.error("[t2_predict] exit=%d err=%s", result.returncode, (result.stderr or "")[:300])
+            log.error("[%s] exit=%d err=%s", name, result.returncode, (result.stderr or "")[:300])
     except Exception as e:
-        log.error("[t2_predict] %s", e)
+        log.error("[%s] %s", name, e)
+
+
+def job_t2_predict():
+    """T2-003/T2-004/T2-005: Chạy ARIMA + XGBoost + Ensemble forecast sau harvest
+    lúc 18:31, theo thứ tự (ensemble cần cả 2 dự báo con của cùng ngày đã ghi DB)."""
+    if not (_DB_AVAILABLE and _db.is_available()):
+        log.debug("[t2_predict] DB không khả dụng — bỏ qua")
+        return
+    log.info("══ JOB: T+2 Predict (ARIMA + XGBoost + Ensemble) ══")
+    _run_t2_script("t2_predict_arima",    "t2_arima.py",    ["--predict"])
+    _run_t2_script("t2_predict_xgboost",  "t2_xgboost.py",  ["--predict"])
+    _run_t2_script("t2_predict_ensemble", "t2_ensemble.py", ["--predict"], timeout=120)
 
 
 def job_t2_score():

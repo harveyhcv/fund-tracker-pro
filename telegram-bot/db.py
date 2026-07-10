@@ -1231,6 +1231,44 @@ def get_model_mape(model_version: str = None, fund_code: str = None, window_days
             return [dict(r) for r in cur.fetchall()]
 
 
+def get_rolling_error_std(model_version: str, fund_code: str = None,
+                           window_days: int = 30, min_samples: int = 5) -> "float | None":
+    """T2-005: stdev(error_pct) trong window_days gần nhất cho model_version.
+    Ưu tiên per-fund nếu đủ ≥min_samples mẫu, fallback sang toàn bộ quỹ (fund_code=None)
+    nếu không đủ. Trả None nếu vẫn không đủ dữ liệu (caller tự áp CI mặc định)."""
+    with get_conn() as conn:
+        _ensure_prediction_tables(conn)
+
+        def _query(with_fund: bool):
+            with conn.cursor() as cur:
+                if with_fund:
+                    cur.execute("""
+                        SELECT STDDEV_SAMP(pa.error_pct), COUNT(*)
+                        FROM prediction_actuals pa
+                        JOIN nav_predictions np ON np.id = pa.prediction_id
+                        WHERE np.model_version = %s AND np.fund_code = %s
+                          AND pa.logged_at >= NOW() - (%s || ' days')::interval
+                    """, (model_version, fund_code.upper(), window_days))
+                else:
+                    cur.execute("""
+                        SELECT STDDEV_SAMP(pa.error_pct), COUNT(*)
+                        FROM prediction_actuals pa
+                        JOIN nav_predictions np ON np.id = pa.prediction_id
+                        WHERE np.model_version = %s
+                          AND pa.logged_at >= NOW() - (%s || ' days')::interval
+                    """, (model_version, window_days))
+                return cur.fetchone()
+
+        if fund_code:
+            std, n = _query(True)
+            if n and n >= min_samples and std is not None:
+                return float(std)
+        std, n = _query(False)
+        if n and n >= min_samples and std is not None:
+            return float(std)
+        return None
+
+
 # ─── POOL ────────────────────────────────────────────────────────────────────
 
 def close_pool() -> None:
