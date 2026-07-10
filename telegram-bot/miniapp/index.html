@@ -2295,6 +2295,10 @@ async function navImportSubmit(){
     statusEl.textContent = `✓ Lưu ${ins} điểm NAV.${note}`;
     tg?.HapticFeedback?.notificationOccurred('success');
     await crossCheckNav(code, navList);
+  } catch(e) {
+    statusEl.style.color = 'var(--sell)';
+    statusEl.textContent = 'Lỗi: ' + e.message;
+  }
 }
 // Legacy alias
 async function navSubmitImport(){ await navImportSubmit(); }
