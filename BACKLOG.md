@@ -90,7 +90,7 @@
 ### 5b. Models (baseline → ML → ensemble)
 
 - [DONE] T2-003 · ARIMA(2,1,2) trong scripts/t2_arima.py --predict, sanity clip ±10%, CI 80% | 2026-07-10
-- [ ] T2-004 · ML model `scripts/t2_xgboost.py`: XGBoostRegressor với feature vector T2-002, train/test split theo thời gian (80/20), evaluate MAPE trước khi deploy, insert predictions với `model_version='xgb-v1'` | P1 | 5h | T2-002, T2-003
+- [DONE-LOCAL] T2-004 · ML model `scripts/t2_xgboost.py` — pooled XGBoost (Booster API, không cần scikit-learn) qua tất cả quỹ, `fund_code` label-encoded làm feature, target = %chg T+2 (ổn định hơn NAV tuyệt đối khi pool nhiều quỹ khác thang đo). Reuse `_build_features`/`_fetch_nav_series`/`_next_trading_date` từ `t2_arima.py`. `--train`: time-split 80/20 PER-FUND (giữ thứ tự thời gian, không shuffle — tránh look-ahead bias), early-stopping trên test MAPE, lưu model vào `scripts/models/xgb_t2.json` (gitignored, cần chạy `--train` 1 lần trên Railway sau deploy) + ghi `model_metrics`. `--predict`: load model, dự báo T+2 mọi quỹ ≥60 điểm NAV, sanity clip ±10% (khớp ARIMA), insert `nav_predictions` với `model_version='xgb-v1'` — được `db.score_predictions()`/job_t2_score hiện có chấm điểm tự động (không cần sửa gì, hàm score generic theo mọi model_version). Thêm `xgboost>=2.0.0` vào requirements.txt | 2026-07-10 | Smoke-tested bằng synthetic NAV series (762 rows, 3 quỹ giả) — feature pipeline + time-split + train/predict chạy đúng, không lỗi. Cần DATABASE_URL thật + chạy `--train` trên Railway để có model production trước khi `--predict` hoạt động
 - [ ] T2-005 · Ensemble: weighted average ARIMA + XGBoost (init weights 0.3/0.7), CI = ±1.5 × rolling prediction std (30 ngày) | P1 | 2h | T2-003, T2-004
 
 ### 5c. Self-improvement loop
