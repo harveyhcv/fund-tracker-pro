@@ -161,11 +161,25 @@ canvas{width:100%!important;height:100%!important}
 .school-target{font-family:var(--mono);font-size:12px;margin-top:5px}
 .upgrade-feature{display:flex;align-items:center;gap:8px;font-size:13px;padding:6px 0;color:var(--txt)}
 .upgrade-feature .chk{color:var(--buy);font-weight:700}
+/* ── Tier bar ── */
+#tier-bar{display:none;align-items:center;justify-content:space-between;padding:6px 12px 4px;background:var(--bg2);border-bottom:1px solid var(--bdr);font-size:12px}
+#tier-bar.visible{display:flex}
+.tier-name{color:var(--txt);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:45vw}
+.tier-chip{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:20px;font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.03em;white-space:nowrap}
+.tier-chip.free{background:#1a1a2e;color:#8888aa;border:1px solid #333355}
+.tier-chip.pro{background:#001a2e;color:var(--c0);border:1px solid var(--c0)}
+.tier-chip.admin{background:#1a0a2e;color:#c084fc;border:1px solid #9333ea}
+.tier-exp{font-size:10px;color:var(--txt2);margin-left:4px}
+.tier-upgrade-hint{font-size:10px;color:var(--txt2);cursor:pointer;text-decoration:underline;text-underline-offset:2px}
 </style>
 </head>
 <body>
 
 <div id="toast"></div>
+<div id="tier-bar">
+  <span class="tier-name" id="tier-name"></span>
+  <span id="tier-right"></span>
+</div>
 
 <!-- Fund Analysis Modal -->
 <div class="modal-overlay" id="modal" onclick="closeModal(event)">
@@ -788,6 +802,31 @@ async function apiFetch(path, timeoutMs=12000){
 }
 const renderErr=msg=>`<div class="card" style="color:var(--sell);text-align:center;padding:20px">${msg}</div>`;
 
+// ── Tier bar ──────────────────────────────────────────────────────────────
+function renderTierBar(me){
+  const bar=document.getElementById('tier-bar');
+  if(!bar||!me) return;
+  const tier=me.tier||'free';
+  const isAdmin=me.is_admin||false;
+
+  document.getElementById('tier-name').textContent=me.name||'';
+
+  let chip='', right='';
+  if(isAdmin){
+    chip=`<span class="tier-chip admin">🔧 ADMIN</span>`;
+  } else if(tier==='pro'){
+    const exp=me.pro_expires_at?new Date(me.pro_expires_at):null;
+    const expStr=exp?exp.toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit',year:'numeric'}):'';
+    chip=`<span class="tier-chip pro">⭐ PRO</span>${expStr?`<span class="tier-exp">đến ${expStr}</span>`:''}`;
+  } else {
+    chip=`<span class="tier-chip free">MIỄN PHÍ</span>`;
+    right=`<span class="tier-upgrade-hint" onclick="showUpgradeModal({})">Nâng cấp →</span>`;
+  }
+
+  document.getElementById('tier-right').innerHTML=`<span style="display:flex;align-items:center;gap:6px">${chip}${right}</span>`;
+  bar.classList.add('visible');
+}
+
 // ── Portfolio ─────────────────────────────────────────────────────────────
 async function loadMe(){
   if(!USER_ID){
@@ -796,8 +835,9 @@ async function loadMe(){
   }
   try{
     _me=await apiFetch('/api/me');
-    // Hiện nav Admin nếu là admin
+    // Admin tab + tier bar
     if(_me?.is_admin) document.getElementById('nav-admin').style.display='';
+    renderTierBar(_me);
     // Load gold data in parallel
     apiFetch(`/api/gold?user_id=${USER_ID}`).then(d=>{_goldData=d;renderPfBanner();renderPfAlloc();renderPfGoldSub();}).catch(()=>{});
     renderPortfolio(_me);

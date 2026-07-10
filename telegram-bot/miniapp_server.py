@@ -769,8 +769,20 @@ def _auth_write(handler, claimed_tg_id: str) -> bool:
     return True
 
 
+def _is_admin(telegram_id: str) -> bool:
+    """Kiểm tra tg_id có phải admin_telegram_id trong config không."""
+    if not telegram_id:
+        return False
+    cfg = _load_cfg()
+    admin_id = str(cfg.get("admin_telegram_id", ""))
+    return bool(admin_id and str(telegram_id) == admin_id)
+
+
 def _get_tier(telegram_id: str) -> dict:
-    """Trả {tier, pro_expires_at}. 'free' nếu DB module không sẵn sàng."""
+    """Trả {tier, pro_expires_at}. Admin luôn là 'pro' effective. 'free' nếu DB không sẵn sàng."""
+    if _is_admin(telegram_id):
+        # Admin có toàn bộ Pro features, không cần mua
+        return {"tier": "pro", "pro_expires_at": None}
     if _db_mod is not None and _db_mod.is_available():
         try:
             return _db_mod.get_tier(telegram_id)
@@ -781,8 +793,10 @@ def _get_tier(telegram_id: str) -> dict:
 
 def _check_tier(handler, telegram_id: str, required_tier: str = "pro") -> bool:
     """Middleware (GATE-002): chặn request nếu user chưa đủ tier.
-    Trả True nếu đủ quyền; nếu không, tự gửi 403 pro_required và trả False."""
+    Admin bypass tất cả. Trả True nếu đủ quyền; False + 403 nếu không."""
     if required_tier == "free":
+        return True
+    if _is_admin(telegram_id):
         return True
     info = _get_tier(telegram_id)
     if info.get("tier") == required_tier:
@@ -1011,17 +1025,22 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         signals  = _get_signals_for_codes(all_codes, cfg)  # background, trả về ngay
         log.info(f"[/api/me] {tg_id} signals cached={len([s for s in signals.values() if s.get('nav')])} t={_time.time()-t0:.2f}s")
         portfolio = _calc_portfolio_with_holdings(holdings, signals)  # tái dùng holdings
-        tier_info = _get_tier(tg_id)
+        is_admin  = _is_admin(tg_id)
+        tier_info = _get_tier(tg_id)  # admin → luôn trả "pro" effective
+        is_pro    = tier_info.get("tier") == "pro"
 
-        # T2-009: Dự báo T+2 cho Pro users
+        # T2-009: Dự báo T+2 cho Pro/Admin users
         predictions = {}
-        if tier_info.get("tier") == "pro" and _db_mod is not None and _db_mod.is_available():
+        if is_pro and _db_mod is not None and _db_mod.is_available():
             try:
                 predictions = _db_mod.get_predictions(all_codes)
             except Exception as e:
                 log.debug(f"[/api/me] get_predictions error (non-fatal): {e}")
 
         log.info(f"[/api/me] {tg_id} DONE t={_time.time()-t0:.2f}s")
+
+        # tier hiển thị: admin → "admin", pro → "pro", else "free"
+        display_tier = "admin" if is_admin else tier_info.get("tier", "free")
         _json(self, {
             "name": profile.get("name", ""),
             "telegram_id": tg_id,
@@ -1029,9 +1048,10 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             "monthly_dca": profile.get("monthly_dca", 0),
             "portfolio": portfolio,
             "signals": signals,
-            "tier": tier_info.get("tier", "free"),
+            "tier": display_tier,
+            "is_admin": is_admin,
             "pro_expires_at": tier_info.get("pro_expires_at").isoformat() if tier_info.get("pro_expires_at") else None,
-            "free_fund_limit": FREE_FUND_LIMIT,
+            "free_fund_limit": FREE_FUND_LIMIT if not is_pro else None,
             "predictions": predictions,
         })
 
@@ -1063,8 +1083,8 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             _json(self, {"error": "Không có mã hợp lệ"}, 400)
             return
 
-        # GATE-003: free tier giới hạn FREE_FUND_LIMIT mã theo dõi
-        if _get_tier(tg_id).get("tier") != "pro" and len(valid) > FREE_FUND_LIMIT:
+        # GATE-003: free tier giới hạn FREE_FUND_LIMIT mã theo dõi. Admin + Pro bypass.
+        if not _is_admin(tg_id) and _get_tier(tg_id).get("tier") != "pro" and len(valid) > FREE_FUND_LIMIT:
             _json(self, {
                 "error": "pro_required",
                 "upgrade_url": "/buy",
@@ -1091,8 +1111,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             _json(self, {"error": "Invalid code"}, 400)
             return
         tg_id = qs.get("user_id", [""])[0]
-        if _get_tier(tg_id).get("tier") != "pro":
-            _json(self, {"error": "pro_required", "upgrade_url": "/buy"}, 403)
+        if not _check_tier(self, tg_id, "pro"):
             return
         cfg = _load_cfg()
         sigs = _get_signals_for_codes([code], cfg)
