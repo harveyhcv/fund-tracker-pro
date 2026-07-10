@@ -894,25 +894,19 @@ function renderPortfolio(me){
     html=`<div class="card" style="text-align:center;color:var(--txt2);padding:24px">Chưa có giao dịch CCQ.<br>Thêm ở tab Giao dịch.</div>`;
   } else {
     html='<div class="card">';
-    const preds=me.predictions||{};
     for(const h of pf.items){
       const chg=h.chg_pct||0;
-      const pred=preds[h.code];
-      const predHtml=pred?`<div style="font-size:10px;color:var(--txt2);margin-top:2px">
-        T+2: <span style="color:${pred.predicted_nav>h.nav?'var(--buy)':'var(--sell)'};font-weight:600">${fmt(pred.predicted_nav)}</span>
-        <span style="color:var(--txt2)">(${pred.predicted_nav>h.nav?'↑':'↓'}${Math.abs((pred.predicted_nav-h.nav)/h.nav*100).toFixed(1)}%)</span>
-      </div>`:'';
       html+=`<div class="fund-row" onclick="openResearch('${h.code}')">
         <div class="fund-code">${h.code}</div>
         <div class="fund-info">
           <div class="fund-nav">NAV ${fmt(h.nav)} đ <span class="pnl ${pnlC(chg)}" style="font-size:11px">${fmtP(chg)}</span></div>
           <div style="font-size:11px;color:var(--txt2)">${fmt(h.units)} CCQ · CP ${fmt(h.avg_cost)}</div>
-          ${predHtml}
         </div>
         <div class="fund-right">
           <div class="badge ${sigC(h.signal)}">${sigLabel(h.signal)}</div>
           <div class="pnl ${pnlC(h.pnl_pct)}" style="font-size:12px;margin-top:4px">${fmtP(h.pnl_pct)}</div>
           <div style="font-size:11px;color:var(--txt2)">${h.pnl>=0?'+':''}${fmt(h.pnl)}</div>
+          ${_t2Html(h.code, h.nav, true)}
         </div>
       </div>`;
     }
@@ -1159,6 +1153,28 @@ async function loadSignals(){
     renderSignals(_signals);
   }catch(e){document.getElementById('sig-content').innerHTML=renderErr(e.message);}
 }
+function _t2Html(code, navNow, compact=false){
+  const pred=_me?.predictions?.[code];
+  if(!pred||!pred.predicted_nav) return '';
+  const t2=pred.predicted_nav;
+  const diff=(t2-navNow)/navNow*100;
+  const up=diff>=0;
+  const color=up?'var(--buy)':'var(--sell)';
+  const arrow=up?'↑':'↓';
+  if(compact){
+    return `<div style="font-size:10px;margin-top:3px;color:var(--txt2)">Chốt T+2 <span style="color:${color};font-weight:600">${arrow}${Math.abs(diff).toFixed(1)}%</span> <span style="color:var(--txt2)">${fmt(t2)} đ</span></div>`;
+  }
+  return `<div style="margin-top:8px;padding:8px 10px;background:var(--bg3);border-radius:8px;border-left:3px solid ${color}">
+    <div style="font-size:11px;color:var(--txt2);margin-bottom:2px">⏱ Giá chốt T+2 (dự báo ARIMA)</div>
+    <div style="display:flex;align-items:baseline;gap:8px">
+      <span style="font-family:var(--mono);font-size:16px;font-weight:700;color:${color}">${fmt(t2)} đ</span>
+      <span style="font-size:13px;color:${color};font-weight:600">${arrow}${Math.abs(diff).toFixed(2)}% so với NAV hiện tại</span>
+    </div>
+    ${pred.ci_low&&pred.ci_high?`<div style="font-size:10px;color:var(--txt2);margin-top:2px">Khoảng tin cậy 80%: ${fmt(pred.ci_low)} – ${fmt(pred.ci_high)} đ</div>`:''}
+    <div style="font-size:10px;color:var(--txt2);margin-top:4px;font-style:italic">Tham khảo — không phải khuyến nghị đầu tư</div>
+  </div>`;
+}
+
 function renderSignals(sigs){
   const codes=Object.keys(sigs);
   if(!codes.length){document.getElementById('sig-content').innerHTML='<div class="loading">Không có dữ liệu</div>';return;}
@@ -1175,6 +1191,7 @@ function renderSignals(sigs){
         <div style="font-size:11px;color:var(--txt2)">${fmt(s.nav)} đ
           <span class="pnl ${pnlC(chg)}" style="font-size:10px"> ${fmtP(chg)}</span>
         </div>
+        ${_t2Html(code, s.nav, true)}
       </div>
       <div class="sig-meters">
         <div class="meter">
@@ -1244,7 +1261,7 @@ function renderResearch(d){
   document.getElementById('modal-title').textContent=d.code+(d.fund_name?' — '+d.fund_name.substring(0,20):'');
 
   let html=`
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
     <div>
       <div style="font-family:var(--mono);font-size:18px;font-weight:600;color:var(--c0)">${fmt(d.nav)} đ</div>
       <div style="font-size:11px;color:var(--txt2)">${d.nav_date||''}</div>
@@ -1254,6 +1271,7 @@ function renderResearch(d){
       <div class="pnl ${pnlC(chg)}" style="font-size:12px;margin-top:4px">${fmtP(chg)} hôm nay</div>
     </div>
   </div>
+  ${_t2Html(d.code, d.nav, false)}
 
   <div class="section">
     <div class="section-hdr">1️⃣ Kỹ thuật (Technical Analysis)</div>
