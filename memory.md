@@ -418,4 +418,98 @@ thanh toán MoMo thật (hiện đang dùng sandbox credentials mặc định).
 
 ---
 
-*Cập nhật: 2026-07-10 — Session 4: PAY-004/005 MoMo, PRO-004 Alert system, NAV confidence audit (autonomous run)*
+## ✅ Session 5 — Ca chiều autonomous: T+2 Forecast Engine hoàn thiện (T2-004/005/007/008/010) (2026-07-10)
+
+**Bắt đầu session phát hiện: PRO-004 + NAV confidence workflow (session trước) chưa push**
+`ec19310` — đã `git add`/commit/push trước khi bắt đầu task mới, theo đúng quy tắc mới ghi ở
+Session 4 (tách bạch nguồn gốc thay đổi, không gộp bừa).
+
+**⚠️ Có 1 agent KHÁC chạy đồng thời trong cùng working tree** trong lúc session này đang chạy
+(commit `a2bb04b`/`8da5c3a`/`1e6648b` xuất hiện xen giữa các commit của tôi, cùng khung giờ
+14:48-14:56 — tự nhận là "Session 4 ca sáng" dù timestamp là chiều, có thể do lịch chạy bị trễ).
+Không có conflict vì đụng file khác nhau (họ sửa `bot.py`/`miniapp_server.py`/`index.html` cho
+NAV-confidence UI, tôi sửa `scripts/t2_*.py` + phần khác của `bot.py`) — mỗi lần trước khi
+commit đều `git fetch` + `git log HEAD..origin/main` để phát hiện sớm nếu có commit mới, và
+luôn Read lại file trước khi Edit (Edit tool tự chặn nếu file bị sửa từ ngoài, đã gặp 1 lần
+với BACKLOG.md và xử lý đúng bằng cách đọc lại). **Bài học cho session sau**: nếu thấy git log
+có commit lạ giữa chừng, ĐỪNG hoảng — kiểm tra file trùng lặp trước khi tiếp tục, và luôn
+fetch+diff trước mỗi lần commit/push.
+
+**T2-004 — XGBoost T+2 model (`scripts/t2_xgboost.py`, MỚI):**
+- Dùng XGBoost **Booster API thuần** (không phải sklearn wrapper) — tránh thêm dependency
+  scikit-learn không cần thiết
+- **Pooled model** qua tất cả quỹ (không train riêng từng quỹ như ARIMA) — `fund_code` label-
+  encoded làm 1 feature, giúp model học chung pattern giữa các quỹ, nhiều data hơn
+- Target = **%chg T+2** (không phải NAV tuyệt đối) — quan trọng vì pool nhiều quỹ có NAV khác
+  thang đo (9k vs 22k), nếu predict NAV tuyệt đối model sẽ bị lệch theo quỹ có NAV lớn
+- Reuse `_build_features`/`_fetch_nav_series`/`_next_trading_date` từ `t2_arima.py` (import
+  trực tiếp, không copy code)
+- `--train`: time-split 80/20 **PER-FUND** (không shuffle global — tránh look-ahead bias vì
+  mỗi quỹ phải giữ thứ tự thời gian riêng), early-stopping trên test MAPE
+- Model lưu `scripts/models/xgb_t2.json` (gitignored — **PHẢI chạy `--train` 1 lần trên
+  Railway** sau deploy, model không có sẵn trong git)
+
+**T2-005 — Ensemble (`scripts/t2_ensemble.py`, MỚI):**
+- Đọc dự báo mới nhất `arima-v1` + `xgb-v1` **cùng `predicted_for_date`** (lệch ngày → skip,
+  coi như 1 model chưa chạy xong hôm đó — an toàn hơn là trộn dự báo khác ngày)
+- CI = `±1.5×rolling_std(error_pct, 30d)` của chính `ensemble-v1` — hàm mới
+  `db.get_rolling_error_std()`, ưu tiên per-fund ≥5 mẫu, fallback toàn cục, fallback cứng ±2%
+  cho vài tuần đầu khi ensemble-v1 chưa có lịch sử chấm điểm
+- Wire vào `bot.py job_t2_predict()` (18:31): chạy tuần tự ARIMA→XGBoost→Ensemble qua helper
+  `_run_t2_script()` mới, mỗi script lỗi độc lập (không chặn 2 script còn lại)
+
+**T2-007 — Weekly retrain (mở rộng `t2_xgboost.py`):**
+- `_next_version(conn)` scan `model_metrics` tìm `xgb-vN` lớn nhất → `xgb-v{N+1}` — **quan
+  trọng**: nếu không làm việc này, mỗi lần retrain sẽ ghi đè `xgb-v1` cũ, mất lịch sử so sánh
+  model qua các lần train
+- `cmd_predict()`/`cmd_status()` đọc `model_version` từ `meta.json` (KHÔNG hardcode nữa) — tự
+  động dùng model mới nhất sau mỗi retrain mà không cần sửa code
+- `bot.py job_t2_retrain()` — Chủ nhật 02:00, timeout 900s (train chậm dần khi data lớn)
+
+**T2-008 — Adaptive ensemble weights (mở rộng `t2_ensemble.py`):**
+- `--reweight`: inverse-MAPE weighting — `w_arima=mape_xgb/(mape_arima+mape_xgb)` — model lỗi
+  ÍT hơn được trọng số CAO hơn (không phải ngược lại, dễ nhầm)
+- Cần ≥10 mẫu/model trong 30 ngày mới tin cậy để reweight, không thì giữ nguyên trọng số cũ
+  (tránh reweight dựa trên quá ít data → nhiễu)
+- Lưu `scripts/models/ensemble_weights.json` (gitignored, tương tự xgb model)
+- `bot.py job_t2_reweight()` — `schedule.every(30).days.at("03:00")` (đã verify `schedule` lib
+  hỗ trợ cú pháp `every(N).days.at()`, không chỉ `.day.at()`)
+
+**T2-010 — Accuracy dashboard:**
+- **Quyết định UX quan trọng**: KHÔNG tạo tab riêng ở bottom-nav (đã 6 icon, chật cho mobile
+  Telegram WebView) — gộp vào modal "Nghiên cứu" hiện có làm section "🎯 Độ chính xác dự báo
+  T+2", cùng chỗ với PRO-001 (research) và PRO-004 (alerts)
+- `db.get_accuracy_summary()`/`get_accuracy_history()` — **bug cần tránh lặp lại**:
+  `ROUND(...)::numeric` trong SQL trả về `Decimal` qua psycopg2, KHÔNG JSON-serializable →
+  phải ép `float()` thủ công trước khi trả qua `_json()`. Tương tự `date` columns phải cast
+  `::text` trong SQL (không có custom JSON encoder trong `miniapp_server.py`)
+- Bonus fix: `_t2Html()` hardcode nhãn "(dự báo ARIMA)" dù giờ prediction hiển thị có thể là
+  bất kỳ model nào (`get_predictions()` lấy bản ghi mới nhất bất kể model_version, mà cron giờ
+  chạy ARIMA→XGBoost→Ensemble tuần tự nên ensemble luôn là bản ghi mới nhất) — sửa thành nhãn
+  động `_t2ModelLabel(pred.model_version)`
+
+**Verify UI mới (không có DATABASE_URL để test backend thật):**
+- `.claude/launch.json` cho `preview_start` phải đặt ở **`P:\NGCG\Vibe Coding\.claude\`**
+  (working-dir CHA), KHÔNG phải `Fund Tracker Pro/.claude/` — browser tool tìm ở đó, đã tạo
+  file mới (ngoài git repo của project này, không ảnh hưởng)
+- **Bẫy khi mock qua `preview_eval`**: `window._me = {...}` KHÔNG gán được biến `let _me`
+  top-level trong script (biến khai báo bằng `let`/`const` ở global scope không trở thành
+  `window` property) — phải gán trực tiếp `_me = {...}` (không có `window.` hay `let`) để
+  JS engine resolve đúng lexical binding mà các hàm trong file đang dùng
+- Đã verify qua `preview_snapshot`: bảng MAPE + canvas chart (686×240px sau resize mobile) +
+  nhãn "dự báo Ensemble" render đúng, không console error
+
+**Tất cả P0/P1 trong BACKLOG đã DONE.** Còn lại: PAY-006 (VNPay, P2, cần merchant credentials
+thật), PAY-007 (Stripe, P2, cần Stripe account thật) — không thể test có ý nghĩa nếu không có
+credentials, để lại cho session có quyền truy cập secrets thật.
+
+**Deploy checklist cho session sau / Harvey:**
+1. `railway run python scripts/t2_xgboost.py --train` — tạo model `xgb-v1` đầu tiên (bắt buộc
+   trước khi `--predict` hoạt động, và trước khi cron Chủ nhật `job_t2_retrain` kích hoạt)
+2. Đợi ≥30 ngày dữ liệu chấm điểm arima-v1 + xgb-v1 (mỗi model ≥10 mẫu) rồi chạy thử
+   `python scripts/t2_ensemble.py --reweight` để có trọng số adaptive đầu tiên
+3. `GET /api/admin/nav/pending` + xác nhận NAV pending (từ session trước) qua Mini App Admin tab
+
+---
+
+*Cập nhật: 2026-07-10 — Session 5: T+2 Forecast Engine — T2-004/005/007/008/010 (autonomous run, ca chiều)*

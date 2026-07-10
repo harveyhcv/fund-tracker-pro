@@ -4,10 +4,11 @@
 # Priority: P0 (blocker) / P1 (important) / P2 (nice-to-have)
 # Claude đọc file này ĐẦU TIÊN mỗi session. Pick task IN_PROGRESS nếu có, nếu không pick P0 cao nhất.
 #
-# Last updated: 2026-07-10 (session 4 — ca sáng autonomous)
+# Last updated: 2026-07-10 (session 5 — ca chiều autonomous)
 
 ## ĐANG LÀM (IN_PROGRESS)
-# Không có — tất cả P0/P1 đã DONE hoặc blocked chờ Railway deploy
+# Không có — TẤT CẢ P0/P1 đã DONE (kể cả toàn bộ Phase 5 T2-001..010). Còn lại
+# PAY-006/PAY-007 (P2, cần merchant credentials thật) chưa làm được trong session tự động.
 
 ---
 
