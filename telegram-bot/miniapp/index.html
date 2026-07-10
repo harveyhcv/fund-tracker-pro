@@ -1366,8 +1366,76 @@ function renderResearch(d){
 
   <div class="conclusion">${conclusion}</div>
   <div style="font-size:11px;color:var(--txt2);text-align:center;margin-top:10px">⚠️ Tham khảo — không phải khuyến nghị đầu tư cá nhân</div>
+
+  <div class="section">
+    <div class="section-hdr">🔔 Cảnh báo</div>
+    <div id="alert-list-${d.code}" style="font-size:12px;color:var(--txt2);margin-bottom:8px">Đang tải...</div>
+    <div style="display:flex;gap:6px">
+      <select id="alert-cond-${d.code}" onchange="onAlertCondChange('${d.code}')" style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--bdr);color:var(--txt);border-radius:8px;padding:6px 8px;font-size:12px">
+        <option value="nav_up">NAV tăng ≥ X%</option>
+        <option value="nav_down">NAV giảm ≥ X%</option>
+        <option value="signal_buy">Có tín hiệu MUA</option>
+        <option value="signal_sell">Có tín hiệu BÁN</option>
+      </select>
+      <input type="number" inputmode="decimal" id="alert-thresh-${d.code}" placeholder="VD: 3" style="width:64px;flex-shrink:0;background:var(--bg);border:1px solid var(--bdr);color:var(--txt);border-radius:8px;padding:6px 8px;font-size:12px">
+    </div>
+    <button class="btn btn-primary" style="margin-top:8px" onclick="addAlert('${d.code}')">+ Đặt cảnh báo</button>
+  </div>
   `;
   document.getElementById('modal-body').innerHTML=html;
+  loadAlertsForFund(d.code);
+}
+
+let _alertsCache=null;
+async function loadAlertsForFund(code){
+  const el=document.getElementById('alert-list-'+code);
+  try{
+    if(!_alertsCache) _alertsCache=await apiFetch('/api/alerts');
+    renderAlertList(code);
+  }catch(e){ if(el) el.textContent='Không tải được cảnh báo.'; }
+}
+function renderAlertList(code){
+  const el=document.getElementById('alert-list-'+code);
+  if(!el) return;
+  const mine=(_alertsCache?.alerts||[]).filter(a=>a.fund_code===code);
+  const labels={nav_up:'NAV tăng ≥',nav_down:'NAV giảm ≥',signal_buy:'Tín hiệu MUA',signal_sell:'Tín hiệu BÁN'};
+  if(!mine.length){ el.textContent='Chưa có cảnh báo nào cho mã này.'; return; }
+  el.innerHTML=mine.map(a=>{
+    const lbl=labels[a.condition]||a.condition;
+    const th=a.threshold!=null?` ${a.threshold}%`:'';
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0">
+      <span>• ${lbl}${th}</span>
+      <span style="color:var(--sell);cursor:pointer;font-family:var(--mono)" onclick="removeAlert(${a.id},'${code}')">✕</span>
+    </div>`;
+  }).join('');
+}
+function onAlertCondChange(code){
+  const cond=document.getElementById('alert-cond-'+code).value;
+  const input=document.getElementById('alert-thresh-'+code);
+  const needsThreshold=cond==='nav_up'||cond==='nav_down';
+  input.style.display=needsThreshold?'':'none';
+}
+async function addAlert(code){
+  const cond=document.getElementById('alert-cond-'+code).value;
+  const needsThreshold=cond==='nav_up'||cond==='nav_down';
+  const threshold=needsThreshold?parseFloat(document.getElementById('alert-thresh-'+code).value):null;
+  if(needsThreshold&&(!threshold||threshold<=0)){toast('Nhập ngưỡng % hợp lệ');return;}
+  try{
+    await apiPost('/api/alerts',{telegram_id:USER_ID,fund_code:code,condition:cond,threshold});
+    toast('✅ Đã đặt cảnh báo');
+    _alertsCache=await apiFetch('/api/alerts');
+    renderAlertList(code);
+  }catch(e){
+    if(isProRequired(e)){ closeModalBtn(); showUpgradeModal({limit:null}); }
+    else toast('Lỗi: '+e.message);
+  }
+}
+async function removeAlert(id,code){
+  try{
+    await apiDelete('/api/alerts/'+id,{telegram_id:USER_ID});
+    _alertsCache=await apiFetch('/api/alerts');
+    renderAlertList(code);
+  }catch(e){ toast('Lỗi: '+e.message); }
 }
 
 function closeModal(e){if(e.target===document.getElementById('modal'))closeModalBtn();}

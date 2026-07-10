@@ -925,6 +925,8 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             self._api_get_gold_trades(qs)
         elif path == "/api/fed-rate":
             self._api_fed_rate()
+        elif path == "/api/alerts":
+            self._api_list_alerts(qs)
         elif path == "/health":
             _json(self, {"ok": True, "ts": datetime.now().isoformat()})
         else:
@@ -948,6 +950,9 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         elif path.startswith("/api/trade/"):
             idx = path[len("/api/trade/"):]
             self._api_delete_trade(idx, data)
+        elif path.startswith("/api/alerts/"):
+            idx = path[len("/api/alerts/"):]
+            self._api_delete_alert(idx, data)
         else:
             _json(self, {"error": "Not found"}, 404)
 
@@ -958,6 +963,8 @@ class MiniAppHandler(BaseHTTPRequestHandler):
 
         if path == "/api/me/watched_funds":
             self._api_update_watched(data)
+        elif path == "/api/alerts":
+            self._api_create_alert(data)
         elif path == "/api/gold/trade":
             self._api_add_gold_trade(data)
         elif path.startswith("/api/gold/trade/"):
@@ -1117,6 +1124,83 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             profile["watched_funds"] = valid
             _save_cfg(cfg)
         _json(self, {"ok": True, "watched_funds": valid})
+
+    def _api_list_alerts(self, qs: dict):
+        """GET /api/alerts?user_id=... — PRO-004, danh sách cảnh báo đang bật của user."""
+        tg_id = (qs.get("user_id") or [""])[0]
+        if not _check_tier(self, tg_id, "pro"):
+            return
+        if _db_mod is None or not _db_mod.is_available():
+            _json(self, {"alerts": []})
+            return
+        try:
+            alerts = _db_mod.list_alerts(tg_id)
+        except Exception as e:
+            log.error(f"[miniapp] list_alerts lỗi: {e}")
+            _json(self, {"error": "Lỗi đọc cảnh báo"}, 500)
+            return
+        _json(self, {"alerts": alerts})
+
+    def _api_create_alert(self, data: dict):
+        """POST /api/alerts — PRO-004, tạo cảnh báo mới cho 1 quỹ."""
+        tg_id     = str(data.get("telegram_id", ""))
+        fund_code = str(data.get("fund_code", "")).upper()
+        condition = str(data.get("condition", ""))
+        threshold = data.get("threshold")
+        if not tg_id or not fund_code or not condition:
+            _json(self, {"error": "telegram_id, fund_code, condition required"}, 400)
+            return
+        if condition not in ("nav_up", "nav_down", "signal_buy", "signal_sell"):
+            _json(self, {"error": "condition không hợp lệ"}, 400)
+            return
+        if condition in ("nav_up", "nav_down"):
+            try:
+                threshold = float(threshold)
+                assert threshold > 0
+            except (TypeError, ValueError, AssertionError):
+                _json(self, {"error": "threshold phải là số dương (%)"}, 400)
+                return
+        else:
+            threshold = None
+        if not _auth_write(self, tg_id):
+            return
+        if not _check_tier(self, tg_id, "pro"):
+            return
+        cfg = _load_cfg()
+        if fund_code not in cfg.get("funds", {}):
+            _json(self, {"error": f"Mã quỹ không hợp lệ: {fund_code}"}, 400)
+            return
+        if _db_mod is None or not _db_mod.is_available():
+            _json(self, {"error": "DB không khả dụng"}, 503)
+            return
+        try:
+            alert = _db_mod.create_alert(tg_id, fund_code, condition, threshold)
+            _json(self, {"ok": True, "alert": alert})
+        except Exception as e:
+            log.error(f"[miniapp] create_alert lỗi: {e}")
+            _json(self, {"error": "Lỗi tạo cảnh báo"}, 500)
+
+    def _api_delete_alert(self, alert_id: str, data: dict):
+        """DELETE /api/alerts/<id> — PRO-004, tắt (soft-delete) 1 cảnh báo."""
+        tg_id = str(data.get("telegram_id", ""))
+        if not tg_id or not alert_id.isdigit():
+            _json(self, {"error": "telegram_id + alert id required"}, 400)
+            return
+        if not _auth_write(self, tg_id):
+            return
+        if _db_mod is None or not _db_mod.is_available():
+            _json(self, {"error": "DB không khả dụng"}, 503)
+            return
+        try:
+            ok = _db_mod.delete_alert(alert_id, tg_id)
+        except Exception as e:
+            log.error(f"[miniapp] delete_alert lỗi: {e}")
+            _json(self, {"error": "Lỗi xóa cảnh báo"}, 500)
+            return
+        if not ok:
+            _json(self, {"error": "Không tìm thấy cảnh báo"}, 404)
+            return
+        _json(self, {"ok": True})
 
     def _api_research(self, code: str, qs: dict):
         """Phân tích sâu 5 trường phái cho 1 quỹ — PRO-001, yêu cầu tier=pro."""

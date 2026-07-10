@@ -498,31 +498,51 @@ def cmd_backfill(conn, only_code: Optional[str] = None) -> None:
 
 # ── Mode: DAILY ────────────────────────────────────────────────────────────────
 
+def _yesterday_nav_map(conn) -> dict:
+    """Trả {fund_code: nav} cho ngày hôm qua (bỏ qua provisional)."""
+    yesterday = (date.today() - timedelta(days=1)).isoformat()
+    with conn.cursor() as cur:
+        cur.execute("""
+            SELECT fund_code, nav FROM nav_history
+            WHERE nav_date = %s AND source NOT IN ('provisional')
+        """, (yesterday,))
+        return {r[0]: float(r[1]) for r in cur.fetchall()}
+
+
 def cmd_daily(conn, only_code: Optional[str] = None, jwt: Optional[str] = None) -> int:
     """
-    Chỉ fetch điểm NAV MỚI (từ nav_date cuối trong DB + 1 ngày đến hôm nay).
-    Thiết kế để chạy hàng ngày lúc 18:30 — nhẹ, nhanh (~30-60s cho 50 quỹ).
-    Returns: số records mới.
+    Fetch NAV mới nhất với confidence workflow:
+    - provisional   → fetch == yesterday (API chưa update)
+    - pending_confirm → fetch ≠ manual (cần admin xác nhận)
+    - confirmed     → fetch ≈ manual (tự động khóa)
+    Chạy lúc 18:30 và 20:00 (second pass để sửa provisional).
+    Returns: số records thay đổi.
     """
     funds = _get_fetchable_funds(conn, only_code)
     if not funds:
         log("⚠ Không có quỹ. Chạy --discover trước.")
         return 0
 
-    # JWT cho quỹ TCinvest — endpoint public (apipubaws) đã chết (404), nên
-    # quỹ tcbs phải fetch qua TCinvest chart-nav có token. Không có token thì
-    # bỏ qua quỹ tcbs (fmarket vẫn chạy bình thường).
-    # Ưu tiên jwt truyền trực tiếp (vd: từ --jwt CLI arg, luôn mới nhất từ
-    # /admin settoken) hơn _load_jwt_from_config() (có thể đọc nhầm bản
-    # config.json cũ build-time nếu DATA_DIR không khớp).
     jwt = jwt or _load_jwt_from_config()
     if jwt:
         log("🔑 Có JWT TCinvest — quỹ tcbs sẽ fetch qua chart-nav")
     else:
         log("⚠ Không có JWT — quỹ TCinvest-only sẽ bị bỏ qua hôm nay")
 
-    total_new    = 0
-    updated_list = []
+    # Load db module cho confidence-aware upsert
+    sys.path.insert(0, str(ROOT / "telegram-bot"))
+    import db as _db
+    _db.init_pool()
+
+    # Fetch yesterday NAVs một lần cho tất cả quỹ
+    yesterday_navs = _yesterday_nav_map(conn)
+
+    total_new       = 0
+    provisional_cnt = 0
+    pending_list    = []
+    updated_list    = []
+
+    PROVISIONAL_PROTECTED = ('fixed', 'confirmed', 'manual', 'pending_confirm')
 
     for code, fmarket_id, is_tcbs in funds:
         with conn.cursor() as cur:
@@ -533,30 +553,29 @@ def cmd_daily(conn, only_code: Optional[str] = None, jwt: Optional[str] = None) 
             last = cur.fetchone()[0]
 
         if last is None:
-            from_date = FROM_EVER  # backfill nếu chưa có gì
+            from_date = FROM_EVER
         else:
             next_day = (last + timedelta(days=1)).isoformat()
             if next_day > TODAY_ISO:
-                # Đã có dữ liệu đến hôm nay. Nếu record hôm nay là provisional
-                # (tcbs/fmarket), cho phép re-fetch để sửa giá trị chưa finalize.
+                # Đã có dữ liệu đến hôm nay. Chỉ re-fetch nếu là provisional
+                # (auto-fetched == yesterday, chưa finalize).
                 with conn.cursor() as cur:
                     cur.execute(
                         "SELECT source FROM nav_history WHERE fund_code=%s AND nav_date=%s",
                         (code, TODAY_ISO)
                     )
                     row = cur.fetchone()
-                if row is None or row[0] in ('manual', 'fixed'):
-                    continue  # confirmed hoặc không có → skip
-                from_date = TODAY_ISO  # re-fetch today để correction
+                existing_src = row[0] if row else None
+                if existing_src in PROVISIONAL_PROTECTED or existing_src is None:
+                    continue  # confirmed/manual/fixed/pending → skip
+                from_date = TODAY_ISO  # provisional → re-fetch để correction
             else:
                 from_date = next_day
 
         if fmarket_id:
-            # Ưu tiên fmarket (không cần token) cho quỹ có fmarket_id
             pts = fetch_fmarket_nav(fmarket_id, from_date=from_date)
             source = "fmarket"
         elif is_tcbs:
-            # Quỹ TCinvest-only: dùng chart-nav có JWT (public endpoint đã chết)
             if not jwt:
                 continue
             pts = tcinvest_fetch_nav_hist(code, jwt)
@@ -566,18 +585,46 @@ def cmd_daily(conn, only_code: Optional[str] = None, jwt: Optional[str] = None) 
         else:
             continue
 
-        if pts:
-            new_rows = _insert_nav_points(conn, code, pts, source)
-            if new_rows > 0:
-                total_new += new_rows
-                updated_list.append(f"{code}(+{new_rows})")
+        if not pts:
+            time.sleep(0.2)
+            continue
+
+        yesterday_nav = yesterday_navs.get(code)
+        for p in pts:
+            nav_dt = date.fromisoformat(p["date"])
+            # Chỉ dùng confidence logic cho điểm hôm nay
+            # Điểm lịch sử dùng smart upsert đơn giản (append-only trừ provisional)
+            if p["date"] == TODAY_ISO:
+                result = _db.upsert_nav_with_confidence(
+                    code, nav_dt, p["nav"], source, yesterday_nav=yesterday_nav
+                )
+                if result in ('inserted', 'updated'):
+                    total_new += 1
+                    updated_list.append(code)
+                elif result == 'provisional':
+                    provisional_cnt += 1
+                elif result == 'pending_confirm':
+                    pending_list.append(f"{code} {p['date']}")
+                elif result == 'confirmed':
+                    total_new += 1
+                    updated_list.append(f"{code}✓")
+            else:
+                # Lịch sử: dùng _insert_nav_points (DO NOTHING trừ provisional)
+                _insert_nav_points(conn, code, [p], source)
+                total_new += 1
 
         time.sleep(0.2)
 
+    parts = [f"✅ Daily {TODAY_ISO}:"]
     if updated_list:
-        log(f"✅ Daily: +{total_new} records — {', '.join(updated_list)}")
+        parts.append(f"+{total_new} records ({', '.join(dict.fromkeys(updated_list))})")
     else:
-        log(f"✅ Daily: không có NAV mới hôm nay ({TODAY_ISO})")
+        parts.append("không có NAV mới")
+    if provisional_cnt:
+        parts.append(f"⏳ {provisional_cnt} provisional (API chưa update)")
+    if pending_list:
+        parts.append(f"⚠ {len(pending_list)} pending_confirm: {', '.join(pending_list)}")
+    log(" — ".join(parts))
 
     return total_new
 

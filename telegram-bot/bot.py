@@ -1639,6 +1639,49 @@ def job_morning():
     except Exception as e:
         log.warning(f"[job-morning] push-nav failed: {e}")
 
+    # Kiểm tra pending_confirm từ harvest qua đêm → notify admin
+    try:
+        _notify_pending_nav_confirms(token, config)
+    except Exception as e:
+        log.warning(f"[job-morning] pending-confirm check failed: {e}")
+
+
+def _notify_pending_nav_confirms(token: str, config: dict) -> None:
+    """Gửi Telegram cho admin các NAV cần xác nhận (manual ≠ fetch)."""
+    if not (_DB_AVAILABLE and _db.is_available()):
+        return
+    pendings = _db.get_pending_confirms()
+    if not pendings:
+        return
+
+    admin_id = str(config.get("admin_telegram_id", ""))
+    if not admin_id:
+        return
+
+    log.info(f"[nav-confirm] {len(pendings)} mã cần xác nhận")
+    for p in pendings:
+        code      = p["fund_code"]
+        nav_date  = p["nav_date"]
+        manual    = p["manual_nav"]
+        fetch_val = p["fetch_nav"]
+        diff_pct  = (fetch_val - manual) / manual * 100 if manual else 0
+
+        msg = (
+            f"⚠️ <b>NAV cần xác nhận — <code>{code}</code></b>\n"
+            f"📅 Ngày: <b>{nav_date}</b>\n"
+            f"📝 Manual (user nhập): <b>{manual:,.0f} đ</b>\n"
+            f"📡 Fetch (TCinvest): <b>{fetch_val:,.0f} đ</b>\n"
+            f"↕️ Chênh lệch: <b>{diff_pct:+.2f}%</b>\n\n"
+            f"Chọn giá trị đúng:"
+        )
+        buttons = [[
+            {"text": f"✅ Manual ({manual:,.0f})",
+             "callback_data": f"nav_confirm:{code}:{nav_date}:manual"},
+            {"text": f"📡 Fetch ({fetch_val:,.0f})",
+             "callback_data": f"nav_confirm:{code}:{nav_date}:fetch"},
+        ]]
+        tg_send(token, admin_id, msg, buttons=buttons)
+
 
 def job_evening():
     log.info("══ JOB: Evening Report ══")
@@ -1999,6 +2042,77 @@ def job_t2_score():
             log.error("[t2_score] exit=%d err=%s", result.returncode, (result.stderr or "")[:300])
     except Exception as e:
         log.error("[t2_score] %s", e)
+
+
+def job_check_alerts():
+    """PRO-004: Kiểm tra ngưỡng cảnh báo user tự đặt (bảng `alerts`), chạy 18:33
+    sau daily harvest (18:30) + T+2 predict/score (18:31/18:32) để có NAV mới nhất.
+
+    Debounce: chỉ gửi tối đa 1 lần / alert / ngày (so last_triggered với hôm nay).
+    """
+    if not (_DB_AVAILABLE and _db.is_available()):
+        log.debug("[alerts] DB không khả dụng — bỏ qua")
+        return
+    try:
+        alerts = _db.get_active_alerts()
+    except Exception as e:
+        log.error(f"[alerts] get_active_alerts lỗi: {e}")
+        return
+    if not alerts:
+        return
+    log.info(f"══ JOB: Check Alerts ({len(alerts)} active) ══")
+
+    config = load_config()
+    token  = config.get("bot_token", "")
+    if not token or token.startswith("NHAP"):
+        log.error("[alerts] Bot token chưa được cấu hình")
+        return
+
+    codes    = {a["fund_code"] for a in alerts}
+    nav_data = fetch_all(config, codes)
+    today    = date.today()
+
+    for a in alerts:
+        code = a["fund_code"]
+        d    = nav_data.get(code)
+        if not d:
+            continue
+        last_trig = a.get("last_triggered")
+        if last_trig and last_trig.date() == today:
+            continue  # đã báo hôm nay rồi
+
+        cond      = a["condition"]
+        threshold = float(a["threshold"]) if a.get("threshold") is not None else 0.0
+        chg_pct   = d.get("chg_pct", 0) or 0
+        sig       = d.get("signal", "")
+        fired     = False
+        reason    = ""
+        if cond == "nav_up" and chg_pct >= threshold:
+            fired, reason = True, f"NAV tăng {chg_pct:+.2f}% (ngưỡng ≥{threshold:.1f}%)"
+        elif cond == "nav_down" and chg_pct <= -threshold:
+            fired, reason = True, f"NAV giảm {chg_pct:+.2f}% (ngưỡng ≤-{threshold:.1f}%)"
+        elif cond == "signal_buy" and "MUA" in sig:
+            fired, reason = True, f"Tín hiệu {sig}"
+        elif cond == "signal_sell" and "BÁN" in sig:
+            fired, reason = True, f"Tín hiệu {sig}"
+        if not fired:
+            continue
+
+        tg = a["telegram_id"]
+        fund_name = (config.get("funds", {}).get(code) or FUND_CATALOG.get(code, {})).get("name", code)
+        text = (
+            f"🔔 <b>Cảnh báo: {code}</b> — {fund_name}\n\n"
+            f"📌 {reason}\n"
+            f"💰 NAV: {d.get('nav', 0):,.0f} đ ({d.get('nav_date', '')})\n\n"
+            f"Gõ /app để mở Mini App."
+        )
+        ok = tg_send(token, tg, text)
+        log.info(f"  🔔 ALERT #{a['id']} {code} {cond} → {tg}: {'OK' if ok else 'FAILED'}")
+        if ok:
+            try:
+                _db.mark_alert_triggered(a["id"])
+            except Exception as e:
+                log.error(f"[alerts] mark_alert_triggered lỗi: {e}")
 
 
 # ═══════════════════════════════════════
@@ -2572,6 +2686,30 @@ def _handle_callback(token: str, chat_id: str, data: str, profile: dict | None, 
     if data == "trade_cancel":
         _TRADE_SESSIONS.pop(chat_id, None)
         tg_send(token, chat_id, "❌ Đã huỷ giao dịch.")
+        return
+
+    if data.startswith("nav_confirm:"):
+        # nav_confirm:FUND:DATE:manual|fetch  — chỉ admin
+        admin_id = str(load_config().get("admin_telegram_id", ""))
+        if chat_id != admin_id:
+            tg_send(token, chat_id, "⚠️ Chỉ admin có quyền xác nhận NAV.")
+            return
+        parts_c = data.split(":")
+        if len(parts_c) < 4:
+            return
+        _, fund_code, nav_date_s, choice = parts_c[0], parts_c[1], parts_c[2], parts_c[3]
+        if not (_DB_AVAILABLE and _db.is_available()):
+            tg_send(token, chat_id, "⚠️ DB không khả dụng.")
+            return
+        ok = _db.resolve_nav_confirm(fund_code, nav_date_s, choice)
+        if ok:
+            label = "Manual (user nhập)" if choice == "manual" else "Fetch (API)"
+            tg_send(token, chat_id,
+                    f"✅ Đã xác nhận <code>{fund_code}</code> ngày <b>{nav_date_s}</b>\n"
+                    f"Nguồn được chọn: <b>{label}</b> — đã khóa (confirmed).")
+        else:
+            tg_send(token, chat_id,
+                    f"⚠️ Không tìm thấy pending_confirm cho {fund_code} {nav_date_s}.")
         return
 
     if data.startswith("trade_confirm:"):
@@ -3199,6 +3337,7 @@ def main():
     schedule.every().day.at("18:30").do(job_harvest_nav)
     schedule.every().day.at("18:31").do(job_t2_predict)
     schedule.every().day.at("18:32").do(job_t2_score)
+    schedule.every().day.at("18:33").do(job_check_alerts)
     # Second pass: sửa giá trị provisional sau khi TCinvest finalize NAV (~19:30-20:00)
     schedule.every().day.at("20:00").do(job_harvest_nav)
     schedule.every().day.at("07:30").do(job_check_tcbs_token)

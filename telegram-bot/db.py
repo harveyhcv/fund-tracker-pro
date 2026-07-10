@@ -51,13 +51,33 @@ def _migrate_data_src_enum() -> None:
         logger.warning("_migrate_data_src_enum failed (non-fatal): %s", e)
 
 
+def _migrate_nav_confidence_cols() -> None:
+    """Thêm pending_nav + confirmed_at vào nav_history nếu chưa có."""
+    db_url = os.environ.get("DATABASE_URL")
+    if not db_url:
+        return
+    try:
+        conn = psycopg2.connect(db_url)
+        with conn.cursor() as cur:
+            cur.execute("""
+                ALTER TABLE nav_history
+                    ADD COLUMN IF NOT EXISTS pending_nav   NUMERIC,
+                    ADD COLUMN IF NOT EXISTS confirmed_at  TIMESTAMPTZ
+            """)
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.warning("_migrate_nav_confidence_cols (non-fatal): %s", e)
+
+
 def init_pool(min_conn: int = 1, max_conn: int = 5) -> None:
     global _pool
     db_url = os.environ.get("DATABASE_URL")
     if not db_url:
         logger.warning("DATABASE_URL not set — PostgreSQL disabled")
         return
-    _migrate_data_src_enum()  # Chạy trước khi mở pool
+    _migrate_data_src_enum()      # Chạy trước khi mở pool
+    _migrate_nav_confidence_cols()
     _pool = ThreadedConnectionPool(min_conn, max_conn, db_url)
     logger.info("PostgreSQL pool initialised (min=%d max=%d)", min_conn, max_conn)
 
@@ -116,6 +136,188 @@ def upsert_nav(fund_code: str, nav_date: date, nav: float, source: str = "fmarke
         unify_nav_drafts(fund_code, nav_date, nav)
     except Exception as e:
         logger.debug("unify_nav_drafts skip: %s", e)
+
+
+# ─── NAV CONFIDENCE WORKFLOW ─────────────────────────────────────────────────
+#
+# Source state machine:
+#   provisional     → fetched today == yesterday (API chưa publish, giá trị cũ)
+#   tcbs / fmarket  → fetched today != yesterday (giá trị mới, chưa xác nhận)
+#   manual          → user nhập tay
+#   pending_confirm → fetch ≠ manual, cần admin xác nhận
+#   confirmed       → fetch ≈ manual HOẶC admin đã chọn
+#   fixed           → admin khóa cứng vĩnh viễn
+#
+# Priority hiển thị: fixed > confirmed > manual > tcbs/fmarket > provisional
+
+CONFIDENCE_EPSILON = 1.0   # Trong vòng 1 VND = cùng giá trị (NAV thường 10k-20k)
+PROTECTED_SOURCES  = ('fixed', 'confirmed')   # không bao giờ bị ghi đè tự động
+TRUSTED_SOURCES    = ('fixed', 'confirmed', 'manual')  # không bị tính là provisional
+
+
+def upsert_nav_with_confidence(
+    fund_code: str,
+    nav_date: date,
+    nav_fetched: float,
+    source_api: str,
+    yesterday_nav: float | None = None,
+) -> str:
+    """
+    Smart upsert với confidence tracking.
+
+    Returns: 'inserted' | 'provisional' | 'updated' | 'confirmed' |
+             'pending_confirm' | 'skipped'
+    """
+    if not is_available():
+        return 'skipped'
+
+    # Detect provisional: fetch == yesterday (API chưa update NAV mới)
+    is_prov = (
+        yesterday_nav is not None
+        and abs(nav_fetched - yesterday_nav) <= CONFIDENCE_EPSILON
+    )
+    effective_source = 'provisional' if is_prov else source_api
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT nav, source, pending_nav FROM nav_history "
+                "WHERE fund_code=%s AND nav_date=%s",
+                (fund_code, nav_date)
+            )
+            row = cur.fetchone()
+
+        if row is None:
+            # INSERT mới
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO nav_history (fund_code, nav_date, nav, source) "
+                    "VALUES (%s, %s, %s, %s)",
+                    (fund_code, nav_date, nav_fetched, effective_source)
+                )
+            logger.debug("nav_confidence INSERT %s %s %.0f src=%s",
+                         fund_code, nav_date, nav_fetched, effective_source)
+            return 'provisional' if is_prov else 'inserted'
+
+        existing_nav, existing_source, existing_pending = row
+
+        # ── Immune states ─────────────────────────────────────────────────────
+        if existing_source in ('fixed',):
+            return 'skipped'
+
+        if existing_source == 'confirmed':
+            # Cross-check: nếu fetch mới khác confirmed → log WARNING nhưng không đổi
+            if (not is_prov
+                    and abs(nav_fetched - float(existing_nav)) > CONFIDENCE_EPSILON):
+                logger.warning(
+                    "⚠ NAV đã confirmed nhưng fetch mới khác: %s %s "
+                    "confirmed=%.0f fetch=%.0f — cần admin kiểm tra",
+                    fund_code, nav_date, existing_nav, nav_fetched
+                )
+            return 'skipped'
+
+        # ── Manual source ─────────────────────────────────────────────────────
+        if existing_source == 'manual':
+            if is_prov:
+                return 'skipped'  # provisional không ghi đè manual
+
+            if abs(nav_fetched - float(existing_nav)) <= CONFIDENCE_EPSILON:
+                # Fetch đồng ý với manual → xác nhận!
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "UPDATE nav_history SET source='confirmed', pending_nav=NULL, "
+                        "confirmed_at=NOW(), fetched_at=NOW() "
+                        "WHERE fund_code=%s AND nav_date=%s",
+                        (fund_code, nav_date)
+                    )
+                logger.info("✅ NAV confirmed tự động: %s %s nav=%.0f",
+                            fund_code, nav_date, existing_nav)
+                return 'confirmed'
+            else:
+                # Mâu thuẫn → cần admin xác nhận
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "UPDATE nav_history SET source='pending_confirm', "
+                        "pending_nav=%s, fetched_at=NOW() "
+                        "WHERE fund_code=%s AND nav_date=%s",
+                        (nav_fetched, fund_code, nav_date)
+                    )
+                logger.warning(
+                    "⚠ pending_confirm: %s %s manual=%.0f fetch=%.0f",
+                    fund_code, nav_date, existing_nav, nav_fetched
+                )
+                return 'pending_confirm'
+
+        # ── Pending confirm: update giá trị fetch mới nhất ───────────────────
+        if existing_source == 'pending_confirm':
+            if not is_prov:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "UPDATE nav_history SET pending_nav=%s, fetched_at=NOW() "
+                        "WHERE fund_code=%s AND nav_date=%s",
+                        (nav_fetched, fund_code, nav_date)
+                    )
+            return 'pending_confirm'
+
+        # ── Auto sources: provisional, tcbs, fmarket ──────────────────────────
+        if is_prov and existing_source in ('tcbs', 'fmarket'):
+            return 'skipped'  # không downgrade real data → provisional
+
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE nav_history SET nav=%s, source=%s, fetched_at=NOW() "
+                "WHERE fund_code=%s AND nav_date=%s",
+                (nav_fetched, effective_source, fund_code, nav_date)
+            )
+        return 'provisional' if is_prov else 'updated'
+
+
+def get_pending_confirms() -> list[dict]:
+    """Trả danh sách NAV cần admin xác nhận (source='pending_confirm')."""
+    if not is_available():
+        return []
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT fund_code, nav_date::text, nav AS manual_nav,
+                       pending_nav AS fetch_nav, fetched_at
+                FROM nav_history
+                WHERE source = 'pending_confirm'
+                ORDER BY nav_date DESC, fund_code
+            """)
+            return [dict(r) for r in cur.fetchall()]
+
+
+def resolve_nav_confirm(fund_code: str, nav_date_str: str, choice: str) -> bool:
+    """
+    Admin xác nhận NAV.
+    choice: 'manual' → giữ nav hiện tại (từ user)
+            'fetch'  → dùng pending_nav (từ API)
+    Returns True nếu thành công.
+    """
+    if not is_available():
+        return False
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT nav, pending_nav FROM nav_history "
+                "WHERE fund_code=%s AND nav_date=%s AND source='pending_confirm'",
+                (fund_code, nav_date_str)
+            )
+            row = cur.fetchone()
+        if not row:
+            return False
+        existing_nav, pending_nav = row
+        final_nav = float(existing_nav) if choice == 'manual' else float(pending_nav)
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE nav_history SET nav=%s, source='confirmed', pending_nav=NULL, "
+                "confirmed_at=NOW() WHERE fund_code=%s AND nav_date=%s",
+                (final_nav, fund_code, nav_date_str)
+            )
+        logger.info("✅ Admin confirmed %s %s choice=%s final=%.0f",
+                    fund_code, nav_date_str, choice, final_nav)
+        return True
 
 
 def get_nav_series(fund_code: str, days: int = 90) -> list[dict]:
@@ -707,6 +909,90 @@ def set_tier(telegram_id, tier: str, pro_expires_at=None) -> dict:
                 RETURNING telegram_id, tier, pro_expires_at
             """, (tg, tier, pro_expires_at))
             return dict(cur.fetchone())
+
+
+# ─── ALERTS (PRO-004) ────────────────────────────────────────────────────────
+# Pro-only: user đặt ngưỡng theo dõi cho 1 quỹ, bot.job_check_alerts() (18:33,
+# sau daily harvest) so khớp và gửi Telegram khi điều kiện đạt. Debounce theo
+# ngày qua last_triggered — không gửi lặp lại trong cùng 1 ngày.
+
+ALERT_CONDITIONS = ("nav_up", "nav_down", "signal_buy", "signal_sell")
+
+
+def _ensure_alerts_table(conn) -> None:
+    with conn.cursor() as cur:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS alerts (
+                id              SERIAL PRIMARY KEY,
+                telegram_id     BIGINT NOT NULL,
+                fund_code       TEXT NOT NULL,
+                condition       TEXT NOT NULL,
+                threshold       NUMERIC,
+                last_triggered  TIMESTAMPTZ,
+                active          BOOLEAN NOT NULL DEFAULT TRUE,
+                created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        """)
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_alerts_active ON alerts(telegram_id) WHERE active")
+
+
+def create_alert(telegram_id, fund_code: str, condition: str, threshold=None) -> dict:
+    if condition not in ALERT_CONDITIONS:
+        raise ValueError(f"condition không hợp lệ: {condition}")
+    tg = int(telegram_id)
+    with get_conn() as conn:
+        _ensure_alerts_table(conn)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                INSERT INTO alerts (telegram_id, fund_code, condition, threshold)
+                VALUES (%s, %s, %s, %s)
+                RETURNING id, telegram_id, fund_code, condition, threshold, last_triggered, created_at
+            """, (tg, fund_code.upper(), condition, threshold))
+            return dict(cur.fetchone())
+
+
+def list_alerts(telegram_id) -> "list[dict]":
+    tg = int(telegram_id)
+    with get_conn() as conn:
+        _ensure_alerts_table(conn)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT id, fund_code, condition, threshold, last_triggered, created_at
+                FROM alerts WHERE telegram_id = %s AND active = true
+                ORDER BY created_at DESC
+            """, (tg,))
+            return [dict(r) for r in cur.fetchall()]
+
+
+def delete_alert(alert_id, telegram_id) -> bool:
+    tg = int(telegram_id)
+    with get_conn() as conn:
+        _ensure_alerts_table(conn)
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE alerts SET active = false WHERE id = %s AND telegram_id = %s",
+                (int(alert_id), tg),
+            )
+            return cur.rowcount > 0
+
+
+def get_active_alerts() -> "list[dict]":
+    """Tất cả alert đang active của mọi user — dùng cho job_check_alerts."""
+    with get_conn() as conn:
+        _ensure_alerts_table(conn)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT id, telegram_id, fund_code, condition, threshold, last_triggered
+                FROM alerts WHERE active = true
+            """)
+            return [dict(r) for r in cur.fetchall()]
+
+
+def mark_alert_triggered(alert_id) -> None:
+    with get_conn() as conn:
+        _ensure_alerts_table(conn)
+        with conn.cursor() as cur:
+            cur.execute("UPDATE alerts SET last_triggered = NOW() WHERE id = %s", (int(alert_id),))
 
 
 # ─── NAV DRAFTS (Pro user local NAV) ─────────────────────────────────────────
