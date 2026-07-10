@@ -290,6 +290,33 @@ def _row_to_signal(row) -> dict:
         "details":   details,
     }
 
+def _get_nav_confidence_map(codes: list) -> dict:
+    """
+    Trả {fund_code: {source, pending_nav}} cho NAV mới nhất của từng quỹ.
+    Dùng để hiển thị confidence badge trong UI.
+    """
+    if not codes or _db_mod is None or not _db_mod.is_available():
+        return {}
+    try:
+        ph = ",".join(["%s"] * len(codes))
+        with _db_mod.get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(f"""
+                    SELECT DISTINCT ON (fund_code)
+                        fund_code, source, pending_nav, nav_date::text
+                    FROM nav_history
+                    WHERE fund_code IN ({ph})
+                    ORDER BY fund_code, nav_date DESC
+                """, codes)
+                return {
+                    r[0]: {"nav_source": r[1], "pending_nav": float(r[2]) if r[2] else None, "nav_date": r[3]}
+                    for r in cur.fetchall()
+                }
+    except Exception as e:
+        log.debug(f"[nav_confidence_map] {e}")
+        return {}
+
+
 _SIGNAL_SELECT = """
     SELECT DISTINCT ON (fund_code)
         fund_code, strength, score,
@@ -927,6 +954,8 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             self._api_fed_rate()
         elif path == "/api/alerts":
             self._api_list_alerts(qs)
+        elif path == "/api/admin/nav/pending":
+            self._api_admin_nav_pending(qs)
         elif path == "/health":
             _json(self, {"ok": True, "ts": datetime.now().isoformat()})
         else:
@@ -985,6 +1014,8 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             self._api_admin_fetch_nav(data)
         elif path == "/api/admin/import-nav":
             self._api_admin_import_nav(data)
+        elif path == "/api/admin/nav/confirm":
+            self._api_admin_nav_confirm(data)
         elif path == "/api/nav/draft":
             self._api_nav_draft(data)
         elif path == "/api/admin/fixportfolio":
@@ -1081,6 +1112,12 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         profile = _find_profile(cfg, tg_id) if tg_id else None
         watched = profile.get("watched_funds", []) if profile else list(cfg.get("funds", {}).keys())[:10]
         signals = _get_signals_for_codes(watched, cfg, background_compute=False)
+        # Merge confidence info (provisional/manual/pending_confirm/confirmed) vào mỗi signal
+        confidence = _get_nav_confidence_map(watched)
+        for code, conf in confidence.items():
+            if code in signals:
+                signals[code]["nav_source"]  = conf.get("nav_source", "")
+                signals[code]["pending_nav"] = conf.get("pending_nav")
         all_funds = {code: info.get("name", code) for code, info in cfg.get("funds", {}).items()}
         _json(self, {"signals": signals, "updated": datetime.now().isoformat(),
                      "watched": watched, "all_funds": all_funds})
@@ -1807,6 +1844,38 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             except Exception:
                 continue
         _json(self, {"error": "Không lấy được lãi suất Fed"}, 503)
+
+    def _api_admin_nav_pending(self, qs: dict):
+        """GET /api/admin/nav/pending — danh sách NAV pending_confirm cần admin xác nhận."""
+        tg_id = (qs.get("user_id") or [""])[0]
+        if not _is_admin(tg_id):
+            _json(self, {"error": "admin_only"}, 403)
+            return
+        if _db_mod is None or not _db_mod.is_available():
+            _json(self, {"pending": []})
+            return
+        _json(self, {"pending": _db_mod.get_pending_confirms()})
+
+    def _api_admin_nav_confirm(self, data: dict):
+        """POST /api/admin/nav/confirm — admin chọn manual hoặc fetch cho pending NAV."""
+        tg_id     = str(data.get("telegram_id", ""))
+        fund_code = str(data.get("fund_code", "")).upper()
+        nav_date  = str(data.get("nav_date", ""))
+        choice    = str(data.get("choice", ""))  # 'manual' hoặc 'fetch'
+        if not _is_admin(tg_id):
+            _json(self, {"error": "admin_only"}, 403)
+            return
+        if choice not in ("manual", "fetch"):
+            _json(self, {"error": "choice phải là 'manual' hoặc 'fetch'"}, 400)
+            return
+        if _db_mod is None or not _db_mod.is_available():
+            _json(self, {"error": "DB không khả dụng"}, 503)
+            return
+        ok = _db_mod.resolve_nav_confirm(fund_code, nav_date, choice)
+        if ok:
+            _json(self, {"ok": True, "fund_code": fund_code, "nav_date": nav_date, "choice": choice})
+        else:
+            _json(self, {"error": f"Không tìm thấy pending_confirm cho {fund_code} {nav_date}"}, 404)
 
     def _api_admin_import_trades(self, data: dict):
         """POST /api/admin/import-trades — bulk import CCQ trades vào PostgreSQL.

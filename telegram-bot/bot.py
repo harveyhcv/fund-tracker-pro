@@ -1680,7 +1680,7 @@ def _notify_pending_nav_confirms(token: str, config: dict) -> None:
             {"text": f"📡 Fetch ({fetch_val:,.0f})",
              "callback_data": f"nav_confirm:{code}:{nav_date}:fetch"},
         ]]
-        tg_send(token, admin_id, msg, buttons=buttons)
+        tg_send_keyboard(token, admin_id, msg, buttons)
 
 
 def job_evening():
