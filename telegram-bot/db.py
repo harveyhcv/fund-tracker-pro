@@ -1269,6 +1269,78 @@ def get_rolling_error_std(model_version: str, fund_code: str = None,
         return None
 
 
+def get_accuracy_summary(fund_code: str) -> "list[dict]":
+    """T2-010: MAPE 7d/30d/all-time cho mỗi model_version đã dự báo quỹ này.
+    Trả list dict {model_version, mape_7d, n_7d, mape_30d, n_30d, mape_all, n_all}."""
+    with get_conn() as conn:
+        _ensure_prediction_tables(conn)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT np.model_version,
+                       ROUND(AVG(ABS(pa.error_pct)) FILTER (
+                           WHERE pa.logged_at >= NOW() - INTERVAL '7 days')::numeric, 2)  AS mape_7d,
+                       COUNT(*) FILTER (
+                           WHERE pa.logged_at >= NOW() - INTERVAL '7 days')               AS n_7d,
+                       ROUND(AVG(ABS(pa.error_pct)) FILTER (
+                           WHERE pa.logged_at >= NOW() - INTERVAL '30 days')::numeric, 2) AS mape_30d,
+                       COUNT(*) FILTER (
+                           WHERE pa.logged_at >= NOW() - INTERVAL '30 days')              AS n_30d,
+                       ROUND(AVG(ABS(pa.error_pct))::numeric, 2)                          AS mape_all,
+                       COUNT(*)                                                           AS n_all
+                FROM prediction_actuals pa
+                JOIN nav_predictions np ON np.id = pa.prediction_id
+                WHERE np.fund_code = %s
+                GROUP BY np.model_version
+                ORDER BY mape_all
+            """, (fund_code.upper(),))
+            rows = [dict(r) for r in cur.fetchall()]
+            # ROUND(...)::numeric → Decimal (không JSON-serializable) — ép về float
+            for r in rows:
+                for k in ("mape_7d", "mape_30d", "mape_all"):
+                    if r.get(k) is not None:
+                        r[k] = float(r[k])
+            return rows
+
+
+def get_accuracy_history(fund_code: str, model_version: str = None, limit: int = 60) -> "list[dict]":
+    """T2-010: Lịch sử dự báo vs thực tế cho biểu đồ (predicted_for_date, predicted_nav,
+    actual_nav, error_pct, model_version), mới nhất trước. Nếu model_version=None,
+    trả model đã dự báo gần nhất mỗi ngày (ưu tiên ensemble > xgb > arima nếu trùng ngày)."""
+    with get_conn() as conn:
+        _ensure_prediction_tables(conn)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            if model_version:
+                cur.execute("""
+                    SELECT np.predicted_for_date::text AS predicted_for_date,
+                           np.predicted_nav, np.model_version,
+                           pa.actual_nav, pa.error_pct
+                    FROM prediction_actuals pa
+                    JOIN nav_predictions np ON np.id = pa.prediction_id
+                    WHERE np.fund_code = %s AND np.model_version = %s
+                    ORDER BY np.predicted_for_date DESC
+                    LIMIT %s
+                """, (fund_code.upper(), model_version, limit))
+            else:
+                cur.execute("""
+                    SELECT DISTINCT ON (np.predicted_for_date)
+                           np.predicted_for_date::text AS predicted_for_date,
+                           np.predicted_nav, np.model_version,
+                           pa.actual_nav, pa.error_pct
+                    FROM prediction_actuals pa
+                    JOIN nav_predictions np ON np.id = pa.prediction_id
+                    WHERE np.fund_code = %s
+                    ORDER BY np.predicted_for_date DESC,
+                             CASE np.model_version
+                                 WHEN 'ensemble-v1' THEN 0
+                                 WHEN 'xgb-v1'      THEN 1
+                                 WHEN 'arima-v1'    THEN 2
+                                 ELSE 3
+                             END
+                    LIMIT %s
+                """, (fund_code.upper(), limit))
+            return [dict(r) for r in cur.fetchall()]
+
+
 # ─── POOL ────────────────────────────────────────────────────────────────────
 
 def close_pool() -> None:

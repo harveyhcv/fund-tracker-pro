@@ -938,6 +938,9 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         elif path.startswith("/api/research/"):
             code = path[len("/api/research/"):].upper()
             self._api_research(code, qs)
+        elif path.startswith("/api/t2/accuracy/"):
+            code = path[len("/api/t2/accuracy/"):].upper()
+            self._api_t2_accuracy(code, qs)
         elif path == "/api/dca":
             self._api_dca(qs)
         elif path == "/api/trades":
@@ -1238,6 +1241,29 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             _json(self, {"error": "Không tìm thấy cảnh báo"}, 404)
             return
         _json(self, {"ok": True})
+
+    def _api_t2_accuracy(self, code: str, qs: dict):
+        """GET /api/t2/accuracy/<code>?user_id=...&model=... — T2-010, yêu cầu tier=pro.
+        Trả {summary:[{model_version,mape_7d,n_7d,mape_30d,n_30d,mape_all,n_all}],
+             history:[{predicted_for_date,predicted_nav,actual_nav,error_pct,model_version}]}."""
+        if not code or len(code) > 10:
+            _json(self, {"error": "Invalid code"}, 400)
+            return
+        tg_id = (qs.get("user_id") or [""])[0]
+        if not _check_tier(self, tg_id, "pro"):
+            return
+        if _db_mod is None or not _db_mod.is_available():
+            _json(self, {"summary": [], "history": []})
+            return
+        model = (qs.get("model") or [None])[0]
+        try:
+            summary = _db_mod.get_accuracy_summary(code)
+            history = _db_mod.get_accuracy_history(code, model_version=model, limit=60)
+        except Exception as e:
+            log.error(f"[miniapp] t2_accuracy {code} lỗi: {e}")
+            _json(self, {"error": "Lỗi đọc dữ liệu độ chính xác"}, 500)
+            return
+        _json(self, {"summary": summary, "history": history})
 
     def _api_research(self, code: str, qs: dict):
         """Phân tích sâu 5 trường phái cho 1 quỹ — PRO-001, yêu cầu tier=pro."""

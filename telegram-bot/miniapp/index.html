@@ -1250,6 +1250,9 @@ async function loadSignals(){
     renderSignals(_signals);
   }catch(e){document.getElementById('sig-content').innerHTML=renderErr(e.message);}
 }
+function _t2ModelLabel(v){
+  return {'arima-v1':'ARIMA','xgb-v1':'XGBoost','ensemble-v1':'Ensemble'}[v] || v || 'ARIMA';
+}
 function _t2Html(code, navNow, compact=false){
   const pred=_me?.predictions?.[code];
   if(!pred||!pred.predicted_nav) return '';
@@ -1262,7 +1265,7 @@ function _t2Html(code, navNow, compact=false){
     return `<div style="font-size:10px;margin-top:3px;color:var(--txt2)">Chốt T+2 <span style="color:${color};font-weight:600">${arrow}${Math.abs(diff).toFixed(1)}%</span> <span style="color:var(--txt2)">${fmt(t2)} đ</span></div>`;
   }
   return `<div style="margin-top:8px;padding:8px 10px;background:var(--bg3);border-radius:8px;border-left:3px solid ${color}">
-    <div style="font-size:11px;color:var(--txt2);margin-bottom:2px">⏱ Giá chốt T+2 (dự báo ARIMA)</div>
+    <div style="font-size:11px;color:var(--txt2);margin-bottom:2px">⏱ Giá chốt T+2 (dự báo ${_t2ModelLabel(pred.model_version)})</div>
     <div style="display:flex;align-items:baseline;gap:8px">
       <span style="font-family:var(--mono);font-size:16px;font-weight:700;color:${color}">${fmt(t2)} đ</span>
       <span style="font-size:13px;color:${color};font-weight:600">${arrow}${Math.abs(diff).toFixed(2)}% so với NAV hiện tại</span>
@@ -1448,9 +1451,77 @@ function renderResearch(d){
     </div>
     <button class="btn btn-primary" style="margin-top:8px" onclick="addAlert('${d.code}')">+ Đặt cảnh báo</button>
   </div>
+
+  <div class="section">
+    <div class="section-hdr">🎯 Độ chính xác dự báo T+2</div>
+    <div id="acc-summary-${d.code}" style="font-size:12px;color:var(--txt2);margin-bottom:8px">Đang tải...</div>
+    <div style="position:relative;height:120px"><canvas id="acc-chart-${d.code}"></canvas></div>
+    <div style="font-size:10px;color:var(--txt2);margin-top:4px;display:flex;gap:12px">
+      <span><span style="color:var(--c0)">━</span> Dự báo</span>
+      <span><span style="color:var(--txt)">━</span> Thực tế</span>
+    </div>
+  </div>
   `;
   document.getElementById('modal-body').innerHTML=html;
   loadAlertsForFund(d.code);
+  loadAccuracyForFund(d.code);
+}
+
+async function loadAccuracyForFund(code){
+  const sumEl=document.getElementById('acc-summary-'+code);
+  try{
+    const d=await apiFetch('/api/t2/accuracy/'+code);
+    renderAccuracySummary(code, d.summary||[]);
+    drawAccuracyChart(code, d.history||[]);
+  }catch(e){
+    if(sumEl) sumEl.textContent = isProRequired(e) ? 'Cần Pro để xem độ chính xác.' : 'Chưa có dữ liệu chấm điểm.';
+  }
+}
+function renderAccuracySummary(code, rows){
+  const el=document.getElementById('acc-summary-'+code);
+  if(!el) return;
+  if(!rows.length){ el.textContent='Chưa có dự báo nào được chấm điểm cho mã này.'; return; }
+  const modelLabel={'arima-v1':'ARIMA','xgb-v1':'XGBoost','ensemble-v1':'Ensemble'};
+  el.innerHTML=`<table style="width:100%;border-collapse:collapse;font-family:var(--mono)">
+    <tr style="color:var(--txt2);font-size:10px"><td>Model</td><td style="text-align:right">7 ngày</td><td style="text-align:right">30 ngày</td><td style="text-align:right">Tổng</td></tr>
+    ${rows.map(r=>`<tr>
+      <td>${modelLabel[r.model_version]||r.model_version}</td>
+      <td style="text-align:right">${r.mape_7d!=null?r.mape_7d.toFixed(2)+'%':'—'}</td>
+      <td style="text-align:right">${r.mape_30d!=null?r.mape_30d.toFixed(2)+'%':'—'}</td>
+      <td style="text-align:right">${r.mape_all!=null?r.mape_all.toFixed(2)+'% ('+r.n_all+')':'—'}</td>
+    </tr>`).join('')}
+  </table>`;
+}
+function drawAccuracyChart(code, rows){
+  const canvas=document.getElementById('acc-chart-'+code);
+  if(!canvas) return;
+  if(!rows.length){ canvas.parentElement.innerHTML='<div style="font-size:11px;color:var(--txt2);text-align:center;padding-top:40px">Chưa đủ dữ liệu để vẽ biểu đồ.</div>'; return; }
+  const pts=rows.slice().reverse(); // cũ → mới
+  const ctx=canvas.getContext('2d');
+  const dpr=window.devicePixelRatio||1;
+  const W=canvas.parentElement.clientWidth;const H=120;
+  canvas.width=W*dpr;canvas.height=H*dpr;
+  canvas.style.width=W+'px';canvas.style.height=H+'px';
+  ctx.scale(dpr,dpr);
+  const allVals=pts.flatMap(p=>[p.predicted_nav,p.actual_nav]);
+  const minV=Math.min(...allVals);const maxV=Math.max(...allVals);const range=(maxV-minV)||1;
+  const pad={t:8,r:8,b:16,l:56};
+  const gW=W-pad.l-pad.r;const gH=H-pad.t-pad.b;
+  const x=i=>pad.l+(pts.length<=1?0:(i/(pts.length-1))*gW);
+  const y=v=>pad.t+(1-(v-minV)/range)*gH;
+  const drawLine=(key,color)=>{
+    ctx.beginPath();
+    pts.forEach((p,i)=>{ const v=p[key]; if(v==null)return; i===0?ctx.moveTo(x(i),y(v)):ctx.lineTo(x(i),y(v)); });
+    ctx.strokeStyle=color;ctx.lineWidth=1.5;ctx.stroke();
+  };
+  drawLine('actual_nav','#94a3b8');
+  drawLine('predicted_nav','#00e5ff');
+  const isLarge=maxV>1e6;
+  const fmtAxis=v=>isLarge?Math.round(v/1e6)+'M':fmt(Math.round(v));
+  ctx.fillStyle='#94a3b8';ctx.font='10px IBM Plex Mono,monospace';ctx.textAlign='right';
+  [minV,(minV+maxV)/2,maxV].forEach(v=>ctx.fillText(fmtAxis(v),pad.l-4,y(v)+4));
+  ctx.textAlign='left';ctx.fillText((pts[0]?.predicted_for_date||'').slice(5),pad.l,H-4);
+  ctx.textAlign='right';ctx.fillText((pts[pts.length-1]?.predicted_for_date||'').slice(5),W-pad.r,H-4);
 }
 
 let _alertsCache=null;
