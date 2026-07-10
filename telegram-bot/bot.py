@@ -317,10 +317,17 @@ def fetch_tcinvest(code: str, token: str = "", from_date: str = None) -> list:
                     pts.append({"date": d, "nav": v})
             if pts:
                 pts = sorted(pts, key=lambda x: x["date"])
-                if try_code != code:
-                    log.info(f"[TCinvest] {code} → alias {try_code}: {len(pts)} pts, last={pts[-1]['date']}")
+                last_pt = pts[-1]
+                today_str = date.today().isoformat()
+                label = f"{code} → alias {try_code}" if try_code != code else code
+                if last_pt["date"] < today_str:
+                    # NAV chưa publish hôm nay — log rõ để debug delay
+                    log.warning(
+                        f"[TCinvest] {label}: latest={last_pt['date']} nav={last_pt['nav']:.0f}"
+                        f" (today={today_str}, DELAY {(date.fromisoformat(today_str)-date.fromisoformat(last_pt['date'])).days}d)"
+                    )
                 else:
-                    log.info(f"[TCinvest] {code}: {len(pts)} pts, last={pts[-1]['date']}")
+                    log.info(f"[TCinvest] {label}: {len(pts)} pts, last={last_pt['date']} nav={last_pt['nav']:.0f}")
                 return pts
         except Exception as e:
             log.warning(f"[TCinvest] {try_code}: {e}")
