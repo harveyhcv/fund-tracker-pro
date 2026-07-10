@@ -485,6 +485,10 @@ canvas{width:100%!important;height:100%!important}
         </div>
         <div id="admin-fetch-status" style="font-size:12px;color:var(--txt2);margin-top:8px;min-height:16px;font-family:var(--mono);white-space:pre-wrap"></div>
       </div>
+      <div class="card" style="padding:16px" id="admin-nav-confirm-card">
+        <div style="font-size:11px;font-weight:700;color:#facc15;font-family:var(--mono);margin-bottom:10px">⚠️ NAV CẦN XÁC NHẬN</div>
+        <div id="admin-nav-confirm-list"><div style="font-size:12px;color:var(--txt2)">Đang tải...</div></div>
+      </div>
     </div>
   </div>
 
@@ -726,6 +730,7 @@ function goPage(name,btn){
   if(name==='dca') loadDCA();
   if(name==='trade'){ setupTrade(); loadUnifiedHistory(); }
   if(name==='history') loadHistory();
+  if(name==='admin') loadAdminNavPending();
 }
 
 function showSubtab(page, sub, el){
@@ -885,6 +890,57 @@ async function adminFetchFmarket(){
     const d=await r.json();
     st.style.color='var(--buy)';st.textContent=`✓ ${d.msg||'Fetch started (fmarket only)'}`;
   }catch(e){st.style.color='var(--sell)';st.textContent='Lỗi: '+e.message;}
+}
+
+async function loadAdminNavPending(){
+  const el=document.getElementById('admin-nav-confirm-list');
+  if(!el) return;
+  el.innerHTML='<div style="font-size:12px;color:var(--txt2)">Đang tải...</div>';
+  try{
+    const d=await apiFetch('/api/admin/nav/pending');
+    const list=d.pending||[];
+    if(!list.length){
+      el.innerHTML='<div style="font-size:12px;color:var(--txt2)">✓ Không có NAV nào cần xác nhận</div>';
+      return;
+    }
+    let html='';
+    for(const item of list){
+      const fmtN=v=>v!=null?Number(v).toLocaleString('vi-VN'):'—';
+      html+=`<div style="border:1px solid #3a2000;border-radius:8px;padding:10px;margin-bottom:8px;background:#0e0800">
+        <div style="font-family:var(--mono);font-size:12px;font-weight:700;color:#facc15;margin-bottom:6px">${item.fund_code} · ${item.nav_date}</div>
+        <div style="font-size:11px;color:var(--txt2);margin-bottom:8px">
+          📝 Thủ công: <b style="color:var(--txt)">${fmtN(item.manual_nav)} đ</b>
+          &nbsp;·&nbsp;
+          🌐 Fetch: <b style="color:var(--txt)">${fmtN(item.fetch_nav)} đ</b>
+          &nbsp;·&nbsp;
+          <span style="color:#6b7280">${item.fetched_at?new Date(item.fetched_at).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'}):''}</span>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button onclick="adminNavConfirm('${item.fund_code}','${item.nav_date}','manual')" style="flex:1;padding:8px;background:#001a10;color:var(--buy);border:1px solid var(--buy);border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--mono)">✓ Dùng thủ công (${fmtN(item.manual_nav)})</button>
+          <button onclick="adminNavConfirm('${item.fund_code}','${item.nav_date}','fetch')" style="flex:1;padding:8px;background:#001020;color:var(--c0);border:1px solid var(--c0);border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--mono)">✓ Dùng fetch (${fmtN(item.fetch_nav)})</button>
+        </div>
+      </div>`;
+    }
+    el.innerHTML=html;
+  }catch(e){
+    el.innerHTML=`<div style="font-size:12px;color:var(--sell)">Lỗi: ${e.message}</div>`;
+  }
+}
+
+async function adminNavConfirm(fundCode, navDate, choice){
+  const tgId=USER_ID||'';
+  try{
+    const r=await fetch(`${API_BASE}/api/admin/nav/confirm`,{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({telegram_id:String(tgId),fund_code:fundCode,nav_date:navDate,choice})});
+    const d=await r.json();
+    if(d.ok){
+      tg?.HapticFeedback?.notificationOccurred('success');
+      await loadAdminNavPending();
+    } else {
+      alert('Lỗi: '+(d.error||'unknown'));
+    }
+  }catch(e){ alert('Lỗi: '+e.message); }
 }
 
 function renderPfBanner(){
@@ -1216,6 +1272,16 @@ function _t2Html(code, navNow, compact=false){
   </div>`;
 }
 
+function navConfidenceBadge(s){
+  const src=s.nav_source||'';
+  if(src==='provisional') return '<span style="font-size:9px;background:#1a1a00;color:#facc15;border:1px solid #854d0e;border-radius:4px;padding:1px 4px;margin-left:4px">⏳ tạm</span>';
+  if(src==='manual')      return '<span style="font-size:9px;background:#001a10;color:#4ade80;border:1px solid #14532d;border-radius:4px;padding:1px 4px;margin-left:4px">📝 thủ công</span>';
+  if(src==='pending_confirm') return '<span style="font-size:9px;background:#1a0000;color:#f87171;border:1px solid #7f1d1d;border-radius:4px;padding:1px 4px;margin-left:4px">⚠️ cần xác nhận</span>';
+  if(src==='confirmed')   return '<span style="font-size:9px;background:#001020;color:#38bdf8;border:1px solid #0c4a6e;border-radius:4px;padding:1px 4px;margin-left:4px">✅ đã xác nhận</span>';
+  if(src==='fixed')       return '<span style="font-size:9px;background:#0a0010;color:#c084fc;border:1px solid #581c87;border-radius:4px;padding:1px 4px;margin-left:4px">🔒 đã khóa</span>';
+  return '';
+}
+
 function renderSignals(sigs){
   const codes=Object.keys(sigs);
   if(!codes.length){document.getElementById('sig-content').innerHTML='<div class="loading">Không có dữ liệu</div>';return;}
@@ -1231,6 +1297,7 @@ function renderSignals(sigs){
         <div class="sig-code">${code}</div>
         <div style="font-size:11px;color:var(--txt2)">${fmt(s.nav)} đ
           <span class="pnl ${pnlC(chg)}" style="font-size:10px"> ${fmtP(chg)}</span>
+          ${navConfidenceBadge(s)}
         </div>
         ${_t2Html(code, s.nav, true)}
       </div>
