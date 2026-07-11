@@ -1189,6 +1189,19 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             if code in signals:
                 signals[code]["nav_source"]  = conf.get("nav_source", "")
                 signals[code]["pending_nav"] = conf.get("pending_nav")
+        # Vị thế cá nhân (units/avg_cost/pnl) — CHỈ hiển thị, KHÔNG dùng để tính signal/score.
+        if tg_id:
+            for h in _db_get_ccq_holdings(tg_id):
+                code = h["code"]
+                if code in signals and signals[code].get("nav"):
+                    nav = signals[code]["nav"]
+                    units, avg_cost = h["units"], h["avg_cost"]
+                    pnl_pct = (nav / avg_cost - 1) * 100 if avg_cost else 0
+                    signals[code]["position"] = {
+                        "units": units, "avg_cost": avg_cost,
+                        "pnl": round((nav - avg_cost) * units, 0),
+                        "pnl_pct": round(pnl_pct, 2),
+                    }
         all_funds = {code: info.get("name", code) for code, info in cfg.get("funds", {}).items()}
         _json(self, {"signals": signals, "updated": datetime.now().isoformat(),
                      "watched": watched, "all_funds": all_funds})
@@ -1481,10 +1494,28 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             risk_v = "Chưa đủ dữ liệu"
 
         fund_name = cfg.get("funds", {}).get(code, {}).get("name", "")
+
+        # Vị thế cá nhân — CHỈ hiển thị, không dùng để tính signal/score (signal luôn
+        # thuần kỹ thuật, giống nhau cho mọi user xem cùng 1 mã).
+        position = None
+        if tg_id:
+            for h in _db_get_ccq_holdings(tg_id):
+                if h["code"] == code:
+                    units, avg_cost = h["units"], h["avg_cost"]
+                    pnl_pct = (nav / avg_cost - 1) * 100 if avg_cost else 0
+                    position = {
+                        "units": units, "avg_cost": avg_cost,
+                        "current_value": round(nav * units, 0),
+                        "pnl": round((nav - avg_cost) * units, 0),
+                        "pnl_pct": round(pnl_pct, 2),
+                    }
+                    break
+
         _json(self, {
             "code": code, "fund_name": fund_name,
             "nav": nav, "nav_date": d.get("nav_date",""),
             "signal": sig, "score": sc, "chg_pct": d.get("chg_pct", 0),
+            "position": position,
             "technical": {
                 "verdict": ta_v, "score": sc,
                 "rsi": rsi_note(rsi), "bb": bb_note(bb),
