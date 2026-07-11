@@ -111,7 +111,10 @@ def _unit_to_luong(unit: str) -> float:
 
 
 def _calc_gold_signals(db_url: str) -> dict:
-    """Tính RSI, BB, MA cho giá SJC từ 60 ngày gần nhất.
+    """Tính chỉ số kỹ thuật cho giá SJC — RSI/BB/MA/score (thang điểm riêng cho vàng)
+    cộng thêm bộ chỉ số mở rộng dùng chung với CCQ (Stochastic, CCI, ROC, Golden/Death
+    Cross, Sharpe, Sortino, Volatility, Max Drawdown) bằng cách tái dùng calc_signal()
+    của bot.py trên chuỗi giá vàng — cùng công thức, không viết lại logic riêng.
 
     Dùng product='SJC_1L' từ MỌI nguồn (không khoá cứng source='SJC' — nguồn đó
     (webgia.com) đã ngừng cập nhật). Khi nhiều nguồn có cùng ngày, ưu tiên
@@ -132,7 +135,7 @@ def _calc_gold_signals(db_url: str) -> dict:
                              WHEN 'SJC'          THEN 1
                              ELSE 0
                          END DESC
-                LIMIT 60
+                LIMIT 300
             """)
             rows = cur.fetchall()
         conn.close()
@@ -154,7 +157,7 @@ def _calc_gold_signals(db_url: str) -> dict:
         mean   = sum(window) / len(window)
         std    = (sum((x - mean) ** 2 for x in window) / len(window)) ** 0.5
         bb_pct = (cur_price - (mean - 2 * std)) / (4 * std) * 100 if std else 50
-        # Signal score
+        # Signal score (thang điểm riêng cho vàng — không dùng chung score CCQ)
         score = 0
         if rsi is not None:
             if rsi < 33:   score += 2
@@ -167,6 +170,28 @@ def _calc_gold_signals(db_url: str) -> dict:
         elif score >= 1:    sig = "TÍCH LŨY 🟡"
         elif score <= -2:   sig = "THẬN TRỌNG 🔴"
         else:               sig = "HOLD ⚪"
+
+        # Chỉ số mở rộng — tái dùng calc_signal() (Stochastic, CCI, ROC, Golden/Death
+        # Cross, Sharpe, Sortino, Volatility, Max Drawdown). Cần >=60 điểm giá.
+        extended = {}
+        if _BOT_IMPORTED and len(prices) >= 60:
+            try:
+                pts = [{"date": d_, "nav": p} for d_, p in zip(dates, prices)]
+                live = _calc_signal_bot("GOLD_SJC", pts)
+                extended = {
+                    "stoch_k":    live.get("stoch_k"),
+                    "stoch_d":    live.get("stoch_d"),
+                    "cci":        live.get("cci"),
+                    "roc":        live.get("roc"),
+                    "gc_type":    live.get("gc_type"),
+                    "sharpe":     live.get("sharpe"),
+                    "sortino":    live.get("sortino"),
+                    "volatility": live.get("volatility"),
+                    "max_dd":     live.get("max_dd"),
+                }
+            except Exception as e:
+                log.debug(f"[gold_signals] extended indicators: {e}")
+
         return {
             "signal": sig, "score": score,
             "rsi": round(rsi, 1) if rsi else None,
@@ -177,6 +202,7 @@ def _calc_gold_signals(db_url: str) -> dict:
             "chg_pct": round(chg_pct, 2),
             "date": dates[-1],
             "n_points": len(prices),
+            **extended,
         }
     except Exception as e:
         return {"error": str(e)}
@@ -1322,14 +1348,19 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             _json(self, {"error": f"Không có dữ liệu cho {code}"}, 404)
             return
 
-        # Tính extended stats (52w high/low, vol, drawdown) nếu import được bot
+        # Tính extended stats (52w high/low, vol, drawdown) + full indicator set
+        # (stoch, cci, roc, sharpe, sortino, volatility, max_dd, golden cross) — tính
+        # LIVE từ NAV series thay vì phụ thuộc buy_signals đã lưu, vì các chỉ số này
+        # không được persist vào DB (chỉ dùng nội bộ để tính score).
         stats = {}
+        live  = {}
         if _BOT_IMPORTED:
             try:
                 from bot import get_nav_series as _gnv, compute_research_stats
                 pts = _gnv(code, _FUND_CATALOG.get(code, cfg.get("funds", {}).get(code, {})), cfg)
                 if pts:
                     stats = compute_research_stats(pts)
+                    live  = _calc_signal_bot(code, pts)
             except Exception as e:
                 log.warning(f"[research] extended_stats {code}: {e}")
 
@@ -1342,6 +1373,15 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         chg30 = d.get("chg30")
         macd  = d.get("macd_hist")
         sig   = d.get("signal", "N/A")
+
+        stoch_k    = live.get("stoch_k")
+        stoch_d    = live.get("stoch_d")
+        cci        = live.get("cci")
+        roc        = live.get("roc")
+        sharpe     = live.get("sharpe")
+        sortino    = live.get("sortino")
+        volatility = live.get("volatility")
+        gc_type    = live.get("gc_type")
 
         pct_from_high = stats.get("pct_from_high", 0)
         pct_from_low  = stats.get("pct_from_low",  0)
@@ -1374,6 +1414,38 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             if b > 90:  return f"{b:.0f}% — Đỉnh dải Bollinger 🔴🔴"
             if b > 80:  return f"{b:.0f}% — Gần đỉnh dải 🔴"
             return f"{b:.0f}% — Vùng giữa ⚪"
+
+        def stoch_note(k, d_):
+            if k is None or d_ is None: return None
+            if k < 20 and d_ < 20:  return f"%K {k:.0f} / %D {d_:.0f} — Quá bán 🟢"
+            if k > 80 and d_ > 80:  return f"%K {k:.0f} / %D {d_:.0f} — Quá mua 🔴"
+            return f"%K {k:.0f} / %D {d_:.0f} — Trung tính ⚪"
+
+        def cci_note(c):
+            if c is None: return None
+            if c < -100: return f"{c:.0f} — Quá bán 🟢"
+            if c > 100:  return f"{c:.0f} — Quá mua 🔴"
+            return f"{c:.0f} — Trung tính ⚪"
+
+        def roc_note(r):
+            if r is None: return None
+            if r < -5: return f"{r:.1f}% — Đà giảm mạnh 🟢 (cơ hội dip)"
+            if r > 5:  return f"+{r:.1f}% — Đà tăng mạnh ⚠️"
+            return f"{'+' if r>=0 else ''}{r:.1f}% — Đà trung tính ⚪"
+
+        def gc_note(g):
+            return {
+                "golden": "Golden Cross 🟢🟢 — MA20 vừa cắt lên MA50",
+                "death":  "Death Cross 🔴🔴 — MA20 vừa cắt xuống MA50",
+                "above":  "MA20 > MA50 — xu hướng tăng ↑",
+                "below":  "MA20 < MA50 — xu hướng giảm ↓",
+            }.get(g)
+
+        def sharpe_note(s):
+            if s is None: return None
+            if s > 1:   return f"{s:.2f} — Tốt 🟢 (lợi nhuận bù đắp rủi ro tốt)"
+            if s < 0:   return f"{s:.2f} — Kém 🔴 (rủi ro không được bù đắp)"
+            return f"{s:.2f} — Trung bình ⚪"
 
         # ─ Value ─
         if   pct_from_low < 5:      val_v = "RẤT RẺ — Gần đáy 52 tuần 🟢🟢"
@@ -1418,6 +1490,10 @@ class MiniAppHandler(BaseHTTPRequestHandler):
                 "rsi": rsi_note(rsi), "bb": bb_note(bb),
                 "macd": ("Dương — Đà tăng 🟢" if macd and macd>0 else "Âm — Đà giảm ⚠️") if macd is not None else None,
                 "ma": (f"MA20 {'>' if ma20>ma50 else '<'} MA50 → {'Xu hướng tăng ↑' if ma20>ma50 else 'Xu hướng giảm ↓'}") if ma20 and ma50 else None,
+                "stoch": stoch_note(stoch_k, stoch_d),
+                "cci": cci_note(cci),
+                "roc": roc_note(roc),
+                "golden_cross": gc_note(gc_type),
                 "details": d.get("details", []),
             },
             "value": {
@@ -1435,6 +1511,8 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             },
             "risk": {
                 "verdict": risk_v, "vol_30d": vol_30d, "max_drawdown": max_dd,
+                "sharpe": sharpe_note(sharpe), "sortino": round(sortino, 2) if sortino is not None else None,
+                "volatility_1y": round(volatility, 2) if volatility is not None else None,
             },
         })
 
