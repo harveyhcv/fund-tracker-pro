@@ -224,10 +224,20 @@ def _gold_rsi(prices: list, period: int = 14) -> float | None:
 
 _GOLD_PRICE_SRC_PRIORITY = {"VANGTODAYAPI": 2, "DOJI_SCRAPE": 2, "SJC": 1, "GIAVANG_ORG": 0}
 
+# Sản phẩm KHÔNG có feed giá riêng (scripts/fetch_gold.py chưa từng scrape) — dùng giá
+# của sản phẩm tương đương gần nhất để không hiện -100% giả do thiếu dữ liệu. Nếu sau
+# này có feed riêng cho các mã này, xoá alias tương ứng để dùng giá thật.
+_GOLD_PRODUCT_ALIAS = {
+    "DOJI_NHAN_HCM": "DOJI_NHAN_9999",  # DOJI công bố 1 giá nhẫn 999.9 toàn quốc
+}
+
 
 def _best_price_for_product(prices: dict, product: str) -> dict | None:
-    """Chọn giá mới nhất cho 1 product cụ thể, ưu tiên nguồn đang chạy hàng ngày khi hoà ngày."""
+    """Chọn giá mới nhất cho 1 product cụ thể, ưu tiên nguồn đang chạy hàng ngày khi hoà ngày.
+    Nếu product không có feed riêng, fallback sang alias (_GOLD_PRODUCT_ALIAS)."""
     candidates = [v for v in prices.values() if v.get("product") == product]
+    if not candidates and product in _GOLD_PRODUCT_ALIAS:
+        candidates = [v for v in prices.values() if v.get("product") == _GOLD_PRODUCT_ALIAS[product]]
     if not candidates:
         return None
     return max(candidates, key=lambda v: (v.get("date", ""), _GOLD_PRICE_SRC_PRIORITY.get(v.get("source"), 0)))
@@ -267,17 +277,32 @@ def _calc_gold_portfolio(cfg: dict, tg_id: str, prices: dict) -> dict:
             agg["luong"] -= ql
 
     breakdown = {}
+    missing_price_products = []
     total_luong = total_cost = total_value = 0.0
     for product, agg in by_product.items():
         luong, cost = agg["luong"], agg["cost"]
         if luong < 0.001:
             continue
         price_entry = _best_price_for_product(prices, product)
-        cur_buy = price_entry["buy"] if price_entry else 0
+        if price_entry is None:
+            # Không có dữ liệu giá (kể cả alias) — KHÔNG hiện -100% giả. Vẫn tính vào
+            # tổng vốn để "tổng vốn" đúng, nhưng loại khỏi tổng giá trị/lãi lỗ vì
+            # không xác định được — tránh gây hiểu lầm đã mất trắng.
+            breakdown[product] = {
+                "label":          product,
+                "luong":          round(luong, 4),
+                "avg_cost":       round(cost / luong, 0) if luong else 0,
+                "cost":           round(cost, 0),
+                "price_missing":  True,
+            }
+            missing_price_products.append(product)
+            total_cost += cost
+            continue
+        cur_buy = price_entry["buy"]
         value = luong * cur_buy
         pnl = value - cost
         breakdown[product] = {
-            "label":         price_entry["label"] if price_entry else product,
+            "label":         price_entry["label"],
             "luong":         round(luong, 4),
             "avg_cost":      round(cost / luong, 0) if luong else 0,
             "current_price": cur_buy,
@@ -290,16 +315,18 @@ def _calc_gold_portfolio(cfg: dict, tg_id: str, prices: dict) -> dict:
         total_cost  += cost
         total_value += value
 
-    if total_luong < 0.001:
+    if total_luong < 0.001 and not missing_price_products:
         return {"total_luong": 0.0, "avg_cost": 0, "current_value": 0, "pnl": 0, "pnl_pct": 0, "by_product": {}}
     pnl_total = total_value - total_cost
+    priced_cost = total_cost - sum(breakdown[p]["cost"] for p in missing_price_products)
     return {
         "total_luong":    round(total_luong, 4),
-        "avg_cost":       round(total_cost / total_luong, 0),
+        "avg_cost":       round(priced_cost / total_luong, 0) if total_luong else 0,
         "current_value":  round(total_value, 0),
         "total_cost":     round(total_cost, 0),
         "pnl":            round(pnl_total, 0),
-        "pnl_pct":        round(pnl_total / total_cost * 100, 2) if total_cost else 0,
+        "pnl_pct":        round(pnl_total / priced_cost * 100, 2) if priced_cost else 0,
+        "missing_price_products": missing_price_products,
         "by_product":     breakdown,
     }
 

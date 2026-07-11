@@ -950,7 +950,7 @@ function renderPfBanner(){
   const goldVal = gp?.current_value||0;
   const total = ccqVal+goldVal;
   const ccqCost = pf?.total_cost||0;
-  const goldCost = (gp?.total_luong||0)*(gp?.avg_cost||0);
+  const goldCost = gp?.total_cost||0;
   const totalCost = ccqCost+goldCost;
   const totalPnl = total-totalCost;
   const totalPnlPct = totalCost>0?(totalPnl/totalCost*100):0;
@@ -1032,6 +1032,15 @@ function renderPfGoldSub(){
   const byProduct=pf.by_product||{};
   let productRows='';
   for(const [prod,pp] of Object.entries(byProduct)){
+    if(pp.price_missing){
+      productRows+=`<div class="card" style="margin-top:8px;border-color:#854d0e">
+        <div class="card-title" style="font-size:11px">${pp.label||prod}</div>
+        <div class="sum-row"><span class="sum-label">Số lượng</span><span class="sum-val" style="color:var(--c0)">${pp.luong} lượng</span></div>
+        <div class="sum-row"><span class="sum-label">Giá vốn TB</span><span class="sum-val">${fmt(pp.avg_cost)} ₫/lượng</span></div>
+        <div style="font-size:11px;color:#facc15;margin-top:4px">⚠️ Chưa có dữ liệu giá cho loại vàng này — không tính được lãi/lỗ. Đã tính vốn vào tổng nhưng chưa tính vào giá trị/lãi lỗ hiện tại.</div>
+      </div>`;
+      continue;
+    }
     const ppnlC=pp.pnl>=0?'var(--buy)':'var(--sell)';
     const ppnlSign=pp.pnl>=0?'+':'';
     productRows+=`<div class="card" style="margin-top:8px">
@@ -1052,12 +1061,14 @@ function renderPfGoldSub(){
     const sellM=(p.sell/1e6).toFixed(2)+'M';
     priceRows+=`<div class="sum-row"><span class="sum-label" style="font-size:11px">${_goldLabel(p.source,p.product)||p.label||k}</span><span class="sum-val" style="color:var(--sell);font-size:12px">${sellM}</span></div>`;
   }
+  const missingCount=(pf.missing_price_products||[]).length;
   el.innerHTML=`<div class="card">
     <div class="card-title">TỔNG DANH MỤC VÀNG</div>
     <div class="sum-row"><span class="sum-label">Tổng lượng (mọi loại)</span><span class="sum-val" style="color:var(--c0)">${pf.total_luong} lượng</span></div>
     <div class="sum-row"><span class="sum-label">Tổng vốn</span><span class="sum-val">${fmt(pf.total_cost)} ₫</span></div>
     <div class="sum-row"><span class="sum-label">Tổng giá trị</span><span class="sum-val">${fmt(pf.current_value)} ₫</span></div>
     <div class="sum-row"><span class="sum-label">Lãi/lỗ</span><span class="sum-val" style="color:${pnlC2}">${pnlSign}${fmt(pf.pnl)} ₫ (${pnlSign}${pf.pnl_pct}%)</span></div>
+    ${missingCount?`<div style="font-size:10px;color:#facc15;margin-top:6px">⚠️ ${missingCount} loại vàng chưa có dữ liệu giá — chưa tính vào giá trị/lãi lỗ tổng (xem chi tiết bên dưới)</div>`:''}
   </div>
   ${productRows}
   ${priceRows?`<div class="card" style="margin-top:8px"><div class="card-title">GIÁ BÁN RA HIỆN TẠI (tham khảo)</div>${priceRows}</div>`:''}`;
