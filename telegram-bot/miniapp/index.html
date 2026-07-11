@@ -1124,7 +1124,7 @@ function renderGoldSignalFull(){
   // Giá SJC hiện tại
   const sjc=prices['VANGTODAYAPI:SJC_1L']||prices['DOJI_SCRAPE:SJC_1L']||Object.values(prices).find(p=>p.product==='SJC_1L');
   const nhan=prices['VANGTODAYAPI:DOJI_NHAN_9999']||Object.values(prices).find(p=>p.product==='DOJI_NHAN_9999');
-  const xau=prices['INTERNATIONAL:XAUUSD']||Object.values(prices).find(p=>p.currency==='USD');
+  const xau=prices['VANGTODAYAPI:XAUUSD']||prices['INTERNATIONAL:XAUUSD']||Object.values(prices).find(p=>p.currency==='USD');
   const currentPrice=sjc?.sell||0;
   const rsi=sig.rsi||50;
   const bbPct=sig.bb_pct||50;
@@ -1961,7 +1961,7 @@ async function autoFillMarketData(){
   const btn = document.getElementById('autofill-btn');
   if (btn) { btn.textContent = '⏳ Đang lấy dữ liệu...'; btn.disabled = true; }
   const prices = _goldData&&_goldData.prices ? _goldData.prices : {};
-  const xau = prices['INTERNATIONAL:XAUUSD'] || Object.values(prices).find(function(p){return p.currency==='USD';});
+  const xau = prices['VANGTODAYAPI:XAUUSD'] || prices['INTERNATIONAL:XAUUSD'] || Object.values(prices).find(function(p){return p.currency==='USD';});
   if (xau && xau.buy) document.getElementById('gp-xau').value = Number(xau.buy).toFixed(0);
   if (xau && xau.extra && xau.extra.usd_vnd) document.getElementById('gp-usd').value = Number(xau.extra.usd_vnd).toFixed(0);
   const btcEl = document.getElementById('gp-btc');
