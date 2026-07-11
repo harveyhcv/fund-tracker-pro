@@ -196,15 +196,30 @@ def _gold_rsi(prices: list, period: int = 14) -> float | None:
     return 100 - (100 / (1 + rs))
 
 
-def _calc_gold_portfolio(cfg: dict, tg_id: str, sjc_price: dict | None) -> dict:
-    """Tính portfolio vàng: tổng lượng, avg cost, current value, P&L — đọc từ PostgreSQL."""
-    total_luong  = 0.0
-    total_cost   = 0.0
+_GOLD_PRICE_SRC_PRIORITY = {"VANGTODAYAPI": 2, "DOJI_SCRAPE": 2, "SJC": 1, "GIAVANG_ORG": 0}
+
+
+def _best_price_for_product(prices: dict, product: str) -> dict | None:
+    """Chọn giá mới nhất cho 1 product cụ thể, ưu tiên nguồn đang chạy hàng ngày khi hoà ngày."""
+    candidates = [v for v in prices.values() if v.get("product") == product]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda v: (v.get("date", ""), _GOLD_PRICE_SRC_PRIORITY.get(v.get("source"), 0)))
+
+
+def _calc_gold_portfolio(cfg: dict, tg_id: str, prices: dict) -> dict:
+    """Tính portfolio vàng THEO TỪNG LOẠI VÀNG (product) riêng biệt — không gộp chung
+    SJC miếng với nhẫn trơn hay vàng quốc tế vì giá mỗi loại khác nhau.
+    Giá vốn (lúc mua) đã chốt sẵn trong total_vnd của từng giao dịch (dùng giá BÁN
+    của tiệm tại thời điểm mua). Giá trị hiện tại dùng giá MUA của tiệm hôm nay
+    (giá mà user sẽ nhận được nếu bán ra — không dùng giá bán vì đó là giá tiệm
+    bán RA cho khách, không phải giá tiệm trả lại cho khách)."""
+    by_product: dict[str, dict] = {}
     try:
         conn = _get_db_conn()
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT type, qty_luong, total_vnd FROM user_gold_trades "
+                "SELECT product, type, qty_luong, total_vnd FROM user_gold_trades "
                 "WHERE telegram_id=%s ORDER BY trade_date, id",
                 [tg_id]
             )
@@ -213,31 +228,53 @@ def _calc_gold_portfolio(cfg: dict, tg_id: str, sjc_price: dict | None) -> dict:
     except Exception as _e:
         log.warning(f"[gold_portfolio] DB error: {_e}")
         rows = []
-    for (tx_type, qty_luong, total_vnd) in rows:
+    for (product, tx_type, qty_luong, total_vnd) in rows:
+        agg = by_product.setdefault(product, {"luong": 0.0, "cost": 0.0})
         ql = float(qty_luong or 0)
         tv = float(total_vnd or 0)
         if tx_type == "buy":
-            total_luong += ql
-            total_cost  += tv
+            agg["luong"] += ql
+            agg["cost"]  += tv
         elif tx_type == "sell":
-            sell_frac    = ql / total_luong if total_luong > 0 else 0
-            total_cost  -= total_cost * sell_frac
-            total_luong -= ql
+            frac = ql / agg["luong"] if agg["luong"] > 0 else 0
+            agg["cost"]  -= agg["cost"] * frac
+            agg["luong"] -= ql
+
+    breakdown = {}
+    total_luong = total_cost = total_value = 0.0
+    for product, agg in by_product.items():
+        luong, cost = agg["luong"], agg["cost"]
+        if luong < 0.001:
+            continue
+        price_entry = _best_price_for_product(prices, product)
+        cur_buy = price_entry["buy"] if price_entry else 0
+        value = luong * cur_buy
+        pnl = value - cost
+        breakdown[product] = {
+            "label":         price_entry["label"] if price_entry else product,
+            "luong":         round(luong, 4),
+            "avg_cost":      round(cost / luong, 0) if luong else 0,
+            "current_price": cur_buy,
+            "current_value": round(value, 0),
+            "cost":          round(cost, 0),
+            "pnl":           round(pnl, 0),
+            "pnl_pct":       round(pnl / cost * 100, 2) if cost else 0,
+        }
+        total_luong += luong
+        total_cost  += cost
+        total_value += value
+
     if total_luong < 0.001:
-        return {"total_luong": 0.0, "avg_cost": 0, "current_value": 0, "pnl": 0, "pnl_pct": 0}
-    avg_cost = total_cost / total_luong
-    cur_sell = sjc_price["sell"] if sjc_price else 0
-    cur_val  = total_luong * cur_sell
-    pnl      = cur_val - total_cost
-    pnl_pct  = pnl / total_cost * 100 if total_cost else 0
+        return {"total_luong": 0.0, "avg_cost": 0, "current_value": 0, "pnl": 0, "pnl_pct": 0, "by_product": {}}
+    pnl_total = total_value - total_cost
     return {
         "total_luong":    round(total_luong, 4),
-        "avg_cost":       round(avg_cost, 0),
-        "current_value":  round(cur_val, 0),
+        "avg_cost":       round(total_cost / total_luong, 0),
+        "current_value":  round(total_value, 0),
         "total_cost":     round(total_cost, 0),
-        "pnl":            round(pnl, 0),
-        "pnl_pct":        round(pnl_pct, 2),
-        "current_price":  cur_sell,
+        "pnl":            round(pnl_total, 0),
+        "pnl_pct":        round(pnl_total / total_cost * 100, 2) if total_cost else 0,
+        "by_product":     breakdown,
     }
 
 
@@ -272,7 +309,8 @@ _STRENGTH_TO_SIGNAL = {
 def _row_to_signal(row) -> dict:
     import json as _json
     (code, strength, score, rsi, bb_pct, macd_hist,
-     nav, signal_date, chg_pct, chg7d, chg30d, details_raw, nav_date) = row
+     nav, signal_date, chg_pct, chg7d, chg30d, details_raw, nav_date,
+     ma20, ma50) = row
     details = details_raw if isinstance(details_raw, list) else (
         _json.loads(details_raw) if details_raw else []
     )
@@ -288,6 +326,8 @@ def _row_to_signal(row) -> dict:
         "chg7":      float(chg7d) if chg7d is not None else None,
         "chg30":     float(chg30d) if chg30d is not None else None,
         "details":   details,
+        "ma20":      float(ma20) if ma20 is not None else None,
+        "ma50":      float(ma50) if ma50 is not None else None,
     }
 
 def _get_nav_confidence_map(codes: list) -> dict:
@@ -323,7 +363,7 @@ _SIGNAL_SELECT = """
         rsi, bb_pct, macd_hist,
         nav_at_signal, signal_date::text,
         chg_pct, chg7d, chg30d, details,
-        nav_date::text
+        nav_date::text, ma20, ma50
     FROM buy_signals
     WHERE fund_code IN ({ph})
     ORDER BY fund_code, signal_date DESC
@@ -395,6 +435,8 @@ def _compute_from_nav_history(codes: list, cfg: dict, telegram_id: str = None):
                         "bb_pct":       d.get("bb_pct"),
                         "macd_hist":    d.get("macd_hist"),
                         "ma20_vs_ma50": (d.get("ma20") or 0) > (d.get("ma50") or 0),
+                        "ma20":         d.get("ma20"),
+                        "ma50":         d.get("ma50"),
                         "momentum_30d": d.get("chg30"),
                         "chg_pct":      d.get("chg_pct"),
                         "chg7d":        d.get("chg7"),
@@ -1284,12 +1326,12 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         stats = {}
         if _BOT_IMPORTED:
             try:
-                from bot import get_nav_series as _gnv, _extended_stats
+                from bot import get_nav_series as _gnv, compute_research_stats
                 pts = _gnv(code, _FUND_CATALOG.get(code, cfg.get("funds", {}).get(code, {})), cfg)
                 if pts:
-                    stats = _extended_stats(pts)
+                    stats = compute_research_stats(pts)
             except Exception as e:
-                log.debug(f"[research] extended_stats {code}: {e}")
+                log.warning(f"[research] extended_stats {code}: {e}")
 
         nav  = d.get("nav", 0)
         rsi  = d.get("rsi")
@@ -1609,19 +1651,11 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         # Tính signals từ lịch sử SJC (60 ngày gần nhất, mọi nguồn — xem _calc_gold_signals)
         signals = _calc_gold_signals(db_url) if db_url else {}
 
-        # Portfolio vàng — chọn SJC_1L có date MỚI NHẤT trong số các nguồn (không ưu tiên cứng
-        # theo tên source — nguồn "SJC" (webgia.com) có thể ngừng cập nhật bất kỳ lúc nào).
-        # Hoà ngày thì ưu tiên VANGTODAYAPI/DOJI_SCRAPE (nguồn đang chạy hàng ngày).
-        _SJC_SRC_PRIORITY = {"VANGTODAYAPI": 2, "DOJI_SCRAPE": 2, "SJC": 1, "GIAVANG_ORG": 0}
-        sjc_candidates = [v for v in prices.values() if v.get("product") == "SJC_1L"]
-        sjc_price_entry = (
-            max(sjc_candidates, key=lambda v: (v.get("date", ""), _SJC_SRC_PRIORITY.get(v.get("source"), 0)))
-            if sjc_candidates else None
-        )
+        # Portfolio vàng — tính riêng theo từng product user đang nắm (xem _calc_gold_portfolio)
         portfolio = None
         if tg_id:
             cfg = _load_cfg()
-            portfolio = _calc_gold_portfolio(cfg, tg_id, sjc_price_entry)
+            portfolio = _calc_gold_portfolio(cfg, tg_id, prices)
 
         _json(self, {
             "prices":    prices,

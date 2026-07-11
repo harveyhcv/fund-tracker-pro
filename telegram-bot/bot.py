@@ -1084,7 +1084,9 @@ def _morning_gold_summary(cfg: dict, profile: dict) -> list:
             except Exception as _ge:
                 log.warning(f"[gold_portfolio] {_ge}")
         if total_l > 0.001 and total_cost > 0:
-            cur_val = total_l * sell
+            # Giá trị hiện tại dùng giá MUA VÀO của tiệm (giá user nhận nếu bán ra hôm nay),
+            # KHÔNG dùng giá bán (giá tiệm bán RA cho khách).
+            cur_val = total_l * buy
             pnl = cur_val - total_cost
             sign = "+" if pnl >= 0 else ""
             icon = "📈" if pnl >= 0 else "📉"
@@ -1195,9 +1197,10 @@ def _gold_summary_lines(tg_id: str) -> list:
             if total_l < 0.001:
                 conn.close()
                 return []
-            # Lấy giá vàng mới nhất
+            # Lấy giá vàng mới nhất — giá MUA (tiệm mua vào) để định giá holdings,
+            # KHÔNG dùng giá bán (giá tiệm bán RA cho khách).
             cur.execute("""
-                SELECT sell_price::float, price_date::text
+                SELECT buy_price::float, sell_price::float, price_date::text
                 FROM gold_prices
                 WHERE product = 'SJC_1L'
                 ORDER BY price_date DESC, source DESC
@@ -1207,8 +1210,8 @@ def _gold_summary_lines(tg_id: str) -> list:
         conn.close()
         if not row:
             return []
-        sell, gdate = float(row[0]), row[1]
-        cur_val = total_l * sell
+        buy, sell, gdate = float(row[0]), float(row[1]), row[2]
+        cur_val = total_l * buy
         pnl     = cur_val - total_cost
         sign    = "+" if pnl >= 0 else ""
         icon    = "📈" if pnl >= 0 else "📉"
@@ -1780,6 +1783,8 @@ def job_check_signals():
                         "bb_pct":       d.get("bb_pct"),
                         "macd_hist":    d.get("macd_hist"),
                         "ma20_vs_ma50": (d.get("ma20") or 0) > (d.get("ma50") or 0),
+                        "ma20":         d.get("ma20"),
+                        "ma50":         d.get("ma50"),
                         "momentum_30d": d.get("chg30"),
                         "chg_pct":      d.get("chg_pct"),
                         "chg7d":        d.get("chg7"),
@@ -2652,10 +2657,11 @@ _ADMIN_PROFILE_SEED = {
 
 
 def reconcile_admin_profile(config: dict) -> bool:
-    """Đảm bảo profile admin có đủ watched_funds + portfolio (seed).
+    """Tạo profile admin (seed watched_funds + portfolio) NẾU CHƯA TỒN TẠI.
 
-    Trả về True nếu config.json bị thay đổi (cần save). An toàn idempotent — chỉ bổ sung
-    quỹ thiếu và thêm portfolio nếu chưa có, KHÔNG ghi đè dữ liệu user đã nhập.
+    Trả về True nếu config.json bị thay đổi (cần save). Chỉ seed một lần lúc tạo
+    profile mới — KHÔNG merge lại watched_funds mỗi lần bot khởi động, để tránh
+    tự động thêm lại quỹ mà user đã chủ động unwatch qua Mini App.
 
     Từ Giai đoạn 1 (scaling): nguồn thật của profile là bảng bot_profiles trên PostgreSQL
     (persistent qua redeploy, không phụ thuộc Railway volume). Hàm này reconcile CẢ HAI —
@@ -2667,13 +2673,11 @@ def reconcile_admin_profile(config: dict) -> bool:
 
     if _DB_AVAILABLE and _db.is_available():
         try:
-            result = _db.ensure_watched_funds(
-                admin_id, "Harvey", _ADMIN_PROFILE_SEED["watched_funds"], is_admin=True
-            )
-            if result.get("created"):
+            if _db.find_profile(admin_id) is None:
+                _db.create_profile(
+                    admin_id, "Harvey", _ADMIN_PROFILE_SEED["watched_funds"], is_admin=True
+                )
                 log.info(f"[reconcile] Tạo profile admin Harvey trong DB ({admin_id})")
-            elif result.get("changed"):
-                log.info(f"[reconcile] Bổ sung watched_funds admin trong DB: {result['watched_funds']}")
         except Exception as e:
             log.warning(f"[reconcile] DB lỗi, dùng config.json: {e}")
 
@@ -2686,26 +2690,14 @@ def reconcile_admin_profile(config: dict) -> bool:
 
     changed = False
     if admin is None:
-        admin = {"name": "Harvey", "telegram_id": admin_id}
+        admin = {
+            "name": "Harvey", "telegram_id": admin_id,
+            "watched_funds": list(_ADMIN_PROFILE_SEED["watched_funds"]),
+            "portfolio": [dict(h) for h in _ADMIN_PROFILE_SEED["portfolio"]],
+        }
         profiles.append(admin)
         changed = True
         log.info(f"[reconcile] Tạo profile admin Harvey ({admin_id})")
-
-    # Bổ sung watched_funds còn thiếu (giữ thứ tự seed, không xoá quỹ user thêm)
-    cur_watched = admin.get("watched_funds") or []
-    merged = list(cur_watched)
-    for code in _ADMIN_PROFILE_SEED["watched_funds"]:
-        if code not in merged:
-            merged.append(code)
-            changed = True
-    if merged != cur_watched:
-        admin["watched_funds"] = merged
-
-    # Thêm portfolio nếu chưa có (không ghi đè nếu user đã có dữ liệu)
-    if not admin.get("portfolio"):
-        admin["portfolio"] = [dict(h) for h in _ADMIN_PROFILE_SEED["portfolio"]]
-        changed = True
-        log.info("[reconcile] Thêm portfolio seed cho admin")
 
     return changed
 

@@ -346,6 +346,8 @@ def _ensure_signal_cols(conn) -> None:
         ("chg30d",   "NUMERIC"),
         ("details",  "JSONB"),
         ("nav_date", "DATE"),
+        ("ma20",     "NUMERIC"),
+        ("ma50",     "NUMERIC"),
     ]
     with conn.cursor() as cur:
         for col, typ in new_cols:
@@ -365,7 +367,7 @@ def save_signal(
 ) -> str | None:
     """
     Persist a signal for any strength (buy/hold/reduce/strong_buy/strong_reduce).
-    indicators dict keys: rsi, bb_pct, macd_hist, ma20_vs_ma50, momentum_30d,
+    indicators dict keys: rsi, bb_pct, macd_hist, ma20_vs_ma50, ma20, ma50, momentum_30d,
                           chg_pct, chg7d, chg30d, details (list), nav_date (str)
     """
     if not is_available():
@@ -387,12 +389,12 @@ def save_signal(
                     fund_code, signal_date, strength, score,
                     rsi, bb_pct, macd_hist, ma20_vs_ma50, momentum_30d,
                     nav_at_signal, settlement_rule, est_exec_date,
-                    chg_pct, chg7d, chg30d, details, nav_date
+                    chg_pct, chg7d, chg30d, details, nav_date, ma20, ma50
                 ) VALUES (
                     %s, %s, %s, %s,
                     %s, %s, %s, %s, %s,
                     %s, %s, %s,
-                    %s, %s, %s, %s, %s
+                    %s, %s, %s, %s, %s, %s, %s
                 )
                 ON CONFLICT (fund_code, signal_date) DO UPDATE SET
                     strength      = EXCLUDED.strength,
@@ -406,7 +408,9 @@ def save_signal(
                     chg7d         = EXCLUDED.chg7d,
                     chg30d        = EXCLUDED.chg30d,
                     details       = EXCLUDED.details,
-                    nav_date      = EXCLUDED.nav_date
+                    nav_date      = EXCLUDED.nav_date,
+                    ma20          = EXCLUDED.ma20,
+                    ma50          = EXCLUDED.ma50
                 RETURNING id
             """, (
                 fund_code, signal_date, strength, score,
@@ -415,6 +419,7 @@ def save_signal(
                 nav_at_signal, settlement_rule, exec_date,
                 ind.get("chg_pct"), ind.get("chg7d"), ind.get("chg30d"),
                 _json.dumps(ind.get("details") or []), nav_date_val,
+                ind.get("ma20"), ind.get("ma50"),
             ))
             row = cur.fetchone()
             return str(row[0]) if row else None
