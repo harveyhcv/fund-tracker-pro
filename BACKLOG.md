@@ -4,11 +4,12 @@
 # Priority: P0 (blocker) / P1 (important) / P2 (nice-to-have)
 # Claude đọc file này ĐẦU TIÊN mỗi session. Pick task IN_PROGRESS nếu có, nếu không pick P0 cao nhất.
 #
-# Last updated: 2026-07-10 (session 5 — ca chiều autonomous)
+# Last updated: 2026-07-12 (session 6 — QA toàn diện + v1.0 + promo/beta)
 
 ## ĐANG LÀM (IN_PROGRESS)
-# Không có — TẤT CẢ P0/P1 đã DONE (kể cả toàn bộ Phase 5 T2-001..010). Còn lại
-# PAY-006/PAY-007 (P2, cần merchant credentials thật) chưa làm được trong session tự động.
+# Không có. v1.0 đã tag. Ưu tiên tiếp theo: GOV-001..006 (Phase 6a — quản trị dữ liệu
+# chặt chẽ, Harvey yêu cầu trước khi bán) — GOV-001 (audit log) nên làm trước vì
+# GOV-003/004 phụ thuộc vào nó. Còn PAY-006/PAY-007 (P2, cần merchant credentials thật).
 
 ---
 
@@ -104,6 +105,54 @@
 
 - [DONE] T2-009 · fund-row hiện T+2 pred (↑/↓X%) từ /api/me predictions{}, chỉ Pro | 2026-07-10
 - [DONE-LOCAL] T2-010 · Accuracy dashboard — thay vì tab riêng (nav bar đã 6 icon, chật cho mobile), gộp vào modal "Nghiên cứu" hiện có (cùng chỗ PRO-001/PRO-004) làm section mới "🎯 Độ chính xác dự báo T+2": bảng MAPE 7d/30d/all-time × 3 model (arima-v1/xgb-v1/ensemble-v1) + canvas overlay dự báo-vs-thực-tế (60 điểm gần nhất, tái dùng style `drawChart`). Backend: `db.get_accuracy_summary(fund_code)` (SQL `FILTER (WHERE logged_at >= NOW()-INTERVAL)` cho 3 window, ép `Decimal→float` vì `ROUND(...)::numeric` không JSON-serializable), `db.get_accuracy_history(fund_code, model_version=None, limit=60)` (không truyền model → ưu tiên ensemble>xgb>arima nếu trùng ngày, cast `predicted_for_date::text` vì cùng lý do Decimal/date). API: `GET /api/t2/accuracy/<code>?user_id=&model=` (pro-gated qua `_check_tier`) trong `miniapp_server.py`. Bonus fix: `_t2Html()` từng hardcode nhãn "(dự báo ARIMA)" dù giờ có thể hiện ensemble/xgb prediction (get_predictions lấy bản ghi mới nhất, không phân biệt model) — sửa thành nhãn động theo `pred.model_version` (`_t2ModelLabel()`) | 2026-07-10 | Verify: `preview_start miniapp` (static server, tạo `.claude/launch.json` ở `P:\NGCG\Vibe Coding\` vì browser tool tìm launch.json ở working-dir cha, không phải project root) + `preview_eval` gọi `renderResearch()` với payload giả + mock `apiFetch('/api/t2/accuracy/...')` — bảng MAPE, canvas chart (686×240 sau resize mobile viewport), và nhãn "dự báo Ensemble" đều render đúng qua `preview_snapshot`, không console error. Cần DATABASE_URL thật + dữ liệu chấm điểm thực để verify API backend end-to-end
+
+---
+
+## ═══════════════════════════════════════════
+## PHASE 6 — v1.0 PACKAGING + GOVERNANCE
+## ═══════════════════════════════════════════
+
+- [DONE] BILL-001 · Fix bug cộng dồn Pro: `set_tier(now+30)` reset mất số ngày Pro còn lại khi
+  gia hạn sớm — thêm `db.extend_pro()` cộng dồn từ hạn hiện tại, áp dụng cho cả Stars
+  (`_handle_successful_payment`) và MoMo IPN | 2026-07-12
+- [DONE] PROMO-001 · Bảng `promo_codes`/`promo_redemptions` — mã admin tạo (trial 30-90 ngày,
+  giới hạn lượt) + mã referral cá nhân (không giới hạn lượt, +30 ngày cho cả 2 bên), UNIQUE
+  (code, telegram_id) chặn dùng lại. API: `/api/promo/redeem`, `/api/referral/mine`,
+  `/api/admin/promo/{list,create,deactivate}`. UI: ô nhập mã + mã giới thiệu cá nhân trong modal
+  Nâng cấp Pro, card quản lý mã trong tab Admin | 2026-07-12 | Test end-to-end trên DB thật
+  (tạo/dùng/trùng/hết lượt/referral/tự dùng mã mình — pass hết, dữ liệu test đã dọn)
+- [DONE] BETA-001 · Lệnh `/beta` (chỉ admin) — mở Mini App với tài khoản test cô lập
+  (telegram_id âm qua `_effective_tg_id`/`_qs_tg_id`/`_data_tg_id`), NAV/tín hiệu/giá vàng/dự
+  báo T+2 vẫn dùng chung dữ liệu thật. Banner vàng "BETA MODE" luôn hiện khi active.
+  `_api_nav_draft` CỐ TÌNH không remap (NAV là nguồn chung, không cho test data lọt vào) | 2026-07-12
+  | Verify qua browser + log server: portfolio test rỗng (0đ), tín hiệu vẫn đúng NAV thật
+- [DONE] REL-001 · Tag `v1.0` — Stars là phương thức thanh toán chính thức, nút MoMo tạm ẩn
+  ("sắp ra mắt") cho đến khi có merchant thật | 2026-07-12
+
+### 6a. Quản trị dữ liệu chặt chẽ (theo yêu cầu — CHƯA LÀM, cần session riêng)
+# Harvey yêu cầu: không bao giờ xoá/đổi dữ liệu tài khoản/NAV/dự đoán khi sửa code, bảo mật
+# nhiều lớp (có PII), đạt chuẩn để "bán được". 4 hạng mục cụ thể đã chọn:
+
+- [ ] GOV-001 · Audit log mọi thay đổi trên dữ liệu nhạy cảm (tier, NAV thủ công, portfolio,
+  promo redeem) — bảng `audit_log(actor_id, action, target_table, target_id, before, after, at)`,
+  ghi từ mọi endpoint ghi dữ liệu tài khoản/thanh toán | P0 | ~4h
+- [ ] GOV-002 · Backup tự động định kỳ — Railway cron/script `pg_dump` hàng ngày lên object
+  storage (S3-compatible hoặc Railway volume), retention policy rõ ràng, quy trình restore đã
+  test thử ít nhất 1 lần | P0 | ~3h (phụ thuộc chọn nơi lưu backup)
+- [ ] GOV-003 · Cảnh báo bất thường tự động — rule-based: NAV nhảy >X%/phiên, MAPE dự báo vượt
+  ngưỡng N ngày liên tiếp, thanh toán trùng lặp (cùng charge_id/orderId xử lý 2 lần), redeem
+  promo bất thường (nhiều mã cùng 1 phút) → Telegram admin | P1 | ~4h (phụ thuộc GOV-001 để có log nguồn)
+- [ ] GOV-004 · Dashboard giám sát admin — 1 màn hình: số user theo tier, MAPE dự báo theo model,
+  quỹ NAV đang lỗi/thiếu dữ liệu, giao dịch thanh toán gần đây, log audit gần đây | P1 | ~4h
+  (phụ thuộc GOV-001, tận dụng data GOV-003)
+- [ ] GOV-005 · Security hardening review toàn diện — hiện GET endpoints (`_api_me`,
+  `_api_signals`, v.v.) KHÔNG verify `X-Init-Data` (chỉ trust query param `user_id`), khác với
+  POST/DELETE đã có `_auth_write`. Cần: (a) xác nhận đây có phải rủi ro thật (đọc dữ liệu
+  người khác bằng cách đoán telegram_id?), (b) thêm HTTPS-only cookie/rate-limit nếu cần,
+  (c) review toàn bộ input validation trước khi "bán được" | P0 | ~6h (cần threat-model kỹ trước khi code)
+- [ ] GOV-006 · Chính sách "không xoá/đổi dữ liệu khi deploy" — viết thành quy tắc migration
+  trong CLAUDE.md: mọi ALTER TABLE phải là additive (ADD COLUMN IF NOT EXISTS, không DROP/RENAME
+  không có kế hoạch backfill), mọi script sửa dữ liệu hàng loạt phải dry-run + xác nhận trước | P1 | ~1h
 
 ---
 
