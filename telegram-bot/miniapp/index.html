@@ -219,6 +219,24 @@ canvas{width:100%!important;height:100%!important}
       <button class="btn btn-primary" id="upgrade-cta-btn" onclick="startUpgrade()">⭐ NÂNG CẤP PRO NGAY</button>
       <button class="btn btn-primary" id="upgrade-momo-btn" style="background:#a50064;margin-top:8px" onclick="startUpgradeMomo()">💗 THANH TOÁN QUA MOMO</button>
       <button class="btn" style="background:transparent;border:1px solid var(--bdr);color:var(--txt2)" onclick="closeUpgradeModalBtn()">Để sau</button>
+
+      <div class="section" style="margin-top:16px;border-top:1px solid var(--bdr);padding-top:14px">
+        <div class="section-hdr">MÃ GIỚI THIỆU / GIẢM GIÁ</div>
+        <div style="display:flex;gap:6px">
+          <input type="text" id="promo-code-input" placeholder="Nhập mã..." style="flex:1;text-transform:uppercase" maxlength="20">
+          <button class="btn btn-primary" style="width:auto;padding:0 16px;margin-top:0" onclick="redeemPromoCode()">Áp dụng</button>
+        </div>
+        <div id="promo-code-status" style="font-size:12px;margin-top:6px;min-height:16px"></div>
+      </div>
+
+      <div class="section" style="margin-top:10px">
+        <div class="section-hdr">GIỚI THIỆU BẠN BÈ</div>
+        <div style="font-size:12px;color:var(--txt2);margin-bottom:8px">Chia sẻ mã này — bạn bè nhập vào sẽ được <b>+30 ngày Pro</b>, và bạn cũng được <b>+30 ngày Pro</b> ngay khi họ dùng mã.</div>
+        <div id="referral-code-box" style="display:flex;gap:6px;align-items:center">
+          <div class="loading" style="padding:8px 0"><div class="spinner" style="width:14px;height:14px"></div></div>
+        </div>
+        <div id="referral-stats" style="font-size:11px;color:var(--txt2);margin-top:6px"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -490,6 +508,21 @@ canvas{width:100%!important;height:100%!important}
         <div style="font-size:11px;font-weight:700;color:#facc15;font-family:var(--mono);margin-bottom:10px">⚠️ NAV CẦN XÁC NHẬN</div>
         <div id="admin-nav-confirm-list"><div style="font-size:12px;color:var(--txt2)">Đang tải...</div></div>
       </div>
+      <div class="card" style="padding:16px">
+        <div style="font-size:11px;font-weight:700;color:#c084fc;font-family:var(--mono);margin-bottom:10px">🎟️ MÃ TRIAL / GIẢM GIÁ</div>
+        <div style="font-size:11px;color:var(--txt2);margin-bottom:10px;line-height:1.5">Tạo mã cho bạn bè dùng thử Pro. Để trống ô "Mã" để tự sinh ngẫu nhiên. Số lượt = số NGƯỜI được dùng (mỗi người chỉ dùng được 1 lần dù max_uses lớn hơn 1).</div>
+        <div style="display:flex;gap:8px;margin-bottom:8px">
+          <input type="text" id="promo-new-code" placeholder="Mã (để trống = tự sinh)" style="flex:1;text-transform:uppercase">
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:8px">
+          <input type="number" id="promo-new-days" placeholder="Số ngày (vd 30)" value="30" style="flex:1">
+          <input type="number" id="promo-new-maxuses" placeholder="Số lượt (để trống=1)" style="flex:1">
+        </div>
+        <input type="text" id="promo-new-note" placeholder="Ghi chú (vd: tặng bạn A)" style="margin-bottom:8px">
+        <button onclick="adminCreatePromo()" style="width:100%;padding:12px;background:#c084fc;color:#000;border:none;border-radius:8px;font-weight:700;font-size:14px;cursor:pointer;font-family:var(--mono)">+ TẠO MÃ</button>
+        <div id="promo-create-status" style="font-size:12px;color:var(--txt2);margin-top:8px;min-height:16px"></div>
+        <div id="promo-list" style="margin-top:12px"></div>
+      </div>
     </div>
   </div>
 
@@ -731,7 +764,7 @@ function goPage(name,btn){
   if(name==='dca') loadDCA();
   if(name==='trade'){ setupTrade(); loadUnifiedHistory(); }
   if(name==='history') loadHistory();
-  if(name==='admin') loadAdminNavPending();
+  if(name==='admin'){ loadAdminNavPending(); loadPromoList(); }
 }
 
 function showSubtab(page, sub, el){
@@ -942,6 +975,66 @@ async function adminNavConfirm(fundCode, navDate, choice){
       alert('Lỗi: '+(d.error||'unknown'));
     }
   }catch(e){ alert('Lỗi: '+e.message); }
+}
+
+async function loadPromoList(){
+  const el=document.getElementById('promo-list');
+  if(!el) return;
+  el.innerHTML='<div style="font-size:12px;color:var(--txt2)">Đang tải...</div>';
+  try{
+    const d=await apiFetch('/api/admin/promo/list');
+    renderPromoList(d.codes||[]);
+  }catch(e){
+    el.innerHTML=`<div style="font-size:12px;color:var(--sell)">Lỗi: ${e.message}</div>`;
+  }
+}
+
+function renderPromoList(codes){
+  const el=document.getElementById('promo-list');
+  if(!codes.length){ el.innerHTML='<div style="font-size:12px;color:var(--txt2)">Chưa có mã nào.</div>'; return; }
+  el.innerHTML=codes.map(c=>{
+    const usesLabel = c.max_uses ? `${c.uses_count}/${c.max_uses}` : `${c.uses_count} (không giới hạn)`;
+    const statusColor = c.active ? 'var(--buy)' : 'var(--txt2)';
+    const statusLabel = c.active ? 'Đang hoạt động' : 'Đã vô hiệu hoá';
+    return `<div style="border:1px solid var(--bdr);border-radius:8px;padding:10px;margin-bottom:8px;background:var(--bg)">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span style="font-family:var(--mono);font-weight:700;color:var(--c0);font-size:13px;letter-spacing:.04em">${c.code}</span>
+        <span style="font-size:10px;color:${statusColor}">${statusLabel}</span>
+      </div>
+      <div style="font-size:11px;color:var(--txt2);margin-top:4px">${c.days} ngày · Đã dùng: ${usesLabel}${c.note?' · '+c.note:''}</div>
+      ${c.active?`<button onclick="adminDeactivatePromo('${c.code}')" style="margin-top:6px;padding:5px 10px;background:var(--bg3);border:1px solid var(--sell);color:var(--sell);border-radius:6px;font-size:11px;cursor:pointer">Vô hiệu hoá</button>`:''}
+    </div>`;
+  }).join('');
+}
+
+async function adminCreatePromo(){
+  const status=document.getElementById('promo-create-status');
+  const code=(document.getElementById('promo-new-code').value||'').trim().toUpperCase();
+  const days=parseInt(document.getElementById('promo-new-days').value||'30',10);
+  const maxUsesRaw=document.getElementById('promo-new-maxuses').value;
+  const maxUses=maxUsesRaw?parseInt(maxUsesRaw,10):1;
+  const note=(document.getElementById('promo-new-note').value||'').trim();
+  if(!days||days<=0){ status.style.color='var(--sell)'; status.textContent='Số ngày không hợp lệ'; return; }
+  status.style.color='var(--txt2)'; status.textContent='Đang tạo...';
+  try{
+    const d=await apiPost('/api/admin/promo/create',{telegram_id:USER_ID, code:code||undefined, days, max_uses:maxUses, note});
+    status.style.color='var(--buy)';
+    status.textContent=`✓ Đã tạo mã ${d.promo.code}`;
+    document.getElementById('promo-new-code').value='';
+    document.getElementById('promo-new-note').value='';
+    await loadPromoList();
+  }catch(e){
+    status.style.color='var(--sell)'; status.textContent='⚠️ '+(e.body?.error||e.message);
+  }
+}
+
+async function adminDeactivatePromo(code){
+  if(!confirm(`Vô hiệu hoá mã ${code}? Người chưa dùng sẽ không dùng được nữa.`)) return;
+  try{
+    await apiPost('/api/admin/promo/deactivate',{telegram_id:USER_ID, code});
+    toast('✓ Đã vô hiệu hoá '+code);
+    await loadPromoList();
+  }catch(e){ toast('Lỗi: '+e.message); }
 }
 
 function renderPfBanner(){
@@ -1754,10 +1847,50 @@ function showUpgradeModal(info){
   document.getElementById('upgrade-reason').textContent = limit
     ? `Bạn đã đạt giới hạn ${limit} mã theo dõi của gói Free. Nâng cấp Pro để theo dõi không giới hạn.`
     : 'Tính năng này chỉ dành cho tài khoản Pro.';
+  document.getElementById('promo-code-status').textContent='';
+  document.getElementById('promo-code-input').value='';
   document.getElementById('upgrade-modal').classList.add('open');
+  loadReferralCode();
 }
 function closeUpgradeModal(e){if(e.target===document.getElementById('upgrade-modal'))closeUpgradeModalBtn();}
 function closeUpgradeModalBtn(){document.getElementById('upgrade-modal').classList.remove('open');}
+
+async function loadReferralCode(){
+  const box=document.getElementById('referral-code-box');
+  const statsEl=document.getElementById('referral-stats');
+  if(!USER_ID){ box.innerHTML='<div style="font-size:12px;color:var(--txt2)">Cần mở từ Telegram để lấy mã.</div>'; return; }
+  try{
+    const d=await apiFetch('/api/referral/mine');
+    box.innerHTML=`<div style="flex:1;font-family:var(--mono);font-size:15px;font-weight:700;color:var(--c0);background:var(--bg);border:1px solid var(--bdr);border-radius:8px;padding:8px 10px;letter-spacing:.05em">${d.code}</div>
+      <button class="btn btn-primary" style="width:auto;padding:0 14px;margin-top:0" onclick="copyReferralCode('${d.code}')">Sao chép</button>`;
+    statsEl.textContent = d.uses_count>0 ? `✓ Đã có ${d.uses_count} người dùng mã của bạn` : 'Chưa có ai dùng mã của bạn';
+  }catch(e){
+    box.innerHTML=`<div style="font-size:12px;color:var(--sell)">Lỗi tải mã: ${e.message}</div>`;
+  }
+}
+function copyReferralCode(code){
+  navigator.clipboard?.writeText(code).then(()=>toast('✓ Đã sao chép mã '+code)).catch(()=>toast(code));
+}
+async function redeemPromoCode(){
+  const input=document.getElementById('promo-code-input');
+  const status=document.getElementById('promo-code-status');
+  const code=(input.value||'').trim().toUpperCase();
+  if(!code){ status.style.color='var(--sell)'; status.textContent='Vui lòng nhập mã'; return; }
+  if(!USER_ID){ status.style.color='var(--sell)'; status.textContent='Cần mở từ Telegram'; return; }
+  status.style.color='var(--txt2)'; status.textContent='Đang áp dụng...';
+  try{
+    const d=await apiPost('/api/promo/redeem',{telegram_id:USER_ID, code});
+    status.style.color='var(--buy)';
+    status.textContent = d.referrer_bonus_days
+      ? `✓ Đã cộng +${d.days} ngày Pro cho bạn (mã giới thiệu)!`
+      : `✓ Đã cộng +${d.days} ngày Pro!`;
+    input.value='';
+    tg?.HapticFeedback?.notificationOccurred('success');
+    _me=null; // buộc tải lại tier khi quay về portfolio
+  }catch(e){
+    status.style.color='var(--sell)'; status.textContent='⚠️ '+(e.body?.error||e.message);
+  }
+}
 async function startUpgrade(){
   const btn = document.getElementById('upgrade-cta-btn');
   if (btn) { btn.disabled = true; btn.textContent = 'Đang tạo invoice...'; }

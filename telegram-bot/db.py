@@ -916,6 +916,178 @@ def set_tier(telegram_id, tier: str, pro_expires_at=None) -> dict:
             return dict(cur.fetchone())
 
 
+def extend_pro(telegram_id, days: int) -> dict:
+    """Cộng thêm `days` ngày Pro — nếu đang Pro và chưa hết hạn thì cộng dồn từ
+    pro_expires_at hiện tại (không reset), nếu free/đã hết hạn thì tính từ hôm nay.
+    Dùng cho thanh toán, mã giảm giá, và thưởng giới thiệu (referral)."""
+    tg = int(telegram_id)
+    now = datetime.now(timezone.utc)
+    with get_conn() as conn:
+        _ensure_user_tiers_table(conn)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT tier, pro_expires_at FROM user_tiers WHERE telegram_id = %s", (tg,))
+            row = cur.fetchone()
+            base = now
+            if row and row["tier"] == "pro" and row["pro_expires_at"] and row["pro_expires_at"] > now:
+                base = row["pro_expires_at"]
+            new_expiry = base + timedelta(days=days)
+            cur.execute("""
+                INSERT INTO user_tiers (telegram_id, tier, pro_expires_at)
+                VALUES (%s, 'pro', %s)
+                ON CONFLICT (telegram_id) DO UPDATE SET
+                    tier = 'pro', pro_expires_at = EXCLUDED.pro_expires_at
+                RETURNING telegram_id, tier, pro_expires_at
+            """, (tg, new_expiry))
+            return dict(cur.fetchone())
+
+
+# ─── PROMO / REFERRAL CODES ──────────────────────────────────────────────────
+# 2 loại code dùng chung 1 cơ chế redeem:
+#   kind='admin'    — admin tự tạo (trial cho bạn bè...), giới hạn max_uses tuỳ ý.
+#   kind='referral' — mỗi user có 1 code cá nhân cố định (không giới hạn lượt dùng
+#                     tổng), ai nhập vào sẽ được +days và NGƯỜI TẠO code (referrer)
+#                     cũng được +days — khuyến khích giới thiệu bạn bè thật.
+# promo_redemptions.UNIQUE(code, telegram_id) đảm bảo mỗi code chỉ dùng được
+# 1 lần/tài khoản, chặn share tràn lan cùng 1 người dùng nhiều lần.
+
+def _ensure_promo_tables(conn) -> None:
+    with conn.cursor() as cur:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS promo_codes (
+                code            TEXT PRIMARY KEY,
+                kind            TEXT NOT NULL DEFAULT 'admin',
+                days            INT  NOT NULL,
+                max_uses        INT,
+                uses_count      INT  NOT NULL DEFAULT 0,
+                created_by      BIGINT,
+                active          BOOLEAN NOT NULL DEFAULT true,
+                note            TEXT,
+                created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS promo_redemptions (
+                id              SERIAL PRIMARY KEY,
+                code            TEXT NOT NULL REFERENCES promo_codes(code),
+                telegram_id     BIGINT NOT NULL,
+                redeemed_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                UNIQUE (code, telegram_id)
+            )
+        """)
+
+
+def _gen_promo_code(prefix: str = "") -> str:
+    import random, string
+    body = "".join(random.choices(string.ascii_uppercase + string.digits, k=8))
+    return f"{prefix}{body}" if prefix else body
+
+
+def create_promo_code(days: int, max_uses: "int | None", created_by, note: str = "",
+                       code: str = None) -> dict:
+    """T2-ADMIN: admin tạo mã trial/giảm giá. code=None → tự sinh mã 8 ký tự ngẫu nhiên."""
+    with get_conn() as conn:
+        _ensure_promo_tables(conn)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            final_code = (code or _gen_promo_code()).strip().upper()
+            cur.execute("""
+                INSERT INTO promo_codes (code, kind, days, max_uses, created_by, note)
+                VALUES (%s, 'admin', %s, %s, %s, %s)
+                RETURNING *
+            """, (final_code, days, max_uses, int(created_by) if created_by else None, note))
+            return dict(cur.fetchone())
+
+
+def list_promo_codes() -> "list[dict]":
+    """Tất cả mã admin đã tạo (không gồm code referral cá nhân), mới nhất trước."""
+    with get_conn() as conn:
+        _ensure_promo_tables(conn)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT * FROM promo_codes WHERE kind = 'admin' ORDER BY created_at DESC
+            """)
+            return [dict(r) for r in cur.fetchall()]
+
+
+def deactivate_promo_code(code: str) -> bool:
+    with get_conn() as conn:
+        _ensure_promo_tables(conn)
+        with conn.cursor() as cur:
+            cur.execute("UPDATE promo_codes SET active = false WHERE code = %s", (code.strip().upper(),))
+            return cur.rowcount > 0
+
+
+def get_or_create_referral_code(telegram_id) -> str:
+    """Mỗi user có đúng 1 mã giới thiệu cá nhân, không hết hạn, không giới hạn
+    tổng lượt dùng (mỗi người khác chỉ dùng được 1 lần nhờ UNIQUE(code, telegram_id))."""
+    tg = int(telegram_id)
+    with get_conn() as conn:
+        _ensure_promo_tables(conn)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT code FROM promo_codes WHERE kind = 'referral' AND created_by = %s", (tg,))
+            row = cur.fetchone()
+            if row:
+                return row["code"]
+            code = _gen_promo_code(prefix="REF-")
+            cur.execute("""
+                INSERT INTO promo_codes (code, kind, days, max_uses, created_by, note)
+                VALUES (%s, 'referral', 30, NULL, %s, 'auto-generated referral code')
+                RETURNING code
+            """, (code, tg))
+            return cur.fetchone()["code"]
+
+
+def get_referral_stats(telegram_id) -> dict:
+    """Số người đã dùng mã giới thiệu của user này."""
+    tg = int(telegram_id)
+    with get_conn() as conn:
+        _ensure_promo_tables(conn)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT code FROM promo_codes WHERE kind = 'referral' AND created_by = %s", (tg,))
+            row = cur.fetchone()
+            if not row:
+                return {"code": None, "uses_count": 0}
+            cur.execute("SELECT COUNT(*) AS n FROM promo_redemptions WHERE code = %s", (row["code"],))
+            n = cur.fetchone()["n"]
+            return {"code": row["code"], "uses_count": n}
+
+
+def redeem_promo_code(code: str, telegram_id) -> dict:
+    """Áp dụng mã giảm giá/giới thiệu cho telegram_id. Trả {ok, error, days, referrer_bonus_days}."""
+    tg = int(telegram_id)
+    code = (code or "").strip().upper()
+    if not code:
+        return {"ok": False, "error": "Vui lòng nhập mã"}
+    with get_conn() as conn:
+        _ensure_promo_tables(conn)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT * FROM promo_codes WHERE code = %s", (code,))
+            promo = cur.fetchone()
+            if not promo:
+                return {"ok": False, "error": "Mã không tồn tại"}
+            if not promo["active"]:
+                return {"ok": False, "error": "Mã đã bị vô hiệu hoá"}
+            if promo["kind"] == "referral" and promo["created_by"] == tg:
+                return {"ok": False, "error": "Không thể dùng mã giới thiệu của chính mình"}
+            if promo["max_uses"] is not None and promo["uses_count"] >= promo["max_uses"]:
+                return {"ok": False, "error": "Mã đã hết lượt sử dụng"}
+            cur.execute("SELECT 1 FROM promo_redemptions WHERE code = %s AND telegram_id = %s", (code, tg))
+            if cur.fetchone():
+                return {"ok": False, "error": "Bạn đã sử dụng mã này rồi"}
+            cur.execute(
+                "INSERT INTO promo_redemptions (code, telegram_id) VALUES (%s, %s)", (code, tg)
+            )
+            cur.execute(
+                "UPDATE promo_codes SET uses_count = uses_count + 1 WHERE code = %s", (code,)
+            )
+    # Ngoài transaction ở trên (extend_pro tự mở connection riêng)
+    extend_pro(tg, promo["days"])
+    referrer_bonus = 0
+    if promo["kind"] == "referral" and promo["created_by"]:
+        extend_pro(promo["created_by"], promo["days"])
+        referrer_bonus = promo["days"]
+    return {"ok": True, "days": promo["days"], "referrer_bonus_days": referrer_bonus}
+
+
 # ─── ALERTS (PRO-004) ────────────────────────────────────────────────────────
 # Pro-only: user đặt ngưỡng theo dõi cho 1 quỹ, bot.job_check_alerts() (18:33,
 # sau daily harvest) so khớp và gửi Telegram khi điều kiện đạt. Debounce theo

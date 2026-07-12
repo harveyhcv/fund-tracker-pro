@@ -21,7 +21,7 @@ import os
 import sys
 import threading
 import urllib.parse as _uparse
-from datetime import date, datetime
+from datetime import date, datetime, timezone, timedelta
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from socketserver import ThreadingMixIn
 from pathlib import Path
@@ -1054,6 +1054,10 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             self._api_list_alerts(qs)
         elif path == "/api/admin/nav/pending":
             self._api_admin_nav_pending(qs)
+        elif path == "/api/referral/mine":
+            self._api_referral_mine(qs)
+        elif path == "/api/admin/promo/list":
+            self._api_admin_promo_list(qs)
         elif path == "/health":
             _json(self, {"ok": True, "ts": datetime.now().isoformat()})
         else:
@@ -1126,6 +1130,12 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             self._api_momo_create(data)
         elif path == "/api/payment/momo/ipn":
             self._api_momo_ipn(data)
+        elif path == "/api/promo/redeem":
+            self._api_promo_redeem(data)
+        elif path == "/api/admin/promo/create":
+            self._api_admin_promo_create(data)
+        elif path == "/api/admin/promo/deactivate":
+            self._api_admin_promo_deactivate(data)
         else:
             _json(self, {"error": "Not found"}, 404)
 
@@ -2052,6 +2062,114 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             return
         _json(self, {"pending": _db_mod.get_pending_confirms()})
 
+    def _api_referral_mine(self, qs: dict):
+        """GET /api/referral/mine?user_id=... — mã giới thiệu cá nhân + số người đã dùng.
+        Ai nhập mã này sẽ được +30 ngày Pro, và chủ mã (referrer) cũng được +30 ngày."""
+        tg_id = (qs.get("user_id") or [""])[0]
+        if not tg_id:
+            _json(self, {"error": "user_id required"}, 400)
+            return
+        if _db_mod is None or not _db_mod.is_available():
+            _json(self, {"error": "DB không khả dụng"}, 503)
+            return
+        try:
+            code = _db_mod.get_or_create_referral_code(tg_id)
+            stats = _db_mod.get_referral_stats(tg_id)
+        except Exception as e:
+            log.error(f"[referral] {tg_id}: {e}")
+            _json(self, {"error": "Lỗi tạo mã giới thiệu"}, 500)
+            return
+        _json(self, {"code": code, "uses_count": stats.get("uses_count", 0)})
+
+    def _api_promo_redeem(self, data: dict):
+        """POST /api/promo/redeem — {telegram_id, code}. Áp dụng mã trial/giảm giá
+        hoặc mã giới thiệu — cộng dồn ngày Pro (không reset), 1 mã/1 tài khoản."""
+        tg_id = str(data.get("telegram_id", ""))
+        code  = str(data.get("code", ""))
+        if not tg_id or not code:
+            _json(self, {"error": "telegram_id và code là bắt buộc"}, 400)
+            return
+        if not _auth_write(self, tg_id):
+            return
+        if _db_mod is None or not _db_mod.is_available():
+            _json(self, {"error": "DB không khả dụng"}, 503)
+            return
+        try:
+            result = _db_mod.redeem_promo_code(code, tg_id)
+        except Exception as e:
+            log.error(f"[promo_redeem] {tg_id} code={code}: {e}")
+            _json(self, {"error": "Lỗi áp dụng mã"}, 500)
+            return
+        if not result.get("ok"):
+            _json(self, {"error": result.get("error", "Mã không hợp lệ")}, 400)
+            return
+        _json(self, result)
+
+    def _api_admin_promo_list(self, qs: dict):
+        """GET /api/admin/promo/list?user_id=... — admin xem tất cả mã trial/giảm giá đã tạo."""
+        tg_id = (qs.get("user_id") or [""])[0]
+        if not _is_admin(tg_id):
+            _json(self, {"error": "admin_only"}, 403)
+            return
+        if _db_mod is None or not _db_mod.is_available():
+            _json(self, {"codes": []})
+            return
+        _json(self, {"codes": _db_mod.list_promo_codes()})
+
+    def _api_admin_promo_create(self, data: dict):
+        """POST /api/admin/promo/create — {telegram_id, days, max_uses, note, code?}.
+        Admin tạo mã trial (vd 30-90 ngày cho bạn bè), max_uses giới hạn tổng số lượt
+        dùng (None = không giới hạn số NGƯỜI, nhưng mỗi người vẫn chỉ dùng được 1 lần)."""
+        tg_id = str(data.get("telegram_id", ""))
+        if not _is_admin(tg_id):
+            _json(self, {"error": "admin_only"}, 403)
+            return
+        try:
+            days = int(data.get("days", 30))
+        except (TypeError, ValueError):
+            _json(self, {"error": "days phải là số nguyên"}, 400)
+            return
+        if days <= 0 or days > 365:
+            _json(self, {"error": "days phải trong khoảng 1-365"}, 400)
+            return
+        max_uses_raw = data.get("max_uses")
+        max_uses = None
+        if max_uses_raw not in (None, "", 0):
+            try:
+                max_uses = int(max_uses_raw)
+                if max_uses <= 0:
+                    max_uses = None
+            except (TypeError, ValueError):
+                max_uses = None
+        note = str(data.get("note", ""))[:200]
+        custom_code = str(data.get("code", "")).strip() or None
+        if _db_mod is None or not _db_mod.is_available():
+            _json(self, {"error": "DB không khả dụng"}, 503)
+            return
+        try:
+            promo = _db_mod.create_promo_code(days, max_uses, tg_id, note, code=custom_code)
+        except Exception as e:
+            log.error(f"[admin_promo_create] {e}")
+            _json(self, {"error": "Không tạo được mã (có thể trùng mã đã tồn tại)"}, 500)
+            return
+        _json(self, {"ok": True, "promo": promo})
+
+    def _api_admin_promo_deactivate(self, data: dict):
+        """POST /api/admin/promo/deactivate — {telegram_id, code}."""
+        tg_id = str(data.get("telegram_id", ""))
+        if not _is_admin(tg_id):
+            _json(self, {"error": "admin_only"}, 403)
+            return
+        code = str(data.get("code", ""))
+        if not code:
+            _json(self, {"error": "code required"}, 400)
+            return
+        if _db_mod is None or not _db_mod.is_available():
+            _json(self, {"error": "DB không khả dụng"}, 503)
+            return
+        ok = _db_mod.deactivate_promo_code(code)
+        _json(self, {"ok": ok})
+
     def _api_admin_nav_confirm(self, data: dict):
         """POST /api/admin/nav/confirm — admin chọn manual hoặc fetch cho pending NAV."""
         tg_id     = str(data.get("telegram_id", ""))
@@ -2627,13 +2745,14 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             parts = order_id.split("-")
             tg_id = parts[1] if len(parts) >= 3 and parts[0] == "FTP" else ""
             if tg_id and _db_mod is not None and _db_mod.is_available():
-                from datetime import timezone, timedelta
-                expires_at = datetime.now(timezone.utc) + timedelta(days=30)
+                expires_at = None
                 try:
-                    _db_mod.set_tier(tg_id, "pro", expires_at)
-                    log.info(f"[PAY][MoMo] tier=pro set for {tg_id}, expires {expires_at.date()}")
+                    result = _db_mod.extend_pro(tg_id, 30)
+                    expires_at = result.get("pro_expires_at")
+                    log.info(f"[PAY][MoMo] tier=pro extended for {tg_id}, expires {expires_at}")
                 except Exception as e:
-                    log.error(f"[PAY][MoMo] set_tier error: {e}")
+                    log.error(f"[PAY][MoMo] extend_pro error: {e}")
+                    expires_at = datetime.now(timezone.utc) + timedelta(days=30)
                 cfg = _load_cfg()
                 bot_token = cfg.get("bot_token") or os.environ.get("BOT_TOKEN", "")
                 if bot_token and not bot_token.startswith("NHAP"):

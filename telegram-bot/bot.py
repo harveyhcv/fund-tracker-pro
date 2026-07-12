@@ -3178,25 +3178,27 @@ def _handle_pre_checkout(token: str, pq: dict) -> None:
 
 
 def _handle_successful_payment(token: str, chat_id: str, msg: dict) -> None:
-    """PAY-003: Nâng cấp tier=pro 30 ngày sau khi Stars payment thành công."""
-    from datetime import datetime, timezone, timedelta
+    """PAY-003: Nâng cấp tier=pro 30 ngày sau khi Stars payment thành công.
+    Dùng extend_pro (cộng dồn) thay vì set_tier(now+30) để user gia hạn sớm
+    không bị mất số ngày Pro còn lại."""
     sp         = msg["successful_payment"]
     stars      = sp.get("total_amount", 0)
     charge_id  = sp.get("telegram_payment_charge_id", "")
     payload    = sp.get("invoice_payload", "")
     log.info(f"[PAY] successful_payment: chat={chat_id} stars={stars} charge={charge_id} payload={payload}")
 
-    expires_at = datetime.now(timezone.utc) + timedelta(days=_PRO_DAYS)
+    expires_at = None
     try:
         if _DB_AVAILABLE and _db.is_available():
-            _db.set_tier(chat_id, "pro", expires_at)
-            log.info(f"[PAY] tier=pro set for {chat_id}, expires {expires_at.date()}")
+            result = _db.extend_pro(chat_id, _PRO_DAYS)
+            expires_at = result.get("pro_expires_at")
+            log.info(f"[PAY] tier=pro extended for {chat_id}, expires {expires_at}")
         else:
             log.error(f"[PAY] DB unavailable — cannot persist tier for {chat_id}")
     except Exception as e:
-        log.error(f"[PAY] set_tier error: {e}", exc_info=True)
+        log.error(f"[PAY] extend_pro error: {e}", exc_info=True)
 
-    exp_str = expires_at.strftime("%d/%m/%Y")
+    exp_str = expires_at.strftime("%d/%m/%Y") if expires_at else "?"
     tg_send(token, chat_id, (
         f"🌟 <b>Chào mừng bạn đến với Fund Tracker Pro!</b>\n\n"
         f"✅ Thanh toán {stars} ⭐ Stars thành công\n"
