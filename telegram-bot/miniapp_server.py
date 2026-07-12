@@ -63,8 +63,24 @@ def _save_cfg(cfg: dict) -> None:
     CFG_FILE.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def _json_default(o):
+    """Fallback serializer cho json.dumps — datetime/date/Decimal từ Postgres
+    (RealDictCursor trả kiểu Python thật, không tự thành JSON được) → str/float.
+    Không có fallback này, bất kỳ endpoint nào lỡ trả nguyên datetime sẽ crash
+    TOÀN BỘ request (không gửi được response nào) → client thấy lỗi 502."""
+    if isinstance(o, (datetime, date)):
+        return o.isoformat()
+    try:
+        from decimal import Decimal
+        if isinstance(o, Decimal):
+            return float(o)
+    except ImportError:
+        pass
+    return str(o)
+
+
 def _json(handler, data, status=200):
-    body = json.dumps(data, ensure_ascii=False).encode("utf-8")
+    body = json.dumps(data, ensure_ascii=False, default=_json_default).encode("utf-8")
     handler.send_response(status)
     handler.send_header("Content-Type", "application/json; charset=utf-8")
     handler.send_header("Content-Length", str(len(body)))
@@ -1171,6 +1187,10 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             self._api_admin_promo_create(data)
         elif path == "/api/admin/promo/deactivate":
             self._api_admin_promo_deactivate(data)
+        elif path == "/api/admin/promo/activate":
+            self._api_admin_promo_activate(data)
+        elif path == "/api/admin/promo/edit":
+            self._api_admin_promo_edit(data)
         else:
             _json(self, {"error": "Not found"}, 404)
 
@@ -2208,6 +2228,60 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             return
         ok = _db_mod.deactivate_promo_code(code)
         _json(self, {"ok": ok})
+
+    def _api_admin_promo_activate(self, data: dict):
+        """POST /api/admin/promo/activate — {telegram_id, code} — bật lại mã đã vô hiệu hoá."""
+        tg_id = str(data.get("telegram_id", ""))
+        if not _is_admin(tg_id):
+            _json(self, {"error": "admin_only"}, 403)
+            return
+        code = str(data.get("code", ""))
+        if not code:
+            _json(self, {"error": "code required"}, 400)
+            return
+        if _db_mod is None or not _db_mod.is_available():
+            _json(self, {"error": "DB không khả dụng"}, 503)
+            return
+        ok = _db_mod.activate_promo_code(code)
+        _json(self, {"ok": ok})
+
+    def _api_admin_promo_edit(self, data: dict):
+        """POST /api/admin/promo/edit — {telegram_id, code, days, max_uses, note}.
+        Sửa số ngày/số lượt/ghi chú của mã đã tạo (không đổi mã, không reset lượt đã dùng)."""
+        tg_id = str(data.get("telegram_id", ""))
+        if not _is_admin(tg_id):
+            _json(self, {"error": "admin_only"}, 403)
+            return
+        code = str(data.get("code", "")).strip()
+        if not code:
+            _json(self, {"error": "code required"}, 400)
+            return
+        try:
+            days = int(data.get("days", 30))
+        except (TypeError, ValueError):
+            _json(self, {"error": "days phải là số nguyên"}, 400)
+            return
+        if days <= 0 or days > 365:
+            _json(self, {"error": "days phải trong khoảng 1-365"}, 400)
+            return
+        max_uses_raw = data.get("max_uses")
+        max_uses = None
+        if max_uses_raw not in (None, "", 0):
+            try:
+                max_uses = int(max_uses_raw)
+                if max_uses <= 0:
+                    max_uses = None
+            except (TypeError, ValueError):
+                max_uses = None
+        note = str(data.get("note", ""))[:200]
+        if _db_mod is None or not _db_mod.is_available():
+            _json(self, {"error": "DB không khả dụng"}, 503)
+            return
+        promo = _db_mod.update_promo_code(code, days, max_uses, note)
+        if not promo:
+            _json(self, {"error": f"Không tìm thấy mã {code}"}, 404)
+            return
+        _json(self, {"ok": True, "promo": promo})
 
     def _api_admin_nav_confirm(self, data: dict):
         """POST /api/admin/nav/confirm — admin chọn manual hoặc fetch cho pending NAV."""

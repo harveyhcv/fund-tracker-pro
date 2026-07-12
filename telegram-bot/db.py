@@ -21,7 +21,11 @@ SETTLEMENT_DAYS = {"T1": 1, "T2": 2, "T3": 3}
 
 
 def _migrate_data_src_enum() -> None:
-    """Thêm 'manual' và 'fixed' vào enum data_src nếu chưa có.
+    """Thêm các giá trị dùng trong NAV confidence workflow (provisional/manual/
+    pending_confirm/confirmed/fixed) vào enum data_src nếu chưa có. Thiếu bất kỳ
+    giá trị nào ở đây sẽ khiến MỌI câu SELECT/UPDATE lọc theo giá trị đó crash với
+    InvalidTextRepresentation (từng gây lỗi 502 cho /api/admin/nav/pending vì
+    'pending_confirm' chưa từng được thêm — chỉ 'manual'/'fixed' được migrate).
     ALTER TYPE ADD VALUE phải chạy ngoài transaction → dùng autocommit connection riêng."""
     db_url = os.environ.get("DATABASE_URL")
     if not db_url:
@@ -40,7 +44,7 @@ def _migrate_data_src_enum() -> None:
                 conn.close()
                 return  # TEXT column, không cần migrate
             # Thêm các giá trị mới vào enum (IF NOT EXISTS từ PG 9.3+)
-            for val in ('manual', 'fixed'):
+            for val in ('manual', 'fixed', 'provisional', 'pending_confirm', 'confirmed'):
                 try:
                     cur.execute(f"ALTER TYPE data_src ADD VALUE IF NOT EXISTS '{val}'")
                     logger.info("Migrated data_src enum: added '%s'", val)
@@ -280,7 +284,7 @@ def get_pending_confirms() -> list[dict]:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("""
                 SELECT fund_code, nav_date::text, nav AS manual_nav,
-                       pending_nav AS fetch_nav, fetched_at
+                       pending_nav AS fetch_nav, fetched_at::text
                 FROM nav_history
                 WHERE source = 'pending_confirm'
                 ORDER BY nav_date DESC, fund_code
@@ -1014,6 +1018,38 @@ def deactivate_promo_code(code: str) -> bool:
         with conn.cursor() as cur:
             cur.execute("UPDATE promo_codes SET active = false WHERE code = %s", (code.strip().upper(),))
             return cur.rowcount > 0
+
+
+def activate_promo_code(code: str) -> bool:
+    with get_conn() as conn:
+        _ensure_promo_tables(conn)
+        with conn.cursor() as cur:
+            cur.execute("UPDATE promo_codes SET active = true WHERE code = %s", (code.strip().upper(),))
+            return cur.rowcount > 0
+
+
+def update_promo_code(code: str, days: int, max_uses: "int | None", note: str) -> "dict | None":
+    """Sửa số ngày/số lượt/ghi chú của 1 mã admin đã tạo (không đổi code, kind, uses_count)."""
+    with get_conn() as conn:
+        _ensure_promo_tables(conn)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                UPDATE promo_codes SET days = %s, max_uses = %s, note = %s
+                WHERE code = %s
+                RETURNING *
+            """, (days, max_uses, note, code.strip().upper()))
+            row = cur.fetchone()
+            return dict(row) if row else None
+
+
+def code_exists(code: str) -> bool:
+    """Kiểm tra mã đã tồn tại chưa (không phân biệt hoa/thường) — dùng để validate
+    real-time trước khi admin tạo mã mới, tránh trùng mã đã dùng/đã tạo trước đó."""
+    with get_conn() as conn:
+        _ensure_promo_tables(conn)
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM promo_codes WHERE code = %s", (code.strip().upper(),))
+            return cur.fetchone() is not None
 
 
 def get_or_create_referral_code(telegram_id) -> str:
