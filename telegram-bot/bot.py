@@ -3131,6 +3131,9 @@ def command_handler():
                     elif cmd == "/app" or cmd == "/miniapp":
                         _cmd_app(token, chat_id, profile)
 
+                    elif cmd == "/beta":
+                        _cmd_beta(token, chat_id)
+
                     elif cmd == "/buy_pro":
                         _cmd_buy_pro(token, chat_id, profile)
 
@@ -3262,13 +3265,47 @@ def _cmd_buy_pro(token: str, chat_id: str, profile: Optional[dict]) -> None:
 # MINI APP
 # ═══════════════════════════════════════
 
-def _get_miniapp_url(user_id: int) -> str:
-    """Tạo URL mini app với user_id embed."""
+def _get_miniapp_url(user_id: int, beta: bool = False) -> str:
+    """Tạo URL mini app với user_id embed. beta=True → thêm &beta=1, miniapp sẽ
+    dùng tài khoản test cô lập (telegram_id âm) thay vì tài khoản thật, nhưng
+    vẫn đọc chung NAV/tín hiệu/dự báo thật (xem _effective_tg_id trong
+    miniapp_server.py)."""
     base = os.environ.get(
         "MINIAPP_URL",
         f"https://{os.environ.get('RAILWAY_PUBLIC_DOMAIN', 'localhost:8443')}"
     )
-    return f"{base}?user_id={user_id}"
+    url = f"{base}?user_id={user_id}"
+    return f"{url}&beta=1" if beta else url
+
+
+def _cmd_beta(token: str, chat_id: int) -> None:
+    """/beta — CHỈ admin. Mở Mini App ở chế độ test: tài khoản/portfolio/giao dịch
+    hoàn toàn cô lập khỏi tài khoản thật (lưu dưới telegram_id âm), nhưng NAV,
+    tín hiệu, giá vàng, dự báo T+2 vẫn dùng chung dữ liệu thật — để admin test
+    tính năng mới mà không sợ ảnh hưởng dữ liệu production của chính mình."""
+    admin_id = str(load_config().get("admin_telegram_id", ""))
+    if not admin_id or str(chat_id) != admin_id:
+        tg_send(token, str(chat_id), "⚠️ Lệnh này chỉ dành cho admin.")
+        return
+    url = _get_miniapp_url(chat_id, beta=True)
+    try:
+        r = requests.post(f"https://api.telegram.org/bot{token}/sendMessage", json={
+            "chat_id": chat_id,
+            "text": (
+                "🧪 <b>BETA MODE</b>\n\n"
+                "Tài khoản/portfolio/giao dịch trong chế độ này hoàn toàn tách biệt "
+                "khỏi tài khoản thật của bạn (không ảnh hưởng dữ liệu production). "
+                "NAV, tín hiệu, giá vàng, dự báo T+2 vẫn là dữ liệu thật để test sát thực tế."
+            ),
+            "parse_mode": "HTML",
+            "reply_markup": {"inline_keyboard": [[
+                {"text": "🧪 Mở Beta Mode", "web_app": {"url": url}}
+            ]]},
+        }, timeout=15)
+        if not r.ok:
+            log.error(f"[/beta] Telegram reject web_app button: {r.json().get('description', r.text[:200])}")
+    except Exception as e:
+        log.error(f"[/beta] {e}")
 
 
 def _cmd_app(token: str, chat_id: int, profile: Optional[dict]):

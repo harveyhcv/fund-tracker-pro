@@ -177,6 +177,7 @@ canvas{width:100%!important;height:100%!important}
 <body>
 
 <div id="toast"></div>
+<script>if(new URLSearchParams(location.search).get('beta')==='1')document.write('<div style="position:sticky;top:0;z-index:500;background:#facc15;color:#000;text-align:center;font-family:var(--mono);font-size:12px;font-weight:700;padding:4px 0;letter-spacing:.06em">🧪 BETA MODE — dữ liệu tài khoản tách biệt khỏi bản thật</div>');</script>
 <div id="tier-bar">
   <span class="tier-name" id="tier-name"></span>
   <span id="tier-right"></span>
@@ -217,7 +218,7 @@ canvas{width:100%!important;height:100%!important}
       <div style="text-align:center;margin:12px 0 4px;font-family:var(--mono);font-size:22px;color:var(--c0);font-weight:700">250 ⭐</div>
       <div style="text-align:center;font-size:12px;color:var(--txt2);margin-bottom:16px">30 ngày · Telegram Stars · Gia hạn bất kỳ lúc nào</div>
       <button class="btn btn-primary" id="upgrade-cta-btn" onclick="startUpgrade()">⭐ NÂNG CẤP PRO NGAY</button>
-      <button class="btn btn-primary" id="upgrade-momo-btn" style="background:#a50064;margin-top:8px" onclick="startUpgradeMomo()">💗 THANH TOÁN QUA MOMO</button>
+      <button class="btn" disabled style="background:var(--bg3);color:var(--txt2);border:1px solid var(--bdr);margin-top:8px;cursor:not-allowed">💗 MoMo (sắp ra mắt)</button>
       <button class="btn" style="background:transparent;border:1px solid var(--bdr);color:var(--txt2)" onclick="closeUpgradeModalBtn()">Để sau</button>
 
       <div class="section" style="margin-top:16px;border-top:1px solid var(--bdr);padding-top:14px">
@@ -716,6 +717,10 @@ function parseDecimal(s){
 }
 const USER_ID  = tg?.initDataUnsafe?.user?.id || new URLSearchParams(location.search).get('user_id') || '';
 const USER_NAME = tg?.initDataUnsafe?.user?.first_name || new URLSearchParams(location.search).get('name') || '';
+// BETA-001: /beta command (chỉ admin) mở miniapp kèm &beta=1 — mọi request tự
+// động gắn cờ này, backend sẽ cô lập tài khoản/portfolio/giao dịch sang
+// telegram_id âm (không đụng dữ liệu thật), NAV/tín hiệu/dự báo vẫn dùng chung.
+const IS_BETA = new URLSearchParams(location.search).get('beta') === '1';
 
 let _me=null, _signals=null, _tradeType='buy', _histCode=null, _histAllPoints=[];
 let _dcaStyle='dca', _goldData=null, _goldType='buy', _goldUnit='chi', _goldTrades=[];
@@ -807,8 +812,9 @@ function _authHeaders(){
 async function apiPost(path, body, timeoutMs=12000){
   const ctrl=new AbortController();
   const tid=setTimeout(()=>ctrl.abort(),timeoutMs);
+  const payload=IS_BETA?{...body,beta:'1'}:body;
   try{
-    const res=await fetch(API_BASE+path,{method:'POST',headers:_authHeaders(),body:JSON.stringify(body),signal:ctrl.signal});
+    const res=await fetch(API_BASE+path,{method:'POST',headers:_authHeaders(),body:JSON.stringify(payload),signal:ctrl.signal});
     clearTimeout(tid);
     if(!res.ok){const e=await res.json().catch(()=>({}));const err=new Error(e.error||res.status);err.body=e;err.status=res.status;throw err;}
     return res.json();
@@ -817,8 +823,9 @@ async function apiPost(path, body, timeoutMs=12000){
 async function apiDelete(path, body={}, timeoutMs=12000){
   const ctrl=new AbortController();
   const tid=setTimeout(()=>ctrl.abort(),timeoutMs);
+  const payload=IS_BETA?{...body,beta:'1'}:body;
   try{
-    const res=await fetch(API_BASE+path,{method:'DELETE',headers:_authHeaders(),body:JSON.stringify(body),signal:ctrl.signal});
+    const res=await fetch(API_BASE+path,{method:'DELETE',headers:_authHeaders(),body:JSON.stringify(payload),signal:ctrl.signal});
     clearTimeout(tid);
     if(!res.ok){const e=await res.json().catch(()=>({}));const err=new Error(e.error||res.status);err.body=e;err.status=res.status;throw err;}
     return res.json();
@@ -830,6 +837,7 @@ async function apiFetch(path, timeoutMs=12000){
   const tid=setTimeout(()=>ctrl.abort(),timeoutMs);
   let qs=USER_ID?sep+'user_id='+USER_ID:'';
   if(USER_ID&&USER_NAME)qs+='&name='+encodeURIComponent(USER_NAME);
+  if(IS_BETA)qs+='&beta=1';
   try{
     const res=await fetch(API_BASE+path+qs,{signal:ctrl.signal});
     clearTimeout(tid);

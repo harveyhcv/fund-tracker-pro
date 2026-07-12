@@ -869,15 +869,17 @@ def _validate_init_data(init_data_str: str, bot_token: str):
 
 def _auth_write(handler, claimed_tg_id: str) -> bool:
     """Kiểm tra quyền ghi: initData phải hợp lệ và user.id phải khớp claimed_tg_id.
-    Cho phép admin (admin_telegram_id trong config) bypass mọi user.
+    Cho phép admin (admin_telegram_id trong config) bypass mọi user — kể cả khi
+    claimed_tg_id là id ÂM (tài khoản /beta của admin, xem _effective_tg_id).
     Trả về True nếu được phép, False và tự gửi 403 nếu bị từ chối.
     """
     cfg       = _load_cfg()
     bot_token = cfg.get("bot_token") or os.environ.get("BOT_TOKEN", "")
     admin_id  = str(cfg.get("admin_telegram_id", ""))
 
-    # Admin luôn được phép (dùng cho import script)
-    if claimed_tg_id and claimed_tg_id == admin_id:
+    # Admin luôn được phép (dùng cho import script + tài khoản /beta của admin,
+    # vốn được lưu dưới id âm — xem _effective_tg_id)
+    if claimed_tg_id and admin_id and claimed_tg_id in (admin_id, "-" + admin_id):
         return True
 
     init_data = handler.headers.get("X-Init-Data", "")
@@ -907,6 +909,39 @@ def _is_admin(telegram_id: str) -> bool:
     cfg = _load_cfg()
     admin_id = str(cfg.get("admin_telegram_id", ""))
     return bool(admin_id and str(telegram_id) == admin_id)
+
+
+def _effective_tg_id(tg_id: str, is_beta: bool) -> str:
+    """/beta mode (BETA-001): nếu is_beta=True VÀ caller là admin, mọi thao tác
+    tài khoản (profile, watched_funds, giao dịch, tier, alerts...) được chuyển
+    sang telegram_id ÂM (cô lập hoàn toàn khỏi tài khoản thật) — NAV/tín hiệu/
+    giá vàng/dự báo T+2 KHÔNG đi qua hàm này nên vẫn dùng chung dữ liệu thật.
+    Chỉ admin mới được vào chế độ này — user khác gửi beta=1 sẽ bị bỏ qua."""
+    if is_beta and _is_admin(tg_id):
+        try:
+            return str(-abs(int(tg_id)))
+        except (TypeError, ValueError):
+            return tg_id
+    return tg_id
+
+
+def _qs_tg_id(qs: dict, alt_key: str = None) -> str:
+    """Đọc user_id từ query string + tự áp dụng /beta remap nếu có &beta=1.
+    Dùng cho các endpoint tài khoản (KHÔNG dùng cho endpoint admin-only —
+    admin-only phải check _is_admin() bằng id thật trước khi remap)."""
+    tg_id = (qs.get("user_id") or (qs.get(alt_key) if alt_key else None) or [""])[0]
+    if qs.get("beta") == ["1"]:
+        tg_id = _effective_tg_id(tg_id, True)
+    return tg_id
+
+
+def _data_tg_id(data: dict, key: str = "telegram_id") -> str:
+    """Đọc telegram_id từ body POST + tự áp dụng /beta remap nếu data['beta']==1.
+    Gọi SAU khi _auth_write() đã xác thực bằng id thật thành công."""
+    tg_id = str(data.get(key, ""))
+    if str(data.get("beta")) == "1":
+        tg_id = _effective_tg_id(tg_id, True)
+    return tg_id
 
 
 def _get_tier(telegram_id: str) -> dict:
@@ -1157,7 +1192,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
     def _api_me(self, qs: dict):
         import time as _time
         t0 = _time.time()
-        tg_id = (qs.get("user_id") or qs.get("telegram_id") or [""])[0]
+        tg_id = _qs_tg_id(qs, "telegram_id")
         if not tg_id:
             _json(self, {"error": "user_id required"}, 400)
             return
@@ -1215,7 +1250,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         })
 
     def _api_signals(self, qs: dict):
-        tg_id   = (qs.get("user_id") or [""])[0]
+        tg_id = _qs_tg_id(qs)
         cfg     = _load_cfg()
         profile = _find_profile(cfg, tg_id) if tg_id else None
         watched = profile.get("watched_funds", []) if profile else list(cfg.get("funds", {}).keys())[:10]
@@ -1245,7 +1280,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
 
     def _api_update_watched(self, data: dict):
         """POST /api/me/watched_funds — cập nhật danh sách quỹ theo dõi."""
-        tg_id   = str(data.get("telegram_id", ""))
+        tg_id   = _data_tg_id(data)
         watched = data.get("watched_funds", [])
         if not tg_id:
             _json(self, {"error": "telegram_id required"}, 400)
@@ -1285,7 +1320,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
 
     def _api_list_alerts(self, qs: dict):
         """GET /api/alerts?user_id=... — PRO-004, danh sách cảnh báo đang bật của user."""
-        tg_id = (qs.get("user_id") or [""])[0]
+        tg_id = _qs_tg_id(qs)
         if not _check_tier(self, tg_id, "pro"):
             return
         if _db_mod is None or not _db_mod.is_available():
@@ -1322,6 +1357,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             threshold = None
         if not _auth_write(self, tg_id):
             return
+        tg_id = _data_tg_id(data)
         if not _check_tier(self, tg_id, "pro"):
             return
         cfg = _load_cfg()
@@ -1367,7 +1403,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         if not code or len(code) > 10:
             _json(self, {"error": "Invalid code"}, 400)
             return
-        tg_id = (qs.get("user_id") or [""])[0]
+        tg_id = _qs_tg_id(qs)
         if not _check_tier(self, tg_id, "pro"):
             return
         if _db_mod is None or not _db_mod.is_available():
@@ -1388,7 +1424,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         if not code or len(code) > 10:
             _json(self, {"error": "Invalid code"}, 400)
             return
-        tg_id = qs.get("user_id", [""])[0]
+        tg_id = _qs_tg_id(qs)
         if not _check_tier(self, tg_id, "pro"):
             return
         cfg = _load_cfg()
@@ -1608,7 +1644,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             _json(self, {"error": str(e)}, 500)
 
     def _api_dca(self, qs: dict):
-        tg_id  = (qs.get("user_id") or [""])[0]
+        tg_id = _qs_tg_id(qs)
         budget = float((qs.get("budget") or ["0"])[0])
         style  = (qs.get("style") or ["dca"])[0]
         cfg    = _load_cfg()
@@ -1641,6 +1677,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         if is_dividend and units <= 0 and amount <= 0:
             _json(self, {"error": "Lợi tức cần có số CCQ hoặc số tiền"}, 400); return
         if not _auth_write(self, tg_id): return
+        tg_id = _data_tg_id(data)
         _init_trade_tables()
         try:
             conn = _get_db_conn()
@@ -1663,7 +1700,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
 
     def _api_get_trades(self, qs: dict):
         """GET /api/trades?user_id=... — trả về CCQ trades từ DB."""
-        tg_id = (qs.get("user_id") or qs.get("telegram_id") or [""])[0]
+        tg_id = _qs_tg_id(qs, "telegram_id")
         if not tg_id:
             _json(self, {"error": "user_id required"}, 400); return
         _init_trade_tables()
@@ -1763,7 +1800,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
 
     def _api_gold(self, qs: dict):
         """GET /api/gold?user_id=... — giá vàng mới nhất + tín hiệu + portfolio."""
-        tg_id = (qs.get("user_id") or [""])[0]
+        tg_id = _qs_tg_id(qs)
         db_url = os.environ.get("DATABASE_URL", _load_cfg().get("database_url", ""))
         prices = {}
         if db_url:
@@ -1902,7 +1939,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
 
     def _api_get_gold_trades(self, qs: dict):
         """GET /api/gold/trades?user_id=... — đọc từ PostgreSQL."""
-        tg_id = (qs.get("user_id") or [""])[0]
+        tg_id = _qs_tg_id(qs)
         if not tg_id:
             _json(self, {"error": "user_id required"}, 400); return
         _init_trade_tables()
@@ -1942,6 +1979,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         if not all([tg_id, tx_type in ("buy", "sell"), qty > 0, price > 0]):
             _json(self, {"error": "Thiếu hoặc sai thông tin"}, 400); return
         if not _auth_write(self, tg_id): return
+        tg_id = _data_tg_id(data)
         _init_trade_tables()
         try:
             conn = _get_db_conn()
@@ -2065,7 +2103,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
     def _api_referral_mine(self, qs: dict):
         """GET /api/referral/mine?user_id=... — mã giới thiệu cá nhân + số người đã dùng.
         Ai nhập mã này sẽ được +30 ngày Pro, và chủ mã (referrer) cũng được +30 ngày."""
-        tg_id = (qs.get("user_id") or [""])[0]
+        tg_id = _qs_tg_id(qs)
         if not tg_id:
             _json(self, {"error": "user_id required"}, 400)
             return
@@ -2091,6 +2129,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             return
         if not _auth_write(self, tg_id):
             return
+        tg_id = _data_tg_id(data)
         if _db_mod is None or not _db_mod.is_available():
             _json(self, {"error": "DB không khả dụng"}, 503)
             return
