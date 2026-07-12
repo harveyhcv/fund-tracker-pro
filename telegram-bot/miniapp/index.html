@@ -1087,32 +1087,48 @@ async function loadGoldSignalTab(){
 }
 
 function _goldExtendedHtml(sig){
-  const rows=[];
+  const terms=[];
   if(sig.stoch_k!=null&&sig.stoch_d!=null){
     const k=sig.stoch_k,d=sig.stoch_d;
     const note=(k<20&&d<20)?'Quá bán 🟢':(k>80&&d>80)?'Quá mua 🔴':'Trung tính ⚪';
-    rows.push(['Stochastic',`%K ${k.toFixed(0)} / %D ${d.toFixed(0)} — ${note}`]);
+    terms.push([`Stochastic = %K ${k.toFixed(0)} / %D ${d.toFixed(0)} — ${note}`,
+      'Đo vị trí giá vàng hiện tại so với vùng cao nhất/thấp nhất 14 phiên gần đây. Dưới 20 = quá bán (dễ hồi); trên 80 = quá mua (dễ điều chỉnh).']);
   }
   if(sig.cci!=null){
     const note=sig.cci<-100?'Quá bán 🟢':sig.cci>100?'Quá mua 🔴':'Trung tính ⚪';
-    rows.push(['CCI(20)',`${sig.cci.toFixed(0)} — ${note}`]);
+    terms.push([`CCI(20) = ${sig.cci.toFixed(0)} — ${note}`,
+      'Commodity Channel Index — đo độ lệch giá so với trung bình 20 phiên. Dưới -100 = quá bán; trên +100 = quá mua.']);
   }
   if(sig.roc!=null){
     const note=sig.roc<-5?'Đà giảm mạnh 🟢':sig.roc>5?'Đà tăng mạnh ⚠️':'Trung tính ⚪';
-    rows.push(['ROC(10)',`${sig.roc>=0?'+':''}${sig.roc.toFixed(1)}% — ${note}`]);
+    terms.push([`ROC(10) = ${sig.roc>=0?'+':''}${sig.roc.toFixed(1)}% — ${note}`,
+      '% giá thay đổi so với 10 phiên trước, đo tốc độ tăng/giảm gần đây.']);
   }
   if(sig.gc_type){
     const lbl={golden:'Golden Cross 🟢🟢',death:'Death Cross 🔴🔴',above:'MA20 > MA50 ↑',below:'MA20 < MA50 ↓'}[sig.gc_type];
-    if(lbl) rows.push(['Golden Cross',lbl]);
+    if(lbl) terms.push([`Golden Cross = ${lbl}`,
+      'Khi MA20 cắt LÊN MA50 gọi là "Golden Cross" — tín hiệu đảo chiều tăng. Cắt XUỐNG gọi là "Death Cross" — cảnh báo xu hướng giảm bắt đầu.']);
   }
-  if(sig.sharpe!=null) rows.push(['Sharpe Ratio',sig.sharpe.toFixed(2)]);
-  if(sig.sortino!=null) rows.push(['Sortino Ratio',sig.sortino.toFixed(2)]);
-  if(sig.volatility!=null) rows.push(['Biến động (năm hoá)',`${sig.volatility.toFixed(1)}%/năm`]);
-  if(sig.max_dd!=null) rows.push(['Max Drawdown',`${sig.max_dd.toFixed(1)}%`]);
-  if(!rows.length) return '';
-  return `<div class="card">
-    <div class="card-title" style="font-size:11px">CHỈ SỐ MỞ RỘNG</div>
-    ${rows.map(([lbl,val])=>`<div class="sum-row"><span class="sum-label" style="font-size:11px">${lbl}</span><span class="sum-val" style="font-size:12px">${val}</span></div>`).join('')}
+  if(sig.sharpe!=null) terms.push([`Sharpe Ratio = ${sig.sharpe.toFixed(2)}`,
+    'Đo lợi nhuận nhận được so với mức rủi ro (biến động giá) đã chấp nhận. Trên 1 = tốt; dưới 0 = kém (rủi ro nhiều hơn lợi ích).']);
+  if(sig.sortino!=null) terms.push([`Sortino Ratio = ${sig.sortino.toFixed(2)}`,
+    'Tương tự Sharpe nhưng chỉ tính rủi ro từ những lần giá GIẢM — thường được xem là thước đo công bằng hơn.']);
+  if(sig.volatility!=null) terms.push([`Biến động = ${sig.volatility.toFixed(1)}%/năm`,
+    'Mức dao động giá vàng hàng năm. Càng cao, giá càng lên xuống thất thường — cần tâm lý vững để nắm giữ.']);
+  if(sig.max_dd!=null) terms.push([`Max Drawdown = ${sig.max_dd.toFixed(1)}%`,
+    'Mức giảm sâu nhất từ đỉnh xuống đáy gần đây — hình dung "tệ nhất từng xảy ra" để cân nhắc tỷ trọng nắm giữ.']);
+  if(!terms.length) return '';
+  return `<div class="school-card" onclick="toggleSchool(this)">
+    <div class="school-hdr">
+      <div>
+        <div class="school-title">📐 Chỉ số mở rộng</div>
+        <div class="school-summary">Stochastic, CCI, ROC, Golden Cross, Sharpe, Sortino, Biến động, Max Drawdown</div>
+      </div>
+      <div class="school-chevron">▾</div>
+    </div>
+    <div class="school-detail">
+      ${terms.map(([lbl,exp])=>`<div class="school-term"><span class="school-term-lbl">${lbl}</span><span class="school-term-val">${exp}</span></div>`).join('')}
+    </div>
   </div>`;
 }
 
@@ -1482,16 +1498,17 @@ function renderResearch(d){
       <div class="school-chevron">▾</div>
     </div>
     <div class="school-detail">
-      ${ta.rsi?`<div class="ind-row"><span class="ind-lbl">RSI(14)</span><span class="ind-val">${ta.rsi}</span></div>`:''}
-      ${ta.bb?`<div class="ind-row"><span class="ind-lbl">Bollinger</span><span class="ind-val">${ta.bb}</span></div>`:''}
-      ${ta.macd?`<div class="ind-row"><span class="ind-lbl">MACD</span><span class="ind-val">${ta.macd}</span></div>`:''}
-      ${ta.ma?`<div class="ind-row"><span class="ind-lbl">MA20/50</span><span class="ind-val">${ta.ma}</span></div>`:''}
-      ${ta.golden_cross?`<div class="ind-row"><span class="ind-lbl">Golden Cross</span><span class="ind-val">${ta.golden_cross}</span></div>`:''}
-      ${ta.stoch?`<div class="ind-row"><span class="ind-lbl">Stochastic</span><span class="ind-val">${ta.stoch}</span></div>`:''}
-      ${ta.cci?`<div class="ind-row"><span class="ind-lbl">CCI(20)</span><span class="ind-val">${ta.cci}</span></div>`:''}
-      ${ta.roc?`<div class="ind-row"><span class="ind-lbl">ROC(10)</span><span class="ind-val">${ta.roc}</span></div>`:''}
-      ${(ta.details||[]).length?`<div style="font-size:11px;color:var(--txt2);margin-top:4px">🔍 ${ta.details.join(' · ')}</div>`:''}
-      <div style="font-size:11px;color:var(--txt2);margin-top:4px"><b>Score kỹ thuật: ${d.score>=0?'+':''}${d.score}</b> (MUA MẠNH≥6, MUA≥3, HOLD, BÁN≤-3, BÁN MẠNH≤-6)</div>
+      <div class="school-body">Đây là 8 chỉ báo kỹ thuật kinh điển, tính từ lịch sử NAV — không dựa vào tin tức hay ý kiến chủ quan. Mỗi chỉ báo cho 1 góc nhìn khác nhau về việc quỹ đang "rẻ/đắt" hay "sắp đảo chiều" so với chính lịch sử của nó.</div>
+      ${ta.rsi?`<div class="school-term"><span class="school-term-lbl">RSI(14) = ${ta.rsi}</span><span class="school-term-val">Đo lực mua/bán trong 14 phiên gần nhất, thang 0–100. Dưới 30–35 = quỹ đang bị bán quá mức → thường sẽ hồi phục (vùng tốt để mua). Trên 65–70 = đang được mua nhiều → có thể sắp điều chỉnh.</span></div>`:''}
+      ${ta.bb?`<div class="school-term"><span class="school-term-lbl">Bollinger = ${ta.bb}</span><span class="school-term-val">Dải dao động NAV quanh đường trung bình 20 ngày. BB% cho biết NAV đang ở đâu trong dải: gần 0% = sát đáy dải (rẻ), gần 100% = sát đỉnh dải (đắt).</span></div>`:''}
+      ${ta.macd?`<div class="school-term"><span class="school-term-lbl">MACD = ${ta.macd}</span><span class="school-term-val">So sánh đường trung bình nhanh (12 ngày) với chậm (26 ngày) để đo đà tăng/giảm. Dương (▲) = đà tăng đang mạnh dần; Âm (▼) = đà giảm đang mạnh dần.</span></div>`:''}
+      ${ta.ma?`<div class="school-term"><span class="school-term-lbl">MA20/50 = ${ta.ma}</span><span class="school-term-val">So sánh NAV bình quân 20 phiên gần nhất với 50 phiên. MA20 cao hơn MA50 nghĩa là xu hướng ngắn hạn đang tăng nhanh hơn dài hạn — thường là tín hiệu tích cực.</span></div>`:''}
+      ${ta.golden_cross?`<div class="school-term"><span class="school-term-lbl">Golden Cross</span><span class="school-term-val">${ta.golden_cross}. Khi MA20 cắt LÊN MA50 gọi là "Golden Cross" — tín hiệu đảo chiều tăng được nhiều quỹ tổ chức theo dõi. Cắt XUỐNG gọi là "Death Cross" — cảnh báo xu hướng giảm bắt đầu.</span></div>`:''}
+      ${ta.stoch?`<div class="school-term"><span class="school-term-lbl">Stochastic = ${ta.stoch}</span><span class="school-term-val">Đo vị trí NAV hiện tại so với vùng cao nhất/thấp nhất 14 phiên gần đây. Dưới 20 = quá bán (dễ hồi); trên 80 = quá mua (dễ điều chỉnh).</span></div>`:''}
+      ${ta.cci?`<div class="school-term"><span class="school-term-lbl">CCI(20) = ${ta.cci}</span><span class="school-term-val">Commodity Channel Index — đo độ lệch NAV so với trung bình 20 phiên. Dưới -100 = quá bán; trên +100 = quá mua.</span></div>`:''}
+      ${ta.roc?`<div class="school-term"><span class="school-term-lbl">ROC(10) = ${ta.roc}</span><span class="school-term-val">Rate of Change — % NAV thay đổi so với 10 phiên trước, đo tốc độ tăng/giảm gần đây. Càng âm sâu càng có thể là cơ hội "bắt đáy", càng dương cao càng nên cẩn trọng vì đã tăng nóng.</span></div>`:''}
+      ${(ta.details||[]).length?`<div style="font-size:11px;color:var(--txt2);margin-top:8px">🔍 Tóm tắt: ${ta.details.join(' · ')}</div>`:''}
+      <div class="school-body" style="margin-top:8px"><b>Score kỹ thuật: ${d.score>=0?'+':''}${d.score}</b> — mỗi chỉ báo ở trên được quy đổi thành điểm cộng/trừ; tổng điểm càng cao (dương) tín hiệu MUA càng mạnh, càng thấp (âm) tín hiệu BÁN càng mạnh. Thang: MUA MẠNH≥6 · MUA≥3 · HOLD (-3 đến 3) · BÁN≤-3 · BÁN MẠNH≤-6.</div>
     </div>
   </div>
 
@@ -1504,7 +1521,8 @@ function renderResearch(d){
       <div class="school-chevron">▾</div>
     </div>
     <div class="school-detail">
-      <div style="font-size:11px;color:var(--txt2);margin-bottom:4px">Vị trí trong range 52 tuần</div>
+      <div class="school-body">Trường phái "đầu tư giá trị" (value investing) không nhìn vào biến động ngắn hạn, mà so sánh giá hiện tại với vùng giá đã từng giao dịch trong 1 năm qua — mua khi "rẻ" (gần đáy), thận trọng khi "đắt" (gần đỉnh) so với chính lịch sử của quỹ.</div>
+      <div style="font-size:11px;color:var(--txt2);margin:8px 0 4px">Vị trí NAV hiện tại trong khoảng giá 52 tuần (thấp nhất — cao nhất 1 năm qua)</div>
       <div class="range-bar-wrap">
         <div class="range-bar-fill" style="width:100%"></div>
         <div class="range-marker" style="left:${pos}%"></div>
@@ -1514,9 +1532,11 @@ function renderResearch(d){
         <span>${pos.toFixed(0)}%</span>
         <span>Đỉnh ${fmt(Math.round(hi))}</span>
       </div>
-      <div class="ind-row" style="margin-top:6px"><span class="ind-lbl">Cách đỉnh</span><span class="ind-val pnl ${pnlC(val.pct_from_high||0)}">${(val.pct_from_high||0).toFixed(1)}%</span></div>
+      <div class="school-term" style="margin-top:8px"><span class="school-term-lbl">Vị trí ${pos.toFixed(0)}%</span><span class="school-term-val">Gần 0% = NAV đang ở sát mức thấp nhất 1 năm qua (rẻ so với chính nó) — cơ hội tích lũy. Gần 100% = NAV đang ở sát mức cao nhất (đắt) — nên cân nhắc trước khi mua thêm.</span></div>
+      <div class="ind-row"><span class="ind-lbl">Cách đỉnh</span><span class="ind-val pnl ${pnlC(val.pct_from_high||0)}">${(val.pct_from_high||0).toFixed(1)}%</span></div>
       <div class="ind-row"><span class="ind-lbl">Cách đáy</span><span class="ind-val pnl pos">+${(val.pct_from_low||0).toFixed(1)}%</span></div>
       ${val.chg365!=null?`<div class="ind-row"><span class="ind-lbl">1 năm</span><span class="ind-val pnl ${pnlC(val.chg365)}">${fmtP(val.chg365)}</span></div>`:''}
+      <div style="font-size:11px;color:var(--txt2);margin-top:6px">"Cách đỉnh/đáy" là % NAV hiện tại còn cách mức cao nhất/thấp nhất 52 tuần. "1 năm" là hiệu suất NAV so với đúng 1 năm trước — con số này càng cao, quỹ càng tăng trưởng tốt trong dài hạn.</div>
     </div>
   </div>
 
@@ -1529,8 +1549,9 @@ function renderResearch(d){
       <div class="school-chevron">▾</div>
     </div>
     <div class="school-detail">
-      ${mom.chg30!=null?`<div class="ind-row"><span class="ind-lbl">30 ngày</span><span class="ind-val pnl ${pnlC(mom.chg30)}">${fmtP(mom.chg30)}</span></div>`:''}
-      <div class="ind-row"><span class="ind-lbl">MA Trend</span><span class="ind-val">${mom.up_trend?'MA20 > MA50 — Xu hướng TĂNG ↑ ✅':'MA20 < MA50 — Xu hướng GIẢM ↓ ⚠️'}</span></div>
+      <div class="school-body">Trường phái "theo đà" (momentum) dựa trên quan sát: quỹ đang tăng thường có xu hướng tiếp tục tăng trong ngắn hạn, và ngược lại — khác với đầu tư giá trị (mua khi rẻ), momentum tìm quỹ đang có đà tốt để đi theo xu hướng.</div>
+      ${mom.chg30!=null?`<div class="school-term" style="margin-top:8px"><span class="school-term-lbl">30 ngày = ${fmtP(mom.chg30)}</span><span class="school-term-val">% NAV thay đổi trong 30 phiên gần nhất — đo tốc độ tăng/giảm trung hạn. Dương nhiều = đà tăng đang tốt; âm nhiều = đà giảm đang mạnh.</span></div>`:''}
+      <div class="school-term"><span class="school-term-lbl">MA Trend</span><span class="school-term-val">${mom.up_trend?'MA20 > MA50 — xu hướng ngắn hạn đang mạnh hơn dài hạn, nghiêng về TĂNG ↑':'MA20 < MA50 — xu hướng ngắn hạn đang yếu hơn dài hạn, nghiêng về GIẢM ↓'}</span></div>
     </div>
   </div>
 
@@ -1543,8 +1564,9 @@ function renderResearch(d){
       <div class="school-chevron">▾</div>
     </div>
     <div class="school-detail">
-      <div class="ind-row"><span class="ind-lbl">vs MA50</span><span class="ind-val">${dca.below_ma50?'Dưới MA50 — giá hợp lý ✅':'Trên MA50 — giá đã tăng rồi ⚠️'}</span></div>
-      <div class="ind-row"><span class="ind-lbl">RSI</span><span class="ind-val">${dca.oversold?'Quá bán — cơ hội tích lũy ✅':'Bình thường'}</span></div>
+      <div class="school-body"><b>DCA (Dollar Cost Averaging — đầu tư định kỳ đều đặn)</b> là mua một số tiền cố định vào những thời điểm cố định (vd: hàng tháng), bất kể giá đang lên hay xuống. Cách này giúp bạn không cần đoán đỉnh/đáy — tự động mua được nhiều CCQ hơn khi giá rẻ và ít hơn khi giá đắt, giúp trung bình hoá rủi ro theo thời gian. Đây là chiến lược phù hợp nhất cho người mới bắt đầu.</div>
+      <div class="school-term" style="margin-top:8px"><span class="school-term-lbl">vs MA50</span><span class="school-term-val">${dca.below_ma50?'NAV đang thấp hơn trung bình 50 phiên gần nhất — giá đang ở vùng hợp lý để mua đều ✅':'NAV đang cao hơn trung bình 50 phiên gần nhất — giá đã tăng, vẫn có thể DCA theo kế hoạch nhưng không nên mua dồn ⚠️'}</span></div>
+      <div class="school-term"><span class="school-term-lbl">RSI</span><span class="school-term-val">${dca.oversold?'RSI dưới 45 — quỹ đang trong vùng bị bán khá nhiều, kết hợp DCA lúc này thường hiệu quả hơn ✅':'RSI đang ở mức bình thường, không có gì đặc biệt để tăng/giảm tốc độ DCA'}</span></div>
     </div>
   </div>
 
@@ -1557,11 +1579,12 @@ function renderResearch(d){
       <div class="school-chevron">▾</div>
     </div>
     <div class="school-detail">
-      ${risk.vol_30d!=null?`<div class="ind-row"><span class="ind-lbl">Biến động</span><span class="ind-val">${risk.vol_30d.toFixed(1)}%/năm (năm hóa 30 ngày)</span></div>`:''}
+      <div class="school-body">Rủi ro không có nghĩa là "xấu" — mà là mức độ NAV có thể dao động, để bạn biết mình có chịu đựng được khi NAV tạm thời giảm hay không, trước khi quyết định tỷ trọng đầu tư.</div>
+      ${risk.vol_30d!=null?`<div class="school-term" style="margin-top:8px"><span class="school-term-lbl">Biến động = ${risk.vol_30d.toFixed(1)}%/năm</span><span class="school-term-val">Đo mức dao động NAV hàng năm (năm hoá từ 30 ngày gần nhất). Dưới 4%/năm = thấp (thường là quỹ trái phiếu); 4–10% = trung bình; trên 10% = cao (thường là quỹ cổ phiếu) — càng cao thì NAV càng lên xuống thất thường.</span></div>`:''}
       ${risk.volatility_1y!=null?`<div class="ind-row"><span class="ind-lbl">Biến động (1 năm)</span><span class="ind-val">${risk.volatility_1y.toFixed(1)}%/năm</span></div>`:''}
-      ${risk.max_drawdown?`<div class="ind-row"><span class="ind-lbl">Max DD</span><span class="ind-val pnl neg">${risk.max_drawdown.toFixed(1)}% (1 năm)</span></div>`:''}
-      ${risk.sharpe?`<div class="ind-row"><span class="ind-lbl">Sharpe Ratio</span><span class="ind-val">${risk.sharpe}</span></div>`:''}
-      ${risk.sortino!=null?`<div class="ind-row"><span class="ind-lbl">Sortino Ratio</span><span class="ind-val">${risk.sortino.toFixed(2)}</span></div>`:''}
+      ${risk.max_drawdown?`<div class="school-term"><span class="school-term-lbl">Max Drawdown = ${risk.max_drawdown.toFixed(1)}%</span><span class="school-term-val">Mức giảm sâu nhất từ đỉnh xuống đáy trong 1 năm gần đây — đây là con số hình dung "tệ nhất từng xảy ra". Nếu bạn không chịu được mức lỗ tạm thời này, nên cân nhắc giảm tỷ trọng.</span></div>`:''}
+      ${risk.sharpe?`<div class="school-term"><span class="school-term-lbl">Sharpe Ratio = ${risk.sharpe}</span><span class="school-term-val">Đo lợi nhuận nhận được so với mức rủi ro đã chấp nhận (so với gửi tiết kiệm không rủi ro). Trên 1 = tốt (lợi nhuận bù đắp xứng đáng cho rủi ro); dưới 0 = kém (rủi ro nhiều hơn lợi ích nhận được).</span></div>`:''}
+      ${risk.sortino!=null?`<div class="school-term"><span class="school-term-lbl">Sortino Ratio = ${risk.sortino.toFixed(2)}</span><span class="school-term-val">Tương tự Sharpe nhưng chỉ tính rủi ro từ những lần NAV GIẢM (bỏ qua biến động tăng, vốn không phải rủi ro thực sự với người nắm giữ) — thường được xem là thước đo công bằng hơn.</span></div>`:''}
     </div>
   </div>
 
