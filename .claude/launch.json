@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dashboard",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["dashboard/server.py"],
+      "port": 8080
+    },
+    {
+      "name": "miniapp",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8443", "--directory", "telegram-bot/miniapp"],
+      "port": 8443
+    },
+    {
+      "name": "miniapp-full",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-c", "import sys,json,os; sys.path.insert(0,'telegram-bot'); c=json.load(open('telegram-bot/config.json',encoding='utf-8')); os.environ['DATABASE_URL']=c['database_url']; import miniapp_server; miniapp_server.start_miniapp_server()"],
+      "port": 8443
+    }
+  ]
+}
