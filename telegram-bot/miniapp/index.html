@@ -1352,11 +1352,11 @@ function _t2Html(code, navNow, compact=false){
 
 function navConfidenceBadge(s){
   const src=s.nav_source||'';
-  if(src==='provisional') return '<span style="font-size:9px;background:#1a1a00;color:#facc15;border:1px solid #854d0e;border-radius:4px;padding:1px 4px;margin-left:4px">⏳ tạm</span>';
-  if(src==='manual')      return '<span style="font-size:9px;background:#001a10;color:#4ade80;border:1px solid #14532d;border-radius:4px;padding:1px 4px;margin-left:4px">📝 thủ công</span>';
-  if(src==='pending_confirm') return '<span style="font-size:9px;background:#1a0000;color:#f87171;border:1px solid #7f1d1d;border-radius:4px;padding:1px 4px;margin-left:4px">⚠️ cần xác nhận</span>';
-  if(src==='confirmed')   return '<span style="font-size:9px;background:#001020;color:#38bdf8;border:1px solid #0c4a6e;border-radius:4px;padding:1px 4px;margin-left:4px">✅ đã xác nhận</span>';
-  if(src==='fixed')       return '<span style="font-size:9px;background:#0a0010;color:#c084fc;border:1px solid #581c87;border-radius:4px;padding:1px 4px;margin-left:4px">🔒 đã khóa</span>';
+  if(src==='provisional') return '<span style="font-size:9px;white-space:nowrap;background:#1a1a00;color:#facc15;border:1px solid #854d0e;border-radius:4px;padding:1px 4px;margin-left:4px">⏳ tạm</span>';
+  if(src==='manual')      return '<span style="font-size:9px;white-space:nowrap;background:#001a10;color:#4ade80;border:1px solid #14532d;border-radius:4px;padding:1px 4px;margin-left:4px">📝 thủ công</span>';
+  if(src==='pending_confirm') return '<span style="font-size:9px;white-space:nowrap;background:#1a0000;color:#f87171;border:1px solid #7f1d1d;border-radius:4px;padding:1px 4px;margin-left:4px">⚠️ cần xác nhận</span>';
+  if(src==='confirmed')   return '<span style="font-size:9px;white-space:nowrap;background:#001020;color:#38bdf8;border:1px solid #0c4a6e;border-radius:4px;padding:1px 4px;margin-left:4px">✅ đã xác nhận</span>';
+  if(src==='fixed')       return '<span style="font-size:9px;white-space:nowrap;background:#0a0010;color:#c084fc;border:1px solid #581c87;border-radius:4px;padding:1px 4px;margin-left:4px">🔒 đã khóa</span>';
   return '';
 }
 
@@ -1365,7 +1365,7 @@ function positionBadge(s){
   if(!p) return '';
   const c=p.pnl_pct>=0?'var(--buy)':'var(--sell)';
   const sign=p.pnl_pct>=0?'+':'';
-  return `<span style="font-size:9px;background:${p.pnl_pct>=0?'#001a10':'#1a0000'};color:${c};border:1px solid ${p.pnl_pct>=0?'#14532d':'#7f1d1d'};border-radius:4px;padding:1px 4px;margin-left:4px" title="Vị thế của bạn: ${p.units} CCQ, vốn ${fmt(p.avg_cost)}đ">💼 ${sign}${p.pnl_pct}%</span>`;
+  return `<span style="font-size:9px;white-space:nowrap;background:${p.pnl_pct>=0?'#001a10':'#1a0000'};color:${c};border:1px solid ${p.pnl_pct>=0?'#14532d':'#7f1d1d'};border-radius:4px;padding:1px 4px;margin-left:4px" title="Vị thế của bạn: ${p.units} CCQ, vốn ${fmt(p.avg_cost)}đ">💼 ${sign}${p.pnl_pct}%</span>`;
 }
 
 function renderSignals(sigs){
