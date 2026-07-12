@@ -1451,6 +1451,12 @@ function renderResearch(d){
 
   document.getElementById('modal-title').textContent=d.code+(d.fund_name?' — '+d.fund_name.substring(0,20):'');
 
+  const taC   = ta.verdict?.includes('MUA')?'var(--buy)':ta.verdict?.includes('BÁN')?'var(--sell)':'var(--txt2)';
+  const valC  = val.verdict?.includes('RẺ')?'var(--buy)':val.verdict?.includes('ĐẮT')?'var(--sell)':val.verdict?.includes('⚠️')?'var(--hold)':'var(--txt2)';
+  const momC  = mom.verdict?.includes('TĂNG MẠNH')?'var(--buy)':mom.verdict?.includes('GIẢM')?'var(--sell)':'var(--txt2)';
+  const dcaC  = (dca.verdict?.includes('TỐT')||dca.verdict?.includes('PHÙ'))?'var(--buy)':dca.verdict?.includes('CHỜ')?'var(--hold)':'var(--txt2)';
+  const riskC = risk.verdict?.includes('THẤP')?'var(--buy)':risk.verdict?.includes('CAO')?'var(--sell)':'var(--hold)';
+
   let html=`
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
     <div>
@@ -1465,88 +1471,140 @@ function renderResearch(d){
   ${_t2Html(d.code, d.nav, false)}
   ${_positionHtml(d.position)}
 
-  <div class="section">
-    <div class="section-hdr">1️⃣ Kỹ thuật (Technical Analysis)</div>
-    <div class="verdict" style="color:${ta.verdict?.includes('MUA')?'var(--buy)':ta.verdict?.includes('BÁN')?'var(--sell)':'var(--txt)'}">→ ${ta.verdict||'—'}</div>
-    ${ta.rsi?`<div class="ind-row"><span class="ind-lbl">RSI(14)</span><span class="ind-val">${ta.rsi}</span></div>`:''}
-    ${ta.bb?`<div class="ind-row"><span class="ind-lbl">Bollinger</span><span class="ind-val">${ta.bb}</span></div>`:''}
-    ${ta.macd?`<div class="ind-row"><span class="ind-lbl">MACD</span><span class="ind-val">${ta.macd}</span></div>`:''}
-    ${ta.ma?`<div class="ind-row"><span class="ind-lbl">MA20/50</span><span class="ind-val">${ta.ma}</span></div>`:''}
-    ${ta.golden_cross?`<div class="ind-row"><span class="ind-lbl">Golden Cross</span><span class="ind-val">${ta.golden_cross}</span></div>`:''}
-    ${ta.stoch?`<div class="ind-row"><span class="ind-lbl">Stochastic</span><span class="ind-val">${ta.stoch}</span></div>`:''}
-    ${ta.cci?`<div class="ind-row"><span class="ind-lbl">CCI(20)</span><span class="ind-val">${ta.cci}</span></div>`:''}
-    ${ta.roc?`<div class="ind-row"><span class="ind-lbl">ROC(10)</span><span class="ind-val">${ta.roc}</span></div>`:''}
-    ${(ta.details||[]).length?`<div style="font-size:11px;color:var(--txt2);margin-top:4px">🔍 ${ta.details.join(' · ')}</div>`:''}
-    <div style="font-size:11px;color:var(--txt2);margin-top:4px"><b>Score kỹ thuật: ${d.score>=0?'+':''}${d.score}</b> (MUA MẠNH≥6, MUA≥3, HOLD, BÁN≤-3, BÁN MẠNH≤-6)</div>
-  </div>
+  <div class="conclusion" style="margin-bottom:10px">${conclusion}</div>
 
-  <div class="section">
-    <div class="section-hdr">2️⃣ Giá trị (Value Investing)</div>
-    <div class="verdict" style="color:${val.verdict?.includes('RẺ')?'var(--buy)':val.verdict?.includes('ĐẮT')?'var(--sell)':'var(--txt)'}">→ ${val.verdict||'—'}</div>
-    <div style="font-size:11px;color:var(--txt2);margin-bottom:4px">Vị trí trong range 52 tuần</div>
-    <div class="range-bar-wrap">
-      <div class="range-bar-fill" style="width:100%"></div>
-      <div class="range-marker" style="left:${pos}%"></div>
+  <div class="school-card" style="border-color:${taC}" onclick="toggleSchool(this)">
+    <div class="school-hdr">
+      <div>
+        <div class="school-title">1️⃣ Kỹ thuật <span style="color:${taC}">${ta.verdict||'—'}</span></div>
+        <div class="school-summary">RSI ${ta.rsi?.match(/^[\d.]+/)?.[0]??'—'} · BB% ${ta.bb?.match(/^[\d.]+/)?.[0]??'—'} · Score ${d.score>=0?'+':''}${d.score}</div>
+      </div>
+      <div class="school-chevron">▾</div>
     </div>
-    <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--txt2);font-family:var(--mono)">
-      <span>Đáy ${fmt(Math.round(lo))}</span>
-      <span>${pos.toFixed(0)}%</span>
-      <span>Đỉnh ${fmt(Math.round(hi))}</span>
+    <div class="school-detail">
+      ${ta.rsi?`<div class="ind-row"><span class="ind-lbl">RSI(14)</span><span class="ind-val">${ta.rsi}</span></div>`:''}
+      ${ta.bb?`<div class="ind-row"><span class="ind-lbl">Bollinger</span><span class="ind-val">${ta.bb}</span></div>`:''}
+      ${ta.macd?`<div class="ind-row"><span class="ind-lbl">MACD</span><span class="ind-val">${ta.macd}</span></div>`:''}
+      ${ta.ma?`<div class="ind-row"><span class="ind-lbl">MA20/50</span><span class="ind-val">${ta.ma}</span></div>`:''}
+      ${ta.golden_cross?`<div class="ind-row"><span class="ind-lbl">Golden Cross</span><span class="ind-val">${ta.golden_cross}</span></div>`:''}
+      ${ta.stoch?`<div class="ind-row"><span class="ind-lbl">Stochastic</span><span class="ind-val">${ta.stoch}</span></div>`:''}
+      ${ta.cci?`<div class="ind-row"><span class="ind-lbl">CCI(20)</span><span class="ind-val">${ta.cci}</span></div>`:''}
+      ${ta.roc?`<div class="ind-row"><span class="ind-lbl">ROC(10)</span><span class="ind-val">${ta.roc}</span></div>`:''}
+      ${(ta.details||[]).length?`<div style="font-size:11px;color:var(--txt2);margin-top:4px">🔍 ${ta.details.join(' · ')}</div>`:''}
+      <div style="font-size:11px;color:var(--txt2);margin-top:4px"><b>Score kỹ thuật: ${d.score>=0?'+':''}${d.score}</b> (MUA MẠNH≥6, MUA≥3, HOLD, BÁN≤-3, BÁN MẠNH≤-6)</div>
     </div>
-    <div class="ind-row" style="margin-top:6px"><span class="ind-lbl">Cách đỉnh</span><span class="ind-val pnl ${pnlC(val.pct_from_high||0)}">${(val.pct_from_high||0).toFixed(1)}%</span></div>
-    <div class="ind-row"><span class="ind-lbl">Cách đáy</span><span class="ind-val pnl pos">+${(val.pct_from_low||0).toFixed(1)}%</span></div>
-    ${val.chg365!=null?`<div class="ind-row"><span class="ind-lbl">1 năm</span><span class="ind-val pnl ${pnlC(val.chg365)}">${fmtP(val.chg365)}</span></div>`:''}
   </div>
 
-  <div class="section">
-    <div class="section-hdr">3️⃣ Xu hướng (Momentum)</div>
-    <div class="verdict" style="color:${mom.verdict?.includes('TĂNG MẠNH')?'var(--buy)':mom.verdict?.includes('GIẢM')?'var(--sell)':'var(--txt)'}">→ ${mom.verdict||'—'}</div>
-    ${mom.chg30!=null?`<div class="ind-row"><span class="ind-lbl">30 ngày</span><span class="ind-val pnl ${pnlC(mom.chg30)}">${fmtP(mom.chg30)}</span></div>`:''}
-    <div class="ind-row"><span class="ind-lbl">MA Trend</span><span class="ind-val">${mom.up_trend?'MA20 > MA50 — Xu hướng TĂNG ↑ ✅':'MA20 < MA50 — Xu hướng GIẢM ↓ ⚠️'}</span></div>
-  </div>
-
-  <div class="section">
-    <div class="section-hdr">4️⃣ DCA (Đầu tư định kỳ)</div>
-    <div class="verdict" style="color:${dca.verdict?.includes('TỐT')||dca.verdict?.includes('PHÙ')?'var(--buy)':dca.verdict?.includes('CHỜ')?'var(--hold)':'var(--txt)'}">→ ${dca.verdict||'—'}</div>
-    <div class="ind-row"><span class="ind-lbl">vs MA50</span><span class="ind-val">${dca.below_ma50?'Dưới MA50 — giá hợp lý ✅':'Trên MA50 — giá đã tăng rồi ⚠️'}</span></div>
-    <div class="ind-row"><span class="ind-lbl">RSI</span><span class="ind-val">${dca.oversold?'Quá bán — cơ hội tích lũy ✅':'Bình thường'}</span></div>
-  </div>
-
-  <div class="section">
-    <div class="section-hdr">5️⃣ Rủi ro (Risk Management)</div>
-    <div class="verdict" style="color:${risk.verdict?.includes('THẤP')?'var(--buy)':risk.verdict?.includes('CAO')?'var(--sell)':'var(--hold)'}">→ Mức rủi ro: ${risk.verdict||'—'}</div>
-    ${risk.vol_30d!=null?`<div class="ind-row"><span class="ind-lbl">Biến động</span><span class="ind-val">${risk.vol_30d.toFixed(1)}%/năm (năm hóa 30 ngày)</span></div>`:''}
-    ${risk.volatility_1y!=null?`<div class="ind-row"><span class="ind-lbl">Biến động (1 năm)</span><span class="ind-val">${risk.volatility_1y.toFixed(1)}%/năm</span></div>`:''}
-    ${risk.max_drawdown?`<div class="ind-row"><span class="ind-lbl">Max DD</span><span class="ind-val pnl neg">${risk.max_drawdown.toFixed(1)}% (1 năm)</span></div>`:''}
-    ${risk.sharpe?`<div class="ind-row"><span class="ind-lbl">Sharpe Ratio</span><span class="ind-val">${risk.sharpe}</span></div>`:''}
-    ${risk.sortino!=null?`<div class="ind-row"><span class="ind-lbl">Sortino Ratio</span><span class="ind-val">${risk.sortino.toFixed(2)}</span></div>`:''}
-  </div>
-
-  <div class="conclusion">${conclusion}</div>
-  <div style="font-size:11px;color:var(--txt2);text-align:center;margin-top:10px">⚠️ Tham khảo — không phải khuyến nghị đầu tư cá nhân</div>
-
-  <div class="section">
-    <div class="section-hdr">🔔 Cảnh báo</div>
-    <div id="alert-list-${d.code}" style="font-size:12px;color:var(--txt2);margin-bottom:8px">Đang tải...</div>
-    <div style="display:flex;gap:6px">
-      <select id="alert-cond-${d.code}" onchange="onAlertCondChange('${d.code}')" style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--bdr);color:var(--txt);border-radius:8px;padding:6px 8px;font-size:12px">
-        <option value="nav_up">NAV tăng ≥ X%</option>
-        <option value="nav_down">NAV giảm ≥ X%</option>
-        <option value="signal_buy">Có tín hiệu MUA</option>
-        <option value="signal_sell">Có tín hiệu BÁN</option>
-      </select>
-      <input type="number" inputmode="decimal" id="alert-thresh-${d.code}" placeholder="VD: 3" style="width:64px;flex-shrink:0;background:var(--bg);border:1px solid var(--bdr);color:var(--txt);border-radius:8px;padding:6px 8px;font-size:12px">
+  <div class="school-card" style="border-color:${valC}" onclick="toggleSchool(this)">
+    <div class="school-hdr">
+      <div>
+        <div class="school-title">2️⃣ Giá trị <span style="color:${valC}">${val.verdict||'—'}</span></div>
+        <div class="school-summary">Vị trí ${pos.toFixed(0)}% trong range 52 tuần</div>
+      </div>
+      <div class="school-chevron">▾</div>
     </div>
-    <button class="btn btn-primary" style="margin-top:8px" onclick="addAlert('${d.code}')">+ Đặt cảnh báo</button>
+    <div class="school-detail">
+      <div style="font-size:11px;color:var(--txt2);margin-bottom:4px">Vị trí trong range 52 tuần</div>
+      <div class="range-bar-wrap">
+        <div class="range-bar-fill" style="width:100%"></div>
+        <div class="range-marker" style="left:${pos}%"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--txt2);font-family:var(--mono)">
+        <span>Đáy ${fmt(Math.round(lo))}</span>
+        <span>${pos.toFixed(0)}%</span>
+        <span>Đỉnh ${fmt(Math.round(hi))}</span>
+      </div>
+      <div class="ind-row" style="margin-top:6px"><span class="ind-lbl">Cách đỉnh</span><span class="ind-val pnl ${pnlC(val.pct_from_high||0)}">${(val.pct_from_high||0).toFixed(1)}%</span></div>
+      <div class="ind-row"><span class="ind-lbl">Cách đáy</span><span class="ind-val pnl pos">+${(val.pct_from_low||0).toFixed(1)}%</span></div>
+      ${val.chg365!=null?`<div class="ind-row"><span class="ind-lbl">1 năm</span><span class="ind-val pnl ${pnlC(val.chg365)}">${fmtP(val.chg365)}</span></div>`:''}
+    </div>
   </div>
 
-  <div class="section">
-    <div class="section-hdr">🎯 Độ chính xác dự báo T+2</div>
-    <div id="acc-summary-${d.code}" style="font-size:12px;color:var(--txt2);margin-bottom:8px">Đang tải...</div>
-    <div style="position:relative;height:120px"><canvas id="acc-chart-${d.code}"></canvas></div>
-    <div style="font-size:10px;color:var(--txt2);margin-top:4px;display:flex;gap:12px">
-      <span><span style="color:var(--c0)">━</span> Dự báo</span>
-      <span><span style="color:var(--txt)">━</span> Thực tế</span>
+  <div class="school-card" style="border-color:${momC}" onclick="toggleSchool(this)">
+    <div class="school-hdr">
+      <div>
+        <div class="school-title">3️⃣ Xu hướng <span style="color:${momC}">${mom.verdict||'—'}</span></div>
+        <div class="school-summary">${mom.chg30!=null?'30 ngày: '+fmtP(mom.chg30):(mom.up_trend?'MA20 > MA50':'MA20 < MA50')}</div>
+      </div>
+      <div class="school-chevron">▾</div>
+    </div>
+    <div class="school-detail">
+      ${mom.chg30!=null?`<div class="ind-row"><span class="ind-lbl">30 ngày</span><span class="ind-val pnl ${pnlC(mom.chg30)}">${fmtP(mom.chg30)}</span></div>`:''}
+      <div class="ind-row"><span class="ind-lbl">MA Trend</span><span class="ind-val">${mom.up_trend?'MA20 > MA50 — Xu hướng TĂNG ↑ ✅':'MA20 < MA50 — Xu hướng GIẢM ↓ ⚠️'}</span></div>
+    </div>
+  </div>
+
+  <div class="school-card" style="border-color:${dcaC}" onclick="toggleSchool(this)">
+    <div class="school-hdr">
+      <div>
+        <div class="school-title">4️⃣ DCA <span style="color:${dcaC}">${dca.verdict||'—'}</span></div>
+        <div class="school-summary">${dca.below_ma50?'Dưới MA50':'Trên MA50'} · RSI ${dca.oversold?'quá bán':'bình thường'}</div>
+      </div>
+      <div class="school-chevron">▾</div>
+    </div>
+    <div class="school-detail">
+      <div class="ind-row"><span class="ind-lbl">vs MA50</span><span class="ind-val">${dca.below_ma50?'Dưới MA50 — giá hợp lý ✅':'Trên MA50 — giá đã tăng rồi ⚠️'}</span></div>
+      <div class="ind-row"><span class="ind-lbl">RSI</span><span class="ind-val">${dca.oversold?'Quá bán — cơ hội tích lũy ✅':'Bình thường'}</span></div>
+    </div>
+  </div>
+
+  <div class="school-card" style="border-color:${riskC}" onclick="toggleSchool(this)">
+    <div class="school-hdr">
+      <div>
+        <div class="school-title">5️⃣ Rủi ro <span style="color:${riskC}">${risk.verdict||'—'}</span></div>
+        <div class="school-summary">${risk.vol_30d!=null?'Biến động '+risk.vol_30d.toFixed(1)+'%/năm':'—'}</div>
+      </div>
+      <div class="school-chevron">▾</div>
+    </div>
+    <div class="school-detail">
+      ${risk.vol_30d!=null?`<div class="ind-row"><span class="ind-lbl">Biến động</span><span class="ind-val">${risk.vol_30d.toFixed(1)}%/năm (năm hóa 30 ngày)</span></div>`:''}
+      ${risk.volatility_1y!=null?`<div class="ind-row"><span class="ind-lbl">Biến động (1 năm)</span><span class="ind-val">${risk.volatility_1y.toFixed(1)}%/năm</span></div>`:''}
+      ${risk.max_drawdown?`<div class="ind-row"><span class="ind-lbl">Max DD</span><span class="ind-val pnl neg">${risk.max_drawdown.toFixed(1)}% (1 năm)</span></div>`:''}
+      ${risk.sharpe?`<div class="ind-row"><span class="ind-lbl">Sharpe Ratio</span><span class="ind-val">${risk.sharpe}</span></div>`:''}
+      ${risk.sortino!=null?`<div class="ind-row"><span class="ind-lbl">Sortino Ratio</span><span class="ind-val">${risk.sortino.toFixed(2)}</span></div>`:''}
+    </div>
+  </div>
+
+  <div style="font-size:11px;color:var(--txt2);text-align:center;margin:10px 0">⚠️ Tham khảo — không phải khuyến nghị đầu tư cá nhân</div>
+
+  <div class="school-card" onclick="toggleSchool(this)">
+    <div class="school-hdr">
+      <div>
+        <div class="school-title">🔔 Cảnh báo</div>
+        <div class="school-summary">Đặt ngưỡng để được báo khi NAV/tín hiệu thay đổi</div>
+      </div>
+      <div class="school-chevron">▾</div>
+    </div>
+    <div class="school-detail">
+      <div id="alert-list-${d.code}" style="font-size:12px;color:var(--txt2);margin-bottom:8px">Đang tải...</div>
+      <div style="display:flex;gap:6px" onclick="event.stopPropagation()">
+        <select id="alert-cond-${d.code}" onchange="onAlertCondChange('${d.code}')" style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--bdr);color:var(--txt);border-radius:8px;padding:6px 8px;font-size:12px">
+          <option value="nav_up">NAV tăng ≥ X%</option>
+          <option value="nav_down">NAV giảm ≥ X%</option>
+          <option value="signal_buy">Có tín hiệu MUA</option>
+          <option value="signal_sell">Có tín hiệu BÁN</option>
+        </select>
+        <input type="number" inputmode="decimal" id="alert-thresh-${d.code}" placeholder="VD: 3" style="width:64px;flex-shrink:0;background:var(--bg);border:1px solid var(--bdr);color:var(--txt);border-radius:8px;padding:6px 8px;font-size:12px">
+      </div>
+      <button class="btn btn-primary" style="margin-top:8px" onclick="event.stopPropagation();addAlert('${d.code}')">+ Đặt cảnh báo</button>
+    </div>
+  </div>
+
+  <div class="school-card" onclick="toggleSchool(this)">
+    <div class="school-hdr">
+      <div>
+        <div class="school-title">🎯 Độ chính xác dự báo T+2</div>
+        <div class="school-summary">So sánh dự báo vs thực tế các phiên gần đây</div>
+      </div>
+      <div class="school-chevron">▾</div>
+    </div>
+    <div class="school-detail">
+      <div id="acc-summary-${d.code}" style="font-size:12px;color:var(--txt2);margin-bottom:8px">Đang tải...</div>
+      <div style="position:relative;height:120px"><canvas id="acc-chart-${d.code}"></canvas></div>
+      <div style="font-size:10px;color:var(--txt2);margin-top:4px;display:flex;gap:12px">
+        <span><span style="color:var(--c0)">━</span> Dự báo</span>
+        <span><span style="color:var(--txt)">━</span> Thực tế</span>
+      </div>
     </div>
   </div>
   `;
