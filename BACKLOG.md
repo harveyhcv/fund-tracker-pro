@@ -138,9 +138,16 @@
   Hook vào extend_pro/set_tier/redeem_promo_code/create_promo_code/update_promo_code/
   (de)activate_promo_code/resolve_nav_confirm/trade CRUD (CCQ + vàng: add/edit/delete)
   | 2026-07-13 | Còn thiếu: UI xem log cho admin (phần dashboard của GOV-004)
-- [ ] GOV-002 · Backup tự động định kỳ — Railway cron/script `pg_dump` hàng ngày lên object
-  storage (S3-compatible hoặc Railway volume), retention policy rõ ràng, quy trình restore đã
-  test thử ít nhất 1 lần | P0 | ~3h (phụ thuộc chọn nơi lưu backup)
+- [DONE-LOCAL] GOV-002 · Backup tự động — `scripts/backup_db.py` (`pg_dump -F c` vào
+  `$DATA_DIR/backups/`, retention 14 bản, luôn giữ ≥1 bản), `bot.py job_backup_db()` chạy
+  03:30 hàng ngày, báo Telegram admin nếu backup fail. Restore qua `--restore <file> --confirm`
+  (dry-run mặc định, `pg_restore --clean --if-exists`). Dockerfile thêm `postgresql-client`.
+  Quy trình + checklist restore: `telegram-bot/BACKUP.md`. **Bug tìm thấy khi làm task này**:
+  `.dockerignore` loại bỏ toàn bộ `scripts/` khỏi Docker image — mọi job T+2
+  (`job_t2_predict`/`job_t2_retrain`/`job_t2_reweight`) đã fail âm thầm trên Railway từ trước
+  đến giờ vì `scripts/t2_*.py` không hề có trong container. Đã sửa `.dockerignore` | 2026-07-13
+  | Retention logic + restore dry-run test bằng file giả lập — pass. CHƯA test `pg_dump`/
+  `pg_restore` thật (cần DATABASE_URL Railway) — xem checklist trong BACKUP.md
 - [ ] GOV-003 · Cảnh báo bất thường tự động — rule-based: NAV nhảy >X%/phiên, MAPE dự báo vượt
   ngưỡng N ngày liên tiếp, thanh toán trùng lặp (cùng charge_id/orderId xử lý 2 lần), redeem
   promo bất thường (nhiều mã cùng 1 phút) → Telegram admin | P1 | ~4h (giờ có audit_log làm nguồn)

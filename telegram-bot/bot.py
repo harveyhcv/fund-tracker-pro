@@ -17,6 +17,8 @@
 import json
 import math
 import os
+import subprocess
+import sys
 import time
 import logging
 import threading
@@ -2118,6 +2120,44 @@ def job_t2_reweight():
     _run_t2_script("t2_reweight", "t2_ensemble.py", ["--reweight"], timeout=60)
 
 
+def job_backup_db():
+    """GOV-002: pg_dump hàng ngày vào DATA_DIR/backups (Railway volume persistent),
+    retention 14 bản gần nhất (scripts/backup_db.py::_prune). Không raise — lỗi backup
+    không được chặn bot chạy tiếp, nhưng PHẢI báo admin vì đây là dữ liệu quan trọng
+    (không có backup = mất dữ liệu vĩnh viễn nếu Railway volume hỏng)."""
+    if not (_DB_AVAILABLE and _db.is_available()):
+        log.debug("[backup_db] DB không khả dụng — bỏ qua")
+        return
+    log.info("══ JOB: Database Backup ══")
+    script = Path(__file__).parent.parent / "scripts" / "backup_db.py"
+    if not script.exists():
+        log.error("[backup_db] scripts/backup_db.py không tìm thấy")
+        return
+    try:
+        result = subprocess.run(
+            [sys.executable, str(script), "--backup"],
+            capture_output=True, text=True, timeout=600,
+            env={**os.environ},
+        )
+    except Exception as e:
+        result = None
+        log.error("[backup_db] exception: %s", e)
+
+    ok = result is not None and result.returncode == 0
+    if ok:
+        summary = (result.stdout or "").strip().splitlines()[-1] if result.stdout.strip() else "OK"
+        log.info("[backup_db] %s", summary)
+        return
+
+    err = (result.stderr or "")[:300] if result else "subprocess lỗi (xem log exception phía trên)"
+    log.error("[backup_db] FAILED exit=%s err=%s", result.returncode if result else "?", err)
+    config = load_config()
+    tok = config.get("bot_token", "")
+    admin_id = str(config.get("admin_telegram_id", "")).strip()
+    if tok and admin_id:
+        tg_send(tok, admin_id, f"⚠️ <b>Backup DB thất bại</b>\n<code>{err}</code>\nKiểm tra Railway logs ngay.")
+
+
 def job_check_alerts():
     """PRO-004: Kiểm tra ngưỡng cảnh báo user tự đặt (bảng `alerts`), chạy 18:33
     sau daily harvest (18:30) + T+2 predict/score (18:31/18:32) để có NAV mới nhất.
@@ -3442,6 +3482,7 @@ def main():
     schedule.every().day.at("20:00").do(job_harvest_nav)
     schedule.every().sunday.at("02:00").do(job_t2_retrain)
     schedule.every(30).days.at("03:00").do(job_t2_reweight)
+    schedule.every().day.at("03:30").do(job_backup_db)
     schedule.every().day.at("07:30").do(job_check_tcbs_token)
     # job_watchdog_ping đã bỏ — tin nhắn "Bot alive" không cần thiết
 

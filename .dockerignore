@@ -3,7 +3,6 @@
 *.md
 dashboard/
 ios/
-scripts/
 tests/
 *.log
 *.bak
@@ -11,5 +10,7 @@ telegram-bot/config.json
 telegram-bot/state.json
 telegram-bot/bot.log
 telegram-bot/__pycache__
+scripts/models/
+scripts/__pycache__
 __pycache__
 .env
