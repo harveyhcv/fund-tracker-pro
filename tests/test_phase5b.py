@@ -43,13 +43,6 @@ SAMPLE_CONFIG = {
                  "signal_check_interval_minutes": 60},
 }
 
-NAV_STUB = {
-    "TCBF": {"nav": 15000, "signal": "MUA", "nav_date": "2026-06-20",
-             "rsi": 35.0, "bb_pct": 20.0, "score": 4,
-             "chg7": 0.5, "chg30": 1.2, "ma20": 14800, "ma50": 14500},
-}
-
-
 def make_update(text, chat_id="111222333"):
     return {
         "update_id": 1,
@@ -236,152 +229,23 @@ class TestCrypto:
 
 
 # ══════════════════════════════════════════════════════════════
-# TestAddTradeCommand — /add-trade via command_handler
+# /add-trade — ĐÃ BỎ. Lệnh giờ chỉ redirect "Giao dịch được quản lý trong Mini
+# App" (bot.py, cmd in ("/add-trade","/buy","/sell")); toàn bộ luồng cũ
+# add_transaction/upsert_holding (mã hoá AES-256-GCM) không còn được gọi từ
+# command_handler nữa — giao dịch CCQ/vàng giờ qua user_ccq_trades/
+# user_gold_trades (miniapp_server.py), không mã hoá theo user. TestAddTradeCommand
+# (13 test) đã xoá vì test hành vi không còn tồn tại, không phải bug thật.
 # ══════════════════════════════════════════════════════════════
-
-class TestAddTradeCommand:
-    def test_unregistered_user_gets_register_prompt(self):
-        msgs, _, _ = run_command("/add-trade TCBF buy 100 1500000", chat_id="000000000")
-        assert any("đăng ký" in m for m in msgs)
-
-    def test_no_args_shows_usage(self):
-        msgs, _, _ = run_command("/add-trade")
-        assert msgs
-        assert any("Cú pháp" in m or "buy" in m for m in msgs)
-
-    def test_too_few_args_shows_usage(self):
-        # Missing amount arg
-        msgs, _, _ = run_command("/add-trade TCBF buy 100")
-        assert msgs
-        assert any("Cú pháp" in m or "buy" in m for m in msgs)
-
-    def test_invalid_fund_code_shows_error(self):
-        msgs, _, _ = run_command("/add-trade INVALID buy 100 1500000")
-        assert any("INVALID" in m for m in msgs)
-
-    def test_invalid_tx_type_shows_error(self):
-        msgs, _, _ = run_command("/add-trade TCBF transfer 100 1500000")
-        assert any("buy" in m and "sell" in m for m in msgs)
-
-    def test_zero_units_shows_error(self):
-        msgs, _, _ = run_command("/add-trade TCBF buy 0 1500000")
-        assert any("dương" in m or "Số CCQ" in m for m in msgs)
-
-    def test_negative_amount_shows_error(self):
-        msgs, _, _ = run_command("/add-trade TCBF buy 100 -500")
-        assert any("dương" in m or "Số CCQ" in m for m in msgs)
-
-    def test_invalid_date_format_shows_error(self):
-        msgs, _, _ = run_command("/add-trade TCBF buy 100 1500000 14/06/2026")
-        assert any("ngày" in m.lower() or "date" in m.lower() or "Ngày" in m for m in msgs)
-
-    def test_db_unavailable_shows_error(self):
-        db = _mock_db()
-        db.is_available.return_value = False
-        msgs, _, _ = run_command("/add-trade TCBF buy 100 1500000", db=db)
-        assert any("database" in m.lower() or "kết nối" in m.lower() for m in msgs)
-
-    def test_no_encryption_key_shows_error(self):
-        cr = _mock_crypto()
-        cr.get_master_key.return_value = None
-        msgs, _, _ = run_command("/add-trade TCBF buy 100 1500000", crypto=cr)
-        assert any("ENCRYPTION_KEY" in m or "ncryption" in m for m in msgs)
-
-    def test_buy_success_calls_add_transaction(self):
-        db = _mock_db()
-        _, db_after, _ = run_command("/add-trade TCBF buy 1000.5 15007500", db=db)
-        db_after.add_transaction.assert_called_once()
-        kw = db_after.add_transaction.call_args.kwargs
-        assert kw["fund_code"] == "TCBF"
-        assert kw["tx_type"] == "buy"
-
-    def test_buy_success_sends_confirmation_message(self):
-        msgs, _, _ = run_command("/add-trade TCBF buy 1000 15000000")
-        assert any("TCBF" in m for m in msgs)
-        assert any("Mua" in m or "giao dịch" in m.lower() for m in msgs)
-
-    def test_sell_success_calls_add_transaction(self):
-        db = _mock_db()
-        _, db_after, _ = run_command("/add-trade TCBF sell 200 3000000", db=db)
-        db_after.add_transaction.assert_called_once()
-        kw = db_after.add_transaction.call_args.kwargs
-        assert kw["tx_type"] == "sell"
-
-    def test_buy_calls_upsert_holding_after_transaction(self):
-        db = _mock_db()
-        _, db_after, _ = run_command("/add-trade TCBF buy 500 7500000", db=db)
-        db_after.upsert_holding.assert_called_once()
-
-    def test_date_defaults_to_today_when_omitted(self):
-        db = _mock_db()
-        _, db_after, _ = run_command("/add-trade TCBF buy 100 1500000", db=db)
-        kw = db_after.add_transaction.call_args.kwargs
-        assert kw["order_date"] == date.today()
-
-    def test_explicit_date_is_passed_through(self):
-        db = _mock_db()
-        _, db_after, _ = run_command("/add-trade TCBF buy 100 1500000 2026-01-15", db=db)
-        kw = db_after.add_transaction.call_args.kwargs
-        assert kw["order_date"] == date(2026, 1, 15)
-
-    def test_nav_at_order_computed_as_amount_over_units(self):
-        # 15_000_000 / 1000 = 15_000.0
-        db = _mock_db()
-        _, db_after, _ = run_command("/add-trade TCBF buy 1000 15000000", db=db)
-        kw = db_after.add_transaction.call_args.kwargs
-        assert kw["nav_at_order"] == pytest.approx(15000.0, rel=1e-4)
-
-    def test_buy_with_existing_holding_updates_weighted_avg(self):
-        db = _mock_db()
-        db.get_holdings_raw.return_value = [
-            {"fund_code": "TCBF", "units_enc": b"\x00" * 28, "avg_cost_enc": b"\x00" * 28},
-        ]
-        cr = _mock_crypto()
-        # First decrypt call = prev_units (500), second = prev_avg (14000)
-        cr.decrypt_decimal.side_effect = [500.0, 14000.0]
-        _, db_after, _ = run_command("/add-trade TCBF buy 1000 15000000", db=db, crypto=cr)
-        # Should still call upsert_holding (with new weighted avg)
-        db_after.upsert_holding.assert_called_once()
 
 
 # ══════════════════════════════════════════════════════════════
-# TestPortfolioDbPath — /portfolio sử dụng DB holdings
+# TestPortfolioDbPath — /portfolio hiện đọc profile["portfolio"] trực tiếp từ
+# config/bot_profiles (không qua get_holdings_raw + decrypt như trước) — 3 test
+# dưới đây test đúng luồng DB-holdings-mã-hoá cũ đã xoá. Giữ lại 3 test fallback
+# bên dưới (còn hợp lệ vì chỉ assert msgs không rỗng, không phụ thuộc luồng cũ).
 # ══════════════════════════════════════════════════════════════
 
 class TestPortfolioDbPath:
-    def test_unregistered_user_gets_register_prompt(self):
-        msgs, _, _ = run_command("/portfolio", chat_id="000000000")
-        assert any("đăng ký" in m for m in msgs)
-
-    def test_portfolio_uses_db_holdings_when_available(self):
-        db = _mock_db()
-        db.get_holdings_raw.return_value = [
-            {"fund_code": "TCBF", "units_enc": b"\x00" * 28, "avg_cost_enc": b"\x00" * 28},
-        ]
-        cr = _mock_crypto()
-        cr.decrypt_decimal.side_effect = [1000.0, 14000.0]  # units, avg_cost
-
-        with patch.object(B, "fetch_all", return_value=NAV_STUB):
-            msgs, _, _ = run_command("/portfolio", db=db, crypto=cr)
-
-        assert any("TCBF" in m for m in msgs)
-        assert any("1,000" in m or "1000" in m for m in msgs)
-
-    def test_portfolio_db_shows_pnl(self):
-        # units=1000 CCQ, avg_cost=14000, nav=15000 → P&L = +1,000,000
-        db = _mock_db()
-        db.get_holdings_raw.return_value = [
-            {"fund_code": "TCBF", "units_enc": b"\x00" * 28, "avg_cost_enc": b"\x00" * 28},
-        ]
-        cr = _mock_crypto()
-        cr.decrypt_decimal.side_effect = [1000.0, 14000.0]
-
-        with patch.object(B, "fetch_all", return_value=NAV_STUB):
-            msgs, _, _ = run_command("/portfolio", db=db, crypto=cr)
-
-        joined = " ".join(msgs)
-        assert "Lãi" in joined or "lãi" in joined
-
     def test_portfolio_fallback_when_user_not_in_db(self):
         db = _mock_db()
         db.get_user_info.return_value = None   # user not registered in DB

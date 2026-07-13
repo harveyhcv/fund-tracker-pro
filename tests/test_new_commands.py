@@ -1,5 +1,10 @@
 """
-test_new_commands.py — QA cho 4 commands mới: /watch, /unwatch, /funds, /admin
+test_new_commands.py — QA cho /admin + env config.
+
+/watch, /unwatch, /funds đã được thay bằng redirect tĩnh "chuyển vào Mini App"
+(bot.py, cmd in ("/dca","/funds","/watch","/unwatch")) — không còn logic thật để
+test (mutate watchlist, liệt kê quỹ...) nên các test class tương ứng đã bị xoá
+thay vì sửa để "pass giả" theo hành vi redirect (không có giá trị coverage).
 """
 import json
 import sys
@@ -73,111 +78,23 @@ def run_one_command(text, chat_id="111222333", config=None):
 
 
 # ════════════════════════════════════════════════════════
-# /funds
+# /watch, /unwatch, /funds — redirect tĩnh, xem docstring đầu file
 # ════════════════════════════════════════════════════════
 
-class TestFundsCommand:
-    def test_funds_lists_all_funds(self):
-        msgs, _ = run_one_command("/funds")
-        assert msgs
-        msg = msgs[0]
-        for code in ("TCBF", "SSISCA", "VCBFBCF", "MBBF"):
-            assert code in msg
+class TestDeprecatedCommandsRedirect:
+    """Xác nhận các lệnh cũ hướng dẫn user sang Mini App thay vì lỗi im lặng."""
 
-    def test_funds_shows_current_watchlist_for_registered_user(self):
+    def test_funds_redirects_to_miniapp(self):
         msgs, _ = run_one_command("/funds", chat_id="111222333")
-        assert any("TCBF" in m and "SSISCA" in m for m in msgs)
+        assert any("Mini App" in m for m in msgs)
 
-    def test_funds_shows_register_hint_for_unknown_user(self):
-        msgs, _ = run_one_command("/funds", chat_id="000000000")
-        assert any("/register" in m for m in msgs)
+    def test_watch_redirects_to_miniapp(self):
+        msgs, _ = run_one_command("/watch VCBFBCF", chat_id="111222333")
+        assert any("Mini App" in m for m in msgs)
 
-    def test_funds_shows_watch_unwatch_hint(self):
-        msgs, _ = run_one_command("/funds", chat_id="111222333")
-        assert any("/watch" in m or "/unwatch" in m for m in msgs)
-
-
-# ════════════════════════════════════════════════════════
-# /watch
-# ════════════════════════════════════════════════════════
-
-class TestWatchCommand:
-    def test_watch_adds_valid_fund(self):
-        cfg = json.loads(json.dumps(SAMPLE_CONFIG))
-        msgs, mock_save = run_one_command("/watch VCBFBCF", chat_id="111222333", config=cfg)
-        assert any("VCBFBCF" in m for m in msgs)
-        assert mock_save.called
-
-    def test_watch_uppercase_normalization(self):
-        msgs, _ = run_one_command("/watch vcbfbcf", chat_id="111222333")
-        assert msgs
-
-    def test_watch_multiple_funds(self):
-        msgs, mock_save = run_one_command("/watch VCBFBCF MBBF", chat_id="111222333")
-        combined = " ".join(msgs)
-        assert "VCBFBCF" in combined
-        assert "MBBF" in combined
-
-    def test_watch_invalid_fund_code(self):
-        msgs, _ = run_one_command("/watch INVALID_FUND", chat_id="111222333")
-        assert any("Không tìm thấy" in m or "/funds" in m for m in msgs)
-
-    def test_watch_already_watching(self):
-        msgs, _ = run_one_command("/watch TCBF", chat_id="111222333")
-        assert any("TCBF" in m for m in msgs)
-
-    def test_watch_unregistered_user(self):
-        msgs, _ = run_one_command("/watch TCBF", chat_id="000000000")
-        assert any("đăng ký" in m or "/register" in m for m in msgs)
-
-    def test_watch_no_args(self):
-        msgs, _ = run_one_command("/watch", chat_id="111222333")
-        assert any("Cú pháp" in m or "/watch" in m for m in msgs)
-
-    def test_watch_saves_sorted_fund_list(self):
-        cfg = json.loads(json.dumps(SAMPLE_CONFIG))
-        msgs, mock_save = run_one_command("/watch MBBF", chat_id="111222333", config=cfg)
-        if mock_save.saved:
-            profile = next(
-                (p for p in mock_save.saved[-1]["profiles"] if p["telegram_id"] == "111222333"),
-                None,
-            )
-            if profile:
-                funds = profile["watched_funds"]
-                assert funds == sorted(funds)
-
-
-# ════════════════════════════════════════════════════════
-# /unwatch
-# ════════════════════════════════════════════════════════
-
-class TestUnwatchCommand:
-    def test_unwatch_removes_fund(self):
-        cfg = json.loads(json.dumps(SAMPLE_CONFIG))
-        msgs, mock_save = run_one_command("/unwatch SSISCA", chat_id="111222333", config=cfg)
-        assert any("SSISCA" in m for m in msgs)
-        assert mock_save.called
-
-    def test_unwatch_last_fund_blocked(self):
-        """Friend chỉ có 1 quỹ (TCBF) — không được xóa."""
-        cfg = json.loads(json.dumps(SAMPLE_CONFIG))
-        msgs, mock_save = run_one_command("/unwatch TCBF", chat_id="444555666", config=cfg)
-        assert any("ít nhất 1" in m for m in msgs)
-        assert not mock_save.called
-
-    def test_unwatch_fund_not_in_watchlist(self):
-        msgs, _ = run_one_command("/unwatch MBBF", chat_id="111222333")
-        # MBBF is not in Harvey's watchlist — bot should mention it in response
-        assert msgs, "Expected a response but msgs was empty"
-        assert any("MBBF" in m for m in msgs)
-
-    def test_unwatch_unregistered_user(self):
-        msgs, _ = run_one_command("/unwatch TCBF", chat_id="000000000")
-        assert any("đăng ký" in m or "/register" in m for m in msgs)
-
-    def test_unwatch_no_args(self):
-        msgs, _ = run_one_command("/unwatch", chat_id="111222333")
-        assert any("Cú pháp" in m or "/unwatch" in m for m in msgs)
+    def test_unwatch_redirects_to_miniapp(self):
+        msgs, _ = run_one_command("/unwatch TCBF", chat_id="111222333")
+        assert any("Mini App" in m for m in msgs)
 
 
 # ════════════════════════════════════════════════════════

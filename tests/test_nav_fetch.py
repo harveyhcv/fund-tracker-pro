@@ -299,29 +299,23 @@ class TestFetchTcbs:
             assert call_count[0] == 2, f"Phải thử 2 URLs, thử {call_count[0]}"
 
     def test_from_date_is_passed_in_url(self):
-        """from_date thay thế 2023-01-01 trong URL đầu tiên."""
-        captured_url = []
-        def side_effect(url, *args, **kwargs):
-            captured_url.append(url)
-            return make_mock_response(200, TCBS_RESPONSE_V1)
-        with patch("requests.get", side_effect=side_effect):
-            B.fetch_tcbs("TCBF", from_date="2026-04-02")
-        assert captured_url, "requests.get phải được gọi"
-        assert "startDate=2026-04-02" in captured_url[0], \
-            f"from_date phải được dùng trong URL. Got: {captured_url[0]}"
-        assert "2023-01-01" not in captured_url[0], \
-            "startDate mặc định 2023-01-01 không được xuất hiện khi có from_date"
+        """from_date lọc kết quả — TCinvest (nguồn chính, thử trước) fetch
+        timeline=ALL rồi lọc CLIENT-SIDE theo from_date (không truyền startDate=
+        qua URL như endpoint TCBS cũ, chỉ dùng khi TCinvest không trả gì)."""
+        with patch("requests.get", return_value=make_mock_response(200, TCBS_RESPONSE_V1)):
+            pts = B.fetch_tcbs("TCBF", from_date="2024-02-01")
+        dates = [p["date"] for p in pts]
+        assert "2024-01-02" not in dates, "Điểm <= from_date phải bị lọc bỏ"
+        assert "2024-02-01" not in dates, "from_date là biên loại trừ (d <= from_date bị bỏ)"
+        assert "2024-03-01" in dates, "Điểm sau from_date phải còn lại"
 
     def test_from_date_none_uses_default(self):
-        """Khi from_date=None, URL dùng 2023-01-01 mặc định."""
-        captured_url = []
-        def side_effect(url, *args, **kwargs):
-            captured_url.append(url)
-            return make_mock_response(200, TCBS_RESPONSE_V1)
-        with patch("requests.get", side_effect=side_effect):
-            B.fetch_tcbs("TCBF")
-        assert "startDate=2023-01-01" in captured_url[0], \
-            f"Mặc định phải dùng 2023-01-01. Got: {captured_url[0]}"
+        """Khi from_date=None, không lọc gì — trả về toàn bộ history."""
+        with patch("requests.get", return_value=make_mock_response(200, TCBS_RESPONSE_V1)):
+            pts = B.fetch_tcbs("TCBF")
+        dates = {p["date"] for p in pts}
+        assert dates == {"2024-01-02", "2024-02-01", "2024-03-01"}, \
+            f"Không truyền from_date thì phải lấy toàn bộ history. Got: {dates}"
 
 
 # ════════════════════════════════════════════════════════

@@ -119,8 +119,11 @@ class TestAllWatchedCodes:
         assert len(result) == len(set(result))
 
     def test_empty_profiles(self):
+        """all_watched_codes() LUÔN gồm toàn bộ FUND_CATALOG (để nav_history đầy
+        đủ mọi quỹ, không chỉ quỹ user đang theo dõi) — không rỗng kể cả khi
+        không có profile nào."""
         result = B.all_watched_codes({"profiles": []})
-        assert result == set()
+        assert result == set(B.FUND_CATALOG.keys())
 
 
 # ════════════════════════════════════════════════════════
@@ -387,113 +390,118 @@ class TestHandleTcbsAuthError:
 
 
 # ════════════════════════════════════════════════════════
-# check_jwt_freshness & job_check_jwt
+# _check_tcbs_token_expiry & job_check_tcbs_token
+# (thay thế check_jwt_freshness/job_check_jwt cũ — xoá khỏi bot.py, tính theo
+# NGÀY còn lại chứ không phải giây, và job chỉ báo admin_telegram_id, không
+# lặp qua tất cả profiles — cùng lý do đã sửa TestHandleTcbsAuthError ở trên)
 # ════════════════════════════════════════════════════════
 
 import base64 as _base64
 
 def _make_jwt(exp_offset_seconds: int) -> str:
-    """Tạo JWT giả với exp = now + offset."""
+    """Tạo JWT giả với exp = now + offset (giây)."""
     import time as _time
     header = _base64.urlsafe_b64encode(b'{"alg":"HS256"}').rstrip(b"=").decode()
     payload_data = {"sub": "test", "exp": int(_time.time()) + exp_offset_seconds}
     payload = _base64.urlsafe_b64encode(json.dumps(payload_data).encode()).rstrip(b"=").decode()
     return f"{header}.{payload}.fakesig"
 
+_DAY = 86400
 
-class TestCheckJwtFreshness:
+class TestCheckTcbsTokenExpiry:
 
     def test_returns_none_when_no_token(self):
         cfg = {**SAMPLE_CONFIG, "tcbs_token": ""}
-        assert B.check_jwt_freshness(cfg) is None
+        assert B._check_tcbs_token_expiry(cfg) is None
 
     def test_returns_none_for_non_jwt_token(self):
         cfg = {**SAMPLE_CONFIG, "tcbs_token": "notajwttoken"}
-        assert B.check_jwt_freshness(cfg) is None
+        assert B._check_tcbs_token_expiry(cfg) is None
 
-    def test_returns_positive_for_valid_future_token(self):
-        cfg = {**SAMPLE_CONFIG, "tcbs_token": _make_jwt(7200)}  # 2 giờ còn lại
-        result = B.check_jwt_freshness(cfg)
+    def test_returns_not_expired_for_valid_future_token(self):
+        cfg = {**SAMPLE_CONFIG, "tcbs_token": _make_jwt(5 * _DAY)}
+        result = B._check_tcbs_token_expiry(cfg)
         assert result is not None
-        assert result > 0, "Token còn hạn phải trả số dương"
+        assert result["expired"] is False
+        assert result["days_left"] >= 4
 
-    def test_returns_negative_for_expired_token(self):
-        cfg = {**SAMPLE_CONFIG, "tcbs_token": _make_jwt(-300)}  # đã hết hạn 5 phút
-        result = B.check_jwt_freshness(cfg)
+    def test_returns_expired_for_past_token(self):
+        cfg = {**SAMPLE_CONFIG, "tcbs_token": _make_jwt(-1 * _DAY)}
+        result = B._check_tcbs_token_expiry(cfg)
         assert result is not None
-        assert result < 0, "Token hết hạn phải trả số âm"
+        assert result["expired"] is True
+        assert result["days_left"] < 0
 
-    def test_returns_approximately_correct_seconds(self):
-        cfg = {**SAMPLE_CONFIG, "tcbs_token": _make_jwt(3600)}  # đúng 1 giờ
-        result = B.check_jwt_freshness(cfg)
-        assert result is not None
-        assert 3590 < result <= 3600, f"Phải gần 3600s, got {result}"
+    def test_days_left_approximately_correct(self):
+        cfg = {**SAMPLE_CONFIG, "tcbs_token": _make_jwt(2 * _DAY)}
+        result = B._check_tcbs_token_expiry(cfg)
+        assert result["days_left"] in (1, 2), f"Phải gần 2 ngày, got {result['days_left']}"
 
 
-class TestJobCheckJwt:
-    """Tests cho job_check_jwt — dùng send_token_alert_once để dedup.
-    Cần mock send_token_alert_once để bypass state.json và test logic alert."""
+class TestJobCheckTcbsToken:
+    """job_check_tcbs_token chỉ báo admin_telegram_id (không lặp profiles).
+    Dedup token-đã-hết-hạn dùng chung state.json với _handle_tcbs_auth_error —
+    phải mock load_state/save_state để không đụng file thật trên đĩa."""
 
-    @staticmethod
-    def _bypass_dedup(send_fn, message):
-        """Mock send_token_alert_once: luôn gọi send_fn (bỏ qua dedup flag)."""
-        send_fn(message)
-        return True
+    def setup_method(self):
+        B._tcbs_auth_notified = False
 
     def test_no_alert_when_token_valid_long(self):
-        """Token còn hơn 2 giờ → không gọi send_token_alert_once, không gửi cảnh báo."""
-        cfg = {**SAMPLE_CONFIG, "tcbs_token": _make_jwt(7300)}  # > 7200s
+        cfg = {**SAMPLE_CONFIG, "admin_telegram_id": "111222333", "tcbs_token": _make_jwt(10 * _DAY)}
         with patch.object(B, "load_config", return_value=cfg), \
-             patch.object(B, "send_token_alert_once") as mock_alert, \
-             patch.object(B, "reset_token_alert"):
-            B.job_check_jwt()
-            mock_alert.assert_not_called()
+             patch.object(B, "tg_send") as mock_tg:
+            B.job_check_tcbs_token()
+            mock_tg.assert_not_called()
 
     def test_sends_alert_when_token_expiring_soon(self):
-        """Token còn < 1 giờ → gọi send_token_alert_once → gửi cảnh báo."""
-        cfg = {**SAMPLE_CONFIG, "tcbs_token": _make_jwt(1800)}  # 30 phút còn lại
+        """Còn <= 3 ngày → cảnh báo 'sắp hết hạn'."""
+        cfg = {**SAMPLE_CONFIG, "admin_telegram_id": "111222333", "tcbs_token": _make_jwt(2 * _DAY)}
         sent = []
         with patch.object(B, "load_config", return_value=cfg), \
-             patch.object(B, "send_token_alert_once", side_effect=self._bypass_dedup), \
              patch.object(B, "tg_send", side_effect=lambda t, c, m: sent.append(m) or True):
-            B.job_check_jwt()
-        assert len(sent) > 0, "Phải gửi alert khi token sắp hết hạn"
-        assert any("sắp hết hạn" in m for m in sent), "Message phải chứa 'sắp hết hạn'"
+            B.job_check_tcbs_token()
+        assert len(sent) == 1
+        assert "sắp hết hạn" in sent[0]
 
     def test_sends_alert_when_token_expired(self):
-        """Token đã hết hạn → gọi send_token_alert_once → gửi cảnh báo hết hạn."""
-        cfg = {**SAMPLE_CONFIG, "tcbs_token": _make_jwt(-600)}  # hết hạn 10 phút trước
+        cfg = {**SAMPLE_CONFIG, "admin_telegram_id": "111222333", "tcbs_token": _make_jwt(-1 * _DAY)}
         sent = []
         with patch.object(B, "load_config", return_value=cfg), \
-             patch.object(B, "send_token_alert_once", side_effect=self._bypass_dedup), \
+             patch.object(B, "load_state", return_value={}), \
+             patch.object(B, "save_state"), \
              patch.object(B, "tg_send", side_effect=lambda t, c, m: sent.append(m) or True):
-            B.job_check_jwt()
-        assert len(sent) > 0, "Phải gửi alert khi token đã hết hạn"
-        assert any("đã hết hạn" in m for m in sent), "Message phải chứa 'đã hết hạn'"
+            B.job_check_tcbs_token()
+        assert len(sent) == 1
+        assert "HẾT HẠN" in sent[0]
 
     def test_no_alert_when_no_token(self):
-        """Không có token → không làm gì."""
-        cfg = {**SAMPLE_CONFIG, "tcbs_token": ""}
+        cfg = {**SAMPLE_CONFIG, "admin_telegram_id": "111222333", "tcbs_token": ""}
         with patch.object(B, "load_config", return_value=cfg), \
              patch.object(B, "tg_send") as mock_tg:
-            B.job_check_jwt()
+            B.job_check_tcbs_token()
             mock_tg.assert_not_called()
 
-    def test_no_alert_when_bot_token_missing(self):
-        """Có JWT nhưng bot_token chưa cấu hình → không gửi."""
-        cfg = {**SAMPLE_CONFIG, "tcbs_token": _make_jwt(1800), "bot_token": "NHAP_TOKEN"}
+    def test_no_alert_when_admin_id_missing(self):
+        cfg = {**SAMPLE_CONFIG, "admin_telegram_id": "", "tcbs_token": _make_jwt(2 * _DAY)}
         with patch.object(B, "load_config", return_value=cfg), \
              patch.object(B, "tg_send") as mock_tg:
-            B.job_check_jwt()
+            B.job_check_tcbs_token()
             mock_tg.assert_not_called()
 
-    def test_alert_sent_to_all_profiles(self):
-        """Khi sắp hết hạn, tất cả profiles đều nhận thông báo."""
-        cfg = {**SAMPLE_CONFIG, "tcbs_token": _make_jwt(1800)}
+    def test_alert_sent_to_admin_only(self):
+        cfg = {**SAMPLE_CONFIG, "admin_telegram_id": "111222333", "tcbs_token": _make_jwt(2 * _DAY)}
         sent_to = []
         with patch.object(B, "load_config", return_value=cfg), \
-             patch.object(B, "send_token_alert_once", side_effect=self._bypass_dedup), \
              patch.object(B, "tg_send", side_effect=lambda t, c, m: sent_to.append(c) or True):
-            B.job_check_jwt()
-        assert "111222333" in sent_to, "Harvey phải nhận JWT alert"
-        assert "444555666" in sent_to, "Friend phải nhận JWT alert"
+            B.job_check_tcbs_token()
+        assert sent_to == ["111222333"]
+
+    def test_expired_dedup_via_state_shared_with_auth_error(self):
+        """Token đã hết hạn nhưng _handle_tcbs_auth_error đã notify rồi (state.json)
+        → job_check_tcbs_token không gửi trùng."""
+        cfg = {**SAMPLE_CONFIG, "admin_telegram_id": "111222333", "tcbs_token": _make_jwt(-1 * _DAY)}
+        with patch.object(B, "load_config", return_value=cfg), \
+             patch.object(B, "_already_notified_token_expired", return_value=True), \
+             patch.object(B, "tg_send") as mock_tg:
+            B.job_check_tcbs_token()
+            mock_tg.assert_not_called()
