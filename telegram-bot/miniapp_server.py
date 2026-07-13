@@ -884,23 +884,27 @@ def _validate_init_data(init_data_str: str, bot_token: str):
 
 
 def _auth_write(handler, claimed_tg_id: str) -> bool:
-    """Kiểm tra quyền ghi: initData phải hợp lệ và user.id phải khớp claimed_tg_id.
-    Cho phép admin (admin_telegram_id trong config) bypass mọi user — kể cả khi
-    claimed_tg_id là id ÂM (tài khoản /beta của admin, xem _effective_tg_id).
+    """Kiểm tra quyền ghi: initData phải hợp lệ (chữ ký HMAC thật từ Telegram) và
+    user.id đã xác thực phải khớp claimed_tg_id.
+
+    LƯU Ý BẢO MẬT: trước đây có bypass "nếu claimed_tg_id == admin_id thì cho
+    qua luôn, không cần initData" — đây là lỗ hổng nghiêm trọng vì claimed_tg_id
+    lấy thẳng từ body request (client tự khai), KHÔNG phải giá trị đã xác thực.
+    Bất kỳ ai biết telegram_id thật của admin đều có thể giả danh admin mà
+    không cần chữ ký Telegram nào. Đã bỏ bypass này — admin (kể cả tài khoản
+    /beta của admin, lưu dưới id ÂM) giờ BẮT BUỘC phải qua initData thật như
+    user thường, chỉ khác là id âm được đối chiếu với id dương đã xác thực.
+
     Trả về True nếu được phép, False và tự gửi 403 nếu bị từ chối.
     """
     cfg       = _load_cfg()
     bot_token = cfg.get("bot_token") or os.environ.get("BOT_TOKEN", "")
     admin_id  = str(cfg.get("admin_telegram_id", ""))
 
-    # Admin luôn được phép (dùng cho import script + tài khoản /beta của admin,
-    # vốn được lưu dưới id âm — xem _effective_tg_id)
-    if claimed_tg_id and admin_id and claimed_tg_id in (admin_id, "-" + admin_id):
-        return True
-
     init_data = handler.headers.get("X-Init-Data", "")
     if not init_data:
-        # Dev/local mode: nếu không có initData, kiểm tra môi trường
+        # Dev/local mode CHỈ khi ENV MINIAPP_NO_AUTH được set thủ công trên server
+        # (không phải thứ client có thể tự bật) — dùng khi test cục bộ.
         if os.environ.get("MINIAPP_NO_AUTH"):
             return True
         _json(handler, {"error": "Yêu cầu xác thực Telegram"}, 403)
@@ -911,11 +915,29 @@ def _auth_write(handler, claimed_tg_id: str) -> bool:
         _json(handler, {"error": "initData không hợp lệ"}, 403)
         return False
 
-    if str(user.get("id", "")) != str(claimed_tg_id):
-        _json(handler, {"error": "Không có quyền thao tác trên tài khoản này"}, 403)
-        return False
+    real_id = str(user.get("id", ""))
+    if claimed_tg_id == real_id:
+        return True
+    # Tài khoản /beta của admin: claimed_tg_id là id ÂM, nhưng phiên Telegram
+    # đăng nhập vẫn phải là chính admin thật (real_id == admin_id).
+    if real_id and real_id == admin_id and claimed_tg_id == "-" + real_id:
+        return True
 
-    return True
+    _json(handler, {"error": "Không có quyền thao tác trên tài khoản này"}, 403)
+    return False
+
+
+def _check_admin_secret(data: dict) -> bool:
+    """Xác thực script nội bộ (chạy từ máy admin, KHÔNG có phiên Telegram nên
+    không tạo được X-Init-Data) bằng secret ADMIN_API_KEY — CHỈ đặt được qua ENV
+    trên server, không phải giá trị client tự khai như telegram_id (khác hẳn
+    lỗ hổng cũ). Dùng cho scripts/import_tcbs_xlsx.py và các script tương tự.
+    Trả False (không phải 403) nếu ADMIN_API_KEY chưa được set — không tạo thêm
+    đường vòng nào khi tính năng chưa được bật."""
+    secret = os.environ.get("ADMIN_API_KEY", "")
+    if not secret:
+        return False
+    return hmac.compare_digest(str(data.get("admin_key", "")), secret)
 
 
 def _is_admin(telegram_id: str) -> bool:
@@ -1216,6 +1238,8 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         if not tg_id:
             _json(self, {"error": "user_id required"}, 400)
             return
+        if not _auth_write(self, tg_id):
+            return
         cfg     = _load_cfg()
         profile = _find_profile(cfg, tg_id)
         log.info(f"[/api/me] {tg_id} find_profile={_time.time()-t0:.2f}s")
@@ -1271,6 +1295,8 @@ class MiniAppHandler(BaseHTTPRequestHandler):
 
     def _api_signals(self, qs: dict):
         tg_id = _qs_tg_id(qs)
+        if tg_id and not _auth_write(self, tg_id):
+            return
         cfg     = _load_cfg()
         profile = _find_profile(cfg, tg_id) if tg_id else None
         watched = profile.get("watched_funds", []) if profile else list(cfg.get("funds", {}).keys())[:10]
@@ -1341,6 +1367,8 @@ class MiniAppHandler(BaseHTTPRequestHandler):
     def _api_list_alerts(self, qs: dict):
         """GET /api/alerts?user_id=... — PRO-004, danh sách cảnh báo đang bật của user."""
         tg_id = _qs_tg_id(qs)
+        if not _auth_write(self, tg_id):
+            return
         if not _check_tier(self, tg_id, "pro"):
             return
         if _db_mod is None or not _db_mod.is_available():
@@ -1424,6 +1452,8 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             _json(self, {"error": "Invalid code"}, 400)
             return
         tg_id = _qs_tg_id(qs)
+        if not _auth_write(self, tg_id):
+            return
         if not _check_tier(self, tg_id, "pro"):
             return
         if _db_mod is None or not _db_mod.is_available():
@@ -1445,6 +1475,8 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             _json(self, {"error": "Invalid code"}, 400)
             return
         tg_id = _qs_tg_id(qs)
+        if not _auth_write(self, tg_id):
+            return
         if not _check_tier(self, tg_id, "pro"):
             return
         cfg = _load_cfg()
@@ -1665,6 +1697,8 @@ class MiniAppHandler(BaseHTTPRequestHandler):
 
     def _api_dca(self, qs: dict):
         tg_id = _qs_tg_id(qs)
+        if tg_id and not _auth_write(self, tg_id):
+            return
         budget = float((qs.get("budget") or ["0"])[0])
         style  = (qs.get("style") or ["dca"])[0]
         cfg    = _load_cfg()
@@ -1723,6 +1757,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         tg_id = _qs_tg_id(qs, "telegram_id")
         if not tg_id:
             _json(self, {"error": "user_id required"}, 400); return
+        if not _auth_write(self, tg_id): return
         _init_trade_tables()
         try:
             conn = _get_db_conn()
@@ -1821,6 +1856,8 @@ class MiniAppHandler(BaseHTTPRequestHandler):
     def _api_gold(self, qs: dict):
         """GET /api/gold?user_id=... — giá vàng mới nhất + tín hiệu + portfolio."""
         tg_id = _qs_tg_id(qs)
+        if tg_id and not _auth_write(self, tg_id):
+            return
         db_url = os.environ.get("DATABASE_URL", _load_cfg().get("database_url", ""))
         prices = {}
         if db_url:
@@ -1962,6 +1999,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         tg_id = _qs_tg_id(qs)
         if not tg_id:
             _json(self, {"error": "user_id required"}, 400); return
+        if not _auth_write(self, tg_id): return
         _init_trade_tables()
         try:
             conn = _get_db_conn()
@@ -2115,6 +2153,8 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         if not _is_admin(tg_id):
             _json(self, {"error": "admin_only"}, 403)
             return
+        if not _auth_write(self, tg_id):
+            return
         if _db_mod is None or not _db_mod.is_available():
             _json(self, {"pending": []})
             return
@@ -2126,6 +2166,8 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         tg_id = _qs_tg_id(qs)
         if not tg_id:
             _json(self, {"error": "user_id required"}, 400)
+            return
+        if not _auth_write(self, tg_id):
             return
         if _db_mod is None or not _db_mod.is_available():
             _json(self, {"error": "DB không khả dụng"}, 503)
@@ -2170,6 +2212,8 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         if not _is_admin(tg_id):
             _json(self, {"error": "admin_only"}, 403)
             return
+        if not _auth_write(self, tg_id):
+            return
         if _db_mod is None or not _db_mod.is_available():
             _json(self, {"codes": []})
             return
@@ -2182,6 +2226,8 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         tg_id = str(data.get("telegram_id", ""))
         if not _is_admin(tg_id):
             _json(self, {"error": "admin_only"}, 403)
+            return
+        if not _auth_write(self, tg_id):
             return
         try:
             days = int(data.get("days", 30))
@@ -2219,6 +2265,8 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         if not _is_admin(tg_id):
             _json(self, {"error": "admin_only"}, 403)
             return
+        if not _auth_write(self, tg_id):
+            return
         code = str(data.get("code", ""))
         if not code:
             _json(self, {"error": "code required"}, 400)
@@ -2226,7 +2274,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         if _db_mod is None or not _db_mod.is_available():
             _json(self, {"error": "DB không khả dụng"}, 503)
             return
-        ok = _db_mod.deactivate_promo_code(code)
+        ok = _db_mod.deactivate_promo_code(code, actor_id=tg_id)
         _json(self, {"ok": ok})
 
     def _api_admin_promo_activate(self, data: dict):
@@ -2235,6 +2283,8 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         if not _is_admin(tg_id):
             _json(self, {"error": "admin_only"}, 403)
             return
+        if not _auth_write(self, tg_id):
+            return
         code = str(data.get("code", ""))
         if not code:
             _json(self, {"error": "code required"}, 400)
@@ -2242,7 +2292,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         if _db_mod is None or not _db_mod.is_available():
             _json(self, {"error": "DB không khả dụng"}, 503)
             return
-        ok = _db_mod.activate_promo_code(code)
+        ok = _db_mod.activate_promo_code(code, actor_id=tg_id)
         _json(self, {"ok": ok})
 
     def _api_admin_promo_edit(self, data: dict):
@@ -2251,6 +2301,8 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         tg_id = str(data.get("telegram_id", ""))
         if not _is_admin(tg_id):
             _json(self, {"error": "admin_only"}, 403)
+            return
+        if not _auth_write(self, tg_id):
             return
         code = str(data.get("code", "")).strip()
         if not code:
@@ -2277,7 +2329,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         if _db_mod is None or not _db_mod.is_available():
             _json(self, {"error": "DB không khả dụng"}, 503)
             return
-        promo = _db_mod.update_promo_code(code, days, max_uses, note)
+        promo = _db_mod.update_promo_code(code, days, max_uses, note, actor_id=tg_id)
         if not promo:
             _json(self, {"error": f"Không tìm thấy mã {code}"}, 404)
             return
@@ -2288,9 +2340,11 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         tg_id     = str(data.get("telegram_id", ""))
         fund_code = str(data.get("fund_code", "")).upper()
         nav_date  = str(data.get("nav_date", ""))
-        choice    = str(data.get("choice", ""))  # 'manual' hoặc 'fetch'
+        choice    = str(data.get("choice", ""))
         if not _is_admin(tg_id):
             _json(self, {"error": "admin_only"}, 403)
+            return
+        if not _auth_write(self, tg_id):
             return
         if choice not in ("manual", "fetch"):
             _json(self, {"error": "choice phải là 'manual' hoặc 'fetch'"}, 400)
@@ -2298,7 +2352,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         if _db_mod is None or not _db_mod.is_available():
             _json(self, {"error": "DB không khả dụng"}, 503)
             return
-        ok = _db_mod.resolve_nav_confirm(fund_code, nav_date, choice)
+        ok = _db_mod.resolve_nav_confirm(fund_code, nav_date, choice, actor_id=tg_id)
         if ok:
             _json(self, {"ok": True, "fund_code": fund_code, "nav_date": nav_date, "choice": choice})
         else:
@@ -2306,14 +2360,18 @@ class MiniAppHandler(BaseHTTPRequestHandler):
 
     def _api_admin_import_trades(self, data: dict):
         """POST /api/admin/import-trades — bulk import CCQ trades vào PostgreSQL.
-        Body: {telegram_id: str, trades: [{code, type, date, units, nav, amount}], replace: bool}
-        replace=true → xóa toàn bộ trades của user trước khi import (dùng khi import lần đầu).
+        Body: {telegram_id: str, trades: [{code, type, date, units, nav, amount}], replace: bool,
+               admin_key?: str}. replace=true → xóa toàn bộ trades của user trước khi import.
+        Dùng bởi scripts/import_tcbs_xlsx.py (chạy từ máy admin, không có phiên Telegram) —
+        xác thực qua ADMIN_API_KEY (_check_admin_secret) thay vì X-Init-Data.
         """
         tg_id     = str(data.get("telegram_id", "")).strip()
         trades_in = data.get("trades", [])
         replace   = data.get("replace", False)
         if not tg_id or not trades_in:
             _json(self, {"error": "telegram_id and trades required"}, 400); return
+        if not _check_admin_secret(data) and not _auth_write(self, tg_id):
+            return
         _init_trade_tables()
         try:
             conn = _get_db_conn()
@@ -2361,10 +2419,12 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         if not new_token:
             _json(self, {"error": "token required"}, 400)
             return
-        cfg = _load_cfg()
-        if admin_id and admin_id != str(cfg.get("admin_telegram_id", "")):
+        if not _is_admin(admin_id):
             _json(self, {"error": "Unauthorized"}, 403)
             return
+        if not _auth_write(self, admin_id):
+            return
+        cfg = _load_cfg()
         cfg["tcbs_token"] = new_token
         _save_cfg(cfg)
         log.info(f"[admin] tcbs_token cập nhật (len={len(new_token)}) — sẽ fetch NAV ngay")
@@ -2441,9 +2501,15 @@ class MiniAppHandler(BaseHTTPRequestHandler):
 
     def _api_admin_fetch_nav(self, data: dict):
         """POST /api/admin/fetch-nav — trigger fresh NAV fetch for all funds.
-        Params: skip_tcbs (bool) — bỏ qua các quỹ TCBS nếu True
+        Params: telegram_id (admin), skip_tcbs (bool) — bỏ qua các quỹ TCBS nếu True
         Returns token_expired error nếu token không hợp lệ (sync check trước khi background).
         """
+        tg_id = str(data.get("telegram_id", ""))
+        if not _is_admin(tg_id):
+            _json(self, {"error": "admin_only"}, 403)
+            return
+        if not _auth_write(self, tg_id):
+            return
         if not _BOT_IMPORTED:
             _json(self, {"error": "bot module not available"}, 503)
             return
@@ -2574,18 +2640,15 @@ class MiniAppHandler(BaseHTTPRequestHandler):
 
     def _api_admin_import_nav(self, data: dict):
         """POST /api/admin/import-nav — Admin-only bulk import NAV vào shared nav_history."""
-        # Admin-only guard
+        # Admin-only guard — LUÔN xác thực initData thật trước, không có ngoại lệ nào
+        # bỏ qua kiểm tra chữ ký chỉ vì tg_id trùng chuỗi admin_id (đã từng là lỗ hổng).
         tg_id = str(data.get("tg_id", ""))
-        cfg = _load_cfg()
-        admin_id = str(cfg.get("admin_telegram_id", ""))
-        if not tg_id or tg_id != admin_id:
-            if not _auth_write(self, tg_id):
-                return
-            # Nếu auth OK nhưng không phải admin → từ chối
-            if tg_id != admin_id:
-                _json(self, {"error": "Chỉ admin mới được import NAV trực tiếp vào DB tổng. "
-                                      "Dùng /api/nav/draft nếu là tài khoản Pro."}, 403)
-                return
+        if not tg_id or not _is_admin(tg_id):
+            _json(self, {"error": "Chỉ admin mới được import NAV trực tiếp vào DB tổng. "
+                                  "Dùng /api/nav/draft nếu là tài khoản Pro."}, 403)
+            return
+        if not _auth_write(self, tg_id):
+            return
         funds_data = data.get("funds", {})
         if not funds_data:
             _json(self, {"error": "funds required"}, 400)
@@ -2673,10 +2736,12 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         if not code or avg_cost is None:
             _json(self, {"error": "code and avg_cost required"}, 400)
             return
-        cfg = _load_cfg()
-        if admin_id and admin_id != str(cfg.get("admin_telegram_id", "")):
+        if not _is_admin(admin_id):
             _json(self, {"error": "Unauthorized"}, 403)
             return
+        if not _auth_write(self, admin_id):
+            return
+        cfg = _load_cfg()
         cfg_admin_id = str(cfg.get("admin_telegram_id", ""))
         admin_p = next((p for p in cfg.get("profiles", []) if str(p.get("telegram_id")) == cfg_admin_id), None)
         if not admin_p:

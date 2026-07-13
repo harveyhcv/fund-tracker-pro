@@ -111,6 +111,82 @@ def set_app_uid(conn, user_uuid: str) -> None:
         cur.execute("SET LOCAL app.uid = %s", (user_uuid,))
 
 
+# ─── AUDIT LOG (GOV-001) ──────────────────────────────────────────────────────
+# Ghi lại MỌI thay đổi trên dữ liệu nhạy cảm: tier/thanh toán, mã giảm giá,
+# NAV thủ công/xác nhận, giao dịch CCQ/vàng — để truy vết khi có lỗi hoặc tranh
+# chấp. Không bao giờ xoá/sửa dòng audit_log (append-only). log_audit() KHÔNG
+# BAO GIỜ được phép làm hỏng thao tác chính — mọi lỗi ghi log chỉ log cảnh báo,
+# không raise, không rollback nghiệp vụ đang chạy.
+
+def _ensure_audit_table(conn) -> None:
+    with conn.cursor() as cur:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS audit_log (
+                id            BIGSERIAL PRIMARY KEY,
+                actor_id      BIGINT,
+                action        TEXT NOT NULL,
+                target_table  TEXT,
+                target_id     TEXT,
+                before_state  JSONB,
+                after_state   JSONB,
+                note          TEXT,
+                created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        """)
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_audit_actor ON audit_log(actor_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_log(action)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at DESC)")
+
+
+def log_audit(actor_id, action: str, target_table: str = None, target_id: str = None,
+              before: dict = None, after: dict = None, note: str = None) -> None:
+    """Ghi 1 dòng audit. actor_id=None nghĩa là hệ thống tự động thực hiện (cron,
+    webhook thanh toán...). Không bao giờ raise ra ngoài — lỗi ghi audit không
+    được phép làm hỏng thao tác nghiệp vụ chính đang chạy."""
+    if not is_available():
+        return
+    try:
+        import json as _json
+        with get_conn() as conn:
+            _ensure_audit_table(conn)
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO audit_log (actor_id, action, target_table, target_id, before_state, after_state, note)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    int(actor_id) if actor_id not in (None, "") else None,
+                    action, target_table, str(target_id) if target_id is not None else None,
+                    _json.dumps(before, default=str) if before is not None else None,
+                    _json.dumps(after, default=str) if after is not None else None,
+                    note,
+                ))
+    except Exception as e:
+        logger.warning(f"[audit] log_audit failed (non-fatal): action={action} err={e}")
+
+
+def get_audit_log(limit: int = 100, action: str = None, actor_id=None) -> "list[dict]":
+    """Xem lịch sử audit gần đây — dùng cho admin dashboard (GOV-004)."""
+    if not is_available():
+        return []
+    with get_conn() as conn:
+        _ensure_audit_table(conn)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            filters, params = [], []
+            if action:
+                filters.append("action = %s"); params.append(action)
+            if actor_id is not None:
+                filters.append("actor_id = %s"); params.append(int(actor_id))
+            where = ("WHERE " + " AND ".join(filters)) if filters else ""
+            params.append(limit)
+            cur.execute(f"""
+                SELECT id, actor_id, action, target_table, target_id,
+                       before_state, after_state, note, created_at::text
+                FROM audit_log {where}
+                ORDER BY id DESC LIMIT %s
+            """, params)
+            return [dict(r) for r in cur.fetchall()]
+
+
 # ─── NAV ────────────────────────────────────────────────────────────────────
 
 def upsert_nav(fund_code: str, nav_date: date, nav: float, source: str = "fmarket") -> None:
@@ -292,7 +368,7 @@ def get_pending_confirms() -> list[dict]:
             return [dict(r) for r in cur.fetchall()]
 
 
-def resolve_nav_confirm(fund_code: str, nav_date_str: str, choice: str) -> bool:
+def resolve_nav_confirm(fund_code: str, nav_date_str: str, choice: str, actor_id=None) -> bool:
     """
     Admin xác nhận NAV.
     choice: 'manual' → giữ nav hiện tại (từ user)
@@ -321,7 +397,10 @@ def resolve_nav_confirm(fund_code: str, nav_date_str: str, choice: str) -> bool:
             )
         logger.info("✅ Admin confirmed %s %s choice=%s final=%.0f",
                     fund_code, nav_date_str, choice, final_nav)
-        return True
+    log_audit(actor_id, "nav.confirm", "nav_history", f"{fund_code}:{nav_date_str}",
+              before={"manual_nav": float(existing_nav), "fetch_nav": float(pending_nav) if pending_nav else None},
+              after={"final_nav": final_nav, "choice": choice})
+    return True
 
 
 def get_nav_series(fund_code: str, days: int = 90) -> list[dict]:
@@ -904,12 +983,15 @@ def get_tier(telegram_id) -> dict:
             return {"tier": row["tier"], "pro_expires_at": row["pro_expires_at"]}
 
 
-def set_tier(telegram_id, tier: str, pro_expires_at=None) -> dict:
-    """Upsert tier — gọi sau khi thanh toán thành công (Stars/MoMo/VNPay/Stripe)."""
+def set_tier(telegram_id, tier: str, pro_expires_at=None, actor_id=None, note: str = None) -> dict:
+    """Upsert tier — gọi sau khi thanh toán thành công (Stars/MoMo/VNPay/Stripe).
+    actor_id=None → hệ thống tự động (vd webhook thanh toán) ghi vào audit_log."""
     tg = int(telegram_id)
     with get_conn() as conn:
         _ensure_user_tiers_table(conn)
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT tier, pro_expires_at FROM user_tiers WHERE telegram_id = %s", (tg,))
+            before_row = cur.fetchone()
             cur.execute("""
                 INSERT INTO user_tiers (telegram_id, tier, pro_expires_at)
                 VALUES (%s, %s, %s)
@@ -917,13 +999,17 @@ def set_tier(telegram_id, tier: str, pro_expires_at=None) -> dict:
                     tier = EXCLUDED.tier, pro_expires_at = EXCLUDED.pro_expires_at
                 RETURNING telegram_id, tier, pro_expires_at
             """, (tg, tier, pro_expires_at))
-            return dict(cur.fetchone())
+            result = dict(cur.fetchone())
+    log_audit(actor_id, "tier.set", "user_tiers", tg,
+              before=dict(before_row) if before_row else None, after=result, note=note)
+    return result
 
 
-def extend_pro(telegram_id, days: int) -> dict:
+def extend_pro(telegram_id, days: int, actor_id=None, note: str = None) -> dict:
     """Cộng thêm `days` ngày Pro — nếu đang Pro và chưa hết hạn thì cộng dồn từ
     pro_expires_at hiện tại (không reset), nếu free/đã hết hạn thì tính từ hôm nay.
-    Dùng cho thanh toán, mã giảm giá, và thưởng giới thiệu (referral)."""
+    Dùng cho thanh toán, mã giảm giá, và thưởng giới thiệu (referral).
+    actor_id=None → hệ thống tự động (thanh toán/redeem) ghi vào audit_log."""
     tg = int(telegram_id)
     now = datetime.now(timezone.utc)
     with get_conn() as conn:
@@ -942,7 +1028,11 @@ def extend_pro(telegram_id, days: int) -> dict:
                     tier = 'pro', pro_expires_at = EXCLUDED.pro_expires_at
                 RETURNING telegram_id, tier, pro_expires_at
             """, (tg, new_expiry))
-            return dict(cur.fetchone())
+            result = dict(cur.fetchone())
+    log_audit(actor_id, "tier.extend", "user_tiers", tg,
+              before=dict(row) if row else None, after=result,
+              note=note or f"+{days} ngày")
+    return result
 
 
 # ─── PROMO / REFERRAL CODES ──────────────────────────────────────────────────
@@ -998,7 +1088,9 @@ def create_promo_code(days: int, max_uses: "int | None", created_by, note: str =
                 VALUES (%s, 'admin', %s, %s, %s, %s)
                 RETURNING *
             """, (final_code, days, max_uses, int(created_by) if created_by else None, note))
-            return dict(cur.fetchone())
+            result = dict(cur.fetchone())
+    log_audit(created_by, "promo.create", "promo_codes", final_code, after=result)
+    return result
 
 
 def list_promo_codes() -> "list[dict]":
@@ -1012,34 +1104,48 @@ def list_promo_codes() -> "list[dict]":
             return [dict(r) for r in cur.fetchall()]
 
 
-def deactivate_promo_code(code: str) -> bool:
+def deactivate_promo_code(code: str, actor_id=None) -> bool:
+    code = code.strip().upper()
     with get_conn() as conn:
         _ensure_promo_tables(conn)
         with conn.cursor() as cur:
-            cur.execute("UPDATE promo_codes SET active = false WHERE code = %s", (code.strip().upper(),))
-            return cur.rowcount > 0
+            cur.execute("UPDATE promo_codes SET active = false WHERE code = %s", (code,))
+            ok = cur.rowcount > 0
+    if ok:
+        log_audit(actor_id, "promo.deactivate", "promo_codes", code)
+    return ok
 
 
-def activate_promo_code(code: str) -> bool:
+def activate_promo_code(code: str, actor_id=None) -> bool:
+    code = code.strip().upper()
     with get_conn() as conn:
         _ensure_promo_tables(conn)
         with conn.cursor() as cur:
-            cur.execute("UPDATE promo_codes SET active = true WHERE code = %s", (code.strip().upper(),))
-            return cur.rowcount > 0
+            cur.execute("UPDATE promo_codes SET active = true WHERE code = %s", (code,))
+            ok = cur.rowcount > 0
+    if ok:
+        log_audit(actor_id, "promo.activate", "promo_codes", code)
+    return ok
 
 
-def update_promo_code(code: str, days: int, max_uses: "int | None", note: str) -> "dict | None":
+def update_promo_code(code: str, days: int, max_uses: "int | None", note: str, actor_id=None) -> "dict | None":
     """Sửa số ngày/số lượt/ghi chú của 1 mã admin đã tạo (không đổi code, kind, uses_count)."""
+    code = code.strip().upper()
     with get_conn() as conn:
         _ensure_promo_tables(conn)
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT * FROM promo_codes WHERE code = %s", (code,))
+            before_row = cur.fetchone()
             cur.execute("""
                 UPDATE promo_codes SET days = %s, max_uses = %s, note = %s
                 WHERE code = %s
                 RETURNING *
-            """, (days, max_uses, note, code.strip().upper()))
+            """, (days, max_uses, note, code))
             row = cur.fetchone()
-            return dict(row) if row else None
+    if row:
+        log_audit(actor_id, "promo.edit", "promo_codes", code,
+                  before=dict(before_row) if before_row else None, after=dict(row))
+    return dict(row) if row else None
 
 
 def code_exists(code: str) -> bool:
@@ -1116,11 +1222,13 @@ def redeem_promo_code(code: str, telegram_id) -> dict:
                 "UPDATE promo_codes SET uses_count = uses_count + 1 WHERE code = %s", (code,)
             )
     # Ngoài transaction ở trên (extend_pro tự mở connection riêng)
-    extend_pro(tg, promo["days"])
+    extend_pro(tg, promo["days"], actor_id=tg, note=f"redeem mã {code}")
     referrer_bonus = 0
     if promo["kind"] == "referral" and promo["created_by"]:
-        extend_pro(promo["created_by"], promo["days"])
+        extend_pro(promo["created_by"], promo["days"], actor_id=tg, note=f"referral bonus từ mã {code}")
         referrer_bonus = promo["days"]
+    log_audit(tg, "promo.redeem", "promo_codes", code,
+              after={"days": promo["days"], "referrer_bonus_days": referrer_bonus, "kind": promo["kind"]})
     return {"ok": True, "days": promo["days"], "referrer_bonus_days": referrer_bonus}
 
 

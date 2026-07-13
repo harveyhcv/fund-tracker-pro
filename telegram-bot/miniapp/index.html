@@ -843,7 +843,7 @@ async function apiFetch(path, timeoutMs=12000){
   if(USER_ID&&USER_NAME)qs+='&name='+encodeURIComponent(USER_NAME);
   if(IS_BETA)qs+='&beta=1';
   try{
-    const res=await fetch(API_BASE+path+qs,{signal:ctrl.signal});
+    const res=await fetch(API_BASE+path+qs,{headers:_authHeaders(),signal:ctrl.signal});
     clearTimeout(tid);
     if(!res.ok){const b=await res.json().catch(()=>({}));const err=new Error(b.error||res.status);err.body=b;err.status=res.status;throw err;}
     return res.json();
@@ -903,39 +903,29 @@ async function adminUpdateToken(){
   if(!token){st.style.color='var(--sell)';st.textContent='Chưa nhập token';return;}
   st.style.color='var(--txt2)';st.textContent='Đang lưu token...';
   try{
-    const r=await fetch(`${API_BASE}/api/admin/settoken`,{method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({token})});
-    const d=await r.json();
-    if(!r.ok){st.style.color='var(--sell)';st.textContent=d.error||'Lỗi';return;}
+    const d=await apiPost('/api/admin/settoken',{admin_id:USER_ID, token});
     st.style.color='var(--buy)';st.textContent='✓ Token đã lưu. Đang fetch TCBS...';
-    const r2=await fetch(`${API_BASE}/api/admin/fetch-nav`,{method:'POST',
-      headers:{'Content-Type':'application/json'},body:'{}'});
-    const d2=await r2.json();
+    const d2=await apiPost('/api/admin/fetch-nav',{telegram_id:USER_ID});
     st.style.color='var(--buy)';
     st.textContent=`✓ Xong! Fetch ${Object.keys(d2.results||{}).length} quỹ.`;
     tg?.HapticFeedback?.notificationOccurred('success');
-  }catch(e){st.style.color='var(--sell)';st.textContent='Lỗi: '+e.message;}
+  }catch(e){st.style.color='var(--sell)';st.textContent='⚠️ '+(e.body?.error||e.message);}
 }
 async function adminFetchAll(){
   const st=document.getElementById('admin-fetch-status');
   st.style.color='var(--txt2)';st.textContent='Đang fetch tất cả quỹ...';
   try{
-    const r=await fetch(`${API_BASE}/api/admin/fetch-nav`,{method:'POST',
-      headers:{'Content-Type':'application/json'},body:'{}'});
-    const d=await r.json();
+    const d=await apiPost('/api/admin/fetch-nav',{telegram_id:USER_ID});
     st.style.color='var(--buy)';st.textContent=`✓ ${d.msg||'Fetch started'}`;
-  }catch(e){st.style.color='var(--sell)';st.textContent='Lỗi: '+e.message;}
+  }catch(e){st.style.color='var(--sell)';st.textContent='⚠️ '+(e.body?.error||e.message);}
 }
 async function adminFetchFmarket(){
   const st=document.getElementById('admin-fetch-status');
   st.style.color='var(--txt2)';st.textContent='Đang fetch fmarket...';
   try{
-    const r=await fetch(`${API_BASE}/api/admin/fetch-nav`,{method:'POST',
-      headers:{'Content-Type':'application/json'},body:JSON.stringify({skip_tcbs:true})});
-    const d=await r.json();
+    const d=await apiPost('/api/admin/fetch-nav',{telegram_id:USER_ID, skip_tcbs:true});
     st.style.color='var(--buy)';st.textContent=`✓ ${d.msg||'Fetch started (fmarket only)'}`;
-  }catch(e){st.style.color='var(--sell)';st.textContent='Lỗi: '+e.message;}
+  }catch(e){st.style.color='var(--sell)';st.textContent='⚠️ '+(e.body?.error||e.message);}
 }
 
 async function loadAdminNavPending(){
@@ -974,19 +964,15 @@ async function loadAdminNavPending(){
 }
 
 async function adminNavConfirm(fundCode, navDate, choice){
-  const tgId=USER_ID||'';
   try{
-    const r=await fetch(`${API_BASE}/api/admin/nav/confirm`,{method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({telegram_id:String(tgId),fund_code:fundCode,nav_date:navDate,choice})});
-    const d=await r.json();
+    const d=await apiPost('/api/admin/nav/confirm',{telegram_id:String(USER_ID||''),fund_code:fundCode,nav_date:navDate,choice});
     if(d.ok){
       tg?.HapticFeedback?.notificationOccurred('success');
       await loadAdminNavPending();
     } else {
       alert('Lỗi: '+(d.error||'unknown'));
     }
-  }catch(e){ alert('Lỗi: '+e.message); }
+  }catch(e){ alert('⚠️ '+(e.body?.error||e.message)); }
 }
 
 let _promoCodesCache=[], _editingPromoCode=null;
@@ -2889,21 +2875,18 @@ async function submitToken(){
   if(!token){statusEl.textContent='Vui lòng paste token vào ô trên';return;}
   statusEl.style.color='var(--c0)';statusEl.textContent='Đang lưu token...';
   try{
-    const res=await fetch(`${API_BASE}/api/admin/settoken`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token})});
-    const d=await res.json();
-    if(d.ok){
-      statusEl.style.color='var(--c0)';statusEl.textContent='✓ Đã lưu token. Đang fetch TCBS NAV...';
-      try{
-        await fetch(`${API_BASE}/api/admin/fetch-nav`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
-      }catch(_){}
-      statusEl.style.color='var(--buy)';statusEl.textContent='✓ Xong! Làm mới app sau 1-2 phút.';
-      setTimeout(()=>{
-        document.getElementById('token-modal').style.display='none';
-        document.getElementById('token-input').value='';
-        statusEl.textContent='';statusEl.style.color='var(--txt2)';
-      },2000);
-    } else {statusEl.style.color='var(--sell)';statusEl.textContent='Lỗi: '+(d.error||'unknown');}
-  }catch(e){statusEl.style.color='var(--sell)';statusEl.textContent='Lỗi kết nối: '+e.message;}
+    await apiPost('/api/admin/settoken',{admin_id:USER_ID, token});
+    statusEl.style.color='var(--c0)';statusEl.textContent='✓ Đã lưu token. Đang fetch TCBS NAV...';
+    try{
+      await apiPost('/api/admin/fetch-nav',{telegram_id:USER_ID});
+    }catch(_){}
+    statusEl.style.color='var(--buy)';statusEl.textContent='✓ Xong! Làm mới app sau 1-2 phút.';
+    setTimeout(()=>{
+      document.getElementById('token-modal').style.display='none';
+      document.getElementById('token-input').value='';
+      statusEl.textContent='';statusEl.style.color='var(--txt2)';
+    },2000);
+  }catch(e){statusEl.style.color='var(--sell)';statusEl.textContent='⚠️ '+(e.body?.error||e.message);}
 }
 // ── NAV Import Modal ──────────────────────────────────────────────────────
 function openNavImport(){
@@ -2964,12 +2947,7 @@ async function navImportSubmit(){
   statusEl.textContent=`Đang lưu ${navList.length} điểm NAV vào ${label}...`;
   try {
     const body = { tg_id: String(USER_ID), funds: { [code]: navList } };
-    const res = await fetch(`${API_BASE}${endpoint}`, {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify(body)
-    });
-    const d = await res.json();
-    if (!res.ok) { statusEl.style.color='var(--sell)'; statusEl.textContent=d.error||'Lỗi server'; return; }
+    const d = await apiPost(endpoint, body);
     const ins = d.saved?.[code] ?? d.inserted?.[code] ?? d.total ?? navList.length;
     const sk = d.skipped?.[code] ?? 0;
     // Nếu có điểm bị skip (source=fixed) và là admin → hỏi có muốn force-overwrite không
@@ -2982,15 +2960,13 @@ async function navImportSubmit(){
       confirmBtn.onclick = async () => {
         confirmBtn.remove();
         statusEl.textContent='Đang ghi đè...';
-        const r2 = await fetch(`${API_BASE}${endpoint}`, {
-          method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({...body, force: true})
-        });
-        const d2 = await r2.json();
-        const ins2 = d2.inserted?.[code] ?? 0;
-        statusEl.style.color='var(--buy)';
-        statusEl.textContent=`✓ Ghi đè ${ins2} điểm (đã reset về manual, chờ API re-confirm).`;
-        await crossCheckNav(code, navList);
+        try{
+          const d2 = await apiPost(endpoint, {...body, force: true});
+          const ins2 = d2.inserted?.[code] ?? 0;
+          statusEl.style.color='var(--buy)';
+          statusEl.textContent=`✓ Ghi đè ${ins2} điểm (đã reset về manual, chờ API re-confirm).`;
+          await crossCheckNav(code, navList);
+        }catch(e){ statusEl.style.color='var(--sell)'; statusEl.textContent='⚠️ '+(e.body?.error||e.message); }
       };
       statusEl.after(confirmBtn);
       tg?.HapticFeedback?.notificationOccurred('warning');
@@ -3003,7 +2979,7 @@ async function navImportSubmit(){
     await crossCheckNav(code, navList);
   } catch(e) {
     statusEl.style.color = 'var(--sell)';
-    statusEl.textContent = 'Lỗi: ' + e.message;
+    statusEl.textContent = '⚠️ ' + (e.body?.error||e.message);
   }
 }
 // Legacy alias
@@ -3052,11 +3028,7 @@ async function autoUpdateNav(){
   statusEl.textContent = 'Dang fetch du lieu tu tat ca nguon...';
   _fetchNavSkipTcbs = false;
   try {
-    const res = await fetch(`${API_BASE}/api/admin/fetch-nav`, {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ skip_tcbs: false })
-    });
-    const d = await res.json();
+    const d = await apiPost('/api/admin/fetch-nav', { telegram_id: USER_ID, skip_tcbs: false });
     if (d.ok) {
       statusEl.style.color = 'var(--buy)';
       statusEl.textContent = 'Dang fetch trong nen. Doi 1-2 phut roi lam moi app.';
@@ -3070,7 +3042,7 @@ async function autoUpdateNav(){
     }
   } catch(e) {
     statusEl.style.color = 'var(--sell)';
-    statusEl.textContent = 'Loi ket noi: ' + e.message;
+    statusEl.textContent = '⚠️ ' + (e.body?.error || e.message);
   }
   if (btn) { btn.textContent = '⟳ Cap nhat tu dong'; btn.disabled = false; }
   // Reload chart after short delay
@@ -3087,15 +3059,12 @@ async function tcbsMiniSubmit(){
   if (!token) { st.textContent = 'Paste token truoc'; return; }
   st.textContent = 'Dang cap nhat token...';
   try {
-    const r1 = await fetch(`${API_BASE}/api/admin/settoken`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token})});
-    const d1 = await r1.json();
-    if (!d1.ok) { st.style.color='var(--sell)'; st.textContent='Loi: '+(d1.error||'?'); return; }
+    const d1 = await apiPost('/api/admin/settoken', { admin_id: USER_ID, token });
     st.style.color = 'var(--buy)'; st.textContent = 'Token OK. Dang fetch tat ca...';
-    const r2 = await fetch(`${API_BASE}/api/admin/fetch-nav`, {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
-    const d2 = await r2.json();
+    const d2 = await apiPost('/api/admin/fetch-nav', { telegram_id: USER_ID });
     st.textContent = d2.ok ? 'Dang fetch trong nen. Dong popup sau 3s.' : 'Loi fetch: '+(d2.error||'?');
     setTimeout(()=>{ document.getElementById('tcbs-mini-modal').style.display='none'; if(_histCode)loadHistChart(_histCode); }, 3000);
-  } catch(e) { st.style.color='var(--sell)'; st.textContent='Loi: '+e.message; }
+  } catch(e) { st.style.color='var(--sell)'; st.textContent='⚠️ '+(e.body?.error||e.message); }
 }
 async function tcbsMiniSkip(){
   document.getElementById('tcbs-mini-modal').style.display = 'none';
@@ -3103,19 +3072,17 @@ async function tcbsMiniSkip(){
   statusEl.style.color = 'var(--c0)';
   statusEl.textContent = 'Fetch fmarket (bo qua TCBS)...';
   try {
-    const res = await fetch(`${API_BASE}/api/admin/fetch-nav`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({skip_tcbs:true})});
-    const d = await res.json();
+    const d = await apiPost('/api/admin/fetch-nav', { telegram_id: USER_ID, skip_tcbs: true });
     statusEl.style.color = d.ok ? 'var(--buy)' : 'var(--sell)';
     statusEl.textContent = d.ok ? 'Dang fetch fmarket trong nen.' : 'Loi: '+(d.error||'?');
     if (_histCode) setTimeout(()=>loadHistChart(_histCode), 4000);
-  } catch(e) { statusEl.textContent = 'Loi: '+e.message; }
+  } catch(e) { statusEl.textContent = '⚠️ '+(e.body?.error||e.message); }
 }
 async function triggerFetchAllNav(){
   const statusEl = document.getElementById('token-status') || document.getElementById('hist-auto-status');
   if (statusEl) { statusEl.style.color='var(--c0)'; statusEl.textContent='Đang fetch tất cả quỹ...'; }
   try {
-    const res = await fetch(`${API_BASE}/api/admin/fetch-nav`, {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'});
-    const d = await res.json();
+    const d = await apiPost('/api/admin/fetch-nav', { telegram_id: USER_ID });
     if (statusEl) {
       statusEl.style.color = d.ok ? 'var(--buy)' : 'var(--sell)';
       statusEl.textContent = d.ok ? '✓ Xong! Làm mới app sau 1-2 phút.' : 'Lỗi: '+(d.error||'unknown');
@@ -3128,7 +3095,7 @@ async function triggerFetchAllNav(){
       }, 2000);
     }
   } catch(e) {
-    if (statusEl) { statusEl.style.color='var(--sell)'; statusEl.textContent='Lỗi kết nối: '+e.message; }
+    if (statusEl) { statusEl.style.color='var(--sell)'; statusEl.textContent='⚠️ '+(e.body?.error||e.message); }
   }
 }
 function drawChart(points, color){

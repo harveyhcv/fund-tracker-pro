@@ -13,7 +13,7 @@ Options:
   --replace   Xóa toàn bộ trade_log cũ của user trước khi import
   --dry-run   Chỉ parse, không POST lên server
 """
-import sys, json, argparse
+import sys, os, json, argparse
 from pathlib import Path
 from datetime import datetime
 import urllib.request as _req
@@ -155,10 +155,17 @@ def main():
         print("\nDry run — không POST lên server.")
         return
 
+    admin_key = os.environ.get("ADMIN_API_KEY", "")
+    if not admin_key:
+        print("⚠️  ADMIN_API_KEY chưa được set trong env — server sẽ từ chối nếu "
+              "telegram_id không có phiên Telegram thật đang đăng nhập. "
+              "Đặt ADMIN_API_KEY giống với giá trị trên Railway để script này chạy được.")
+
     payload = json.dumps({
         "telegram_id": args.telegram_id,
         "trades":      trades,
         "replace":     args.replace,
+        "admin_key":   admin_key,
     }, ensure_ascii=False).encode("utf-8")
 
     url = server.rstrip("/") + "/api/admin/import-trades"
