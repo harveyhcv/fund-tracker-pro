@@ -1740,6 +1740,92 @@ def get_accuracy_history(fund_code: str, model_version: str = None, limit: int =
             return [dict(r) for r in cur.fetchall()]
 
 
+# ─── ADMIN SUMMARY DASHBOARD (GOV-004) ───────────────────────────────────────
+
+def get_admin_summary() -> dict:
+    """GOV-004: tổng hợp 1 lần cho admin dashboard — user theo tier, MAPE model gần nhất,
+    quỹ thiếu/lỗi NAV hôm nay, giao dịch thanh toán gần đây. Read-only, mỗi phần độc lập
+    (lỗi 1 phần không chặn phần khác — dùng try/except riêng vì đây là dashboard tổng hợp,
+    thà thiếu 1 mục còn hơn lỗi cả trang)."""
+    if not is_available():
+        return {"users": {}, "model_mape": [], "funds_missing_today": [], "recent_payments": []}
+
+    summary: dict = {}
+
+    # ── Users theo tier ──────────────────────────────────────────────────────
+    try:
+        with get_conn() as conn:
+            _ensure_bot_profiles_table(conn)
+            _ensure_user_tiers_table(conn)
+            with conn.cursor() as cur:
+                cur.execute("SELECT COUNT(*) FROM bot_profiles WHERE is_active = true")
+                total = cur.fetchone()[0]
+                cur.execute("""
+                    SELECT COUNT(*) FROM user_tiers
+                    WHERE tier = 'pro' AND (pro_expires_at IS NULL OR pro_expires_at > NOW())
+                """)
+                pro = cur.fetchone()[0]
+        summary["users"] = {"total": total, "pro": pro, "free": max(total - pro, 0)}
+    except Exception as e:
+        logger.warning(f"[admin_summary] users: {e}")
+        summary["users"] = {}
+
+    # ── MAPE model gần nhất (7 ngày) mỗi model_version đã dự báo ─────────────
+    try:
+        mape_rows = []
+        for mv in ("arima-v1", "xgb-v1", "ensemble-v1"):
+            daily = get_daily_mape(mv, days=7)
+            if daily:
+                vals = [float(r["mape"]) for r in daily if r["mape"] is not None]
+                mape_rows.append({
+                    "model_version": mv,
+                    "mape_7d": round(sum(vals) / len(vals), 2) if vals else None,
+                    "last_day": str(daily[0]["day"]),
+                    "last_day_mape": round(float(daily[0]["mape"]), 2) if daily[0]["mape"] is not None else None,
+                })
+        summary["model_mape"] = mape_rows
+    except Exception as e:
+        logger.warning(f"[admin_summary] model_mape: {e}")
+        summary["model_mape"] = []
+
+    # ── Quỹ chưa có NAV hôm nay (active trong funds_master, không có row nav_history hôm nay) ──
+    try:
+        with get_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT m.code, m.name,
+                           (SELECT MAX(nav_date) FROM nav_history WHERE fund_code = m.code)::text AS last_nav_date
+                    FROM funds_master m
+                    WHERE m.active = true
+                      AND NOT EXISTS (
+                          SELECT 1 FROM nav_history h
+                          WHERE h.fund_code = m.code AND h.nav_date = CURRENT_DATE
+                      )
+                    ORDER BY m.code
+                """)
+                summary["funds_missing_today"] = [dict(r) for r in cur.fetchall()]
+    except Exception as e:
+        logger.warning(f"[admin_summary] funds_missing_today: {e}")
+        summary["funds_missing_today"] = []
+
+    # ── Giao dịch thanh toán gần đây ──────────────────────────────────────────
+    try:
+        with get_conn() as conn:
+            _ensure_payment_dedup_table(conn)
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT provider, charge_id, telegram_id, created_at::text
+                    FROM processed_payments
+                    ORDER BY created_at DESC LIMIT 20
+                """)
+                summary["recent_payments"] = [dict(r) for r in cur.fetchall()]
+    except Exception as e:
+        logger.warning(f"[admin_summary] recent_payments: {e}")
+        summary["recent_payments"] = []
+
+    return summary
+
+
 # ─── POOL ────────────────────────────────────────────────────────────────────
 
 def close_pool() -> None:
