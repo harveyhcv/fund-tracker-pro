@@ -39,3 +39,8 @@ venv/
 # ── Backups ───────────────────────────────────────────────────
 *.bak
 *.tmp
+
+# Snapshot/DB backups (chứa PII + payment data) — KHÔNG BAO GIỜ push lên git remote.
+# Chỉ lưu local, xem backups/README.md để biết cách restore/audit.
+backups/*
+!backups/README.md
