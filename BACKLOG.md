@@ -144,9 +144,12 @@
 - [ ] GOV-003 · Cảnh báo bất thường tự động — rule-based: NAV nhảy >X%/phiên, MAPE dự báo vượt
   ngưỡng N ngày liên tiếp, thanh toán trùng lặp (cùng charge_id/orderId xử lý 2 lần), redeem
   promo bất thường (nhiều mã cùng 1 phút) → Telegram admin | P1 | ~4h (giờ có audit_log làm nguồn)
-- [ ] GOV-004 · Dashboard giám sát admin — 1 màn hình: số user theo tier, MAPE dự báo theo model,
-  quỹ NAV đang lỗi/thiếu dữ liệu, giao dịch thanh toán gần đây, log audit gần đây (endpoint
-  `GET /api/admin/audit` chưa làm — cần thêm) | P1 | ~4h
+- [DONE-PARTIAL] GOV-004 · `GET /api/admin/audit` (admin-only, `_auth_write` + `_is_admin`,
+  dùng `db.get_audit_log()` có sẵn từ GOV-001) + card "Audit log gần đây" trong tab Admin
+  Mini App (`telegram-bot/miniapp/index.html`) hiện 50 dòng gần nhất (action/actor/target/note).
+  Verify qua browser preview với mock apiFetch — render đúng, không console error | 2026-07-13
+  | Còn thiếu phần dashboard tổng hợp: số user theo tier, MAPE model, quỹ NAV lỗi/thiếu, giao
+  dịch thanh toán gần đây — để lại cho session sau (cần nhiều endpoint mới hơn, task lớn hơn ước tính ban đầu)
 - [DONE] GOV-005 · Security hardening — đã tìm và vá 2 lỗ hổng NGHIÊM TRỌNG (2026-07-13):
   (1) MỌI API đọc (GET: /api/me, /api/signals, /api/trades, /api/research/<code>,
   /api/admin/nav/pending, /api/admin/promo/list...) không verify X-Init-Data, chỉ trust query
@@ -160,9 +163,10 @@
   (scripts/import_tcbs_xlsx.py). Verify bằng 12 test tự viết giả lập chữ ký Telegram thật,
   chạy trực tiếp lên DB Railway | 2026-07-13 | Còn lại: auth_date freshness check (chống
   replay initData cũ) chưa làm — mức độ rủi ro thấp hơn, có thể làm sau
-- [ ] GOV-006 · Chính sách "không xoá/đổi dữ liệu khi deploy" — viết thành quy tắc migration
-  trong CLAUDE.md: mọi ALTER TABLE phải là additive (ADD COLUMN IF NOT EXISTS, không DROP/RENAME
-  không có kế hoạch backfill), mọi script sửa dữ liệu hàng loạt phải dry-run + xác nhận trước | P1 | ~1h
+- [DONE] GOV-006 · Chính sách "không xoá/đổi dữ liệu khi deploy" — viết thành quy tắc migration
+  trong `CLAUDE.md` (section "🔐 CHÍNH SÁCH DỮ LIỆU"): mọi ALTER TABLE phải additive, script sửa
+  dữ liệu hàng loạt phải dry-run mặc định, audit_log append-only, PROTECTED_SOURCES cho NAV,
+  luôn hỏi Harvey trước khi xoá dữ liệu không phải do session tạo ra | 2026-07-13
 
 ---
 
