@@ -11,8 +11,8 @@ theo kỳ hạn dài hơn.
 PRO_PLANS = {
     "m1": {"days": 30,  "stars": 50,  "vnd": 20000,  "label": "1 tháng",          "discount_pct": 0},
     "q1": {"days": 90,  "stars": 135, "vnd": 54000,  "label": "1 quý (3 tháng)",  "discount_pct": 10},
-    "h1": {"days": 180, "stars": 240, "vnd": 96000,  "label": "Nửa năm (6 tháng)", "discount_pct": 20},
-    "y1": {"days": 365, "stars": 420, "vnd": 168000, "label": "1 năm",            "discount_pct": 30},
+    "h1": {"days": 180, "stars": 240, "vnd": 96000,  "label": "Nửa năm (6 tháng)", "discount_pct": 25},
+    "y1": {"days": 365, "stars": 420, "vnd": 168000, "label": "1 năm",            "discount_pct": 45},
 }
 
 DEFAULT_PLAN = "m1"

@@ -497,6 +497,13 @@ canvas{width:100%!important;height:100%!important}
         <button onclick="adminUpdateToken()" style="width:100%;padding:12px;background:var(--c0);color:#000;border:none;border-radius:8px;font-weight:700;font-size:14px;cursor:pointer;font-family:var(--mono)">CẬP NHẬT TOKEN & FETCH TCBS</button>
       </div>
       <div class="card" style="padding:16px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <div style="font-size:11px;font-weight:700;color:var(--c0);font-family:var(--mono)">📊 TỔNG QUAN HỆ THỐNG</div>
+          <button onclick="loadAdminSummary()" style="padding:4px 10px;background:var(--bg3);border:1px solid var(--bdr);color:var(--txt2);border-radius:6px;font-size:11px;cursor:pointer;font-family:var(--mono)">⟳ Tải lại</button>
+        </div>
+        <div id="admin-summary-box" style="font-size:12px;font-family:var(--mono)"><div style="color:var(--txt2)">Đang tải...</div></div>
+      </div>
+      <div class="card" style="padding:16px">
         <div style="font-size:11px;font-weight:700;color:var(--buy);font-family:var(--mono);margin-bottom:10px">FETCH NAV</div>
         <div style="display:flex;flex-direction:column;gap:8px">
           <button onclick="adminFetchAll()" style="width:100%;padding:10px;background:var(--bg3);color:var(--buy);border:1px solid var(--buy);border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;font-family:var(--mono)">⟳ Fetch tất cả quỹ (fmarket + TCBS)</button>
@@ -779,7 +786,7 @@ function goPage(name,btn){
   if(name==='dca') loadDCA();
   if(name==='trade'){ setupTrade(); loadUnifiedHistory(); }
   if(name==='history') loadHistory();
-  if(name==='admin'){ loadAdminNavPending(); loadPromoList(); loadAdminAudit(); }
+  if(name==='admin'){ loadAdminSummary(); loadAdminNavPending(); loadPromoList(); loadAdminAudit(); }
 }
 
 function showSubtab(page, sub, el){
@@ -999,6 +1006,47 @@ async function loadAdminAudit(){
         <div><span style="color:#6b7280">${t}</span> · <span style="color:var(--c0);font-weight:700">${row.action}</span>${target?` · <span style="color:var(--txt2)">${target}</span>`:''}</div>
         <div style="color:var(--txt2)">actor: ${actor}${row.note?' · '+row.note:''}</div>
       </div>`;
+    }
+    el.innerHTML=html;
+  }catch(e){
+    el.innerHTML=`<div style="color:var(--sell)">Lỗi: ${e.body?.error||e.message}</div>`;
+  }
+}
+
+async function loadAdminSummary(){
+  const el=document.getElementById('admin-summary-box');
+  if(!el) return;
+  el.innerHTML='<div style="color:var(--txt2)">Đang tải...</div>';
+  try{
+    const d=await apiFetch('/api/admin/summary');
+    const u=d.users||{};
+    const mape=d.model_mape||[];
+    const missing=d.funds_missing_today||[];
+    const pays=d.recent_payments||[];
+    let html=`<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:12px">
+      <div>👥 <b>${u.total??'-'}</b> user (<span style="color:var(--buy)">${u.pro??'-'} pro</span> / ${u.free??'-'} free)</div>
+    </div>`;
+    html+='<div style="color:#6b7280;margin-bottom:4px">🎯 MAPE model (7 ngày):</div>';
+    if(mape.length){
+      for(const m of mape){
+        const bad=m.mape_7d!=null&&m.mape_7d>8;
+        html+=`<div style="padding:2px 0">${m.model_version}: <b style="color:${bad?'var(--sell)':'var(--buy)'}">${m.mape_7d??'-'}%</b> (ngày gần nhất ${m.last_day||'-'}: ${m.last_day_mape??'-'}%)</div>`;
+      }
+    } else {
+      html+='<div style="color:var(--txt2)">Chưa có dữ liệu chấm điểm</div>';
+    }
+    html+=`<div style="color:#6b7280;margin:8px 0 4px">⚠️ Quỹ chưa có NAV hôm nay: <b>${missing.length}</b></div>`;
+    if(missing.length){
+      html+=`<div style="color:var(--txt2);word-break:break-word">${missing.map(f=>f.code).join(', ')}</div>`;
+    }
+    html+=`<div style="color:#6b7280;margin:8px 0 4px">💳 Thanh toán gần đây (${pays.length}):</div>`;
+    if(pays.length){
+      for(const p of pays.slice(0,10)){
+        const t=p.created_at?new Date(p.created_at).toLocaleString('vi-VN',{hour:'2-digit',minute:'2-digit',day:'2-digit',month:'2-digit'}):'';
+        html+=`<div style="color:var(--txt2)">${t} · ${p.provider} · tg=${p.telegram_id}</div>`;
+      }
+    } else {
+      html+='<div style="color:var(--txt2)">Chưa có giao dịch</div>';
     }
     el.innerHTML=html;
   }catch(e){
@@ -1968,8 +2016,8 @@ function closeModalBtn(){document.getElementById('modal').classList.remove('open
 const PRO_PLANS={
   m1:{days:30,  stars:50,  vnd:20000,  label:'1 tháng',           discount:0},
   q1:{days:90,  stars:135, vnd:54000,  label:'1 quý (3 tháng)',   discount:10},
-  h1:{days:180, stars:240, vnd:96000,  label:'Nửa năm (6 tháng)', discount:20},
-  y1:{days:365, stars:420, vnd:168000, label:'1 năm',             discount:30},
+  h1:{days:180, stars:240, vnd:96000,  label:'Nửa năm (6 tháng)', discount:25},
+  y1:{days:365, stars:420, vnd:168000, label:'1 năm',             discount:45},
 };
 let _selectedPlan='y1';
 
