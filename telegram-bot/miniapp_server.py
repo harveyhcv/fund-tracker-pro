@@ -1131,6 +1131,8 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             self._api_referral_mine(qs)
         elif path == "/api/admin/promo/list":
             self._api_admin_promo_list(qs)
+        elif path == "/api/admin/audit":
+            self._api_admin_audit(qs)
         elif path == "/health":
             _json(self, {"ok": True, "ts": datetime.now().isoformat()})
         else:
@@ -2177,6 +2179,32 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             _json(self, {"pending": []})
             return
         _json(self, {"pending": _db_mod.get_pending_confirms()})
+
+    def _api_admin_audit(self, qs: dict):
+        """GET /api/admin/audit?user_id=&action=&actor_id=&limit= — xem audit log
+        gần đây cho admin dashboard (GOV-004). Read-only, không cho phép sửa/xoá."""
+        tg_id = (qs.get("user_id") or [""])[0]
+        if not _is_admin(tg_id):
+            _json(self, {"error": "admin_only"}, 403)
+            return
+        if not _auth_write(self, tg_id):
+            return
+        if _db_mod is None or not _db_mod.is_available():
+            _json(self, {"log": []})
+            return
+        action = (qs.get("action") or [None])[0]
+        actor_id = (qs.get("actor_id") or [None])[0]
+        try:
+            limit = min(max(int((qs.get("limit") or ["100"])[0]), 1), 500)
+        except ValueError:
+            limit = 100
+        try:
+            rows = _db_mod.get_audit_log(limit=limit, action=action, actor_id=actor_id)
+        except Exception as e:
+            log.error(f"[admin_audit] {e}")
+            _json(self, {"error": "Lỗi đọc audit log"}, 500)
+            return
+        _json(self, {"log": rows})
 
     def _api_referral_mine(self, qs: dict):
         """GET /api/referral/mine?user_id=... — mã giới thiệu cá nhân + số người đã dùng.

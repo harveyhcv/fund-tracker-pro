@@ -528,6 +528,13 @@ canvas{width:100%!important;height:100%!important}
         <div id="promo-create-status" style="font-size:12px;color:var(--txt2);margin-top:8px;min-height:16px"></div>
         <div id="promo-list" style="margin-top:12px"></div>
       </div>
+      <div class="card" style="padding:16px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <div style="font-size:11px;font-weight:700;color:var(--c0);font-family:var(--mono)">📜 AUDIT LOG (gần đây)</div>
+          <button onclick="loadAdminAudit()" style="padding:4px 10px;background:var(--bg3);border:1px solid var(--bdr);color:var(--txt2);border-radius:6px;font-size:11px;cursor:pointer;font-family:var(--mono)">⟳ Tải lại</button>
+        </div>
+        <div id="admin-audit-list" style="font-size:11px;font-family:var(--mono);max-height:360px;overflow-y:auto"><div style="color:var(--txt2)">Đang tải...</div></div>
+      </div>
     </div>
   </div>
 
@@ -773,7 +780,7 @@ function goPage(name,btn){
   if(name==='dca') loadDCA();
   if(name==='trade'){ setupTrade(); loadUnifiedHistory(); }
   if(name==='history') loadHistory();
-  if(name==='admin'){ loadAdminNavPending(); loadPromoList(); }
+  if(name==='admin'){ loadAdminNavPending(); loadPromoList(); loadAdminAudit(); }
 }
 
 function showSubtab(page, sub, el){
@@ -971,6 +978,33 @@ async function adminNavConfirm(fundCode, navDate, choice){
       alert('Lỗi: '+(d.error||'unknown'));
     }
   }catch(e){ alert('⚠️ '+(e.body?.error||e.message)); }
+}
+
+async function loadAdminAudit(){
+  const el=document.getElementById('admin-audit-list');
+  if(!el) return;
+  el.innerHTML='<div style="color:var(--txt2)">Đang tải...</div>';
+  try{
+    const d=await apiFetch('/api/admin/audit?limit=50');
+    const list=d.log||[];
+    if(!list.length){
+      el.innerHTML='<div style="color:var(--txt2)">Chưa có log nào</div>';
+      return;
+    }
+    let html='';
+    for(const row of list){
+      const t=row.created_at?new Date(row.created_at).toLocaleString('vi-VN',{hour:'2-digit',minute:'2-digit',day:'2-digit',month:'2-digit'}):'';
+      const actor=row.actor_id!=null?row.actor_id:'hệ thống';
+      const target=row.target_table?`${row.target_table}${row.target_id?'#'+row.target_id:''}`:'';
+      html+=`<div style="border-bottom:1px solid var(--bdr);padding:6px 0">
+        <div><span style="color:#6b7280">${t}</span> · <span style="color:var(--c0);font-weight:700">${row.action}</span>${target?` · <span style="color:var(--txt2)">${target}</span>`:''}</div>
+        <div style="color:var(--txt2)">actor: ${actor}${row.note?' · '+row.note:''}</div>
+      </div>`;
+    }
+    el.innerHTML=html;
+  }catch(e){
+    el.innerHTML=`<div style="color:var(--sell)">Lỗi: ${e.body?.error||e.message}</div>`;
+  }
 }
 
 let _promoCodesCache=[], _editingPromoCode=null;
