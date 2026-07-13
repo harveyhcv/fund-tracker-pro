@@ -210,6 +210,33 @@ def save_state(state: dict):
     tmp.replace(STATE_FILE)
 
 
+def _tcbs_expiry_notify_key(token: str) -> str:
+    """Hash ngắn của token — dùng làm key dedup, không lưu token thô vào state.json."""
+    import hashlib
+    return hashlib.sha256(token.encode()).hexdigest()[:16] if token else ""
+
+
+def _already_notified_token_expired(token: str) -> bool:
+    """True nếu đã gửi cảnh báo 'token hết hạn' cho ĐÚNG token này rồi (kể cả sau khi bot restart).
+    Lưu vào state.json (persisted) thay vì biến global trong RAM, vì bot có thể restart
+    (Railway) giữa 2 lần kiểm tra khác nhau (fetch trực tiếp vs job cron) — trước đây mỗi
+    đường đều tự dedup bằng RAM riêng nên khi restart lại gửi trùng cảnh báo."""
+    return load_state().get("tcbs_expired_notified_key") == _tcbs_expiry_notify_key(token)
+
+
+def _mark_token_expired_notified(token: str):
+    state = load_state()
+    state["tcbs_expired_notified_key"] = _tcbs_expiry_notify_key(token)
+    save_state(state)
+
+
+def _clear_token_expired_notified():
+    state = load_state()
+    if "tcbs_expired_notified_key" in state:
+        del state["tcbs_expired_notified_key"]
+        save_state(state)
+
+
 # ═══════════════════════════════════════
 # NAV FETCHING  (Fmarket → TCBS fallback)
 # ═══════════════════════════════════════
@@ -1527,12 +1554,16 @@ def _check_tcbs_token_expiry(config: dict) -> Optional[dict]:
 
 
 def _handle_tcbs_auth_error(config: dict, failed_codes: set):
-    """Gửi Telegram notification khi TCBS token hết hạn — chỉ 1 lần cho đến khi token được update."""
+    """Gửi Telegram notification khi TCBS token hết hạn — chỉ 1 lần cho đến khi token được update.
+    Dedup dùng chung state.json với job_check_tcbs_token() để 2 đường phát hiện (fetch trực
+    tiếp vs cron kiểm tra JWT exp hàng ngày) không cùng gửi 2 tin nhắn cho cùng 1 token hết hạn."""
     global _tcbs_auth_notified
-    if _tcbs_auth_notified:
+    tcbs_token = config.get("tcbs_token", "")
+    if _tcbs_auth_notified or _already_notified_token_expired(tcbs_token):
         log.debug("[TCBS-AUTH] Đã notify rồi, bỏ qua cho đến khi token được cập nhật")
         return
     _tcbs_auth_notified = True
+    _mark_token_expired_notified(tcbs_token)
     log.warning(f"[TCBS-AUTH] Token hết hạn, không fetch được: {', '.join(sorted(failed_codes))}"
                 f" — Cập nhật token mới qua Mini App (tab Admin).")
     token = config.get("bot_token", "")
@@ -1624,6 +1655,7 @@ def job_morning():
     else:
         global _tcbs_auth_notified
         _tcbs_auth_notified = False  # Token hoạt động → reset để notify lần sau nếu hết hạn lại
+        _clear_token_expired_notified()
     state = load_state()
     state["morning_nav"]       = {k: {"nav": v["nav"], "date": v["nav_date"]} for k, v in nav_data.items()}
     state["last_morning"]      = datetime.now().isoformat()
@@ -1727,6 +1759,7 @@ def job_check_signals():
     else:
         global _tcbs_auth_notified
         _tcbs_auth_notified = False  # Token hoạt động → reset để notify lần sau nếu hết hạn lại
+        _clear_token_expired_notified()
     state        = load_state()
     prev_signals = state.get("signals", {})
     new_signals  = {k: v["signal"] for k, v in nav_data.items()}
@@ -1943,7 +1976,12 @@ def job_check_tcbs_token():
     if not token or not admin_id:
         return
     days = status["days_left"]
+    tcbs_token = config.get("tcbs_token", "")
     if status["expired"]:
+        if _already_notified_token_expired(tcbs_token):
+            log.debug("[token-check] Đã notify token hết hạn này rồi (từ đường khác) — bỏ qua")
+            return
+        _mark_token_expired_notified(tcbs_token)
         tg_send(token, admin_id, (
             "🔴 <b>TCBS Token đã HẾT HẠN</b>\n"
             "Quỹ TCBS (TCBF, TCFF, TCGF...) không fetch được NAV.\n"

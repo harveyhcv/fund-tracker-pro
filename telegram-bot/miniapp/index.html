@@ -903,11 +903,9 @@ async function adminUpdateToken(){
   if(!token){st.style.color='var(--sell)';st.textContent='Chưa nhập token';return;}
   st.style.color='var(--txt2)';st.textContent='Đang lưu token...';
   try{
-    const d=await apiPost('/api/admin/settoken',{admin_id:USER_ID, token});
-    st.style.color='var(--buy)';st.textContent='✓ Token đã lưu. Đang fetch TCBS...';
-    const d2=await apiPost('/api/admin/fetch-nav',{telegram_id:USER_ID});
+    await apiPost('/api/admin/settoken',{admin_id:USER_ID, token});
     st.style.color='var(--buy)';
-    st.textContent=`✓ Xong! Fetch ${Object.keys(d2.results||{}).length} quỹ.`;
+    st.textContent='✓ Token đã lưu. Đang fetch NAV ở nền — kết quả sẽ gửi qua Telegram sau ít phút.';
     tg?.HapticFeedback?.notificationOccurred('success');
   }catch(e){st.style.color='var(--sell)';st.textContent='⚠️ '+(e.body?.error||e.message);}
 }
