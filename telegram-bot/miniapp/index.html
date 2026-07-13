@@ -217,7 +217,13 @@ canvas{width:100%!important;height:100%!important}
       </div>
       <div id="plan-cards" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0 14px"></div>
       <button class="btn btn-primary" id="upgrade-cta-btn" onclick="startUpgrade()">⭐ NÂNG CẤP PRO NGAY</button>
-      <button class="btn" disabled style="background:var(--bg3);color:var(--txt2);border:1px solid var(--bdr);margin-top:8px;cursor:not-allowed">💗 MoMo (sắp ra mắt)</button>
+      <button class="btn" id="upgrade-sepay-btn" style="background:var(--bg3);color:var(--c0);border:1px solid var(--c0);margin-top:8px" onclick="startUpgradeSepay()">🏦 CHUYỂN KHOẢN NGÂN HÀNG (VietQR)</button>
+      <div id="sepay-qr-box" style="display:none;text-align:center;margin-top:12px;padding:14px;background:var(--bg3);border-radius:10px;border:1px solid var(--bdr)">
+        <img id="sepay-qr-img" style="max-width:220px;width:100%;border-radius:8px;background:#fff;padding:6px" alt="QR chuyển khoản">
+        <div style="font-size:12px;color:var(--txt2);margin-top:8px">Quét bằng app ngân hàng hoặc app MoMo (hỗ trợ quét VietQR)</div>
+        <div style="font-family:var(--mono);font-size:13px;margin-top:6px">Số tiền: <b id="sepay-amount"></b> — Nội dung CK: <b id="sepay-ref" style="color:var(--c0)"></b></div>
+        <div id="sepay-status" style="font-size:12px;color:var(--txt2);margin-top:8px">⏳ Đang chờ chuyển khoản...</div>
+      </div>
       <button class="btn" style="background:transparent;border:1px solid var(--bdr);color:var(--txt2)" onclick="closeUpgradeModalBtn()">Để sau</button>
 
       <div class="section" style="margin-top:16px;border-top:1px solid var(--bdr);padding-top:14px">
@@ -2043,12 +2049,16 @@ function showUpgradeModal(info){
     : 'Tính năng này chỉ dành cho tài khoản Pro.';
   document.getElementById('promo-code-status').textContent='';
   document.getElementById('promo-code-input').value='';
+  document.getElementById('sepay-qr-box').style.display='none';
   renderPlanCards();
   document.getElementById('upgrade-modal').classList.add('open');
   loadReferralCode();
 }
 function closeUpgradeModal(e){if(e.target===document.getElementById('upgrade-modal'))closeUpgradeModalBtn();}
-function closeUpgradeModalBtn(){document.getElementById('upgrade-modal').classList.remove('open');}
+function closeUpgradeModalBtn(){
+  document.getElementById('upgrade-modal').classList.remove('open');
+  if(_sepayPollTimer){clearInterval(_sepayPollTimer);_sepayPollTimer=null;}
+}
 
 async function loadReferralCode(){
   const box=document.getElementById('referral-code-box');
@@ -2133,6 +2143,39 @@ async function startUpgradeMomo(){
     toast('Lỗi: ' + e.message);
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '💗 THANH TOÁN QUA MOMO'; }
+  }
+}
+
+let _sepayPollTimer=null;
+async function startUpgradeSepay(){
+  const btn=document.getElementById('upgrade-sepay-btn');
+  const box=document.getElementById('sepay-qr-box');
+  if(btn){btn.disabled=true;btn.textContent='Đang tạo mã QR...';}
+  try{
+    const d=await apiPost('/api/payment/sepay/create',{plan:_selectedPlan});
+    document.getElementById('sepay-qr-img').src=d.qr_url;
+    document.getElementById('sepay-amount').textContent=Number(d.amount_vnd).toLocaleString('vi-VN')+' đ';
+    document.getElementById('sepay-ref').textContent=d.ref_code;
+    document.getElementById('sepay-status').textContent='⏳ Đang chờ chuyển khoản... (tự động nâng cấp trong ít phút sau khi CK)';
+    document.getElementById('sepay-status').style.color='var(--txt2)';
+    box.style.display='block';
+    if(_sepayPollTimer) clearInterval(_sepayPollTimer);
+    _sepayPollTimer=setInterval(async()=>{
+      try{
+        const s=await apiFetch('/api/payment/sepay/status?ref='+encodeURIComponent(d.ref_code));
+        if(s.status==='paid'){
+          clearInterval(_sepayPollTimer);_sepayPollTimer=null;
+          document.getElementById('sepay-status').textContent='✅ Đã nhận thanh toán! Đang cập nhật tài khoản...';
+          document.getElementById('sepay-status').style.color='var(--buy)';
+          tg?.HapticFeedback?.notificationOccurred('success');
+          setTimeout(()=>{closeUpgradeModalBtn();loadMe();},2000);
+        }
+      }catch(e){/* bỏ qua lỗi poll đơn lẻ, thử lại lần sau */}
+    },4000);
+  }catch(e){
+    toast('Lỗi: '+(e.body?.error||e.message));
+  }finally{
+    if(btn){btn.disabled=false;btn.textContent='🏦 CHUYỂN KHOẢN NGÂN HÀNG (VietQR)';}
   }
 }
 

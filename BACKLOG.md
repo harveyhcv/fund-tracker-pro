@@ -93,6 +93,42 @@
   `FTP-<tg>-<plan>-<ts>` để IPN biết cấp bao nhiêu ngày (fallback gói tháng nếu orderId cũ 3 phần).
   Mini app: modal nâng cấp có 4 thẻ chọn gói, mặc định chọn gói năm + badge "TIẾT KIỆM NHẤT" | 2026-07-13
 
+### 3d. SePay/VietQR — chuyển khoản ngân hàng tự động (thay MoMo tạm thời)
+
+- **PAY-009 · Chuyển khoản VietQR tự động qua SePay** — nghiên cứu: MoMo M4B chấp
+  nhận hộ kinh doanh/cá nhân (không bắt buộc giấy phép DN) nhưng KYC thiết kế cho
+  cửa hàng vật lý (cần ảnh cửa hàng) — không phù hợp SaaS thuần số, cần Harvey tự
+  liên hệ business.momo.vn hỏi case cụ thể trước khi đầu tư. QR MoMo cá nhân
+  KHÔNG có webhook/API — không tự động hoá được.
+  → Giải pháp đã code: **SePay** (dịch vụ webhook ngân hàng cho tài khoản CÁ NHÂN,
+  không cần giấy phép kinh doanh, 500 giao dịch miễn phí/tháng/năm đầu) — VietQR
+  sinh ra quét được bằng CẢ app ngân hàng lẫn app MoMo (MoMo hỗ trợ chuyển khoản
+  qua VietQR tới tài khoản ngân hàng).
+  - `db.py`: bảng `bank_transfer_orders` (ref_code PK, telegram_id, plan_key,
+    amount_vnd, status pending/paid) + `create_bank_transfer_order()`,
+    `find_pending_order_by_content()` (so khớp ref_code bằng substring — ngân
+    hàng có thể thêm tiền tố/hậu tố quanh nội dung CK), `mark_bank_transfer_order_paid()`
+    (idempotent), `get_bank_transfer_order()`.
+  - `miniapp_server.py`: `POST /api/payment/sepay/create` (tạo đơn + URL ảnh QR
+    qua `qr.sepay.vn/img`), `POST /api/payment/sepay/webhook` (xác thực bằng
+    Authorization header tĩnh `Apikey <key>` — KHÔNG phải HMAC như MoMo, đây là
+    mô hình auth của SePay; parse content→ref_code, verify amount đủ, dedup qua
+    `record_payment_once("sepay", ...)`, `extend_pro` theo `plan_key`, gửi
+    Telegram confirm), `GET /api/payment/sepay/status?ref=` (Mini App poll để
+    biết đã thanh toán chưa, không cần user tự F5).
+  - Mini app: nút "🏦 CHUYỂN KHOẢN NGÂN HÀNG (VietQR)" trong `#upgrade-modal` →
+    hiện QR + số tiền + nội dung CK, poll status mỗi 4s, tự đóng modal khi paid.
+  - **CHƯA verify với tài khoản SePay thật** — field name webhook payload
+    (`transferType`/`content`/`transferAmount`/`id`) theo định dạng phổ biến
+    SePay công khai, cần Harvey đăng ký tài khoản SePay + set
+    `SEPAY_API_KEY`/`SEPAY_ACCOUNT_NUMBER`/`SEPAY_BANK_CODE` trên Railway rồi
+    kiểm tra lại field 1 lần với giao dịch test thật (log payload thô đã có sẵn
+    trong `_api_sepay_webhook` để dễ chỉnh nếu field không khớp).
+  - QC: đã test toàn bộ logic (create order, so khớp content nhiễu, idempotent
+    mark-paid, dedup qua txn_id, race 2 webhook đồng thời chỉ extend 1 lần,
+    Authorization sai bị từ chối) trực tiếp trên DB thật, dọn sạch dữ liệu test
+    sau khi xong | 2026-07-13 | Blocker: cần đăng ký tài khoản SePay thật
+
 ### 3c. VNPay + Stripe (làm sau)
 
 - [ ] PAY-006 · VNPay: `/payment/vnpay/create` + `/payment/vnpay/return` theo spec VNPay 2.1.0 | P2 | 4h

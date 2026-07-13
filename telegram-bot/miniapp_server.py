@@ -49,6 +49,16 @@ _MOMO_PARTNER_CODE = os.environ.get("MOMO_PARTNER_CODE", "MOMO")
 _MOMO_ACCESS_KEY   = os.environ.get("MOMO_ACCESS_KEY", "F8BBA842ECF85")
 _MOMO_SECRET_KEY   = os.environ.get("MOMO_SECRET_KEY", "K951B6PE1waDMi640xX08PD3vg6EkVlz")
 
+# PAY-009: SePay VietQR — chuyển khoản ngân hàng cá nhân (không cần merchant
+# license), SePay bắn webhook khi tiền về khớp nội dung chuyển khoản. Field
+# name webhook payload theo tài liệu công khai phổ biến của SePay (docs.sepay.vn)
+# — CHƯA verify với tài khoản SePay thật, kiểm tra lại `_api_payment_sepay_webhook`
+# khi có API key thật nếu field không khớp thực tế.
+_SEPAY_API_KEY        = os.environ.get("SEPAY_API_KEY", "")           # header Authorization: Apikey <key>
+_SEPAY_ACCOUNT_NUMBER = os.environ.get("SEPAY_ACCOUNT_NUMBER", "")    # số tài khoản ngân hàng nhận tiền
+_SEPAY_BANK_CODE      = os.environ.get("SEPAY_BANK_CODE", "")         # mã ngân hàng VietQR (vd MBBank, TPBank...)
+_SEPAY_QR_BASE        = os.environ.get("SEPAY_QR_BASE", "https://qr.sepay.vn/img")
+
 from pricing import PRO_PLANS, PLAN_ORDER, DEFAULT_PLAN, resolve_plan
 
 
@@ -1168,6 +1178,8 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             self._api_admin_nav_pending(qs)
         elif path == "/api/referral/mine":
             self._api_referral_mine(qs)
+        elif path == "/api/payment/sepay/status":
+            self._api_sepay_status(qs)
         elif path == "/api/admin/promo/list":
             self._api_admin_promo_list(qs)
         elif path == "/api/admin/audit":
@@ -1246,6 +1258,10 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             self._api_momo_create(data)
         elif path == "/api/payment/momo/ipn":
             self._api_momo_ipn(data)
+        elif path == "/api/payment/sepay/create":
+            self._api_sepay_create(data)
+        elif path == "/api/payment/sepay/webhook":
+            self._api_sepay_webhook(data)
         elif path == "/api/promo/redeem":
             self._api_promo_redeem(data)
         elif path == "/api/admin/promo/create":
@@ -3092,6 +3108,154 @@ class MiniAppHandler(BaseHTTPRequestHandler):
                 log.error(f"[PAY][MoMo] Không parse được telegram_id từ orderId={order_id}")
 
         _json(self, {"resultCode": 0, "message": "success"})
+
+    def _api_sepay_create(self, data: dict):
+        """POST /api/payment/sepay/create — PAY-009: tạo đơn chuyển khoản VietQR.
+
+        Không cần merchant/business license (SePay hoạt động với tài khoản ngân
+        hàng cá nhân). Trả về URL ảnh QR + ref_code (nội dung CK) — app ngân hàng
+        HOẶC app MoMo (hỗ trợ quét VietQR) đều quét trả tiền được. SePay sẽ tự
+        bắn webhook khi tiền về khớp nội dung, không cần user tự nhập mã.
+        """
+        cfg       = _load_cfg()
+        bot_token = cfg.get("bot_token") or os.environ.get("BOT_TOKEN", "")
+        init_data = self.headers.get("X-Init-Data", "")
+        user = _validate_init_data(init_data, bot_token)
+        if not user and os.environ.get("MINIAPP_NO_AUTH"):
+            user = {"id": data.get("telegram_id", 0)}
+        if not user:
+            _json(self, {"error": "initData không hợp lệ"}, 403)
+            return
+        if not _SEPAY_ACCOUNT_NUMBER or not _SEPAY_BANK_CODE:
+            _json(self, {"error": "Chưa cấu hình SEPAY_ACCOUNT_NUMBER/SEPAY_BANK_CODE trên server"}, 503)
+            return
+        user_id = str(user.get("id", 0))
+        plan_key = str((data or {}).get("plan", DEFAULT_PLAN))
+        if plan_key not in PRO_PLANS:
+            plan_key = DEFAULT_PLAN
+        plan = PRO_PLANS[plan_key]
+
+        if _db_mod is None or not _db_mod.is_available():
+            _json(self, {"error": "DB không khả dụng"}, 503)
+            return
+        ref_code = _db_mod.create_bank_transfer_order(user_id, plan_key, plan["vnd"])
+        qr_url = (
+            f"{_SEPAY_QR_BASE}?acc={_SEPAY_ACCOUNT_NUMBER}&bank={_SEPAY_BANK_CODE}"
+            f"&amount={plan['vnd']}&des={ref_code}"
+        )
+        log.info(f"[PAY][SePay] order created ref={ref_code} user={user_id} plan={plan_key}")
+        _json(self, {
+            "ref_code": ref_code, "qr_url": qr_url,
+            "amount_vnd": plan["vnd"], "plan_label": plan["label"],
+            "account_number": _SEPAY_ACCOUNT_NUMBER, "bank_code": _SEPAY_BANK_CODE,
+        })
+
+    def _api_sepay_status(self, qs: dict):
+        """GET /api/payment/sepay/status?ref=<ref_code> — Mini App poll để biết
+        đơn CK đã được webhook xác nhận thanh toán chưa (không cần user tự refresh)."""
+        ref = (qs.get("ref") or [""])[0]
+        if not ref or _db_mod is None or not _db_mod.is_available():
+            _json(self, {"status": "unknown"})
+            return
+        order = _db_mod.get_bank_transfer_order(ref)
+        if not order:
+            _json(self, {"status": "not_found"})
+            return
+        _json(self, {"status": order["status"]})
+
+    def _api_sepay_webhook(self, data: dict):
+        """POST /api/payment/sepay/webhook — PAY-009: SePay bắn khi có biến động
+        số dư khớp giao dịch chuyển khoản vào tài khoản đã cấu hình.
+
+        LƯU Ý: tên field bên dưới theo định dạng webhook phổ biến của SePay
+        (id/gateway/transferAmount/transferType/content) — CHƯA verify với tài
+        khoản SePay thật, log toàn bộ payload thô để dễ chỉnh nếu field không khớp.
+        Xác thực bằng Authorization header (Apikey tĩnh do SePay gửi kèm mỗi request,
+        cấu hình trong dashboard SePay) — không phải HMAC như MoMo vì đây là mô hình
+        "static API key" của SePay, không phải chữ ký theo từng request.
+        """
+        auth_header = self.headers.get("Authorization", "")
+        expected = f"Apikey {_SEPAY_API_KEY}"
+        if not _SEPAY_API_KEY or not hmac.compare_digest(auth_header, expected):
+            log.error("[PAY][SePay] webhook Authorization không hợp lệ")
+            _json(self, {"error": "invalid api key"}, 401)
+            return
+
+        log.info(f"[PAY][SePay] webhook payload: {json.dumps(data, ensure_ascii=False)[:500]}")
+
+        transfer_type = str(data.get("transferType", "in")).lower()
+        if transfer_type != "in":
+            _json(self, {"success": True})  # tiền ra khỏi tài khoản — bỏ qua
+            return
+
+        content       = str(data.get("content", "") or data.get("description", ""))
+        amount        = data.get("transferAmount") or data.get("amount") or 0
+        txn_id        = str(data.get("id") or data.get("referenceCode") or "")
+
+        if _db_mod is None or not _db_mod.is_available():
+            _json(self, {"error": "DB không khả dụng"}, 503)
+            return
+
+        order = _db_mod.find_pending_order_by_content(content)
+        if not order:
+            log.warning(f"[PAY][SePay] Không khớp đơn pending nào với content={content!r}")
+            _json(self, {"success": True, "matched": False})
+            return
+
+        if float(amount) < order["amount_vnd"]:
+            log.warning(f"[PAY][SePay] Số tiền thiếu: nhận {amount}, cần {order['amount_vnd']} (ref={order['ref_code']})")
+            _json(self, {"success": True, "matched": False, "reason": "amount_mismatch"})
+            return
+
+        # GOV-003: SePay có thể gọi lại webhook — chặn xử lý trùng bằng txn_id.
+        if not _db_mod.record_payment_once("sepay", txn_id or order["ref_code"], order["telegram_id"]):
+            log.warning(f"[PAY][SePay][DUP] txn={txn_id} ref={order['ref_code']} đã xử lý trước đó — bỏ qua")
+            _json(self, {"success": True, "matched": True, "duplicate": True})
+            return
+
+        paid_order = _db_mod.mark_bank_transfer_order_paid(order["ref_code"])
+        if not paid_order:
+            # Đơn đã được đánh dấu paid trước đó (race với dedup ở trên) — an toàn, bỏ qua.
+            _json(self, {"success": True, "matched": True, "already_paid": True})
+            return
+
+        tg_id    = str(paid_order["telegram_id"])
+        plan_key = paid_order["plan_key"] if paid_order["plan_key"] in PRO_PLANS else DEFAULT_PLAN
+        plan     = PRO_PLANS[plan_key]
+
+        expires_at = None
+        try:
+            result = _db_mod.extend_pro(tg_id, plan["days"],
+                                         note=f"sepay {plan['label']} (ref={order['ref_code']}, {amount}đ)")
+            expires_at = result.get("pro_expires_at")
+            log.info(f"[PAY][SePay] tier=pro extended {plan['days']}d for {tg_id}, expires {expires_at}")
+        except Exception as e:
+            log.error(f"[PAY][SePay] extend_pro error: {e}")
+
+        cfg = _load_cfg()
+        bot_token = cfg.get("bot_token") or os.environ.get("BOT_TOKEN", "")
+        if bot_token and not bot_token.startswith("NHAP"):
+            try:
+                import requests as _req
+                exp_str = expires_at.strftime("%d/%m/%Y") if expires_at else "?"
+                _req.post(
+                    f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                    json={
+                        "chat_id": tg_id,
+                        "parse_mode": "HTML",
+                        "text": (
+                            f"🌟 <b>Chào mừng bạn đến với Fund Tracker Pro!</b>\n\n"
+                            f"✅ Thanh toán chuyển khoản {int(amount):,} đ thành công — gói <b>{plan['label']}</b>\n"
+                            f"📅 Gói Pro có hiệu lực đến: <b>{exp_str}</b>\n\n"
+                            f"Gõ /app để mở Mini App ngay. 🚀"
+                        ),
+                    },
+                    timeout=8,
+                )
+            except Exception as e:
+                log.error(f"[PAY][SePay] sendMessage exception: {e}")
+
+        _json(self, {"success": True, "matched": True})
 
 
 # ── Start ──────────────────────────────────────────────────────────────────────

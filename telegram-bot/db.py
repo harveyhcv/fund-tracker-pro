@@ -228,6 +228,106 @@ def record_payment_once(provider: str, charge_id: str, telegram_id=None) -> bool
             return cur.rowcount > 0
 
 
+# ─── BANK TRANSFER ORDERS (PAY-009 — SePay/VietQR) ───────────────────────────
+# Chuyển khoản ngân hàng qua VietQR (quét được bằng app MoMo lẫn app ngân hàng bất
+# kỳ), SePay bắn webhook khi tiền về khớp đúng nội dung chuyển khoản. ref_code là
+# cầu nối giữa QR hiển thị cho user và telegram_id/plan_key để xử lý webhook —
+# không cần user tự nhập mã, hệ thống tự động extend Pro khi khớp.
+
+def _ensure_bank_transfer_orders_table(conn) -> None:
+    with conn.cursor() as cur:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS bank_transfer_orders (
+                ref_code    TEXT PRIMARY KEY,
+                telegram_id BIGINT NOT NULL,
+                plan_key    TEXT NOT NULL,
+                amount_vnd  INTEGER NOT NULL,
+                status      TEXT NOT NULL DEFAULT 'pending',
+                created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                paid_at     TIMESTAMPTZ
+            )
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_bank_transfer_orders_status
+                ON bank_transfer_orders (status)
+        """)
+
+
+def create_bank_transfer_order(telegram_id, plan_key: str, amount_vnd: int) -> str:
+    """Tạo 1 đơn CK chờ thanh toán, trả về ref_code (nội dung chuyển khoản user
+    phải ghi đúng). ref_code ngắn + dễ gõ tay (phòng khi user tự nhập lại nội
+    dung CK thay vì để app tự điền từ QR)."""
+    import random, string
+    tg = int(telegram_id)
+    with get_conn() as conn:
+        _ensure_bank_transfer_orders_table(conn)
+        with conn.cursor() as cur:
+            for _ in range(10):
+                ref = "FTP" + "".join(random.choices(string.digits, k=6))
+                cur.execute("SELECT 1 FROM bank_transfer_orders WHERE ref_code=%s", (ref,))
+                if not cur.fetchone():
+                    break
+            else:
+                raise RuntimeError("Không sinh được ref_code duy nhất sau 10 lần thử")
+            cur.execute(
+                """
+                INSERT INTO bank_transfer_orders (ref_code, telegram_id, plan_key, amount_vnd)
+                VALUES (%s, %s, %s, %s)
+                """,
+                (ref, tg, plan_key, amount_vnd),
+            )
+    return ref
+
+
+def find_pending_order_by_content(content: str) -> "dict | None":
+    """Tìm đơn 'pending' có ref_code xuất hiện trong nội dung chuyển khoản thật
+    (ngân hàng có thể thêm tiền tố/hậu tố quanh nội dung user nhập, nên so khớp
+    bằng substring thay vì bằng chính xác)."""
+    if not is_available() or not content:
+        return None
+    with get_conn() as conn:
+        _ensure_bank_transfer_orders_table(conn)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT * FROM bank_transfer_orders WHERE status='pending'")
+            rows = cur.fetchall()
+    content_upper = content.upper()
+    for row in rows:
+        if row["ref_code"] in content_upper:
+            return dict(row)
+    return None
+
+
+def mark_bank_transfer_order_paid(ref_code: str) -> "dict | None":
+    """Đánh dấu đơn đã thanh toán, trả về row (để caller lấy telegram_id/plan_key
+    mà extend_pro). Trả None nếu ref_code không tồn tại hoặc đã paid trước đó
+    (idempotent — webhook có thể gọi lại nếu SePay retry)."""
+    with get_conn() as conn:
+        _ensure_bank_transfer_orders_table(conn)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                """
+                UPDATE bank_transfer_orders
+                SET status='paid', paid_at=NOW()
+                WHERE ref_code=%s AND status='pending'
+                RETURNING *
+                """,
+                (ref_code,),
+            )
+            row = cur.fetchone()
+    return dict(row) if row else None
+
+
+def get_bank_transfer_order(ref_code: str) -> "dict | None":
+    if not is_available():
+        return None
+    with get_conn() as conn:
+        _ensure_bank_transfer_orders_table(conn)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT * FROM bank_transfer_orders WHERE ref_code=%s", (ref_code,))
+            row = cur.fetchone()
+    return dict(row) if row else None
+
+
 # ─── NAV ────────────────────────────────────────────────────────────────────
 
 def upsert_nav(fund_code: str, nav_date: date, nav: float, source: str = "fmarket") -> None:
