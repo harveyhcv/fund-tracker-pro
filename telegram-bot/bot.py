@@ -2030,6 +2030,7 @@ def job_harvest_nav():
             # Lấy dòng cuối (summary line) để log ngắn gọn
             summary = output.splitlines()[-1] if output else "OK"
             log.info("[harvest] %s", summary)
+            _handle_nav_jump_alert(output)
         else:
             log.error("[harvest] exit=%d stderr=%s", result.returncode,
                       (result.stderr or "")[:500])
@@ -2037,6 +2038,43 @@ def job_harvest_nav():
         log.error("[harvest] Timeout sau 300s")
     except Exception as e:
         log.error("[harvest] %s", e)
+
+
+def _handle_nav_jump_alert(harvest_stdout: str) -> None:
+    """GOV-003: parse dòng 'JUMP_ALERT: CODE:old->new:pct%;...' từ harvest_nav.py --daily
+    (NAV nhảy >15%/phiên — có thể là data glitch, không phải lỗi manual/fetch mismatch đã
+    có ở pending_confirm). Ghi audit_log + báo admin ngay, không chỉ log im lặng vì có thể
+    ảnh hưởng tín hiệu/dự báo hiển thị cho user."""
+    line = next((l for l in harvest_stdout.splitlines() if l.startswith("JUMP_ALERT:")
+                 or " JUMP_ALERT: " in l), None)
+    if not line:
+        return
+    payload = line.split("JUMP_ALERT:", 1)[-1].strip()
+    if not payload:
+        return
+    entries = [e for e in payload.split(";") if e]
+    log.warning("[harvest] NAV jump anomaly: %s", payload)
+    if _DB_AVAILABLE and _db.is_available():
+        for e in entries:
+            try:
+                code, rest = e.split(":", 1)
+                old_new, pct = rest.rsplit(":", 1)
+                old_v, new_v = old_new.split("->")
+                _db.log_audit(None, "nav_jump_anomaly", "nav_history", code,
+                              before={"nav": old_v}, after={"nav": new_v, "pct": pct},
+                              note="Harvest daily phát hiện NAV nhảy bất thường")
+            except Exception as ex:
+                log.warning("[harvest] không parse được jump entry '%s': %s", e, ex)
+
+    config = load_config()
+    token = config.get("bot_token", "")
+    admin_id = str(config.get("admin_telegram_id", "")).strip()
+    if token and admin_id:
+        tg_send(token, admin_id, (
+            f"⚠️ <b>NAV nhảy bất thường (&gt;15%/phiên)</b>\n"
+            f"<code>{payload.replace(';', chr(10))}</code>\n"
+            f"Kiểm tra lại nguồn dữ liệu — có thể là lỗi API, không phải biến động thị trường thật."
+        ))
 
 
 def _run_t2_script(name: str, script_name: str, args: list, timeout: int = 300) -> None:
@@ -2096,6 +2134,42 @@ def job_t2_score():
             log.error("[t2_score] exit=%d err=%s", result.returncode, (result.stderr or "")[:300])
     except Exception as e:
         log.error("[t2_score] %s", e)
+
+    try:
+        _check_mape_streak_alerts()
+    except Exception as e:
+        log.warning("[t2_score] mape streak check failed: %s", e)
+
+
+# GOV-003: model dự báo T+2 sai lệch kéo dài ảnh hưởng trực tiếp tới giá trị tính năng Pro
+# (T2-009 hiển thị dự báo cho user trả tiền) — cần biết sớm hơn là chỉ xem accuracy dashboard
+# thủ công. Threshold/streak chọn kinh nghiệm: NAV quỹ mở dao động nhẹ, MAPE T+2 bình thường
+# thường <3%; >8% duy trì 5 ngày liên tiếp là dấu hiệu model lệch (data glitch, regime thay đổi).
+MAPE_ALERT_THRESHOLD_PCT = 8.0
+MAPE_ALERT_STREAK_DAYS = 5
+
+
+def _check_mape_streak_alerts() -> None:
+    if not (_DB_AVAILABLE and _db.is_available()):
+        return
+    config = load_config()
+    token = config.get("bot_token", "")
+    admin_id = str(config.get("admin_telegram_id", "")).strip()
+    for model_version in ("arima-v1", "xgb-v1", "ensemble-v1"):
+        streak = _db.get_mape_breach_streak(model_version, MAPE_ALERT_THRESHOLD_PCT,
+                                             max_days=MAPE_ALERT_STREAK_DAYS)
+        if streak != MAPE_ALERT_STREAK_DAYS:
+            continue  # chưa đạt ngưỡng, hoặc đã báo rồi (streak > N ở ngày trước đó)
+        _db.log_audit(None, "mape_threshold_breach", "model_metrics", model_version,
+                       after={"streak_days": streak, "threshold_pct": MAPE_ALERT_THRESHOLD_PCT},
+                       note=f"MAPE > {MAPE_ALERT_THRESHOLD_PCT}% liên tục {streak} ngày")
+        log.warning("[t2_score] MAPE breach: %s streak=%d", model_version, streak)
+        if token and admin_id:
+            tg_send(token, admin_id, (
+                f"⚠️ <b>Model T+2 {model_version} kém chính xác</b>\n"
+                f"MAPE &gt; {MAPE_ALERT_THRESHOLD_PCT}% liên tục {streak} ngày qua.\n"
+                f"Cân nhắc kiểm tra dữ liệu đầu vào hoặc chờ retrain tuần tới."
+            ))
 
 
 def job_t2_retrain():

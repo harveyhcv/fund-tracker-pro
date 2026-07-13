@@ -1631,6 +1631,43 @@ def get_rolling_error_std(model_version: str, fund_code: str = None,
         return None
 
 
+def get_daily_mape(model_version: str, days: int = 30) -> "list[dict]":
+    """GOV-003: MAPE trung bình theo từng NGÀY (theo prediction_actuals.logged_at::date,
+    không phải model_metrics — bảng đó chỉ ghi lúc train XGBoost, không cập nhật hàng ngày)
+    cho 1 model, N ngày gần nhất có dữ liệu chấm điểm. Dùng để phát hiện chuỗi ngày MAPE
+    vượt ngưỡng liên tiếp."""
+    with get_conn() as conn:
+        _ensure_prediction_tables(conn)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT pa.logged_at::date AS day,
+                       AVG(ABS(pa.error_pct)) AS mape,
+                       COUNT(*) AS n
+                FROM prediction_actuals pa
+                JOIN nav_predictions np ON np.id = pa.prediction_id
+                WHERE np.model_version = %s
+                GROUP BY pa.logged_at::date
+                ORDER BY day DESC
+                LIMIT %s
+            """, (model_version, days))
+            return [dict(r) for r in cur.fetchall()]
+
+
+def get_mape_breach_streak(model_version: str, threshold_pct: float, max_days: int = 30) -> int:
+    """GOV-003: đếm số ngày liên tiếp gần nhất (lùi từ hôm nay) có MAPE trung bình ngày
+    > threshold_pct — dừng đếm ngay khi gặp 1 ngày MAPE ≤ ngưỡng hoặc hết dữ liệu. Caller
+    nên chỉ cảnh báo khi streak == ngưỡng số-ngày mong muốn (không phải mọi lần streak > 0)
+    để tránh spam alert lặp lại mỗi ngày sau khi đã báo lần đầu."""
+    rows = get_daily_mape(model_version, days=max_days)
+    streak = 0
+    for r in rows:
+        if r["mape"] is not None and float(r["mape"]) > threshold_pct:
+            streak += 1
+        else:
+            break
+    return streak
+
+
 def get_accuracy_summary(fund_code: str) -> "list[dict]":
     """T2-010: MAPE 7d/30d/all-time cho mỗi model_version đã dự báo quỹ này.
     Trả list dict {model_version, mape_7d, n_7d, mape_30d, n_30d, mape_all, n_all}."""

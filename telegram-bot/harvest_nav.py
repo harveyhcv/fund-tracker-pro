@@ -537,6 +537,12 @@ def cmd_daily(conn, only_code: Optional[str] = None, jwt: Optional[str] = None) 
     # Fetch yesterday NAVs một lần cho tất cả quỹ
     yesterday_navs = _yesterday_nav_map(conn)
 
+    # GOV-003: ngưỡng cảnh báo NAV nhảy bất thường trong 1 phiên — không phải lỗi
+    # confirm-mismatch (đã có ở pending_confirm) mà là data glitch/API trả sai thang
+    # đo (vd thiếu/thừa số 0), có thể xảy ra ở NAV auto-harvest bình thường (fmarket/tcbs).
+    NAV_JUMP_THRESHOLD_PCT = 15.0
+    jump_list = []   # [(code, yesterday_nav, new_nav, pct)]
+
     total_new       = 0
     pending_list    = []
     updated_list    = []
@@ -601,6 +607,10 @@ def cmd_daily(conn, only_code: Optional[str] = None, jwt: Optional[str] = None) 
                 if result in ('inserted', 'updated'):
                     total_new += 1
                     updated_list.append(code)
+                    if yesterday_nav:
+                        pct = (p["nav"] - yesterday_nav) / yesterday_nav * 100
+                        if abs(pct) > NAV_JUMP_THRESHOLD_PCT:
+                            jump_list.append((code, yesterday_nav, p["nav"], pct))
                 elif result == 'provisional':
                     provisional_list.append(code)
                 elif result == 'pending_confirm':
@@ -643,6 +653,13 @@ def cmd_daily(conn, only_code: Optional[str] = None, jwt: Optional[str] = None) 
     needs_check = sorted(set(provisional_list) | set(stuck_list))
     if needs_check:
         log(f"NEEDS_CHECK: {','.join(needs_check)}")
+
+    # GOV-003: NAV nhảy >NAV_JUMP_THRESHOLD_PCT%/phiên — dòng riêng để bot.py (chạy
+    # qua subprocess) parse và báo admin + ghi audit_log ngay (không chỉ log im lặng,
+    # vì có thể là data glitch ảnh hưởng tín hiệu/dự báo cho user).
+    if jump_list:
+        parts_j = [f"{c}:{y:.0f}->{n:.0f}:{pct:+.1f}%" for c, y, n, pct in jump_list]
+        log(f"JUMP_ALERT: {';'.join(parts_j)}")
 
     return total_new
 
