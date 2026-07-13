@@ -133,23 +133,33 @@
 # Harvey yêu cầu: không bao giờ xoá/đổi dữ liệu tài khoản/NAV/dự đoán khi sửa code, bảo mật
 # nhiều lớp (có PII), đạt chuẩn để "bán được". 4 hạng mục cụ thể đã chọn:
 
-- [ ] GOV-001 · Audit log mọi thay đổi trên dữ liệu nhạy cảm (tier, NAV thủ công, portfolio,
-  promo redeem) — bảng `audit_log(actor_id, action, target_table, target_id, before, after, at)`,
-  ghi từ mọi endpoint ghi dữ liệu tài khoản/thanh toán | P0 | ~4h
+- [DONE] GOV-001 · Audit log — bảng `audit_log(actor_id, action, target_table, target_id,
+  before_state, after_state, note, created_at)` append-only, `db.log_audit()`/`get_audit_log()`.
+  Hook vào extend_pro/set_tier/redeem_promo_code/create_promo_code/update_promo_code/
+  (de)activate_promo_code/resolve_nav_confirm | 2026-07-13 | Còn thiếu: UI xem log cho admin
+  (phần dashboard của GOV-004), audit cho trade CRUD (CCQ/vàng) chưa hook
 - [ ] GOV-002 · Backup tự động định kỳ — Railway cron/script `pg_dump` hàng ngày lên object
   storage (S3-compatible hoặc Railway volume), retention policy rõ ràng, quy trình restore đã
   test thử ít nhất 1 lần | P0 | ~3h (phụ thuộc chọn nơi lưu backup)
 - [ ] GOV-003 · Cảnh báo bất thường tự động — rule-based: NAV nhảy >X%/phiên, MAPE dự báo vượt
   ngưỡng N ngày liên tiếp, thanh toán trùng lặp (cùng charge_id/orderId xử lý 2 lần), redeem
-  promo bất thường (nhiều mã cùng 1 phút) → Telegram admin | P1 | ~4h (phụ thuộc GOV-001 để có log nguồn)
+  promo bất thường (nhiều mã cùng 1 phút) → Telegram admin | P1 | ~4h (giờ có audit_log làm nguồn)
 - [ ] GOV-004 · Dashboard giám sát admin — 1 màn hình: số user theo tier, MAPE dự báo theo model,
-  quỹ NAV đang lỗi/thiếu dữ liệu, giao dịch thanh toán gần đây, log audit gần đây | P1 | ~4h
-  (phụ thuộc GOV-001, tận dụng data GOV-003)
-- [ ] GOV-005 · Security hardening review toàn diện — hiện GET endpoints (`_api_me`,
-  `_api_signals`, v.v.) KHÔNG verify `X-Init-Data` (chỉ trust query param `user_id`), khác với
-  POST/DELETE đã có `_auth_write`. Cần: (a) xác nhận đây có phải rủi ro thật (đọc dữ liệu
-  người khác bằng cách đoán telegram_id?), (b) thêm HTTPS-only cookie/rate-limit nếu cần,
-  (c) review toàn bộ input validation trước khi "bán được" | P0 | ~6h (cần threat-model kỹ trước khi code)
+  quỹ NAV đang lỗi/thiếu dữ liệu, giao dịch thanh toán gần đây, log audit gần đây (endpoint
+  `GET /api/admin/audit` chưa làm — cần thêm) | P1 | ~4h
+- [DONE] GOV-005 · Security hardening — đã tìm và vá 2 lỗ hổng NGHIÊM TRỌNG (2026-07-13):
+  (1) MỌI API đọc (GET: /api/me, /api/signals, /api/trades, /api/research/<code>,
+  /api/admin/nav/pending, /api/admin/promo/list...) không verify X-Init-Data, chỉ trust query
+  param user_id — bất kỳ ai biết telegram_id của user khác đều đọc được toàn bộ dữ liệu riêng
+  tư của họ (CONFIRMED khai thác được, đã test). (2) `_auth_write()` có bypass "telegram_id
+  gửi lên == admin_id thì cho qua không cần initData" — client tự khai telegram_id nên AI CŨNG
+  giả danh admin để GHI dữ liệu (settoken, promo/create, fetch-nav, fixportfolio, import-nav)
+  mà không cần bằng chứng Telegram nào — CONFIRMED nghiêm trọng hơn #1. Fix: apiFetch() gửi
+  X-Init-Data, mọi GET/POST private data bắt buộc _auth_write() xác thực chữ ký HMAC thật;
+  bỏ bypass string-match, thay bằng secret ADMIN_API_KEY (ENV) cho script nội bộ
+  (scripts/import_tcbs_xlsx.py). Verify bằng 12 test tự viết giả lập chữ ký Telegram thật,
+  chạy trực tiếp lên DB Railway | 2026-07-13 | Còn lại: auth_date freshness check (chống
+  replay initData cũ) chưa làm — mức độ rủi ro thấp hơn, có thể làm sau
 - [ ] GOV-006 · Chính sách "không xoá/đổi dữ liệu khi deploy" — viết thành quy tắc migration
   trong CLAUDE.md: mọi ALTER TABLE phải là additive (ADD COLUMN IF NOT EXISTS, không DROP/RENAME
   không có kế hoạch backfill), mọi script sửa dữ liệu hàng loạt phải dry-run + xác nhận trước | P1 | ~1h
