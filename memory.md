@@ -513,3 +513,58 @@ credentials, để lại cho session có quyền truy cập secrets thật.
 ---
 
 *Cập nhật: 2026-07-10 — Session 5: T+2 Forecast Engine — T2-004/005/007/008/010 (autonomous run, ca chiều)*
+
+---
+
+## ✅ Session 7 — Ca sáng autonomous: GOV-002/003/004/006 (2026-07-13)
+
+Bắt đầu session thấy BACKLOG.md đã có GOV-001 (audit log) + GOV-005 (security hardening) DONE
+từ trước (commit `3a5b552`), cùng vài commit khác chưa update BACKLOG (dedup token alert,
+báo cáo NAV chưa cập nhật). Có 1 worktree khác (`agent-a7b66c21c7d977a66`, locked) đang làm
+tính năng Vàng riêng — không đụng tới, tránh xung đột.
+
+**GOV-004 (partial) — Admin audit log viewer:**
+- `GET /api/admin/audit` (admin-only) dùng `db.get_audit_log()` có sẵn từ GOV-001
+- Card "Audit log gần đây" trong tab Admin Mini App, verify qua browser preview (mock apiFetch)
+- Còn thiếu: dashboard tổng hợp (user theo tier, MAPE model, quỹ NAV lỗi, giao dịch gần đây)
+
+**GOV-006 — Chính sách migration:** section mới trong `CLAUDE.md` ("🔐 CHÍNH SÁCH DỮ LIỆU") —
+additive-only ALTER TABLE, dry-run mặc định cho script sửa dữ liệu hàng loạt, audit_log
+append-only, PROTECTED_SOURCES cho NAV, luôn hỏi Harvey trước khi xoá dữ liệu.
+
+**GOV-002 — Backup tự động:** `scripts/backup_db.py` (pg_dump -F c, retention 14 ngày, luôn
+giữ ≥1 bản), `bot.py job_backup_db()` 03:30 hàng ngày + báo Telegram admin khi fail. Restore
+qua `--restore <file> --confirm` (dry-run mặc định), `telegram-bot/BACKUP.md` ghi quy trình.
+**Bug tìm thấy khi làm task này**: `.dockerignore` loại bỏ TOÀN BỘ `scripts/` khỏi Docker
+build context — nghĩa là `scripts/t2_arima.py`/`t2_xgboost.py`/`t2_ensemble.py` KHÔNG HỀ có
+trong image production, mọi job T+2 (`job_t2_predict`/`job_t2_retrain`/`job_t2_reweight`) đã
+fail âm thầm trên Railway từ trước đến giờ (chỉ hoạt động khi test local — `_run_t2_script()`
+nuốt lỗi, chỉ log warning, không crash bot nên không ai để ý). Đã sửa `.dockerignore` để copy
+`scripts/` (trừ `scripts/models/` — model file gitignored).
+
+**GOV-003 (partial) — Chặn thanh toán trùng lặp:** phát hiện lỗ hổng tài chính thật (không
+chỉ lý thuyết): MoMo IPN và Telegram Stars `successful_payment` KHÔNG có dedup nào trước đây
+— nếu cổng thanh toán retry webhook (rất thường xảy ra khi server không ACK đủ nhanh),
+`extend_pro()` bị gọi lại → user được +30 ngày Pro MIỄN PHÍ mỗi lần retry. Đã thêm
+`db.record_payment_once(provider, charge_id)` — bảng `processed_payments` UNIQUE
+(provider, charge_id), `INSERT...ON CONFLICT DO NOTHING`, trả `False` nếu đã xử lý → caller
+bỏ qua `extend_pro()` + ghi `log_audit("duplicate_payment_blocked")` + báo Telegram admin ngay.
+Verify bằng fake cursor mô phỏng đúng semantics `ON CONFLICT DO NOTHING`. Còn thiếu 3 rule
+anomaly khác trong scope gốc GOV-003 (NAV nhảy >X%/phiên, MAPE vượt ngưỡng N ngày liên tiếp,
+redeem promo bất thường) — để lại session sau, ưu tiên dedup thanh toán trước vì rủi ro tài
+chính trực tiếp cao hơn.
+
+**Bài học lặp lại (đã ghi ở session trước nhưng vẫn xảy ra)**: luôn `grep`/đọc code thực tế
+trước khi tin BACKLOG — 2 bug tìm thấy trong session này (`.dockerignore` thiếu `scripts/`,
+thiếu dedup thanh toán) đều là lỗ hổng ĐÃ TỒN TẠI TỪ TRƯỚC, không phải do session này gây ra,
+chỉ lộ ra khi đọc kỹ code liên quan tới task đang làm.
+
+**Việc tiếp theo cho session sau:**
+1. Deploy: chạy `railway run python scripts/backup_db.py --backup` 1 lần để xác nhận
+   `pg_dump` hoạt động thật trên Railway (image mới có `postgresql-client`)
+2. Restore thử trên 1 Postgres service TEST riêng (không phải production) — xem
+   `telegram-bot/BACKUP.md` checklist
+3. GOV-003 còn lại: NAV jump alert, MAPE threshold alert, promo abuse detection
+4. GOV-004 còn lại: dashboard tổng hợp admin (user/tier, MAPE, NAV lỗi, thanh toán gần đây)
+5. Redeploy Railway sau session này để job T2 (predict/retrain/reweight) BẮT ĐẦU hoạt động
+   thật lần đầu tiên (bug `.dockerignore` đã chặn chúng từ trước tới giờ)
