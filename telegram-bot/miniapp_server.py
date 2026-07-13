@@ -48,7 +48,8 @@ _MOMO_ENDPOINT     = os.environ.get("MOMO_ENDPOINT", "https://test-payment.momo.
 _MOMO_PARTNER_CODE = os.environ.get("MOMO_PARTNER_CODE", "MOMO")
 _MOMO_ACCESS_KEY   = os.environ.get("MOMO_ACCESS_KEY", "F8BBA842ECF85")
 _MOMO_SECRET_KEY   = os.environ.get("MOMO_SECRET_KEY", "K951B6PE1waDMi640xX08PD3vg6EkVlz")
-_MOMO_AMOUNT_VND   = int(os.environ.get("MOMO_AMOUNT_VND", "99000"))  # giá gói Pro 30 ngày
+
+from pricing import PRO_PLANS, PLAN_ORDER, DEFAULT_PLAN, resolve_plan
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -1171,6 +1172,8 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             self._api_admin_promo_list(qs)
         elif path == "/api/admin/audit":
             self._api_admin_audit(qs)
+        elif path == "/api/admin/summary":
+            self._api_admin_summary(qs)
         elif path == "/health":
             _json(self, {"ok": True, "ts": datetime.now().isoformat()})
         else:
@@ -1238,7 +1241,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         elif path == "/api/admin/import-trades":
             self._api_admin_import_trades(data)
         elif path == "/api/payment/stars/create":
-            self._api_create_stars_invoice()
+            self._api_create_stars_invoice(data)
         elif path == "/api/payment/momo/create":
             self._api_momo_create(data)
         elif path == "/api/payment/momo/ipn":
@@ -2244,6 +2247,25 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             return
         _json(self, {"log": rows})
 
+    def _api_admin_summary(self, qs: dict):
+        """GET /api/admin/summary?user_id=... — dashboard tổng hợp cho admin (GOV-004
+        phần còn thiếu): user theo tier, MAPE model 7 ngày gần nhất, quỹ chưa có NAV hôm
+        nay, giao dịch thanh toán gần đây. Read-only."""
+        tg_id = (qs.get("user_id") or [""])[0]
+        if not _is_admin(tg_id):
+            _json(self, {"error": "admin_only"}, 403)
+            return
+        if not _auth_write(self, tg_id):
+            return
+        if _db_mod is None or not _db_mod.is_available():
+            _json(self, {"users": {}, "model_mape": [], "funds_missing_today": [], "recent_payments": []})
+            return
+        try:
+            _json(self, _db_mod.get_admin_summary())
+        except Exception as e:
+            log.error(f"[admin_summary] {e}")
+            _json(self, {"error": "Lỗi tổng hợp dashboard"}, 500)
+
     def _api_referral_mine(self, qs: dict):
         """GET /api/referral/mine?user_id=... — mã giới thiệu cá nhân + số người đã dùng.
         Ai nhập mã này sẽ được +30 ngày Pro, và chủ mã (referrer) cũng được +30 ngày."""
@@ -2835,8 +2857,9 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         log.info(f"[admin] fixportfolio {code}: avg_cost {old['avg_cost']} → {avg_cost}")
         _json(self, {"ok": True, "code": code, "old": old, "new": entry})
 
-    def _api_create_stars_invoice(self):
-        """POST /api/payment/stars/create — tạo Telegram Stars invoice link để Mini App mở."""
+    def _api_create_stars_invoice(self, data: dict):
+        """POST /api/payment/stars/create — tạo Telegram Stars invoice link để Mini App mở.
+        Params: plan (m1/q1/h1/y1, mặc định m1 nếu không gửi hoặc gói lạ)."""
         import requests as _req
         cfg       = _load_cfg()
         bot_token = cfg.get("bot_token") or os.environ.get("BOT_TOKEN", "")
@@ -2851,16 +2874,20 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             _json(self, {"error": "initData không hợp lệ"}, 403)
             return
         user_id = user.get("id", 0)
+        plan_key = str((data or {}).get("plan", DEFAULT_PLAN))
+        if plan_key not in PRO_PLANS:
+            plan_key = DEFAULT_PLAN
+        plan = PRO_PLANS[plan_key]
         payload = {
             "title": "Fund Tracker Pro",
             "description": (
-                "30 ngày không giới hạn: theo dõi không giới hạn quỹ, "
+                f"{plan['label']}: theo dõi không giới hạn quỹ, "
                 "phân tích sâu RSI/MACD/Sharpe/Sortino, cảnh báo tự động, "
                 "phân tích giá vàng."
             ),
-            "payload": f"pro_30d:{user_id}",
+            "payload": f"pro:{plan_key}:{user_id}",
             "currency": "XTR",
-            "prices": [{"label": "Fund Tracker Pro — 30 ngày", "amount": 250}],
+            "prices": [{"label": f"Fund Tracker Pro — {plan['label']}", "amount": plan["stars"]}],
         }
         try:
             r = _req.post(
@@ -2881,6 +2908,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
 
     def _api_momo_create(self, data: dict):
         """POST /api/payment/momo/create — PAY-004: tạo MoMo v2 payment request, trả payUrl.
+        Params: plan (m1/q1/h1/y1, mặc định m1 nếu không gửi hoặc gói lạ).
 
         Yêu cầu Mini App xác thực bằng X-Init-Data (giống /api/payment/stars/create) — không
         tin telegram_id do client gửi lên, tránh nâng cấp tier hộ người khác.
@@ -2896,14 +2924,20 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             _json(self, {"error": "initData không hợp lệ"}, 403)
             return
         user_id = str(user.get("id", 0))
+        plan_key = str((data or {}).get("plan", DEFAULT_PLAN))
+        if plan_key not in PRO_PLANS:
+            plan_key = DEFAULT_PLAN
+        plan = PRO_PLANS[plan_key]
 
         base = os.environ.get("MINIAPP_URL", f"https://{os.environ.get('RAILWAY_PUBLIC_DOMAIN', 'localhost:8443')}")
         request_id  = f"{user_id}-{int(datetime.now().timestamp())}"
-        order_id    = f"FTP-{user_id}-{int(datetime.now().timestamp())}"
-        order_info  = "Fund Tracker Pro - Nang cap 30 ngay"
+        # orderId format: FTP-<telegram_id>-<plan_key>-<ts> — plan_key cần cho IPN biết
+        # cấp bao nhiêu ngày Pro (xem _api_momo_ipn).
+        order_id    = f"FTP-{user_id}-{plan_key}-{int(datetime.now().timestamp())}"
+        order_info  = f"Fund Tracker Pro - {plan['label']}"
         redirect_url = f"{base}?user_id={user_id}&momo_return=1"
         ipn_url      = f"{base}/api/payment/momo/ipn"
-        amount       = _MOMO_AMOUNT_VND
+        amount       = plan["vnd"]
         request_type = "captureWallet"
         extra_data   = ""
 
@@ -2954,7 +2988,8 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         """POST /api/payment/momo/ipn — PAY-005: MoMo server-to-server callback.
 
         Verify chữ ký HMAC-SHA256 trước khi tin bất kỳ field nào. Khi resultCode=0
-        (thanh toán thành công) → nâng cấp user_tiers lên 'pro' 30 ngày.
+        (thanh toán thành công) → nâng cấp user_tiers lên 'pro' theo số ngày của gói
+        (parse từ orderId, xem PRO_PLANS trong pricing.py).
         Luôn trả 200 (MoMo sẽ retry nếu không nhận được response) trừ khi chữ ký sai.
         """
         partner_code = str(data.get("partnerCode", ""))
@@ -2995,9 +3030,12 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         log.info(f"[PAY][MoMo] IPN orderId={order_id} resultCode={result_code} transId={trans_id}")
 
         if result_code == 0:
-            # orderId format: FTP-<telegram_id>-<ts>
+            # orderId format mới: FTP-<telegram_id>-<plan_key>-<ts>
+            # (cũ, trước multi-tier: FTP-<telegram_id>-<ts> — coi như gói tháng)
             parts = order_id.split("-")
             tg_id = parts[1] if len(parts) >= 3 and parts[0] == "FTP" else ""
+            plan_key = parts[2] if len(parts) >= 4 and parts[0] == "FTP" and parts[2] in PRO_PLANS else DEFAULT_PLAN
+            plan_days = PRO_PLANS[plan_key]["days"]
             if tg_id and _db_mod is not None and _db_mod.is_available():
                 # GOV-003: MoMo có thể gửi lại IPN nếu không nhận response đủ nhanh —
                 # chặn xử lý trùng bằng transId (unique per giao dịch từ MoMo).
@@ -3022,12 +3060,12 @@ class MiniAppHandler(BaseHTTPRequestHandler):
                     return
                 expires_at = None
                 try:
-                    result = _db_mod.extend_pro(tg_id, 30)
+                    result = _db_mod.extend_pro(tg_id, plan_days, note=f"momo {PRO_PLANS[plan_key]['label']} ({amount}đ)")
                     expires_at = result.get("pro_expires_at")
-                    log.info(f"[PAY][MoMo] tier=pro extended for {tg_id}, expires {expires_at}")
+                    log.info(f"[PAY][MoMo] tier=pro extended {plan_days}d for {tg_id}, expires {expires_at}")
                 except Exception as e:
                     log.error(f"[PAY][MoMo] extend_pro error: {e}")
-                    expires_at = datetime.now(timezone.utc) + timedelta(days=30)
+                    expires_at = datetime.now(timezone.utc) + timedelta(days=plan_days)
                 cfg = _load_cfg()
                 bot_token = cfg.get("bot_token") or os.environ.get("BOT_TOKEN", "")
                 if bot_token and not bot_token.startswith("NHAP"):
@@ -3041,7 +3079,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
                                 "parse_mode": "HTML",
                                 "text": (
                                     f"🌟 <b>Chào mừng bạn đến với Fund Tracker Pro!</b>\n\n"
-                                    f"✅ Thanh toán MoMo {int(amount):,} đ thành công\n"
+                                    f"✅ Thanh toán MoMo {int(amount):,} đ thành công — gói <b>{PRO_PLANS[plan_key]['label']}</b>\n"
                                     f"📅 Gói Pro có hiệu lực đến: <b>{exp_str}</b>\n\n"
                                     f"Gõ /app để mở Mini App ngay. 🚀"
                                 ),

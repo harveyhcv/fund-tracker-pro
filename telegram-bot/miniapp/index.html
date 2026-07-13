@@ -215,8 +215,7 @@ canvas{width:100%!important;height:100%!important}
         <div class="upgrade-feature"><span class="chk">✓</span> Cảnh báo tự động theo ngưỡng</div>
         <div class="upgrade-feature"><span class="chk">✓</span> Dự báo NAV T+2</div>
       </div>
-      <div style="text-align:center;margin:12px 0 4px;font-family:var(--mono);font-size:22px;color:var(--c0);font-weight:700">250 ⭐</div>
-      <div style="text-align:center;font-size:12px;color:var(--txt2);margin-bottom:16px">30 ngày · Telegram Stars · Gia hạn bất kỳ lúc nào</div>
+      <div id="plan-cards" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0 14px"></div>
       <button class="btn btn-primary" id="upgrade-cta-btn" onclick="startUpgrade()">⭐ NÂNG CẤP PRO NGAY</button>
       <button class="btn" disabled style="background:var(--bg3);color:var(--txt2);border:1px solid var(--bdr);margin-top:8px;cursor:not-allowed">💗 MoMo (sắp ra mắt)</button>
       <button class="btn" style="background:transparent;border:1px solid var(--bdr);color:var(--txt2)" onclick="closeUpgradeModalBtn()">Để sau</button>
@@ -1965,6 +1964,30 @@ function closeModal(e){if(e.target===document.getElementById('modal'))closeModal
 function closeModalBtn(){document.getElementById('modal').classList.remove('open');}
 
 // ── Upgrade to Pro (GATE-004) ───────────────────────────────────────────
+// Nguồn sự thật: telegram-bot/pricing.py (PRO_PLANS). Giữ đồng bộ thủ công nếu đổi giá bên đó.
+const PRO_PLANS={
+  m1:{days:30,  stars:50,  vnd:20000,  label:'1 tháng',           discount:0},
+  q1:{days:90,  stars:135, vnd:54000,  label:'1 quý (3 tháng)',   discount:10},
+  h1:{days:180, stars:240, vnd:96000,  label:'Nửa năm (6 tháng)', discount:20},
+  y1:{days:365, stars:420, vnd:168000, label:'1 năm',             discount:30},
+};
+let _selectedPlan='y1';
+
+function renderPlanCards(){
+  const box=document.getElementById('plan-cards');
+  box.innerHTML=Object.entries(PRO_PLANS).map(([key,p])=>{
+    const sel=key===_selectedPlan;
+    const perMonth=Math.round(p.vnd/(p.days/30));
+    return `<div onclick="selectPlan('${key}')" style="cursor:pointer;position:relative;border:1px solid ${sel?'var(--c0)':'var(--bdr)'};background:${sel?'rgba(0,229,255,.08)':'var(--bg3)'};border-radius:10px;padding:10px 8px;text-align:center">
+      ${key==='y1'?'<div style="position:absolute;top:-8px;left:50%;transform:translateX(-50%);font-size:9px;font-family:var(--mono);background:var(--c0);color:#000;padding:1px 6px;border-radius:99px;white-space:nowrap">TIẾT KIỆM NHẤT</div>':''}
+      <div style="font-size:12px;color:var(--txt2);margin-top:${key==='y1'?'6px':'0'}">${p.label}</div>
+      <div style="font-family:var(--mono);font-weight:700;font-size:15px;color:${sel?'var(--c0)':'var(--txt)'};margin-top:4px">${p.stars} ⭐</div>
+      <div style="font-size:10px;color:var(--txt2);margin-top:2px">≈${perMonth.toLocaleString('vi-VN')}đ/tháng${p.discount?` · -${p.discount}%`:''}</div>
+    </div>`;
+  }).join('');
+}
+function selectPlan(key){ _selectedPlan=key; renderPlanCards(); }
+
 function showUpgradeModal(info){
   const limit=info?.limit;
   document.getElementById('upgrade-reason').textContent = limit
@@ -1972,6 +1995,7 @@ function showUpgradeModal(info){
     : 'Tính năng này chỉ dành cho tài khoản Pro.';
   document.getElementById('promo-code-status').textContent='';
   document.getElementById('promo-code-input').value='';
+  renderPlanCards();
   document.getElementById('upgrade-modal').classList.add('open');
   loadReferralCode();
 }
@@ -2018,7 +2042,7 @@ async function startUpgrade(){
   const btn = document.getElementById('upgrade-cta-btn');
   if (btn) { btn.disabled = true; btn.textContent = 'Đang tạo invoice...'; }
   try {
-    const d = await apiPost('/api/payment/stars/create', {});
+    const d = await apiPost('/api/payment/stars/create', {plan:_selectedPlan});
     if (!d.invoice_link) throw new Error('Không nhận được invoice link');
     closeUpgradeModalBtn();
     if (tg?.openInvoice) {
@@ -2048,7 +2072,7 @@ async function startUpgradeMomo(){
   const btn = document.getElementById('upgrade-momo-btn');
   if (btn) { btn.disabled = true; btn.textContent = 'Đang tạo giao dịch...'; }
   try {
-    const d = await apiPost('/api/payment/momo/create', {});
+    const d = await apiPost('/api/payment/momo/create', {plan:_selectedPlan});
     if (!d.pay_url) throw new Error('Không nhận được link thanh toán');
     closeUpgradeModalBtn();
     if (tg?.openLink) {

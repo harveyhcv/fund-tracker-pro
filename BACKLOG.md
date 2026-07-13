@@ -61,6 +61,15 @@
 - Frontend: nút "💗 THANH TOÁN QUA MOMO" trong `#upgrade-modal` (`telegram-bot/miniapp/index.html`) → `startUpgradeMomo()` gọi `/api/payment/momo/create`, mở `pay_url` qua `tg.openLink()` | 2026-07-10
 - **Bug tìm thấy + fix (không thuộc PAY-004/005 nhưng cùng khu vực code)**: `do_POST` gọi `self._api_create_stars_invoice(user)` nhưng `user` chưa từng được gán trong scope `do_POST` → NameError mỗi khi user bấm "NÂNG CẤP PRO NGAY" qua Mini App (endpoint `/api/payment/stars/create`, khác với `/buy_pro` command trong bot.py vẫn hoạt động bình thường). Đã sửa: `_api_create_stars_invoice()` tự validate `X-Init-Data` để lấy `user`, cùng pattern với `_auth_write()` | 2026-07-10
 
+- **PAY-008 · Multi-tier pricing (tháng/quý/nửa năm/năm)** — trước đây chỉ 1 gói (250⭐/99.000đ/30 ngày).
+  Harvey yêu cầu hạ giá tháng xuống ~20k và đẩy user trả theo năm. Tạo `telegram-bot/pricing.py`
+  (nguồn sự thật duy nhất, PRO_PLANS): tháng 20.000đ/50⭐, quý 54.000đ/135⭐ (-10%), nửa năm
+  96.000đ/240⭐ (-20%), năm 168.000đ/420⭐ (-30%). `/buy_pro` giờ hiện menu chọn gói (inline keyboard,
+  callback `buyplan:<key>`) thay vì invoice thẳng; payload Stars đổi từ `pro_30d:` → `pro:<plan>:<chat_id>`
+  (fallback về gói tháng nếu payload cũ còn bay). MoMo orderId đổi từ `FTP-<tg>-<ts>` →
+  `FTP-<tg>-<plan>-<ts>` để IPN biết cấp bao nhiêu ngày (fallback gói tháng nếu orderId cũ 3 phần).
+  Mini app: modal nâng cấp có 4 thẻ chọn gói, mặc định chọn gói năm + badge "TIẾT KIỆM NHẤT" | 2026-07-13
+
 ### 3c. VNPay + Stripe (làm sau)
 
 - [ ] PAY-006 · VNPay: `/payment/vnpay/create` + `/payment/vnpay/return` theo spec VNPay 2.1.0 | P2 | 4h
@@ -148,17 +157,28 @@
   đến giờ vì `scripts/t2_*.py` không hề có trong container. Đã sửa `.dockerignore` | 2026-07-13
   | Retention logic + restore dry-run test bằng file giả lập — pass. CHƯA test `pg_dump`/
   `pg_restore` thật (cần DATABASE_URL Railway) — xem checklist trong BACKUP.md
-- [DONE-PARTIAL] GOV-003 · Chặn + cảnh báo thanh toán trùng lặp — `db.record_payment_once()`
-  (bảng `processed_payments`, UNIQUE (provider, charge_id)) chặn xử lý 2 lần khi cổng thanh
-  toán retry webhook (MoMo IPN dùng `transId`, Telegram Stars dùng `charge_id`). Trước đây
-  KHÔNG có dedup nào — mỗi lần webhook gọi lại là +30 ngày Pro miễn phí (lỗ hổng tài chính
-  thật, không chỉ lý thuyết, vì cổng thanh toán retry khi không nhận response đủ nhanh là
-  chuyện thường). Khi phát hiện trùng → `log_audit("duplicate_payment_blocked")` + báo
-  Telegram admin ngay, không chỉ log im lặng. Verify: dedup logic test bằng fake cursor mô
-  phỏng `INSERT...ON CONFLICT DO NOTHING` — same (provider,charge_id) lần 2 trả `False`, khác
-  provider hoặc charge_id khác vẫn `True` | 2026-07-13 | Còn thiếu 3 rule còn lại (NAV nhảy
-  >X%/phiên, MAPE vượt ngưỡng N ngày, redeem promo bất thường nhiều mã/phút) — để lại session
-  sau, task này ước tính ban đầu 4h nhưng dedup thanh toán quan trọng hơn nên ưu tiên làm trước
+- [DONE] GOV-003 · Chặn + cảnh báo thanh toán trùng lặp + 3 rule anomaly còn lại —
+  `db.record_payment_once()` (bảng `processed_payments`, UNIQUE (provider, charge_id)) chặn
+  xử lý 2 lần khi cổng thanh toán retry webhook (MoMo IPN dùng `transId`, Telegram Stars dùng
+  `charge_id`). Trước đây KHÔNG có dedup nào — mỗi lần webhook gọi lại là +30 ngày Pro miễn phí
+  (lỗ hổng tài chính thật). Khi phát hiện trùng → `log_audit("duplicate_payment_blocked")` +
+  báo Telegram admin ngay | 2026-07-13
+  **Ca chiều 2026-07-13 — 3 rule còn lại:**
+  (1) NAV nhảy >15%/phiên — `harvest_nav.py cmd_daily` in `JUMP_ALERT:` khi fetch mới lệch
+  yesterday_nav >15% (auto-harvest fmarket/tcbs, khác với pending_confirm vốn chỉ bắt
+  manual≠fetch); `bot.py job_harvest_nav` parse dòng này → `log_audit(nav_jump_anomaly)` +
+  báo admin.
+  (2) MAPE model kém liên tục — `db.get_daily_mape()`/`get_mape_breach_streak()` (MAPE trung
+  bình theo ngày từ `prediction_actuals`, đếm streak ngày liên tiếp >ngưỡng); `bot.py
+  job_t2_score` gọi `_check_mape_streak_alerts()` sau khi score — báo khi model (arima-v1/
+  xgb-v1/ensemble-v1) MAPE >8% liên tục ĐÚNG 5 ngày (debounce tự nhiên nhờ check `== N` thay
+  vì `>= N` — không spam lặp lại mỗi ngày sau đó).
+  (3) Brute-force mã khuyến mãi — `miniapp_server.py _check_promo_abuse()` rate-limit
+  in-memory theo telegram_id (>5 lần thử/60s → chặn 429 + `log_audit(promo_abuse_detected)`
+  + báo admin). In-memory nên reset khi Railway restart — chấp nhận được vì đây là lớp cảnh
+  báo bổ sung, không phải cơ chế bảo mật chính (UNIQUE constraint DB vẫn chặn redeem trùng).
+  Verify: streak logic + rate-limit logic test bằng script giả lập độc lập (không cần DB) —
+  cả 2 pass đúng behavior mong đợi | 2026-07-13
 - [DONE-PARTIAL] GOV-004 · `GET /api/admin/audit` (admin-only, `_auth_write` + `_is_admin`,
   dùng `db.get_audit_log()` có sẵn từ GOV-001) + card "Audit log gần đây" trong tab Admin
   Mini App (`telegram-bot/miniapp/index.html`) hiện 50 dòng gần nhất (action/actor/target/note).
