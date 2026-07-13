@@ -4,12 +4,34 @@
 # Priority: P0 (blocker) / P1 (important) / P2 (nice-to-have)
 # Claude đọc file này ĐẦU TIÊN mỗi session. Pick task IN_PROGRESS nếu có, nếu không pick P0 cao nhất.
 #
-# Last updated: 2026-07-12 (session 6 — QA toàn diện + v1.0 + promo/beta)
+# Last updated: 2026-07-13 (session 7 — v1.1: pricing đa kỳ hạn + Phase 6a governance hoàn tất)
 
 ## ĐANG LÀM (IN_PROGRESS)
-# Không có. v1.0 đã tag. Ưu tiên tiếp theo: GOV-001..006 (Phase 6a — quản trị dữ liệu
-# chặt chẽ, Harvey yêu cầu trước khi bán) — GOV-001 (audit log) nên làm trước vì
-# GOV-003/004 phụ thuộc vào nó. Còn PAY-006/PAY-007 (P2, cần merchant credentials thật).
+# Không có. v1.1 đã tag (thay v1.0), đã chạy QA (230/280 pass, 50 fail là nợ kỹ thuật
+# cũ không liên quan — xem RELEASE ghi chú dưới), QC thủ công payment flows, và
+# security review (không có finding HIGH/MEDIUM). v1.0 đã backup (code + data snapshot)
+# vào backups/ (gitignored, không commit). Phase 6a (GOV-001..006) đã DONE toàn bộ.
+# Ưu tiên tiếp theo: PAY-006/007 (VNPay/Stripe, P2, cần merchant thật), nghiên cứu
+# MoMo merchant thật + fallback CK/redeem-code (xem RELEASE NOTES v1.1 bên dưới),
+# dọn 50 test cũ đã lỗi thời (lệnh /watch /unwatch /funds /add_trade đã bỏ,
+# check_jwt_freshness/job_check_jwt đã xoá khỏi bot.py).
+
+## RELEASE NOTES v1.1 (2026-07-13)
+- Pricing đa kỳ hạn: tháng 20k/50⭐, quý 54k/135⭐ (-10%), nửa năm 90k/225⭐ (-25%),
+  năm 132k/330⭐ (-45%) — giá khớp đúng % giảm giá hiển thị. `telegram-bot/pricing.py`
+  là nguồn sự thật duy nhất dùng chung Stars + MoMo.
+- Phase 6a governance (GOV-001..006) hoàn tất: audit log (mọi thao tác nhạy cảm +
+  CRUD trade), backup tự động (pg_dump, 03:30 hàng ngày, retention 14 ngày),
+  cảnh báo NAV bất thường + MAPE kém, admin summary dashboard, chặn brute-force
+  promo code, chặn thanh toán trùng lặp, chính sách migration additive-only.
+  Chi tiết xem từng mục GOV-00x bên dưới.
+- Vá 2 lỗ hổng bảo mật nghiêm trọng (GOV-005, session trước): auth bypass admin
+  qua string-match, và ~12 API đọc dữ liệu cá nhân không xác thực.
+- Sửa "Fetch 0 quỹ" hiển thị sai + gộp dedup cảnh báo TCBS token hết hạn (trước
+  đây 2 đường độc lập cùng gửi trùng tin nhắn).
+- Backup: v1.0 (tag `v1.0`, commit `1bd0f3a`) đã snapshot cả code (`git archive`)
+  và toàn bộ dữ liệu DB (JSON, 49 bảng) vào `backups/` (local, gitignored, không
+  đẩy lên remote — xem `backups/README.md`).
 
 ---
 
