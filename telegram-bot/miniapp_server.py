@@ -20,6 +20,7 @@ import logging
 import os
 import sys
 import threading
+import time
 import urllib.parse as _uparse
 from datetime import date, datetime, timezone, timedelta
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -980,6 +981,43 @@ def _data_tg_id(data: dict, key: str = "telegram_id") -> str:
     if str(data.get("beta")) == "1":
         tg_id = _effective_tg_id(tg_id, True)
     return tg_id
+
+
+# GOV-003: phát hiện brute-force đoán mã khuyến mãi/giới thiệu — in-memory, đủ dùng vì
+# đây là soft rate-limit theo tiến trình server (Railway restart reset là chấp nhận được,
+# không phải cơ chế bảo mật chính, chỉ là lớp cảnh báo sớm bổ sung).
+_PROMO_ATTEMPTS: dict = {}
+PROMO_ABUSE_WINDOW_SEC  = 60
+PROMO_ABUSE_MAX_ATTEMPTS = 5
+
+
+def _check_promo_abuse(tg_id: str) -> bool:
+    """True nếu tg_id vừa thử áp mã > PROMO_ABUSE_MAX_ATTEMPTS lần trong
+    PROMO_ABUSE_WINDOW_SEC giây gần nhất (mỗi lần gọi = 1 lần thử, kể cả redeem thành công)."""
+    now = time.time()
+    hist = [t for t in _PROMO_ATTEMPTS.get(tg_id, []) if now - t < PROMO_ABUSE_WINDOW_SEC]
+    hist.append(now)
+    _PROMO_ATTEMPTS[tg_id] = hist
+    return len(hist) > PROMO_ABUSE_MAX_ATTEMPTS
+
+
+def _notify_admin_promo_abuse(tg_id: str) -> None:
+    cfg = _load_cfg()
+    admin_id = str(cfg.get("admin_telegram_id") or os.environ.get("ADMIN_TELEGRAM_ID", "")).strip()
+    token = cfg.get("bot_token") or os.environ.get("BOT_TOKEN", "")
+    if not admin_id or not token or token.startswith("NHAP"):
+        return
+    try:
+        import requests as _req
+        _req.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            json={"chat_id": admin_id,
+                  "text": f"⚠️ Phát hiện đoán mã khuyến mãi bất thường: telegram_id={tg_id} "
+                          f"(>{PROMO_ABUSE_MAX_ATTEMPTS} lần thử trong {PROMO_ABUSE_WINDOW_SEC}s)"},
+            timeout=8,
+        )
+    except Exception:
+        pass
 
 
 def _get_tier(telegram_id: str) -> dict:
@@ -2238,6 +2276,14 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         if not _auth_write(self, tg_id):
             return
         tg_id = _data_tg_id(data)
+        if _check_promo_abuse(tg_id):
+            log.warning(f"[promo_redeem][ABUSE] {tg_id} thử >{PROMO_ABUSE_MAX_ATTEMPTS} mã trong {PROMO_ABUSE_WINDOW_SEC}s")
+            if _db_mod is not None and _db_mod.is_available():
+                _db_mod.log_audit(tg_id, "promo_abuse_detected", "promo_codes", code,
+                                   note=f">{PROMO_ABUSE_MAX_ATTEMPTS} lần thử mã trong {PROMO_ABUSE_WINDOW_SEC}s")
+            _notify_admin_promo_abuse(tg_id)
+            _json(self, {"error": "Quá nhiều lần thử mã, vui lòng thử lại sau"}, 429)
+            return
         if _db_mod is None or not _db_mod.is_available():
             _json(self, {"error": "DB không khả dụng"}, 503)
             return
