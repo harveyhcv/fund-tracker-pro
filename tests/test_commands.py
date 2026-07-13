@@ -328,20 +328,39 @@ class TestJobCheckSignals:
 # ════════════════════════════════════════════════════════
 
 class TestHandleTcbsAuthError:
+    """LƯU Ý: `_handle_tcbs_auth_error` hiện tại chỉ gửi cảnh báo cho
+    `admin_telegram_id` (không lặp qua tất cả profiles như tên test cũ gợi ý —
+    hành vi này đã đổi từ kiến trúc server.py/dashboard cũ sang admin-only khi
+    chuyển sang miniapp_server.py). Test đã cập nhật lại để khớp hành vi thật."""
 
-    def test_sends_alert_to_all_profiles(self):
-        """Khi token hết hạn, mọi profile đều nhận cảnh báo."""
+    def setup_method(self):
+        # _tcbs_auth_notified là global module-level trong bot.py — phải reset
+        # giữa các test, không thì test chạy sau bị chặn gửi do test trước đã
+        # set True (cùng vấn đề đã ghi nhận: không dùng shared mutable state).
+        B._tcbs_auth_notified = False
+
+    def test_sends_alert_to_admin(self):
+        """Khi token hết hạn, admin nhận cảnh báo.
+
+        Dedup chống spam dùng state.json (persist qua restart) — phải mock
+        load_state/save_state, không thì test đụng file thật trên đĩa và bị
+        chặn gửi nếu 1 lần chạy trước đó đã đánh dấu token này 'đã notify'."""
+        cfg = {**SAMPLE_CONFIG, "admin_telegram_id": "111222333"}
         sent_to = []
-        with patch.object(B, "tg_send", side_effect=lambda t, c, m: sent_to.append(c) or True):
-            B._handle_tcbs_auth_error(SAMPLE_CONFIG, {"TCFF", "TCBF"})
-        assert "111222333" in sent_to, "Harvey phải nhận cảnh báo"
-        assert "444555666" in sent_to, "Friend phải nhận cảnh báo"
+        with patch.object(B, "tg_send", side_effect=lambda t, c, m: sent_to.append(c) or True), \
+             patch.object(B, "load_state", return_value={}), \
+             patch.object(B, "save_state"):
+            B._handle_tcbs_auth_error(cfg, {"TCFF", "TCBF"})
+        assert "111222333" in sent_to, "Admin phải nhận cảnh báo"
 
     def test_message_contains_fund_codes(self):
         """Tin nhắn phải liệt kê mã quỹ bị lỗi."""
+        cfg = {**SAMPLE_CONFIG, "admin_telegram_id": "111222333"}
         messages = []
-        with patch.object(B, "tg_send", side_effect=lambda t, c, m: messages.append(m) or True):
-            B._handle_tcbs_auth_error(SAMPLE_CONFIG, {"TCFF"})
+        with patch.object(B, "tg_send", side_effect=lambda t, c, m: messages.append(m) or True), \
+             patch.object(B, "load_state", return_value={}), \
+             patch.object(B, "save_state"):
+            B._handle_tcbs_auth_error(cfg, {"TCFF"})
         assert any("TCFF" in m for m in messages), "Message phải chứa mã quỹ TCFF"
 
     def test_no_send_when_bot_token_missing(self):
