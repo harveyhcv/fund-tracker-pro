@@ -2453,15 +2453,15 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             _new_token  = new_token  # capture cho closure
 
             def _bg_fetch():
-                import subprocess, sys as _sys
+                import subprocess, sys as _sys, re as _re
                 try:
-                    from bot import load_config as _lc, all_watched_codes as _awc
-                    from bot import fetch_all as _fa, tg_send as _ts
+                    from bot import tg_send as _ts
 
-                    # ── 1. harvest_nav.py --daily --jwt TOKEN (toàn bộ funds_master) ──
                     script = Path(__file__).parent / "harvest_nav.py"
                     harvest_out, harvest_err = "", ""
-                    total_new, updated_funds = 0, []
+                    ok = False
+                    total_new = 0
+                    needs_check = []
                     if script.exists():
                         res = subprocess.run(
                             [_sys.executable, str(script), "--daily", "--jwt", _new_token],
@@ -2470,45 +2470,29 @@ class MiniAppHandler(BaseHTTPRequestHandler):
                         )
                         harvest_out = (res.stdout or "").strip()
                         harvest_err = (res.stderr or "").strip()
-                        log.info(f"[admin] harvest_nav: {harvest_out[-200:] if harvest_out else harvest_err[:200]}")
-                        # Parse dòng summary "✅ Daily: +N records — TCBF(+1), TCFF(+3), ..."
+                        ok = res.returncode == 0
+                        log.info(f"[admin] harvest_nav: {harvest_out[-300:] if harvest_out else harvest_err[:300]}")
                         for line in harvest_out.splitlines():
-                            if "Daily:" in line and "+" in line:
-                                import re
-                                m = re.search(r"\+(\d+) records", line)
+                            if "Daily" in line and "records" in line:
+                                m = _re.search(r"\+(\d+) records", line)
                                 if m:
                                     total_new = int(m.group(1))
-                                updated_funds = re.findall(r"([A-Z]+)\(\+\d+\)", line)
+                            if line.startswith("NEEDS_CHECK:"):
+                                needs_check = [c.strip() for c in line.split(":", 1)[1].split(",") if c.strip()]
                     else:
                         log.warning("[admin] harvest_nav.py không tìm thấy")
 
-                    # ── 2. Đếm tổng số quỹ trong funds_master từ harvest output ──
-                    # Parse "X/Y funds checked" hoặc đếm từ updated_funds + skipped
-                    total_funds = 0
-                    fail_funds  = []
-                    for line in harvest_out.splitlines():
-                        # harvest log dạng: "⚠ X funds bỏ qua (không có JWT)"
-                        import re
-                        m_total = re.search(r"(\d+) quỹ", line)
-                        if m_total and total_funds == 0:
-                            total_funds = int(m_total.group(1))
-                        # Tìm mã bị skip/lỗi
-                        if "bỏ qua" in line or "lỗi" in line.lower():
-                            skipped = re.findall(r"\b([A-Z]{3,8})\b", line)
-                            fail_funds.extend(skipped)
-
-                    ok_n   = len(updated_funds) if updated_funds else (total_funds - len(fail_funds))
-                    total  = total_funds or ok_n
-
-                    # ── 3. 1 message ngắn gọn dựa trên harvest_nav result ──
                     if admin_tg_id and bot_tok:
-                        if total_new > 0:
-                            msg = f"✅ NAV đã cập nhật ({ok_n}/{total} mã) — +{total_new} records"
+                        if not ok:
+                            msg = f"❌ Cập nhật token thất bại (harvest_nav lỗi)\n{harvest_err[-300:] or 'Không rõ nguyên nhân'}"
+                        elif total_new > 0:
+                            msg = f"✅ Token mới OK — đã fetch NAV, +{total_new} records"
                         else:
-                            msg = f"✅ NAV đã up-to-date ({total} mã, không có records mới)"
-                        if fail_funds:
-                            fail_str = ", ".join(f"<code>{c}</code>" for c in sorted(set(fail_funds)))
-                            msg += f"\n❌ Chưa lấy được ({len(set(fail_funds))} mã): {fail_str}"
+                            msg = "✅ Token mới OK — NAV đã up-to-date, không có records mới"
+                        if needs_check:
+                            check_str = ", ".join(f"<code>{c}</code>" for c in needs_check)
+                            msg += (f"\n⚠️ Chưa có NAV hôm nay hoặc còn bằng NAV hôm qua "
+                                    f"({len(needs_check)} mã) — cần kiểm tra và nhập tay nếu cần: {check_str}")
                         _ts(bot_tok, admin_tg_id, msg)
 
                 except Exception as _ex:

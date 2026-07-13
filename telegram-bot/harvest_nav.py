@@ -538,9 +538,9 @@ def cmd_daily(conn, only_code: Optional[str] = None, jwt: Optional[str] = None) 
     yesterday_navs = _yesterday_nav_map(conn)
 
     total_new       = 0
-    provisional_cnt = 0
     pending_list    = []
     updated_list    = []
+    provisional_list = []   # quỹ fetch được nhưng NAV == hôm qua (API chưa update, chưa chắc đúng)
 
     PROVISIONAL_PROTECTED = ('fixed', 'confirmed', 'manual', 'pending_confirm')
 
@@ -602,7 +602,7 @@ def cmd_daily(conn, only_code: Optional[str] = None, jwt: Optional[str] = None) 
                     total_new += 1
                     updated_list.append(code)
                 elif result == 'provisional':
-                    provisional_cnt += 1
+                    provisional_list.append(code)
                 elif result == 'pending_confirm':
                     pending_list.append(f"{code} {p['date']}")
                 elif result == 'confirmed':
@@ -615,16 +615,34 @@ def cmd_daily(conn, only_code: Optional[str] = None, jwt: Optional[str] = None) 
 
         time.sleep(0.2)
 
+    # Quỹ hoàn toàn không có NAV cho hôm nay (fetch lỗi/không JWT/API rỗng) —
+    # khác với provisional (có fetch nhưng bằng NAV hôm qua, chưa finalize).
+    stuck_list = []
+    for code, _fmarket_id, _is_tcbs in funds:
+        with conn.cursor() as cur:
+            cur.execute("SELECT MAX(nav_date) FROM nav_history WHERE fund_code = %s", (code,))
+            last = cur.fetchone()[0]
+        if last is None or last.isoformat() < TODAY_ISO:
+            stuck_list.append(code)
+
     parts = [f"✅ Daily {TODAY_ISO}:"]
     if updated_list:
         parts.append(f"+{total_new} records ({', '.join(dict.fromkeys(updated_list))})")
     else:
         parts.append("không có NAV mới")
-    if provisional_cnt:
-        parts.append(f"⏳ {provisional_cnt} provisional (API chưa update)")
+    if provisional_list:
+        parts.append(f"⏳ {len(provisional_list)} provisional (bằng NAV hôm qua, API chưa update): {', '.join(sorted(set(provisional_list)))}")
     if pending_list:
         parts.append(f"⚠ {len(pending_list)} pending_confirm: {', '.join(pending_list)}")
+    if stuck_list:
+        parts.append(f"❌ {len(stuck_list)} chưa có NAV hôm nay: {', '.join(sorted(set(stuck_list)))}")
     log(" — ".join(parts))
+
+    # Dòng riêng, dễ parse bằng script gọi qua subprocess (vd miniapp_server.py):
+    # danh sách mã cần admin kiểm tra/nhập tay, gộp provisional + stuck.
+    needs_check = sorted(set(provisional_list) | set(stuck_list))
+    if needs_check:
+        log(f"NEEDS_CHECK: {','.join(needs_check)}")
 
     return total_new
 

@@ -905,7 +905,7 @@ async function adminUpdateToken(){
   try{
     await apiPost('/api/admin/settoken',{admin_id:USER_ID, token});
     st.style.color='var(--buy)';
-    st.textContent='✓ Token đã lưu. Đang fetch NAV ở nền — kết quả sẽ gửi qua Telegram sau ít phút.';
+    st.textContent='✓ Token mới đã lưu vào hệ thống.';
     tg?.HapticFeedback?.notificationOccurred('success');
   }catch(e){st.style.color='var(--sell)';st.textContent='⚠️ '+(e.body?.error||e.message);}
 }
@@ -1518,6 +1518,29 @@ function navConfidenceBadge(s){
   return '';
 }
 
+function _todayISO(){return new Date().toISOString().slice(0,10);}
+
+function staleNavBadge(code, s){
+  if(!s.nav_date || s.nav_date>=_todayISO()) return '';
+  return `<span onclick="event.stopPropagation();openManualNav('${code}','${s.nav_date}')" style="cursor:pointer;font-size:9px;white-space:nowrap;background:#1a1000;color:#fb923c;border:1px solid #7c2d12;border-radius:4px;padding:1px 4px;margin-left:4px">⏱ chưa có NAV hôm nay — nhập tay</span>`;
+}
+
+async function openManualNav(code, lastDate){
+  const nav=prompt(`Nhập NAV thủ công cho ${code} (NAV gần nhất ${lastDate||'?'}):`);
+  if(nav==null) return;
+  const navNum=parseFloat(nav.replace(/,/g,''));
+  if(!navNum || navNum<=0){alert('NAV không hợp lệ');return;}
+  try{
+    await apiPost('/api/nav/draft',{tg_id:String(USER_ID||''), funds:{[code]:[{date:_todayISO(), nav:navNum}]}});
+    tg?.HapticFeedback?.notificationOccurred('success');
+    alert('Đã lưu NAV tạm thời cho '+code+'. NAV này chỉ hiển thị riêng cho bạn — sẽ tự động được thay bằng NAV chính thức khi hệ thống fetch được.');
+    loadSignals();
+  }catch(e){
+    if(isProRequired(e)){showUpgradeModal({limit:null});}
+    else alert('Lỗi lưu NAV: '+(e.body?.error||e.message));
+  }
+}
+
 function positionBadge(s){
   const p=s.position;
   if(!p) return '';
@@ -1542,6 +1565,7 @@ function renderSignals(sigs){
         <div style="font-size:11px;color:var(--txt2)">${fmt(s.nav)} đ
           <span class="pnl ${pnlC(chg)}" style="font-size:10px"> ${fmtP(chg)}</span>
           ${navConfidenceBadge(s)}
+          ${staleNavBadge(code, s)}
           ${positionBadge(s)}
         </div>
         ${_t2Html(code, s.nav, true)}
