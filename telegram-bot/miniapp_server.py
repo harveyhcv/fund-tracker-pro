@@ -1747,6 +1747,9 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             conn.close()
         except Exception as e:
             _json(self, {"error": str(e)}, 500); return
+        if _db_mod is not None:
+            _db_mod.log_audit(tg_id, "trade.ccq.add", "user_ccq_trades", str(new_id),
+                               after={"code": code, "type": tx_type, "units": units, "amount": amount})
         cfg = _load_cfg()
         _db_recalc_portfolio(cfg, tg_id)
         _json(self, {"ok": True, "id": new_id, "code": code, "type": tx_type,
@@ -1806,6 +1809,8 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             conn.commit(); conn.close()
         except Exception as e:
             _json(self, {"error": str(e)}, 500); return
+        if _db_mod is not None:
+            _db_mod.log_audit(tg_id, "trade.ccq.delete", "user_ccq_trades", str(trade_id))
         cfg = _load_cfg()
         _db_recalc_portfolio(cfg, tg_id)
         _json(self, {"ok": True, "deleted_id": trade_id})
@@ -1847,6 +1852,10 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             conn.commit(); conn.close()
         except Exception as e:
             _json(self, {"error": str(e)}, 500); return
+        if _db_mod is not None:
+            _db_mod.log_audit(tg_id, "trade.ccq.edit", "user_ccq_trades", str(trade_id),
+                               before={"units": row[1], "nav": row[2], "amount": row[3], "date": row[4], "type": row[5]},
+                               after={"units": units, "nav": nav, "amount": amount, "date": tx_date, "type": tx_type})
         cfg = _load_cfg()
         _db_recalc_portfolio(cfg, tg_id)
         _json(self, {"ok": True, "id": trade_id})
@@ -2054,6 +2063,9 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             conn.commit(); conn.close()
         except Exception as e:
             _json(self, {"error": str(e)}, 500); return
+        if _db_mod is not None:
+            _db_mod.log_audit(tg_id, "trade.gold.add", "user_gold_trades", str(new_id),
+                               after={"product": product, "type": tx_type, "qty": qty, "total_vnd": total})
         _json(self, {"ok": True, "id": new_id, "type": tx_type, "qty": qty,
                      "price_per_luong": price, "total_vnd": total})
 
@@ -2096,6 +2108,10 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             conn.commit(); conn.close()
         except Exception as e:
             _json(self, {"error": str(e)}, 500); return
+        if _db_mod is not None:
+            _db_mod.log_audit(tg_id, "trade.gold.edit", "user_gold_trades", str(trade_id),
+                               before={"qty": row[2], "price_per_luong": row[3], "total_vnd": row[4], "type": row[6]},
+                               after={"qty": qty, "price_per_luong": price, "total_vnd": total, "type": tx_type})
         _json(self, {"ok": True, "id": trade_id})
 
     def _api_delete_gold_trade(self, raw_idx: str, data: dict):
@@ -2124,6 +2140,8 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             conn.commit(); conn.close()
         except Exception as e:
             _json(self, {"error": str(e)}, 500); return
+        if _db_mod is not None:
+            _db_mod.log_audit(tg_id, "trade.gold.delete", "user_gold_trades", str(trade_id))
         _json(self, {"ok": True, "deleted_id": trade_id})
 
     def _api_fed_rate(self):

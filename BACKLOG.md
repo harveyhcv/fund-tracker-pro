@@ -136,8 +136,8 @@
 - [DONE] GOV-001 · Audit log — bảng `audit_log(actor_id, action, target_table, target_id,
   before_state, after_state, note, created_at)` append-only, `db.log_audit()`/`get_audit_log()`.
   Hook vào extend_pro/set_tier/redeem_promo_code/create_promo_code/update_promo_code/
-  (de)activate_promo_code/resolve_nav_confirm | 2026-07-13 | Còn thiếu: UI xem log cho admin
-  (phần dashboard của GOV-004), audit cho trade CRUD (CCQ/vàng) chưa hook
+  (de)activate_promo_code/resolve_nav_confirm/trade CRUD (CCQ + vàng: add/edit/delete)
+  | 2026-07-13 | Còn thiếu: UI xem log cho admin (phần dashboard của GOV-004)
 - [ ] GOV-002 · Backup tự động định kỳ — Railway cron/script `pg_dump` hàng ngày lên object
   storage (S3-compatible hoặc Railway volume), retention policy rõ ràng, quy trình restore đã
   test thử ít nhất 1 lần | P0 | ~3h (phụ thuộc chọn nơi lưu backup)
