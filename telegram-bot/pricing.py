@@ -11,9 +11,11 @@ theo kỳ hạn dài hơn.
 PRO_PLANS = {
     "m1": {"days": 30,  "stars": 50,  "vnd": 20000,  "label": "1 tháng",          "discount_pct": 0},
     "q1": {"days": 90,  "stars": 135, "vnd": 54000,  "label": "1 quý (3 tháng)",  "discount_pct": 10},
-    "h1": {"days": 180, "stars": 240, "vnd": 96000,  "label": "Nửa năm (6 tháng)", "discount_pct": 25},
-    "y1": {"days": 365, "stars": 420, "vnd": 168000, "label": "1 năm",            "discount_pct": 45},
+    "h1": {"days": 180, "stars": 225, "vnd": 90000,  "label": "Nửa năm (6 tháng)", "discount_pct": 25},
+    "y1": {"days": 365, "stars": 330, "vnd": 132000, "label": "1 năm",            "discount_pct": 45},
 }
+# Giá/⭐ giữ cố định ở 400 VND/⭐ cho mọi gói (khớp với tỷ giá 20.000đ/50⭐ gói tháng) —
+# discount_pct luôn khớp thật với giá: vnd = 20000 * (days/30) * (1 - discount_pct/100).
 
 DEFAULT_PLAN = "m1"
 
