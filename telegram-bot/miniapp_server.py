@@ -2953,6 +2953,27 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             parts = order_id.split("-")
             tg_id = parts[1] if len(parts) >= 3 and parts[0] == "FTP" else ""
             if tg_id and _db_mod is not None and _db_mod.is_available():
+                # GOV-003: MoMo có thể gửi lại IPN nếu không nhận response đủ nhanh —
+                # chặn xử lý trùng bằng transId (unique per giao dịch từ MoMo).
+                if not _db_mod.record_payment_once("momo", trans_id or order_id, tg_id):
+                    log.warning(f"[PAY][MoMo][DUP] transId={trans_id} orderId={order_id} đã xử lý trước đó — bỏ qua")
+                    _db_mod.log_audit(None, "duplicate_payment_blocked", "processed_payments",
+                                       trans_id or order_id, note=f"momo orderId={order_id} amount={amount}")
+                    cfg_dup = _load_cfg()
+                    dup_admin = str(cfg_dup.get("admin_telegram_id") or os.environ.get("ADMIN_TELEGRAM_ID", "")).strip()
+                    dup_token = cfg_dup.get("bot_token") or os.environ.get("BOT_TOKEN", "")
+                    if dup_admin and dup_token and not dup_token.startswith("NHAP"):
+                        try:
+                            import requests as _req
+                            _req.post(
+                                f"https://api.telegram.org/bot{dup_token}/sendMessage",
+                                json={"chat_id": dup_admin, "text": f"⚠️ Thanh toán MoMo trùng lặp bị chặn: orderId={order_id} transId={trans_id}"},
+                                timeout=8,
+                            )
+                        except Exception:
+                            pass
+                    _json(self, {"resultCode": 0, "message": "duplicate ignored"})
+                    return
                 expires_at = None
                 try:
                     result = _db_mod.extend_pro(tg_id, 30)

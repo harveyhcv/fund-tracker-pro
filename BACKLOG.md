@@ -148,9 +148,17 @@
   đến giờ vì `scripts/t2_*.py` không hề có trong container. Đã sửa `.dockerignore` | 2026-07-13
   | Retention logic + restore dry-run test bằng file giả lập — pass. CHƯA test `pg_dump`/
   `pg_restore` thật (cần DATABASE_URL Railway) — xem checklist trong BACKUP.md
-- [ ] GOV-003 · Cảnh báo bất thường tự động — rule-based: NAV nhảy >X%/phiên, MAPE dự báo vượt
-  ngưỡng N ngày liên tiếp, thanh toán trùng lặp (cùng charge_id/orderId xử lý 2 lần), redeem
-  promo bất thường (nhiều mã cùng 1 phút) → Telegram admin | P1 | ~4h (giờ có audit_log làm nguồn)
+- [DONE-PARTIAL] GOV-003 · Chặn + cảnh báo thanh toán trùng lặp — `db.record_payment_once()`
+  (bảng `processed_payments`, UNIQUE (provider, charge_id)) chặn xử lý 2 lần khi cổng thanh
+  toán retry webhook (MoMo IPN dùng `transId`, Telegram Stars dùng `charge_id`). Trước đây
+  KHÔNG có dedup nào — mỗi lần webhook gọi lại là +30 ngày Pro miễn phí (lỗ hổng tài chính
+  thật, không chỉ lý thuyết, vì cổng thanh toán retry khi không nhận response đủ nhanh là
+  chuyện thường). Khi phát hiện trùng → `log_audit("duplicate_payment_blocked")` + báo
+  Telegram admin ngay, không chỉ log im lặng. Verify: dedup logic test bằng fake cursor mô
+  phỏng `INSERT...ON CONFLICT DO NOTHING` — same (provider,charge_id) lần 2 trả `False`, khác
+  provider hoặc charge_id khác vẫn `True` | 2026-07-13 | Còn thiếu 3 rule còn lại (NAV nhảy
+  >X%/phiên, MAPE vượt ngưỡng N ngày, redeem promo bất thường nhiều mã/phút) — để lại session
+  sau, task này ước tính ban đầu 4h nhưng dedup thanh toán quan trọng hơn nên ưu tiên làm trước
 - [DONE-PARTIAL] GOV-004 · `GET /api/admin/audit` (admin-only, `_auth_write` + `_is_admin`,
   dùng `db.get_audit_log()` có sẵn từ GOV-001) + card "Audit log gần đây" trong tab Admin
   Mini App (`telegram-bot/miniapp/index.html`) hiện 50 dòng gần nhất (action/actor/target/note).

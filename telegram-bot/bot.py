@@ -3271,6 +3271,16 @@ def _handle_successful_payment(token: str, chat_id: str, msg: dict) -> None:
     expires_at = None
     try:
         if _DB_AVAILABLE and _db.is_available():
+            # GOV-003: Telegram có thể gửi lại successful_payment nếu bot không ACK kịp —
+            # chặn xử lý trùng bằng charge_id (unique per transaction từ Telegram).
+            if not _db.record_payment_once("stars", charge_id, chat_id):
+                log.warning(f"[PAY][DUP] Stars charge={charge_id} đã xử lý trước đó — bỏ qua extend_pro")
+                _db.log_audit(None, "duplicate_payment_blocked", "processed_payments", charge_id,
+                               note=f"stars chat={chat_id} stars={stars}")
+                admin_id = str(load_config().get("admin_telegram_id", "")).strip()
+                if admin_id:
+                    tg_send(token, admin_id, f"⚠️ <b>Thanh toán Stars trùng lặp bị chặn</b>\nchat={chat_id} charge={charge_id}")
+                return
             result = _db.extend_pro(chat_id, _PRO_DAYS)
             expires_at = result.get("pro_expires_at")
             log.info(f"[PAY] tier=pro extended for {chat_id}, expires {expires_at}")

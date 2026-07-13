@@ -187,6 +187,47 @@ def get_audit_log(limit: int = 100, action: str = None, actor_id=None) -> "list[
             return [dict(r) for r in cur.fetchall()]
 
 
+# ─── PAYMENT DEDUP (GOV-003) ──────────────────────────────────────────────────
+# Cổng thanh toán (MoMo IPN, Telegram Stars) có thể gọi webhook 2 lần cho CÙNG 1
+# giao dịch (network retry khi không nhận response đủ nhanh) — nếu không chặn,
+# extend_pro() sẽ cộng dồn 2 lần ngày Pro cho cùng 1 lần trả tiền. record_payment_once()
+# dùng UNIQUE (provider, charge_id) để chỉ cho phép xử lý 1 lần, INSERT thứ 2 trở đi
+# trả về False (không raise) để caller biết đây là duplicate và bỏ qua + log audit.
+
+def _ensure_payment_dedup_table(conn) -> None:
+    with conn.cursor() as cur:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS processed_payments (
+                provider    TEXT NOT NULL,
+                charge_id   TEXT NOT NULL,
+                telegram_id BIGINT,
+                created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                PRIMARY KEY (provider, charge_id)
+            )
+        """)
+
+
+def record_payment_once(provider: str, charge_id: str, telegram_id=None) -> bool:
+    """True nếu đây là lần đầu ghi nhận (xử lý bình thường), False nếu đã xử lý
+    trước đó (duplicate webhook — caller PHẢI bỏ qua, không gọi extend_pro lần nữa)."""
+    if not is_available():
+        return True  # DB không khả dụng — không thể dedup, để caller xử lý như bình thường
+    if not provider or not charge_id:
+        return True
+    with get_conn() as conn:
+        _ensure_payment_dedup_table(conn)
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO processed_payments (provider, charge_id, telegram_id)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (provider, charge_id) DO NOTHING
+                """,
+                (provider, str(charge_id), int(telegram_id) if telegram_id not in (None, "") else None),
+            )
+            return cur.rowcount > 0
+
+
 # ─── NAV ────────────────────────────────────────────────────────────────────
 
 def upsert_nav(fund_code: str, nav_date: date, nav: float, source: str = "fmarket") -> None:
