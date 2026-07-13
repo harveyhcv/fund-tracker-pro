@@ -4,17 +4,17 @@
 # Priority: P0 (blocker) / P1 (important) / P2 (nice-to-have)
 # Claude đọc file này ĐẦU TIÊN mỗi session. Pick task IN_PROGRESS nếu có, nếu không pick P0 cao nhất.
 #
-# Last updated: 2026-07-13 (session 7 — v1.1: pricing đa kỳ hạn + Phase 6a governance hoàn tất)
+# Last updated: 2026-07-13 (session 7 — v1.1.x: pricing đa kỳ hạn + SePay + Phase 6a governance + test suite 100% xanh)
 
 ## ĐANG LÀM (IN_PROGRESS)
-# Không có. v1.1 đã tag (thay v1.0), đã chạy QA (230/280 pass, 50 fail là nợ kỹ thuật
-# cũ không liên quan — xem RELEASE ghi chú dưới), QC thủ công payment flows, và
-# security review (không có finding HIGH/MEDIUM). v1.0 đã backup (code + data snapshot)
-# vào backups/ (gitignored, không commit). Phase 6a (GOV-001..006) đã DONE toàn bộ.
-# Ưu tiên tiếp theo: PAY-006/007 (VNPay/Stripe, P2, cần merchant thật), nghiên cứu
-# MoMo merchant thật + fallback CK/redeem-code (xem RELEASE NOTES v1.1 bên dưới),
-# dọn 50 test cũ đã lỗi thời (lệnh /watch /unwatch /funds /add_trade đã bỏ,
-# check_jwt_freshness/job_check_jwt đã xoá khỏi bot.py).
+# Không có. v1.1/v1.1.1/v1.1.2 đã tag (thay v1.0), QA 246/246 pass (100% xanh — 50
+# test lỗi thời đã dọn/viết lại cho khớp kiến trúc hiện tại, xem commit test cleanup),
+# QC thủ công payment flows, security review (không có finding HIGH/MEDIUM). v1.0
+# đã backup (code + data snapshot) vào backups/ (gitignored, không commit). Phase 6a
+# (GOV-001..006) đã DONE toàn bộ. SePay VietQR (PAY-009) đã code xong, chờ Harvey
+# đăng ký tài khoản SePay thật để kích hoạt.
+# Ưu tiên tiếp theo: PAY-006/007 (VNPay/Stripe, P2, cần merchant thật), verify SePay
+# webhook field thật khi có tài khoản (xem PAY-009).
 
 ## RELEASE NOTES v1.1 (2026-07-13)
 - Pricing đa kỳ hạn: tháng 20k/50⭐, quý 54k/135⭐ (-10%), nửa năm 90k/225⭐ (-25%),
