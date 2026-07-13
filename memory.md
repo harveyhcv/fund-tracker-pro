@@ -559,12 +559,87 @@ trước khi tin BACKLOG — 2 bug tìm thấy trong session này (`.dockerignor
 thiếu dedup thanh toán) đều là lỗ hổng ĐÃ TỒN TẠI TỪ TRƯỚC, không phải do session này gây ra,
 chỉ lộ ra khi đọc kỹ code liên quan tới task đang làm.
 
-**Việc tiếp theo cho session sau:**
+**Việc tiếp theo cho session sau (đã làm ở ca chiều — xem entry bên dưới):**
 1. Deploy: chạy `railway run python scripts/backup_db.py --backup` 1 lần để xác nhận
    `pg_dump` hoạt động thật trên Railway (image mới có `postgresql-client`)
 2. Restore thử trên 1 Postgres service TEST riêng (không phải production) — xem
    `telegram-bot/BACKUP.md` checklist
-3. GOV-003 còn lại: NAV jump alert, MAPE threshold alert, promo abuse detection
-4. GOV-004 còn lại: dashboard tổng hợp admin (user/tier, MAPE, NAV lỗi, thanh toán gần đây)
 5. Redeploy Railway sau session này để job T2 (predict/retrain/reweight) BẮT ĐẦU hoạt động
    thật lần đầu tiên (bug `.dockerignore` đã chặn chúng từ trước tới giờ)
+
+---
+
+## ✅ Session 7 — Ca chiều autonomous: GOV-003/004 hoàn tất (2026-07-13)
+
+Tiếp tục từ ca sáng (GOV-002 xong, GOV-003/004 partial, GOV-006 xong). Hoàn tất 3 rule
+còn lại của GOV-003 + phần dashboard tổng hợp còn thiếu của GOV-004. **Tất cả P0/P1 trong
+BACKLOG đã DONE** — chỉ còn PAY-006 (VNPay)/PAY-007 (Stripe), cả 2 đều P2 và cần merchant
+credentials thật để test có ý nghĩa, để lại cho session có quyền truy cập secrets.
+
+**GOV-003 — 3 rule anomaly còn lại:**
+- NAV nhảy >15%/phiên: `harvest_nav.py cmd_daily` in dòng `JUMP_ALERT:` khi fetch mới lệch
+  yesterday_nav >15% trong lúc auto-harvest bình thường (khác pending_confirm — cái đó chỉ
+  bắt manual≠fetch, không bắt được data glitch trên nguồn auto). `bot.py job_harvest_nav`
+  parse dòng này qua `_handle_nav_jump_alert()` → `log_audit(nav_jump_anomaly)` + báo admin.
+- MAPE model kém liên tục: `db.get_daily_mape()` (MAPE trung bình theo ngày từ
+  `prediction_actuals`, KHÔNG dùng bảng `model_metrics` vì bảng đó chỉ ghi lúc train
+  XGBoost, không cập nhật hàng ngày) + `get_mape_breach_streak()` (đếm streak ngày liên
+  tiếp >ngưỡng, dừng ngay khi gặp 1 ngày đạt chuẩn). `bot.py job_t2_score` gọi
+  `_check_mape_streak_alerts()` sau khi score — báo khi model (arima-v1/xgb-v1/ensemble-v1)
+  MAPE >8% liên tục ĐÚNG 5 ngày. **Chi tiết debounce quan trọng**: check `streak == N` chứ
+  không phải `streak >= N` — nếu dùng `>=` sẽ spam alert mỗi ngày sau khi đã báo lần đầu.
+- Brute-force mã khuyến mãi: `miniapp_server.py _check_promo_abuse()` rate-limit in-memory
+  theo telegram_id (dict global `_PROMO_ATTEMPTS`, sliding window 60s, >5 lần thử → chặn
+  429 + `log_audit(promo_abuse_detected)` + báo admin). In-memory nên mất khi Railway
+  restart — chấp nhận được vì đây chỉ là lớp cảnh báo bổ sung, UNIQUE constraint DB
+  (`promo_redemptions`) vẫn là cơ chế chặn chính.
+
+**GOV-004 — dashboard tổng hợp còn thiếu:**
+`db.get_admin_summary()` — 4 phần độc lập, MỖI PHẦN try/except RIÊNG (không phải 1 try
+bọc ngoài) vì đây là dashboard tổng hợp, thà thiếu 1 mục còn hơn lỗi cả trang: users theo
+tier active (`bot_profiles` × `user_tiers`), MAPE 7 ngày mỗi model (tái dùng
+`get_daily_mape` từ GOV-003), quỹ active chưa có NAV hôm nay (`funds_master` LEFT JOIN
+`nav_history` ngày hiện tại), 20 `processed_payments` gần nhất. `GET /api/admin/summary`
+(admin-only, `_auth_write`+`_is_admin`) trong `miniapp_server.py`. UI: card "📊 TỔNG QUAN
+HỆ THỐNG" ở ĐẦU tab Admin (trên card TCBS token — chỗ admin nhìn thấy đầu tiên), MAPE tô
+đỏ nếu >8% (khớp ngưỡng alert GOV-003, nhất quán về mặt UX). Verify qua browser preview
+với mock `apiFetch` — users/MAPE màu/quỹ thiếu/thanh toán đều render đúng, không console
+error.
+
+**⚠️ Bài học quan trọng nhất session này — concurrency với live session của Harvey:**
+Phát hiện giữa chừng: Harvey đang LIVE-EDIT cùng repo này trong lúc session tự động chạy
+(commit author "Harvey" xen kẽ commit của session này trong `git log`, làm feature
+"multi-tier pricing" PAY-008 song song). Hệ quả: `bot.py`/`miniapp_server.py` bị 2 process
+ghi đồng thời — mỗi lần Harvey chạy `git commit` (có vẻ dùng `git add -A` hoặc tương đương),
+NÓ QUÉT LUÔN cả những thay đổi CHƯA COMMIT của session này đang nằm trong working tree/index
+(kể cả đã `git add` hay chưa), vì working tree + staging area dùng chung giữa mọi process
+trỏ vào cùng thư mục — không có isolation như 2 worktree riêng.
+- Cách phát hiện: trước khi mỗi lần định `git add`, luôn `git log --oneline -3` +
+  `git diff --stat <file>` xem file có bị thu hẹp bất thường (ít dòng hơn dự kiến) — dấu
+  hiệu commit khác đã "nuốt" thay đổi của mình.
+- Cách xử lý an toàn khi 2 bộ thay đổi trộn trong CÙNG 1 file: dùng `git diff <file> |
+  grep "^@@"` liệt kê tất cả hunk, xác định hunk nào là của mình (theo nội dung/dòng đã
+  viết), rồi `git add -p <file>` chọn `y` CHỈ cho hunk của mình, `n` cho phần còn lại —
+  KHÔNG BAO GIỜ `git add <file>` cả file khi biết có thay đổi của người khác trộn vào.
+- Phát hiện 1 lần bị "hớt tay trên": commit `db.py` (chứa `get_admin_summary()`) bị bỏ sót
+  vì Harvey's commit chỉ touch 5 file cụ thể (không có `db.py`), trong khi `miniapp_server.py`
+  của Harvey đã gọi `_db_mod.get_admin_summary()` (hunk của tôi bị quét vào) → tạo ra 1
+  khoảng hở: code tại HEAD gọi hàm CHƯA TỒN TẠI. Phải commit `db.py` NGAY để vá, không đợi
+  đến cuối session — bài học: khi phát hiện code liên đới bị tách commit bởi race condition,
+  ưu tiên vá integrity của HEAD trước, không gộp chung với các task tiếp theo.
+- Không có xung đột dữ liệu/nội dung xảy ra (may mắn vì 2 bên sửa 2 vùng code khác nhau
+  trong cùng file) — nhưng đây là rủi ro thật, session sau nếu phát hiện dấu hiệu tương tự
+  (commit author lạ xen giữa, file thay đổi ngoài dự kiến) nên áp dụng ngay quy trình
+  `git add -p` thay vì `git add <file>` cho tới khi hết session live-edit song song.
+
+**Tất cả P0/P1 trong BACKLOG đã DONE.** Còn lại: PAY-006 (VNPay), PAY-007 (Stripe) — cả 2
+P2, cần merchant credentials thật, để lại session có quyền truy cập secrets. GOV-005 còn 1
+việc nhỏ chưa làm (auth_date freshness check chống replay initData cũ) — rủi ro thấp, có
+thể làm sau.
+
+**Deploy checklist còn tồn đọng cho Harvey:**
+1. `railway run python scripts/t2_xgboost.py --train` — tạo model `xgb-v1` đầu tiên (vẫn
+   chưa xác nhận đã chạy — xem lại nếu T+2 predictions vẫn trống)
+2. `railway run python scripts/backup_db.py --backup` — xác nhận `pg_dump` hoạt động thật
+   trên Railway (image có `postgresql-client` từ GOV-002 nhưng chưa test thật)
+3. Restore thử trên 1 Postgres TEST riêng theo `telegram-bot/BACKUP.md` checklist
