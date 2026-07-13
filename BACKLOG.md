@@ -64,7 +64,8 @@
 - **PAY-008 · Multi-tier pricing (tháng/quý/nửa năm/năm)** — trước đây chỉ 1 gói (250⭐/99.000đ/30 ngày).
   Harvey yêu cầu hạ giá tháng xuống ~20k và đẩy user trả theo năm. Tạo `telegram-bot/pricing.py`
   (nguồn sự thật duy nhất, PRO_PLANS): tháng 20.000đ/50⭐, quý 54.000đ/135⭐ (-10%), nửa năm
-  96.000đ/240⭐ (-20%), năm 168.000đ/420⭐ (-30%). `/buy_pro` giờ hiện menu chọn gói (inline keyboard,
+  90.000đ/225⭐ (-25%), năm 132.000đ/330⭐ (-45%) — giá đúng 400đ/⭐ mọi gói, discount% khớp thật
+  với giá (baseline = giá tháng × số tháng). `/buy_pro` giờ hiện menu chọn gói (inline keyboard,
   callback `buyplan:<key>`) thay vì invoice thẳng; payload Stars đổi từ `pro_30d:` → `pro:<plan>:<chat_id>`
   (fallback về gói tháng nếu payload cũ còn bay). MoMo orderId đổi từ `FTP-<tg>-<ts>` →
   `FTP-<tg>-<plan>-<ts>` để IPN biết cấp bao nhiêu ngày (fallback gói tháng nếu orderId cũ 3 phần).
@@ -179,12 +180,20 @@
   báo bổ sung, không phải cơ chế bảo mật chính (UNIQUE constraint DB vẫn chặn redeem trùng).
   Verify: streak logic + rate-limit logic test bằng script giả lập độc lập (không cần DB) —
   cả 2 pass đúng behavior mong đợi | 2026-07-13
-- [DONE-PARTIAL] GOV-004 · `GET /api/admin/audit` (admin-only, `_auth_write` + `_is_admin`,
+- [DONE] GOV-004 · `GET /api/admin/audit` (admin-only, `_auth_write` + `_is_admin`,
   dùng `db.get_audit_log()` có sẵn từ GOV-001) + card "Audit log gần đây" trong tab Admin
   Mini App (`telegram-bot/miniapp/index.html`) hiện 50 dòng gần nhất (action/actor/target/note).
-  Verify qua browser preview với mock apiFetch — render đúng, không console error | 2026-07-13
-  | Còn thiếu phần dashboard tổng hợp: số user theo tier, MAPE model, quỹ NAV lỗi/thiếu, giao
-  dịch thanh toán gần đây — để lại cho session sau (cần nhiều endpoint mới hơn, task lớn hơn ước tính ban đầu)
+  **Ca chiều 2026-07-13 — dashboard tổng hợp:** `db.get_admin_summary()` (4 phần độc lập,
+  mỗi phần try/except riêng — lỗi 1 phần không hỏng cả trang): users theo tier active,
+  MAPE 7 ngày mỗi model_version (dùng lại `get_daily_mape` từ GOV-003), quỹ active chưa có
+  NAV hôm nay (`funds_master` LEFT JOIN `nav_history` ngày hiện tại), 20 giao dịch
+  `processed_payments` gần nhất. `GET /api/admin/summary` (admin-only) trong
+  `miniapp_server.py` + card "📊 TỔNG QUAN HỆ THỐNG" ở đầu tab Admin (trên card TCBS
+  token) — MAPE tô đỏ nếu >8% (khớp ngưỡng alert GOV-003). Verify qua browser preview với
+  mock apiFetch (users/MAPE màu/quỹ thiếu/thanh toán) — render đúng, không console error.
+  **Lưu ý concurrency**: session này chạy song song với Harvey đang live-edit cùng repo
+  (multi-tier pricing PAY-008) — dùng `git add -p` để tách hunk của mình khỏi hunk của
+  Harvey trước khi commit, tránh commit nhầm code người khác | 2026-07-13
 - [DONE] GOV-005 · Security hardening — đã tìm và vá 2 lỗ hổng NGHIÊM TRỌNG (2026-07-13):
   (1) MỌI API đọc (GET: /api/me, /api/signals, /api/trades, /api/research/<code>,
   /api/admin/nav/pending, /api/admin/promo/list...) không verify X-Init-Data, chỉ trust query
