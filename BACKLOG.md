@@ -62,9 +62,29 @@
 #    tới alert admin-only (NAV jump anomaly, token expiry) — giữ nguyên vì admin cần chi
 #    tiết để debug, không phải "spam" gửi user thường.
 #
-# Ưu tiên tiếp theo: chạy backfill VCBFTBF trên Railway (xem #2), PAY-006/007 (P2),
-# xem xét thay upsert_nav() bằng upsert_nav_with_confidence() ở mọi call site để tránh
-# lặp lại bug #2 cho quỹ khác.
+# Ưu tiên tiếp theo: PAY-006/007 (P2), xem xét thay upsert_nav() bằng
+# upsert_nav_with_confidence() ở mọi call site để tránh lặp lại bug #2 cho quỹ khác.
+#
+# GOV-007 tiếp diễn (2026-07-14, cùng ngày):
+# - Đã tự SSH vào Railway worker (railway CLI, đăng ký SSH key mới) và chạy backfill
+#   VCBFTBF thật trên production — 4,583 điểm NAV lịch sử (2013-2026) đã được ghi lại
+#   đúng từ TCinvest, khóa cứng. vol_30d: 229% → 5.56% (đã về mức hợp lý của quỹ cân bằng).
+# - Fix bug do chính cơ chế khóa gây ra: upsert_nav() gọi unify_nav_drafts() dùng THAM SỐ
+#   ĐẦU VÀO (giá trị fetch, có thể đã bị khóa từ chối) thay vì giá trị THẬT đã lưu — có
+#   thể làm reject oan draft đúng của user. Đã sửa: đọc lại DB sau upsert trước khi gọi
+#   unify_nav_drafts. QC: khóa NAV ở X, tạo draft khớp X, fmarket cố ghi giá trị khác (bị
+#   chặn) — xác nhận draft vẫn confirm đúng theo X đã khóa, không theo giá trị bị từ chối.
+# - Tối ưu fetch: get_nav_series_with_source() (bot.py) giờ đọc DB TRƯỚC — nếu NAV hôm nay
+#   đã khóa cứng (fixed/manual/tcinvest) thì BỎ QUA fetch live hoàn toàn (không chỉ chặn ở
+#   tầng ghi) — tiết kiệm API call + giảm bề mặt rủi ro xung đột về 0 cho ngày đã khóa.
+#   Lưu ý: TCinvest/fmarket không hỗ trợ giới hạn khoảng ngày ở server (luôn trả full
+#   history mỗi lần gọi), nên đòn bẩy duy nhất là bỏ hẳn cuộc gọi API, không phải lọc bớt
+#   response. db.get_nav_series() bổ sung cột `source` để hỗ trợ check này.
+#   harvest_nav.py --daily đã tự có cơ chế tương tự từ trước (skip nếu hôm nay đã trong
+#   PROVISIONAL_PROTECTED, nay đã gồm 'tcinvest').
+# - Tag: v1.1.3 (khóa cứng + backfill) → v1.1.4 (fix unify_nav_drafts) → v1.1.5 (skip
+#   fetch khi đã khóa). QC toàn bộ bằng mock + DB thật (đọc-only, không có write test nào
+#   để lại dữ liệu rác). 246/246 test xanh xuyên suốt.
 
 ## RELEASE NOTES v1.1 (2026-07-13)
 - Pricing đa kỳ hạn: tháng 20k/50⭐, quý 54k/135⭐ (-10%), nửa năm 90k/225⭐ (-25%),

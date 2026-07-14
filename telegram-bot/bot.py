@@ -419,18 +419,45 @@ def get_nav_series(code: str, fund_cfg: dict, config: dict = None) -> list:
     return pts
 
 
+# Khớp với các nguồn upsert_nav() (db.py) coi là "đã khóa cứng" — fetch lại
+# cũng không ghi đè được, nên khỏi tốn API call/băng thông. (fmarket/TCinvest
+# đều không hỗ trợ giới hạn khoảng ngày ở server — luôn trả full history mỗi
+# lần gọi — nên đòn bẩy duy nhất để "không fetch ngày đã khóa" là bỏ qua CUỘC
+# GỌI API luôn khi hôm nay đã khóa, không phải lọc bớt ngày trong response.)
+_LOCKED_SOURCES = ('fixed', 'manual', 'tcinvest')
+
+
 def get_nav_series_with_source(code: str, fund_cfg: dict, config: dict = None) -> tuple:
     """GOV-007 (2026-07-14): TCinvest là nguồn CHUẨN — luôn thử trước fmarket.
     Trước đây fmarket được thử TRƯỚC bất kể quỹ có JWT TCinvest hay không, nên
     1 fmarket_id cấu hình sai (vụ VCBFTBF) đã âm thầm ghi đè NAV đúng từ TCinvest
     mỗi lần job chạy — vì hàm gọi upsert_nav() không hề biết dữ liệu thật sự đến
     từ đâu, chỉ đoán theo fund_cfg tĩnh. Trả kèm source thật để caller ghi DB
-    đúng nguồn (xem fetch_all())."""
+    đúng nguồn (xem fetch_all()).
+
+    Tránh xung đột thêm 1 bước: nếu NAV hôm nay trong DB đã khóa cứng rồi
+    (fixed/manual/tcinvest), bỏ qua fetch live hoàn toàn — không có lý do gì
+    gọi lại API chỉ để bị chặn ghi ở tầng DB, vừa tốn quota vừa tăng rủi ro."""
+    db_pts = []
+    if _DB_AVAILABLE and _db.is_available():
+        try:
+            rows = _db.get_nav_series(code, days=400)  # đủ cho RSI/MACD/BB
+            db_pts = sorted(
+                ({"date": r["nav_date"].isoformat(), "nav": float(r["nav"]), "source": r.get("source")}
+                 for r in rows),
+                key=lambda x: x["date"],
+            )
+        except Exception as e:
+            log.warning(f"[Nav] {code} đọc DB lỗi: {e}")
+
+    today_str = date.today().isoformat()
+    if db_pts and db_pts[-1]["date"] == today_str and db_pts[-1].get("source") in _LOCKED_SOURCES:
+        log.debug(f"[Nav] {code} hôm nay đã khóa (source={db_pts[-1]['source']}) — bỏ qua fetch")
+        return [{"date": p["date"], "nav": p["nav"]} for p in db_pts], None
+
     pts, source = [], None
     if fund_cfg.get("tcbs"):
         tcbs_token = os.environ.get("TCBS_TOKEN") or (config or {}).get("tcbs_token", "")
-        # Không truyền from_date → full history → đủ điểm cho RSI/MACD/BB
-        # fetch_tcbs() sẽ thử TCinvest endpoint mới trước, fallback về old nếu cần
         log.info(f"[Nav] {code} fetch full history (token={'yes' if tcbs_token else 'no'})")
         pts = fetch_tcbs(code, tcbs_token)
         if pts:
@@ -441,20 +468,12 @@ def get_nav_series_with_source(code: str, fund_cfg: dict, config: dict = None) -
             pts = fetch_fmarket(fid)
             if pts:
                 source = "fmarket"
-    # Fallback cuối: đọc từ master NAV DB (nav_history) khi fetch live thất bại
+    # Fallback cuối: fetch live thất bại nhưng đã có sẵn history trong DB
     # — giúp quỹ TCinvest-only (vd TCFF) vẫn hiển thị khi token hết hạn.
-    if not pts and _DB_AVAILABLE and _db.is_available():
-        try:
-            rows = _db.get_nav_series(code, days=400)  # đủ cho RSI/MACD/BB
-            pts = sorted(
-                ({"date": r["nav_date"].isoformat(), "nav": float(r["nav"])} for r in rows),
-                key=lambda x: x["date"],
-            )
-            if pts:
-                log.info(f"[Nav] {code} fallback DB nav_history: {len(pts)} điểm")
-                source = None  # đã có sẵn trong DB rồi, không cần ghi lại
-        except Exception as e:
-            log.warning(f"[Nav] {code} DB fallback lỗi: {e}")
+    if not pts and db_pts:
+        pts = [{"date": p["date"], "nav": p["nav"]} for p in db_pts]
+        log.info(f"[Nav] {code} fallback DB nav_history: {len(pts)} điểm")
+        source = None  # đã có sẵn trong DB rồi, không cần ghi lại
     return pts, source
 
 

@@ -592,13 +592,15 @@ def resolve_nav_confirm(fund_code: str, nav_date_str: str, choice: str, actor_id
 
 
 def get_nav_series(fund_code: str, days: int = 90) -> list[dict]:
-    """Return list of {nav_date, nav} dicts, newest-first."""
+    """Return list of {nav_date, nav, source} dicts, newest-first. `source` cho
+    caller biết điểm mới nhất đã bị khóa (tcinvest/fixed/manual) hay chưa, để
+    quyết định có cần fetch lại hay không (GOV-007 — tránh fetch lại ngày đã khóa)."""
     if not is_available():
         return []
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("""
-                SELECT nav_date, nav
+                SELECT nav_date, nav, source
                 FROM nav_history
                 WHERE fund_code = %s
                   AND nav_date >= CURRENT_DATE - %s
