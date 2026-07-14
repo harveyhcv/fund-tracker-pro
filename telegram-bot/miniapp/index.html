@@ -180,7 +180,10 @@ canvas{width:100%!important;height:100%!important}
 <script>if(new URLSearchParams(location.search).get('beta')==='1')document.write('<div style="position:sticky;top:0;z-index:500;background:#facc15;color:#000;text-align:center;font-family:var(--mono);font-size:12px;font-weight:700;padding:4px 0;letter-spacing:.06em">🧪 BETA MODE — dữ liệu tài khoản tách biệt khỏi bản thật</div>');</script>
 <div id="tier-bar">
   <span class="tier-name" id="tier-name"></span>
-  <span id="tier-right"></span>
+  <span style="display:flex;align-items:center;gap:8px">
+    <span id="app-version" style="font-size:9px;color:var(--txt2);opacity:.55;font-family:var(--mono);white-space:nowrap" title="Phiên bản mini app đang chạy — dùng để kiểm tra deploy đã cập nhật chưa"></span>
+    <span id="tier-right"></span>
+  </span>
 </div>
 
 <!-- Fund Analysis Modal -->
@@ -744,6 +747,13 @@ const USER_NAME = tg?.initDataUnsafe?.user?.first_name || new URLSearchParams(lo
 // động gắn cờ này, backend sẽ cô lập tài khoản/portfolio/giao dịch sang
 // telegram_id âm (không đụng dữ liệu thật), NAV/tín hiệu/dự báo vẫn dùng chung.
 const IS_BETA = new URLSearchParams(location.search).get('beta') === '1';
+
+// Bump mỗi khi deploy thay đổi UI/logic đáng kể — hiện ở góc trên (cạnh tên
+// user) để Harvey xác nhận bản đang chạy trên điện thoại đã cập nhật chưa
+// (Telegram WebView hay cache lại HTML cũ, version tag giúp phát hiện ngay
+// thay vì phải đoán qua behavior).
+const APP_VERSION = 'v1.2.3';
+{ const _v = document.getElementById('app-version'); if (_v) _v.textContent = APP_VERSION; }
 
 let _me=null, _signals=null, _tradeType='buy', _histCode=null, _histAllPoints=[];
 let _dcaStyle='dca', _goldData=null, _goldType='buy', _goldUnit='chi', _goldTrades=[];

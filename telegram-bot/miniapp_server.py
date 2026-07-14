@@ -35,6 +35,11 @@ DATA_DIR  = Path(os.environ.get("DATA_DIR", Path(__file__).parent))
 CFG_FILE  = DATA_DIR / "config.json"
 HTML_FILE = Path(__file__).parent / "miniapp" / "index.html"
 
+# Bump cùng lúc với APP_VERSION trong miniapp/index.html mỗi khi deploy thay
+# đổi đáng kể — GET /api/version dùng để xác nhận server đã chạy đúng bản
+# mới (không phải image cũ do deploy lỗi/chưa restart).
+_SERVER_VERSION = "v1.2.3"
+
 # Railway inject PORT; fallback PORT_MINIAPP cho local dev
 PORT_MINIAPP = int(os.environ.get("PORT_MINIAPP") or os.environ.get("PORT") or 8443)
 
@@ -1252,6 +1257,12 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             self._api_admin_summary(qs)
         elif path == "/health":
             _json(self, {"ok": True, "ts": datetime.now().isoformat()})
+        elif path == "/api/version":
+            # Đối chiếu với APP_VERSION trong miniapp/index.html — nếu 2 số khác
+            # nhau nghĩa là frontend (HTML) và backend (server) KHÔNG cùng 1 lần
+            # deploy (VD: Telegram WebView cache HTML cũ). Dùng để debug nhanh
+            # "bản đang chạy có đúng bản mới nhất không" mà không cần SSH.
+            _json(self, {"version": _SERVER_VERSION, "ts": datetime.now().isoformat()})
         else:
             _json(self, {"error": "Not found"}, 404)
 
