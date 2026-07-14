@@ -745,8 +745,18 @@ def _insert_nav_points(conn, fund_code: str, pts: list[dict], source: str) -> in
     """
     Upsert NAV points với smart conflict policy:
     - 'manual'/'fixed' không bao giờ bị ghi đè bởi auto-harvest
-    - 'fmarket'/'tcbs' có thể được cập nhật khi API trả về giá trị mới hơn
-      (dùng cho correction pass lúc 20:00 sau khi NAV đã finalize)
+    - 'tcinvest' chỉ tự nó mới được ghi đè chính nó (self-correction) — KHÔNG
+      cho phép 'fmarket'/'tcbs' cũ ghi đè, cùng logic PROTECTED_SOURCES đã có
+      trong db.py::upsert_nav(). BUG đã xảy ra thật (2026-07-14, xem GOV-007
+      phần 3): funds_master.tcbs=False cho 26/33 quỹ khiến harvest_nav.py
+      --daily bỏ qua tcinvest, dùng fmarket_id SAI (VCBFTBF trỏ nhầm sang
+      DCBF — quỹ trái phiếu khác hẳn) rồi hàm này (trước khi sửa) ghi đè
+      thẳng lên dữ liệu tcinvest đã khoá đúng trước đó vì chỉ chặn
+      fixed/manual, không chặn tcinvest. Đây là lớp phòng thủ thứ 2 (lớp 1
+      là sửa funds_master) — dù cấu hình lại sai lần nữa, hàm này vẫn không
+      cho ghi đè NAV đã khoá.
+    - 'fmarket'/'tcbs' có thể được cập nhật lẫn nhau khi API trả về giá trị
+      mới hơn (dùng cho correction pass lúc 20:00 sau khi NAV đã finalize)
     Returns: số rows thực sự thay đổi (insert + update).
     """
     inserted = 0
@@ -763,14 +773,17 @@ def _insert_nav_points(conn, fund_code: str, pts: list[dict], source: str) -> in
                 ON CONFLICT (fund_code, nav_date) DO UPDATE
                     SET nav        = CASE
                                        WHEN nav_history.source IN ('fixed', 'manual') THEN nav_history.nav
+                                       WHEN nav_history.source = 'tcinvest' AND EXCLUDED.source <> 'tcinvest' THEN nav_history.nav
                                        ELSE EXCLUDED.nav
                                      END,
                         source     = CASE
                                        WHEN nav_history.source IN ('fixed', 'manual') THEN nav_history.source
+                                       WHEN nav_history.source = 'tcinvest' AND EXCLUDED.source <> 'tcinvest' THEN nav_history.source
                                        ELSE EXCLUDED.source
                                      END,
                         fetched_at = NOW()
                 WHERE nav_history.source NOT IN ('fixed', 'manual')
+                   OR (nav_history.source = 'tcinvest' AND EXCLUDED.source = 'tcinvest')
             """, (fund_code, p["date"], p["nav"], source))
             if cur.rowcount > 0:
                 inserted += 1
