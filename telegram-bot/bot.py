@@ -111,7 +111,12 @@ FUND_CATALOG: dict = {
     "TCEF":    {"name": "Quỹ Cổ Phiếu Techcombank",                "fmarket_id": None, "tcbs": True},
     "TCRES":   {"name": "Quỹ Bất Động Sản Techcombank",            "fmarket_id": None, "tcbs": True},
     "TCFIN":   {"name": "Quỹ Tài Chính Techcombank",               "fmarket_id": None, "tcbs": True},
-    "VCBFTBF": {"name": "Quỹ TPDN Có Bảo Đảm VCB Fund",           "fmarket_id": 31,   "tcbs": True},
+    # fmarket_id=31 (cũ) trỏ NHẦM sang 1 quỹ trái phiếu khác (~30.000đ) — VCBF-TBF
+    # thật là quỹ CÂN BẰNG (50% cổ phiếu/50% TP, theo fmarket.vn/quy/VCBFTBF và
+    # vcbs.com.vn) với NAV thật ~38.000-39.000đ (khớp TCinvest). Bug này khiến
+    # nav_history bị 2 nguồn ghi đè lẫn nhau, tạo dao động giả ~23%/ngày —
+    # phát hiện qua vol_30d bất thường khi debug DCA riskparity (2026-07-14).
+    "VCBFTBF": {"name": "Quỹ Đầu Tư Cân Bằng Chiến Lược VCBF",     "fmarket_id": None, "tcbs": True},
     "VCBFBCF": {"name": "Quỹ Trái Phiếu Bền Vững VCB Fund",       "fmarket_id": 32,   "tcbs": True},
     "VCBFFIF": {"name": "Quỹ Thu Nhập Cố Định VCB Fund",           "fmarket_id": 33,   "tcbs": True},
     "VCBFMGF": {"name": "Quỹ Tăng Trưởng VCB Fund",               "fmarket_id": None, "tcbs": True},
@@ -976,35 +981,13 @@ def _get_portfolio_holdings(profile: dict) -> dict:
 
 
 def msg_morning(profile: dict, nav_data: dict) -> str:
-    now = datetime.now()
-    weekday = ["Thứ Hai","Thứ Ba","Thứ Tư","Thứ Năm","Thứ Sáu","Thứ Bảy","Chủ Nhật"][now.weekday()]
-    lines = [
-        f"🌅 <b>Báo Cáo Sáng — {weekday} {now.strftime('%d/%m/%Y')}</b>",
-        f"👤 <b>{profile['name']}</b>",
-        LINE,
-    ]
     action_funds = []
     for code in profile.get("watched_funds", []):
         d = nav_data.get(code)
-        if not d or d["nav"] == 0:
-            lines.append(f"⚠️ <code>{code}</code>  Chưa có dữ liệu")
-            continue
-        sig  = d["signal"]
-        emoji = "🟢" if "MUA" in sig else "🔴" if "BÁN" in sig else "⚪"
-        chg   = d.get("chg_pct", 0) or 0
-        chg_s = f"{'+' if chg >= 0 else ''}{chg:.2f}%"
-        chg_arrow = "▲" if chg > 0.02 else "▼" if chg < -0.02 else "─"
-        rsi_s = f"{d['rsi']:.0f}" if d["rsi"] is not None else "—"
-        bb_s  = f"{d['bb_pct']:.0f}%" if d["bb_pct"] is not None else "—"
-        lines.append(
-            f"{emoji} <code>{code}</code>  <b>{fmt_nav(d['nav'])}</b>  "
-            f"{chg_arrow} {chg_s} vs hôm qua\n"
-            f"     {sig}  ·  RSI {rsi_s}  ·  BB {bb_s}"
-        )
-        if "MUA" in sig or "BÁN" in sig:
+        if d and d["nav"] and ("MUA" in d["signal"] or "BÁN" in d["signal"]):
             action_funds.append(code)
 
-    # Portfolio P&L — đọc từ PostgreSQL (single source of truth)
+    pnl_part = ""
     holdings = _get_portfolio_holdings(profile)
     if holdings:
         total_val = total_cost = 0.0
@@ -1014,156 +997,28 @@ def msg_morning(profile: dict, nav_data: dict) -> str:
                 total_val  += float(h["units"]) * d["nav"]
                 total_cost += float(h["units"]) * float(h["avg_cost"])
         if total_cost > 0:
-            pnl     = total_val - total_cost
-            pnl_pct = pnl / total_cost * 100
-            sign    = "+" if pnl >= 0 else ""
-            lines.append(LINE)
-            lines.append(
-                f"💼 <b>Danh mục:</b> {int(total_val):,}đ  "
-                f"({'📈' if pnl >= 0 else '📉'} {sign}{int(pnl):,}đ  {sign}{pnl_pct:.2f}%)"
-            )
-            # Risk metrics: Sharpe + Max Drawdown (từ calc_signal())
-            risk_parts = []
-            for code in holdings:
-                d = nav_data.get(code)
-                if not d:
-                    continue
-                if d.get("sharpe") is not None:
-                    risk_parts.append(f"{code} Sharpe {d['sharpe']:.1f}")
-                if d.get("max_dd") is not None:
-                    risk_parts.append(f"DD {d['max_dd']:.1f}%")
-                break  # Chỉ hiển thị quỹ đầu tiên trong portfolio để giữ ngắn
-            if risk_parts:
-                lines.append(f"📊 {' · '.join(risk_parts)}")
-
-    # Gold summary
-    gold_lines = _morning_gold_summary(load_config(), profile)
-    if gold_lines:
-        lines.append(LINE)
-        lines.extend(gold_lines)
-
-    lines.append(LINE)
-    if action_funds:
-        lines.append(f"⚡ <b>Tín hiệu:</b> {', '.join(action_funds)}")
-    else:
-        lines.append("💤 Không có tín hiệu đặc biệt")
-    lines.append(f"<i>Quỹ Tracker Pro · {now.strftime('%H:%M')}</i>")
-    return "\n".join(lines)
-
-
-def _morning_gold_summary(cfg: dict, profile: dict) -> list:
-    """Tóm tắt vàng cho morning report: giá SJC mới nhất + P&L portfolio vàng."""
-    db_url = os.environ.get("DATABASE_URL", cfg.get("database_url", ""))
-    if not db_url:
-        return []
-    lines = []
-    try:
-        import psycopg2
-        conn = psycopg2.connect(db_url, connect_timeout=6)
-        with conn.cursor() as cur:
-            cur.execute("""
-                SELECT buy_price::float, sell_price::float, price_date::text
-                FROM gold_prices WHERE product='SJC_1L'
-                ORDER BY price_date DESC, source DESC LIMIT 1
-            """)
-            row = cur.fetchone()
-            # Tín hiệu RSI đơn giản
-            cur.execute("""
-                SELECT sell_price::float FROM gold_prices
-                WHERE product='SJC_1L' ORDER BY price_date DESC LIMIT 20
-            """)
-            hist = [r[0] for r in cur.fetchall()]
-        if not row:
-            conn.close()
-            return []
-        buy, sell, dt = row
-        buy_m  = buy  / 1_000_000
-        sell_m = sell / 1_000_000
-        lines.append(f"🥇 <b>Vàng SJC</b> — <i>{dt}</i>")
-        lines.append(f"   Mua: <b>{buy_m:.3f}M</b>  Bán: <b>{sell_m:.3f}M</b>  VNĐ/lượng")
-        # RSI nhanh
-        if len(hist) >= 10:
-            hist = list(reversed(hist))
-            deltas = [hist[i]-hist[i-1] for i in range(1,len(hist))]
-            gains  = [max(d,0) for d in deltas[-14:]]
-            losses = [max(-d,0) for d in deltas[-14:]]
-            avg_g, avg_l = sum(gains)/len(gains), sum(losses)/len(losses)
-            rsi = 100 - 100/(1 + avg_g/avg_l) if avg_l else 100
-            rsi_note = "🟢 Vùng tích lũy" if rsi < 40 else "🔴 Vùng cẩn thận" if rsi > 65 else "⚪ Trung tính"
-            lines.append(f"   RSI {rsi:.0f} — {rsi_note}")
-        # P&L vàng — đọc từ PostgreSQL user_gold_trades
-        tg_id = str(profile.get("telegram_id", ""))
-        total_l = total_cost = 0.0
-        if tg_id:
-            try:
-                with conn.cursor() as cur_g:
-                    cur_g.execute("""
-                        SELECT type, qty_luong::float, total_vnd::float
-                        FROM user_gold_trades
-                        WHERE telegram_id = %s
-                        ORDER BY trade_date, id
-                    """, [tg_id])
-                    for tx_type, ql, tv in cur_g.fetchall():
-                        ql = float(ql or 0); tv = float(tv or 0)
-                        if tx_type == "buy":
-                            total_l += ql; total_cost += tv
-                        elif tx_type == "sell":
-                            frac = ql / total_l if total_l else 0
-                            total_cost -= total_cost * frac; total_l -= ql
-            except Exception as _ge:
-                log.warning(f"[gold_portfolio] {_ge}")
-        if total_l > 0.001 and total_cost > 0:
-            # Giá trị hiện tại dùng giá MUA VÀO của tiệm (giá user nhận nếu bán ra hôm nay),
-            # KHÔNG dùng giá bán (giá tiệm bán RA cho khách).
-            cur_val = total_l * buy
-            pnl = cur_val - total_cost
+            pnl = total_val - total_cost
             sign = "+" if pnl >= 0 else ""
-            icon = "📈" if pnl >= 0 else "📉"
-            lines.append(
-                f"   Nắm: <b>{total_l:.4f} lượng</b>  "
-                f"{icon} {sign}{int(pnl):,}đ  ({sign}{pnl/total_cost*100:.2f}%)"
-            )
-        conn.close()
-    except Exception as e:
-        log.warning(f"[gold_morning] {e}")
-    return lines
+            pnl_part = f" · Danh mục {int(total_val):,}đ ({sign}{pnl/total_cost*100:.1f}%)"
+
+    sig_part = f"⚡ {', '.join(action_funds)}" if action_funds else "💤 Không có tín hiệu đặc biệt"
+    return f"🌅 {sig_part}{pnl_part}\n👉 Xem chi tiết trong Mini App — gõ /app"
 
 
 def msg_evening(profile: dict, nav_data: dict, morning_nav: dict) -> str:
-    now   = datetime.now()
-    today = now.date().isoformat()
-    lines = [
-        f"🌆 <b>Báo Cáo Chiều — {now.strftime('%d/%m/%Y')}</b>",
-        f"👤 <b>{profile['name']}</b>",
-        LINE,
-    ]
+    today = datetime.now().date().isoformat()
     action_funds  = []
     outdated_note = []
     for code in profile.get("watched_funds", []):
         d = nav_data.get(code)
         if not d or d["nav"] == 0:
-            lines.append(f"⚫ <code>{code}</code>  <i>Chưa có dữ liệu</i>")
             continue
-        sig      = d["signal"]
-        emoji    = "🟢" if "MUA" in sig else "🔴" if "BÁN" in sig else "⚪"
-        chg      = d.get("chg_pct", 0) or 0
-        chg_s    = f"{'+' if chg >= 0 else ''}{chg:.2f}%"
-        chg_arrow = "▲" if chg > 0.02 else "▼" if chg < -0.02 else "─"
-        rsi_s    = f"{d['rsi']:.0f}" if d["rsi"] is not None else "—"
-        # Kiểm tra NAV có phải mới nhất không
-        nav_date = d.get("nav_date", "")
-        is_outdated = nav_date and nav_date < today
-        stale_tag   = f" ⚠️<i>NAV {fmt_date(nav_date)}</i>" if is_outdated else ""
-        lines.append(
-            f"{emoji} <code>{code}</code>  <b>{fmt_nav(d['nav'])}</b>  "
-            f"{chg_arrow} {chg_s}  RSI {rsi_s}{stale_tag}"
-        )
-        if is_outdated:
+        if d.get("nav_date") and d["nav_date"] < today:
             outdated_note.append(code)
-        if "MUA" in sig or "BÁN" in sig:
-            action_funds.append(f"{code} {sig}")
+        if "MUA" in d["signal"] or "BÁN" in d["signal"]:
+            action_funds.append(code)
 
-    # Portfolio CCQ P&L
+    pnl_part = ""
     holdings = _get_portfolio_holdings(profile)
     if holdings:
         total_val = total_cost = 0.0
@@ -1173,119 +1028,26 @@ def msg_evening(profile: dict, nav_data: dict, morning_nav: dict) -> str:
                 total_val  += float(h["units"]) * d["nav"]
                 total_cost += float(h["units"]) * float(h["avg_cost"])
         if total_cost > 0:
-            pnl     = total_val - total_cost
-            pnl_pct = pnl / total_cost * 100
-            sign    = "+" if pnl >= 0 else ""
-            lines.append(LINE)
-            lines.append(
-                f"💼 <b>Danh mục CCQ:</b> {int(total_val):,}đ  "
-                f"({'📈' if pnl >= 0 else '📉'} {sign}{int(pnl):,}đ  {sign}{pnl_pct:.2f}%)"
-            )
+            pnl = total_val - total_cost
+            sign = "+" if pnl >= 0 else ""
+            pnl_part = f" · Danh mục {int(total_val):,}đ ({sign}{pnl/total_cost*100:.1f}%)"
 
-    # Giá vàng — chỉ hiển thị nếu profile có gold holdings
-    tg_id = str(profile.get("telegram_id", ""))
-    gold_lines = _gold_summary_lines(tg_id)
-    if gold_lines:
-        lines.append(LINE)
-        lines.extend(gold_lines)
-
-    lines.append(LINE)
-    if outdated_note:
-        lines.append(f"⚠️ <i>NAV chưa cập nhật: {', '.join(outdated_note)} — có thể chưa công bố hôm nay.</i>")
-    if action_funds:
-        lines.append(f"⚡ {' · '.join(action_funds)}")
-    lines.append(f"<i>Quỹ Tracker Pro · {now.strftime('%H:%M')}</i>")
-    return "\n".join(lines)
-
-
-def _gold_summary_lines(tg_id: str) -> list:
-    """Trả về dòng tóm tắt vàng cho báo cáo chiều nếu user có holdings vàng."""
-    if not tg_id:
-        return []
-    try:
-        import psycopg2 as _pg2
-        db_url = load_config().get("database_url", "") or os.environ.get("DATABASE_URL", "")
-        if not db_url:
-            return []
-        conn = _pg2.connect(db_url, connect_timeout=6)
-        with conn.cursor() as cur:
-            # Kiểm tra user có gold holdings không
-            cur.execute("SELECT type, qty_luong::float, total_vnd::float FROM user_gold_trades WHERE telegram_id=%s ORDER BY trade_date", [tg_id])
-            trades = cur.fetchall()
-            if not trades:
-                conn.close()
-                return []
-            total_l = total_cost = 0.0
-            for tx_type, ql, tv in trades:
-                ql = float(ql or 0); tv = float(tv or 0)
-                if tx_type == "buy":
-                    total_l += ql; total_cost += tv
-                elif tx_type == "sell":
-                    frac = ql / total_l if total_l else 0
-                    total_cost -= total_cost * frac; total_l -= ql
-            if total_l < 0.001:
-                conn.close()
-                return []
-            # Lấy giá vàng mới nhất — giá MUA (tiệm mua vào) để định giá holdings,
-            # KHÔNG dùng giá bán (giá tiệm bán RA cho khách).
-            cur.execute("""
-                SELECT buy_price::float, sell_price::float, price_date::text
-                FROM gold_prices
-                WHERE product = 'SJC_1L'
-                ORDER BY price_date DESC, source DESC
-                LIMIT 1
-            """)
-            row = cur.fetchone()
-        conn.close()
-        if not row:
-            return []
-        buy, sell, gdate = float(row[0]), float(row[1]), row[2]
-        cur_val = total_l * buy
-        pnl     = cur_val - total_cost
-        sign    = "+" if pnl >= 0 else ""
-        icon    = "📈" if pnl >= 0 else "📉"
-        stale   = f" <i>(giá {fmt_date(gdate)})</i>" if gdate < date.today().isoformat() else ""
-        return [
-            f"🥇 <b>Vàng SJC:</b> {sell/1e6:.3f}M/lượng{stale}",
-            f"   Nắm: <b>{total_l:.4f} lượng</b>  {icon} {sign}{int(pnl):,}đ  ({sign}{pnl/total_cost*100:.2f}%)",
-        ]
-    except Exception as e:
-        log.warning(f"[gold_summary] {e}")
-        return []
+    sig_part = f"⚡ {', '.join(action_funds)}" if action_funds else "💤 Không có tín hiệu đặc biệt"
+    warn = f"\n⚠️ NAV chưa cập nhật: {', '.join(outdated_note)}" if outdated_note else ""
+    return f"🌆 {sig_part}{pnl_part}{warn}\n👉 Xem chi tiết trong Mini App — gõ /app"
 
 
 def msg_signal_alert(profile: dict, code: str, old_sig: str, new_sig: str, d: dict) -> str:
     if "MUA" in new_sig:
-        header = "🚨🟢 TÍN HIỆU MUA"
+        icon = "🟢"
     elif "BÁN" in new_sig:
-        header = "🚨🔴 TÍN HIỆU BÁN"
-    elif "MUA" in old_sig:
-        header = "🔔 HẾT TÍN HIỆU MUA"
+        icon = "🔴"
     else:
-        header = "🔔 TÍN HIỆU THAY ĐỔI"
-    lines = [
-        f"<b>{header} — <code>{code}</code></b>",
-        f"👤 {profile['name']}",
-        LINE,
-        f"💰 NAV: <b>{fmt_nav(d['nav'])}</b>  <i>{fmt_date(d['nav_date'])}</i>",
-        f"📶 Tín hiệu mới: <b>{new_sig}</b>",
-        f"↩️ Trước: {old_sig}",
-    ]
-    if d.get("rsi") is not None:
-        lines.append(f"📊 RSI: {d['rsi']:.1f}")
-    if d.get("bb_pct") is not None:
-        lines.append(f"📏 BB%: {d['bb_pct']:.1f}%")
-    if d.get("details"):
-        lines.append(f"🔍 {' · '.join(d['details'][:3])}")
-    lines.append(LINE)
-    note = (
-        "💡 Cân nhắc tích lũy thêm (DCA) nếu phù hợp kế hoạch của bạn."
-        if "MUA" in new_sig else
-        "💡 Cân nhắc giảm tỷ trọng nếu cần bảo toàn vốn."
+        icon = "🔔"
+    return (
+        f"{icon} <b>{code}</b> {old_sig or 'N/A'} → <b>{new_sig}</b> · NAV {fmt_nav(d.get('nav', 0))}\n"
+        f"👉 Xem chi tiết trong Mini App — gõ /app"
     )
-    lines.append(note)
-    lines.append("<i>⚠️ Không phải khuyến nghị đầu tư — hãy tự quyết định.</i>")
-    return "\n".join(lines)
 
 
 def msg_nav_query(profile: dict, nav_data: dict) -> str:
@@ -1921,21 +1683,12 @@ def job_nav_change_alert():
         relevant  = {c: d for c, d in newly_published.items() if c in watched}
         if not relevant:
             continue
-        lines = [
-            f"📢 <b>NAV Mới — {date.today().strftime('%d/%m/%Y')}</b>",
-            LINE,
-        ]
-        for code_na, d_na in sorted(relevant.items()):
-            sig_na  = d_na.get("signal", "—")
-            chg_na  = d_na.get("chg_pct", 0) or 0
-            emoji   = "🟢" if "MUA" in sig_na else "🔴" if "BÁN" in sig_na else "⚪"
-            chg_s   = f"{'+' if chg_na >= 0 else ''}{chg_na:.2f}%"
-            lines.append(
-                f"{emoji} <code>{code_na}</code>  <b>{fmt_nav(d_na['nav'])}</b>  "
-                f"<i>{chg_s}</i>  {sig_na}"
-            )
-        lines += [LINE, "<i>Quỹ Tracker Pro · Tự động</i>"]
-        tg_send(token, tg, "\n".join(lines))
+        codes_s = ", ".join(sorted(relevant.keys()))
+        msg = (
+            f"📢 NAV mới cho {len(relevant)} quỹ: {codes_s}\n"
+            f"👉 Xem chi tiết trong Mini App — gõ /app"
+        )
+        tg_send(token, tg, msg)
 
     state["last_nav_dates"] = {**last_dates, **{c: d.get("nav_date", "") for c, d in nav_data.items() if d}}
     save_state(state)

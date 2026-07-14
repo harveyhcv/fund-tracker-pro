@@ -718,6 +718,42 @@ def _calc_portfolio_core(holdings: list, signals: dict) -> dict:
     }
 
 
+def _compute_vol_30d_batch(codes: list) -> dict:
+    """Tính biến động 30 ngày (năm hoá) cho nhiều mã cùng lúc, dùng cho DCA
+    riskparity/mpt. Trước đây `_calc_dca` đọc `s.get("vol_30d")` từ dict
+    signals — nhưng field này KHÔNG BAO GIỜ có trong signals (chỉ tồn tại ở
+    `compute_research_stats` trong bot.py, chạy riêng cho modal Nghiên cứu
+    từng mã) → luôn fallback về hằng số 10 cho mọi quỹ → risk parity/MPT vô
+    tình chia đều bất kể biến động thật khác nhau thế nào. Hàm này query
+    trực tiếp nav_history (đã có sẵn, không cần fetch lại từ TCBS/fmarket)."""
+    import math, statistics as _st
+    result = {}
+    if not codes or _db_mod is None or not _db_mod.is_available():
+        return result
+    try:
+        with _db_mod.get_conn() as conn:
+            with conn.cursor() as cur:
+                for code in codes:
+                    cur.execute(
+                        "SELECT nav FROM nav_history WHERE fund_code=%s "
+                        "ORDER BY nav_date DESC LIMIT 31",
+                        (code,),
+                    )
+                    navs = [float(r[0]) for r in cur.fetchall()][::-1]  # oldest→newest
+                    if len(navs) < 5:
+                        continue
+                    rets = [(navs[i] / navs[i - 1] - 1) for i in range(1, len(navs)) if navs[i - 1] > 0]
+                    if len(rets) < 2:
+                        continue
+                    try:
+                        result[code] = round(_st.stdev(rets) * math.sqrt(252) * 100, 2)
+                    except Exception:
+                        continue
+    except Exception as e:
+        log.warning(f"[dca] _compute_vol_30d_batch: {e}")
+    return result
+
+
 def _calc_dca(profile: dict, signals: dict, budget: float = 0, style: str = "dca") -> dict:
     """
     Phân bổ ngân sách theo 5 trường phái đầu tư.
@@ -752,6 +788,11 @@ def _calc_dca(profile: dict, signals: dict, budget: float = 0, style: str = "dca
     }
     meta = STYLE_META.get(style, STYLE_META["dca"])
 
+    # riskparity/mpt cần vol_30d thật — signals[] không có field này (chỉ được
+    # tính riêng cho modal Nghiên cứu), nên tính batch 1 lần ở đây thay vì để
+    # mỗi quỹ fallback về hằng số 10 (vô tình biến risk parity thành chia đều).
+    vol_by_code = _compute_vol_30d_batch(watched) if style in ("riskparity", "mpt") else {}
+
     weights = {}
     reasons = {}  # lý do cho từng quỹ
 
@@ -764,7 +805,7 @@ def _calc_dca(profile: dict, signals: dict, budget: float = 0, style: str = "dca
         chg30 = s.get("chg30") or 0
         ma20  = s.get("ma20")  or 0
         ma50  = s.get("ma50")  or 0
-        vol   = s.get("vol_30d") or 10  # % annualized volatility
+        vol   = vol_by_code.get(code) or s.get("vol_30d") or 10  # % annualized volatility
         sig   = s.get("signal", "N/A")
 
         if style == "dca":

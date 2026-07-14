@@ -4,17 +4,46 @@
 # Priority: P0 (blocker) / P1 (important) / P2 (nice-to-have)
 # Claude đọc file này ĐẦU TIÊN mỗi session. Pick task IN_PROGRESS nếu có, nếu không pick P0 cao nhất.
 #
-# Last updated: 2026-07-13 (session 7 — v1.1.x: pricing đa kỳ hạn + SePay + Phase 6a governance + test suite 100% xanh)
+# Last updated: 2026-07-14 (session 8 — fix DCA riskparity/mpt, VCBFTBF NAV sai, dọn FMKT_* placeholder, rút gọn thông báo bot)
 
 ## ĐANG LÀM (IN_PROGRESS)
-# Không có. v1.1/v1.1.1/v1.1.2 đã tag (thay v1.0), QA 246/246 pass (100% xanh — 50
-# test lỗi thời đã dọn/viết lại cho khớp kiến trúc hiện tại, xem commit test cleanup),
-# QC thủ công payment flows, security review (không có finding HIGH/MEDIUM). v1.0
-# đã backup (code + data snapshot) vào backups/ (gitignored, không commit). Phase 6a
-# (GOV-001..006) đã DONE toàn bộ. SePay VietQR (PAY-009) đã code xong, chờ Harvey
-# đăng ký tài khoản SePay thật để kích hoạt.
-# Ưu tiên tiếp theo: PAY-006/007 (VNPay/Stripe, P2, cần merchant thật), verify SePay
-# webhook field thật khi có tài khoản (xem PAY-009).
+# Không có. v1.1/v1.1.1/v1.1.2 đã tag (thay v1.0), QA 246/246 pass, QC thủ công payment
+# flows, security review sạch. v1.0 đã backup. Phase 6a (GOV-001..006) DONE toàn bộ.
+# SePay VietQR (PAY-009) đã code xong, chờ Harvey đăng ký tài khoản SePay thật.
+#
+# Session 8 (2026-07-14) — 4 việc:
+# 1. FIX-001 · DCA riskparity/mpt chia đều sai — `_calc_dca` đọc `s.get("vol_30d")`
+#    nhưng field này KHÔNG BAO GIỜ có trong `signals` (chỉ tồn tại ở compute_research_stats,
+#    tính riêng cho modal Nghiên cứu từng mã) → luôn fallback hằng số 10 cho MỌI quỹ →
+#    risk parity vô tình thành chia đều. Thêm `_compute_vol_30d_batch()` query trực tiếp
+#    nav_history (miniapp_server.py) để tính vol thật cho từng quỹ.
+# 2. FIX-002 · VCBFTBF NAV sai — phát hiện qua vol_30d bất thường (229%) khi debug #1.
+#    Root cause: `fmarket_id=31` trong FUND_CATALOG (bot.py) trỏ NHẦM sang 1 quỹ trái
+#    phiếu khác (~30.000đ), trong khi VCBF-TBF thật là quỹ CÂN BẰNG (fmarket.vn/quy/VCBFTBF,
+#    vcbs.com.vn) NAV thật ~38.000-39.000đ (khớp TCinvest). 2 nguồn ghi đè lẫn nhau qua
+#    `upsert_nav()` (chỉ bảo vệ fixed/manual, không bảo vệ tcinvest khỏi bị fmarket ghi đè)
+#    → dao động giả ~23%/ngày, ảnh hưởng P&L thật của Harvey (đang nắm 449.41 CCQ).
+#    Đã sửa: bỏ fmarket_id, sửa tên đúng. CHƯA tự backfill lại lịch sử do token local hết
+#    hạn — cần chạy `python scripts/harvest_nav.py --backfill --code VCBFTBF --jwt <token>`
+#    trên Railway (đã có token mới) để tự sửa lại toàn bộ NAV lịch sử sai.
+#    ⚠️ Lưu ý kiến trúc: `upsert_nav()` (dùng trong job_check_signals/fetch_all) chỉ bảo vệ
+#    ('fixed','manual'), không bảo vệ nguồn tin cậy khác (tcinvest/confirmed) khỏi bị nguồn
+#    kém tin cậy hơn ghi đè — rủi ro tương tự có thể xảy ra ở quỹ khác nếu fmarket_id sai.
+#    Scan 30 ngày gần nhất: chỉ VCBFTBF bị (không phải lỗi hệ thống diện rộng).
+# 3. FIX-003 · Admin dashboard "quỹ chưa có NAV hôm nay" hiện 78 mã kỳ quặc (FMKT_8,
+#    FMKT_12...) — đây là placeholder do `--discover` tạo ra khi tìm thấy fmarket
+#    productId hợp lệ nhưng API không trả tên quỹ thật, chưa từng được map/kích hoạt
+#    thật. Đã deactivate 59 hàng funds_master.active=false (không xoá dữ liệu, an toàn
+#    reversible) — danh sách giờ chỉ còn 40 mã thật.
+# 4. FIX-004 · Rút gọn thông báo bot còn 1 dòng + hướng dẫn mở Mini App: msg_signal_alert,
+#    job_nav_change_alert (broadcast "NAV Mới"), msg_morning, msg_evening. Xoá code chết
+#    _morning_gold_summary/_gold_summary_lines (không còn dùng sau khi rút gọn). CHƯA đụng
+#    tới alert admin-only (NAV jump anomaly, token expiry) — giữ nguyên vì admin cần chi
+#    tiết để debug, không phải "spam" gửi user thường.
+#
+# Ưu tiên tiếp theo: chạy backfill VCBFTBF trên Railway (xem #2), PAY-006/007 (P2),
+# xem xét thay upsert_nav() bằng upsert_nav_with_confidence() ở mọi call site để tránh
+# lặp lại bug #2 cho quỹ khác.
 
 ## RELEASE NOTES v1.1 (2026-07-13)
 - Pricing đa kỳ hạn: tháng 20k/50⭐, quý 54k/135⭐ (-10%), nửa năm 90k/225⭐ (-25%),
