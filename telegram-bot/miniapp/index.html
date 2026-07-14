@@ -1286,20 +1286,28 @@ function renderPfGoldSub(){
   let otherRow='';
   if(otherPP && otherPP.luong>0.001){
     const subItems=otherPP.sub_items||[];
-    // Chỉ hiện dropdown khi user thực sự có đặt tên riêng cho ít nhất 1 khoản —
-    // nếu không thì hiện số lượng như bình thường (đỡ rối mắt).
-    const qtyHtml=subItems.length
-      ? `<select style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--bdr);color:var(--c0);border-radius:6px;padding:3px 6px;font-size:11px;font-family:var(--mono)">
-          <option value="">Tổng ${otherPP.luong} lượng (${subItems.length} loại)</option>
-          ${subItems.map(s=>`<option>${s.name}: ${s.luong} lượng</option>`).join('')}
-        </select>`
-      : `<span class="sum-val" style="color:var(--c0)">${otherPP.luong} lượng</span>`;
+    // Chỉ hiện box sổ xuống khi user thực sự có đặt tên riêng cho ít nhất 1 khoản —
+    // nếu không thì hiện số lượng như bình thường (đỡ rối mắt). Bấm vào dòng
+    // "Số lượng" để mở/đóng breakdown theo tên (không dùng <select> vì đó là
+    // menu chọn, ở đây chỉ cần xem thông tin).
+    const qtyBlock=subItems.length
+      ? `<div class="sum-row" style="cursor:pointer" onclick="_toggleOtherGoldBreakdown(this)">
+          <span class="sum-label">Số lượng</span>
+          <span class="sum-val" style="color:var(--c0)">${otherPP.luong} lượng <span class="other-gold-chevron" style="display:inline-block;font-size:10px;transition:transform .15s">▾</span></span>
+        </div>
+        <div class="other-gold-breakdown" style="display:none">
+          ${subItems.map(s=>`<div class="sum-row" style="padding-left:14px">
+            <span class="sum-label">${s.name}</span>
+            <span class="sum-val" style="font-size:12px">${s.luong} lượng</span>
+          </div>`).join('')}
+        </div>`
+      : `<div class="sum-row"><span class="sum-label">Số lượng</span><span class="sum-val" style="color:var(--c0)">${otherPP.luong} lượng</span></div>`;
     otherRow=`<div class="card" style="margin-top:8px;border-color:#854d0e">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
         <div class="card-title" style="font-size:11px;margin:0">${otherPP.label||'Vàng khác'}</div>
         <button onclick="openSellOtherGold()" class="btn btn-sell" style="width:auto;padding:4px 12px;font-size:10px">BÁN</button>
       </div>
-      <div class="sum-row"><span class="sum-label">Số lượng</span>${qtyHtml}</div>
+      ${qtyBlock}
       <div class="sum-row"><span class="sum-label">Giá vốn TB</span><span class="sum-val">${fmt(otherPP.avg_cost)} ₫/lượng</span></div>
     </div>`;
   }
@@ -3443,6 +3451,15 @@ function openSellOtherGold(){
   const sel=document.getElementById('gold-product-select');
   if(sel){ sel.value='OTHER'; onGoldProductChange(); }
   document.getElementById('gold-qty')?.focus();
+}
+// Mở/đóng box breakdown "Vàng khác" theo tên (bấm vào dòng "Số lượng")
+function _toggleOtherGoldBreakdown(rowEl){
+  const panel=rowEl.nextElementSibling;
+  const chevron=rowEl.querySelector('.other-gold-chevron');
+  if(!panel) return;
+  const opening=panel.style.display!=='block';
+  panel.style.display=opening?'block':'none';
+  if(chevron) chevron.style.transform=opening?'rotate(180deg)':'rotate(0deg)';
 }
 
 function setGoldUnit(unit) {
