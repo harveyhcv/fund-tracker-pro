@@ -373,6 +373,44 @@
   trong `CLAUDE.md` (section "🔐 CHÍNH SÁCH DỮ LIỆU"): mọi ALTER TABLE phải additive, script sửa
   dữ liệu hàng loạt phải dry-run mặc định, audit_log append-only, PROTECTED_SOURCES cho NAV,
   luôn hỏi Harvey trước khi xoá dữ liệu không phải do session tạo ra | 2026-07-13
+- [DONE] GOV-007-part2 · VCBFTBF NAV lại sai sau khi Harvey bấm "fetch all" — điều tra tiếp và
+  phát hiện root cause THỨ HAI (khác với config.json vs FUND_CATALOG đã fix trước đó):
+  `harvest_nav.py cmd_tcinvest()` có logic **"skip quỹ nếu đã có BẤT KỲ data nào trong
+  nav_history"** — nghĩa là mọi quỹ đã có lịch sử fmarket cũ (hầu hết 33 quỹ tcbs=True)
+  KHÔNG BAO GIỜ được tcinvest backfill/khoá đầy đủ, dù `db.py upsert_nav()` đã có logic bảo vệ
+  đúng. Hệ quả: job daily fmarket-fallback tiếp tục ghi đè xen kẽ ("sawtooth" pattern — NAV
+  đúng 1 ngày, sai 1 ngày) suốt nhiều tháng cho gần như TOÀN BỘ quỹ, không riêng VCBFTBF.
+  **Kiểm chứng qua SSH trực tiếp production**: gọi sống `GET /api/nav/<code>` xác nhận
+  VCBFTBF vẫn trả 30.041,63đ (sai) dù DB "đã fix" trước đó — vì backfill trước chỉ vá các
+  ngày ANOMALY đã phát hiện (04,05,11,12/07), không vá TOÀN BỘ lịch sử, nên khoảng trống
+  (07/13) vẫn bị job fmarket-fallback ghi đè. Quét toàn bộ 33 quỹ tcbs=True: **31/33 quỹ bị
+  ảnh hưởng** (chỉ VCBFTBF đã tự vá và NTPPF/VMEEF chưa có data nào). Fix: (1) chạy full
+  tcinvest re-fetch + `db.upsert_nav(..., source='tcinvest')` cho toàn bộ 31 quỹ (không dùng
+  `ON CONFLICT DO NOTHING` vì cần GHI ĐÈ fmarket cũ, không chỉ điền chỗ trống) — xác nhận sau
+  fix chỉ còn duy nhất 1 dòng 'fmarket' mỗi quỹ = NAV hôm nay (bình thường, vì TCinvest trễ
+  1 ngày so với ngày công bố, sẽ tự được ghi đè khi tcinvest fetch ngày mai); (2) sửa
+  `cmd_tcinvest()` bỏ hẳn logic skip-if-any-data, đổi tên ý nghĩa thành lệnh RECONCILE có thể
+  chạy lại định kỳ (không chỉ build 1 lần) — xem code comment trong hàm để hiểu rõ vì sao.
+  NTPPF/VMEEF: chưa có trong bảng `funds` (FK violation khi insert) — CHƯA xử lý, cần Harvey
+  xác nhận có đúng là 2 mã này chưa active/chưa cần track không.
+  **Quy trình cross-check NAV giữa nhiều nguồn (để dùng về sau)**:
+    1. Nguồn tin cậy theo thứ tự: `fixed`/`manual` (Harvey tự nhập) > `tcinvest` (fetch trực
+       tiếp qua JWT, chính xác nhất trong các nguồn tự động) > `fmarket`/`tcbs` cũ (có thể trễ
+       hoặc sai — ĐÃ xác nhận fmarket tự mâu thuẫn dữ liệu giữa các lần gọi cùng 1 ngày).
+    2. Muốn biết 1 mã có đang bị "khoá" đúng không: `SELECT nav_date, nav, source FROM
+       nav_history WHERE fund_code=? ORDER BY nav_date DESC LIMIT 30` — nếu thấy xen kẽ
+       nguồn (không phải toàn `tcinvest`/`fixed`/`manual` liên tục), tức là có khoảng trống
+       chưa được tcinvest khoá.
+    3. Quét TOÀN BỘ hệ thống định kỳ (nên làm hàng tuần, hoặc sau mỗi lần nghi ngờ): với mỗi
+       mã trong `FUND_CATALOG` có `tcbs=True`, group by source trong 30 ngày gần nhất, cờ đỏ
+       nếu có dòng nguồn khác `tcinvest/fixed/manual` mà KHÔNG PHẢI ngày hôm nay (ngày hôm nay
+       luôn có thể tạm là fmarket provisional — bình thường).
+    4. Khi phát hiện cờ đỏ: chạy lại `cmd_tcinvest()` (giờ đã là lệnh reconcile an toàn, tự
+       bảo vệ fixed/manual) để tcinvest tự nâng cấp toàn bộ lịch sử của mã đó.
+    5. KHÔNG bao giờ tin 1 lần verify DB là đủ — luôn re-verify qua chính API endpoint mà
+       frontend gọi (`/api/nav/<code>`), vì DB đúng không đảm bảo pipeline ghi đè sau đó không
+       chạy lại và làm sai một lần nữa (đúng như những gì đã xảy ra ở đây)
+  | 2026-07-14
 
 ---
 

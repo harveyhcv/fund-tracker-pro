@@ -884,11 +884,17 @@ def cmd_tcinvest(conn, jwt: str) -> None:
     Quy trình:
     1. Seed TCINVEST_FUNDS (31 quỹ xác nhận từ screenshot 2026-06-21) vào funds_master
     2. Thử lấy catalog từ TCinvest API để bổ sung quỹ mới (nếu có)
-    3. Fetch full NAV history mỗi quỹ qua TCBS API
-    4. Insert vào nav_history (ON CONFLICT DO NOTHING — idempotent)
+    3. Fetch full NAV history mỗi quỹ qua TCBS/TCinvest API
+    4. Upsert vào nav_history — tcinvest được phép nâng cấp mọi ngày đang có
+       nguồn thấp hơn (fmarket/tcbs cũ), tôn trọng khoá fixed/manual đã có
+       (xem _insert_nav_points). KHÔNG còn skip quỹ chỉ vì đã có data cũ —
+       đây là điểm khác biệt quan trọng so với trước 2026-07-14 (xem GOV-007
+       trong BACKLOG.md: skip-if-any-data từng khiến nhiều quỹ không bao giờ
+       được tcinvest khoá, dẫn tới NAV bị fmarket ghi đè sai xen kẽ nhiều tháng).
 
-    Chạy một lần để build core database.
-    Sau đó dùng --daily cho cập nhật hàng ngày.
+    An toàn để chạy lại định kỳ như một lệnh RECONCILE toàn bộ 33 quỹ
+    (không chỉ để build lần đầu) — dùng việc này để đối chiếu nguồn NAV
+    theo chu kỳ (vd hàng tuần) thay vì chỉ tin daily fetch.
     """
     log("=" * 60)
     log(f"TCINVEST BULK FETCH — {len(TCINVEST_FUNDS)} quy xac nhan")
@@ -962,16 +968,15 @@ def cmd_tcinvest(conn, jwt: str) -> None:
             skip_funds.append(code)
             continue
 
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT MAX(nav_date) FROM nav_history WHERE fund_code = %s", (code,)
-            )
-            last = cur.fetchone()[0]
-
-        if last is not None:
-            log(f"  [{i:3d}/{len(codes_to_fetch)}] {code:10} đã có đến {last} — skip")
-            continue
-
+        # GOV-007 (2026-07-14): KHÔNG skip chỉ vì đã có data — data cũ đó có thể
+        # là 'fmarket' (không đáng tin) chứ không phải 'tcinvest'. Bug trước đây:
+        # skip-if-any-row khiến các quỹ có sẵn lịch sử fmarket (VD: VCBFTBF,
+        # DCDS, TCBF...) KHÔNG BAO GIỜ được tcinvest backfill/khoá, nên job daily
+        # fmarket-fallback tiếp tục ghi đè xen kẽ ("sawtooth") nhiều tháng liền
+        # mà không ai phát hiện. Giờ luôn fetch rồi dùng _insert_nav_points()
+        # (UPDATE có điều kiện, không phải ON CONFLICT DO NOTHING) để tcinvest
+        # tự nâng cấp mọi ngày đang có nguồn thấp hơn (fmarket/tcbs cũ), đồng
+        # thời vẫn tôn trọng khoá fixed/manual đã có.
         log(f"  [{i:3d}/{len(codes_to_fetch)}] {code:10} fetching...")
         pts = tcinvest_fetch_nav_hist(code, jwt)
 
