@@ -1346,12 +1346,27 @@ function renderPfGoldSub(){
     priceRows+=`<div class="sum-row"><span class="sum-label" style="font-size:11px">${_goldLabel(p.source,p.product)||p.label||k}</span><span class="sum-val" style="font-size:12px"><span style="color:var(--buy)">Mua ${buyM}</span> <span style="color:var(--txt2)">/</span> <span style="color:var(--sell)">Bán ${sellM}</span></span></div>`;
   }
   const hasOther=otherPP && otherPP.luong>0.001;
+  // Tổng lượng (mọi loại) — bấm để sổ ra breakdown theo từng loại vàng, giống
+  // hệt cơ chế box "Vàng khác" (accordion, không dùng <select>).
+  const allProductEntries=Object.entries(byProduct).filter(([,pp])=>pp.luong>0.001);
+  const totalQtyBlock=allProductEntries.length>1
+    ? `<div class="sum-row" style="cursor:pointer" onclick="_toggleOtherGoldBreakdown(this)">
+        <span class="sum-label">Tổng lượng (mọi loại)</span>
+        <span class="sum-val" style="color:var(--c0)">${pf.total_luong} lượng <span class="other-gold-chevron" style="display:inline-block;font-size:10px;transition:transform .15s">▾</span></span>
+      </div>
+      <div class="other-gold-breakdown" style="display:none">
+        ${allProductEntries.map(([prod,pp])=>`<div class="sum-row" style="padding-left:14px">
+          <span class="sum-label">${pp.label||prod}</span>
+          <span class="sum-val" style="font-size:12px">${pp.luong} lượng</span>
+        </div>`).join('')}
+      </div>`
+    : `<div class="sum-row"><span class="sum-label">Tổng lượng (mọi loại)</span><span class="sum-val" style="color:var(--c0)">${pf.total_luong} lượng</span></div>`;
   el.innerHTML=`<div class="card">
     <div style="display:flex;justify-content:space-between;align-items:baseline">
       <div class="card-title" style="margin:0">TỔNG DANH MỤC VÀNG</div>
       ${hasOther?`<span style="font-size:10px;font-style:italic;color:var(--txt2);text-align:right">*không tính Vàng Khác</span>`:''}
     </div>
-    <div class="sum-row"><span class="sum-label">Tổng lượng (mọi loại)</span><span class="sum-val" style="color:var(--c0)">${pf.total_luong} lượng</span></div>
+    ${totalQtyBlock}
     <div class="sum-row"><span class="sum-label">Giá vốn TB</span><span class="sum-val">${fmt(avgCostTotal)} ₫/lượng</span></div>
     <div class="sum-row"><span class="sum-label">Tổng vốn</span><span class="sum-val">${fmt(pf.total_cost)} ₫</span></div>
     <div class="sum-row"><span class="sum-label">Tổng giá trị</span><span class="sum-val">${fmt(pf.current_value)} ₫</span></div>
