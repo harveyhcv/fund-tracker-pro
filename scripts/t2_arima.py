@@ -51,7 +51,10 @@ PREDICT_STEPS = 2  # T+2 trading days
 
 
 def _fetch_nav_series(conn, fund_code: str, limit: int = 500) -> list:
-    """Lấy NAV series (date, nav) từ nav_history, sắp xếp tăng dần theo ngày."""
+    """Lấy NAV series (date, nav) từ nav_history, sắp xếp tăng dần theo ngày.
+    Ép nav về float — cột NUMERIC trong Postgres trả về decimal.Decimal qua
+    psycopg2, gây lỗi "unsupported operand type" khi tính toán chung với
+    float (numpy/xgboost) ở các bước sau (VD: t2_xgboost.py cmd_train)."""
     with conn.cursor() as cur:
         cur.execute("""
             SELECT nav_date, nav FROM nav_history
@@ -59,7 +62,7 @@ def _fetch_nav_series(conn, fund_code: str, limit: int = 500) -> list:
             ORDER BY nav_date ASC
             LIMIT %s
         """, (fund_code.upper(), limit))
-        return cur.fetchall()
+        return [(r[0], float(r[1])) for r in cur.fetchall()]
 
 
 def _next_trading_date(from_date: date, steps: int = 2) -> date:
