@@ -1742,9 +1742,11 @@ function renderSignals(sigs){
     const chg=s.chg_pct||0;
     html+=`<div class="sig-row" onclick="openResearch('${code}')">
       <div>
-        <div class="sig-code">${code}</div>
+        <div style="display:flex;align-items:baseline;gap:6px;white-space:nowrap">
+          <div class="sig-code">${code}</div>
+          <span class="pnl ${pnlC(chg)}" style="font-size:11px">${fmtP(chg)}</span>
+        </div>
         <div style="font-size:11px;color:var(--txt2)">${fmt(s.nav)} đ ${manualNavBadge(s)}
-          <span class="pnl ${pnlC(chg)}" style="font-size:10px"> ${fmtP(chg)}</span>
           ${navConfidenceBadge(s)}
           ${positionBadge(s)}
         </div>
