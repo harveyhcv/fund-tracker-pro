@@ -411,6 +411,26 @@
        frontend gọi (`/api/nav/<code>`), vì DB đúng không đảm bảo pipeline ghi đè sau đó không
        chạy lại và làm sai một lần nữa (đúng như những gì đã xảy ra ở đây)
   | 2026-07-14
+- [DONE] T2-011 · T+2 prediction chưa BAO GIỜ chạy được trên production — chuỗi 7 bug liên
+  tiếp phát hiện khi cố chạy thật lần đầu (không chỉ đọc code): (1) thiếu `statsmodels` trong
+  `requirements.txt` → ARIMA lỗi 100%; (2) model XGBoost lưu ở `scripts/models/` (trong image
+  container) thay vì `DATA_DIR=/data` (volume bền vững) → bị xoá mỗi lần deploy; (3)
+  `_fetch_nav_series()` dùng `Decimal` thẳng từ psycopg2 → crash khi tính toán chung với
+  numpy/xgboost; (4) `test_mape` là `numpy.float32` không JSON/psycopg2 serializable; (5)
+  `cmd_train`/`cmd_predict` gọi `db.get_conn()` (cần `db.init_pool()` trước) mà không script
+  nào từng gọi — lỗi "DB pool not initialised" 100% mọi lần chạy; (6) **nghiêm trọng nhất**:
+  `ORDER BY nav_date ASC LIMIT 500` lấy nhầm 500 điểm CŨ NHẤT thay vì gần nhất — quỹ có >500
+  điểm lịch sử (đa số quỹ lâu năm) dự báo ra ngày trong QUÁ KHỨ (VD T+2=2005-10-04); (7)
+  `t2_ensemble.py` hardcode `'xgb-v1'` trong khi `t2_xgboost.py` tự bump version mỗi lần train
+  (T2-007) → ensemble vỡ vĩnh viễn ngay sau lần retrain thứ 2. Mỗi bug chỉ lộ ra SAU KHI bug
+  trước đó được sửa và chạy thật qua SSH — đọc code không phát hiện được chuỗi này.
+  Fix từng bước, mỗi lần deploy + train + predict lại để xác nhận tiến bộ, cuối cùng cả 3
+  model (ARIMA/XGBoost/Ensemble) chạy 39/39 quỹ OK, `db.get_predictions()` trả đúng
+  `ensemble-v1` cho cả 5 quỹ Harvey đang theo dõi. Đã xoá 39 dòng dự báo rác tự tạo lúc test
+  (session này tự tạo, không phải dữ liệu user, an toàn xoá theo GOV-006).
+  **Bài học**: verify "code trông đúng" ≠ verify "đã chạy thật thành công" — tính năng này
+  tồn tại từ lâu trong code nhưng CHƯA BAO GIỜ có 1 dòng dữ liệu thật nào trên production cho
+  đến hôm nay | 2026-07-14
 
 ---
 
