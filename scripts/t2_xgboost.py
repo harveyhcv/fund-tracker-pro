@@ -212,17 +212,20 @@ def cmd_train():
     print(f"  Model saved: {MODEL_PATH}")
     print(f"  Meta saved:  {META_PATH}")
 
-    # Ghi model_metrics để so sánh với ARIMA (T2-008 dùng cái này)
+    # Ghi model_metrics để so sánh với ARIMA (T2-008 dùng cái này) — dùng lại
+    # `conn` (raw psycopg2, mở từ _get_conn() ở đầu hàm) thay vì db.get_conn()
+    # (cần init_pool() trước, script này không gọi nên luôn crash "DB pool
+    # not initialised").
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../telegram-bot"))
     import db
-    with db.get_conn() as mconn:
-        db._ensure_prediction_tables(mconn)
-        with mconn.cursor() as cur:
-            cur.execute(
-                "INSERT INTO model_metrics (model_version, fund_code, window_days, mape, sample_size) "
-                "VALUES (%s, NULL, %s, %s, %s)",
-                (model_version, 0, float(mape), len(abs_pct_errors)),  # psycopg2 không adapt được numpy.float32
-            )
+    db._ensure_prediction_tables(conn)
+    with conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO model_metrics (model_version, fund_code, window_days, mape, sample_size) "
+            "VALUES (%s, NULL, %s, %s, %s)",
+            (model_version, 0, float(mape), len(abs_pct_errors)),  # psycopg2 không adapt được numpy.float32
+        )
+    conn.commit()
     conn.close()
     print(f"\nTrain xong ({model_version}). Chạy --predict để dự báo T+2 với model mới.")
 
