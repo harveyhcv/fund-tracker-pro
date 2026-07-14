@@ -431,6 +431,31 @@
   **Bài học**: verify "code trông đúng" ≠ verify "đã chạy thật thành công" — tính năng này
   tồn tại từ lâu trong code nhưng CHƯA BAO GIỜ có 1 dòng dữ liệu thật nào trên production cho
   đến hôm nay | 2026-07-14
+- [DONE] GOV-007-part3 · VCBFTBF NAV lại nhảy về ~30.000đ lần thứ 3 dù đã fix 2 lần trước —
+  Harvey báo trực tiếp qua screenshot bot alert. Root cause LẦN NÀY hoàn toàn khác 2 lần
+  trước: `funds_master` — bảng DB được `harvest_nav.py --daily` (job chạy 18:30 VÀ 20:00,
+  ĐỘC LẬP với `bot.py`'s `job_check_signals` đã fix ở GOV-007-part1) dùng làm nguồn
+  fmarket_id/tcbs — là nguồn cấu hình quỹ ĐỘC LẬP THỨ 3 (sau `FUND_CATALOG` và
+  `config.json`) mà 2 lần fix trước chưa từng đụng tới. Phát hiện: (1) `funds_master.tcbs
+  =False` cho 26/33 quỹ → job này luôn bỏ qua tcinvest; (2) `funds_master.fmarket_id=27`
+  cho VCBFTBF — verify TRỰC TIẾP qua fmarket API xác nhận id=27 là **"QUỸ ĐẦU TƯ TRÁI
+  PHIẾU DC" (DCBF/VFMVFB)**, NAV≈30.049 — khớp CHÍNH XÁC với giá trị sai đã thấy, tức là
+  suốt thời gian qua bot đang fetch nhầm NAV của DCBF rồi ghi vào dưới mã VCBFTBF; fmarket_id
+  ĐÚNG của VCBFTBF là 31 (verify qua API: tên "QUỸ ĐẦU TƯ CÂN BẰNG CHIẾN LƯỢC VCBF" khớp,
+  NAV≈37.945 khớp thang đo tcinvest); (3) `_insert_nav_points()` (dùng bởi `cmd_daily` cho
+  ngày lịch sử) chỉ bảo vệ `fixed`/`manual`, KHÔNG bảo vệ `tcinvest` như `db.py::upsert_nav()`
+  đã có — nên khi funds_master trỏ sai, dữ liệu tcinvest đã khoá đúng vẫn bị ghi đè mỗi tối.
+  Fix: sửa `_insert_nav_points()` bảo vệ thêm `tcinvest` (lớp phòng thủ thứ 2, đề phòng
+  config lại sai lần nữa); update `funds_master` trực tiếp qua SSH — `tcbs=true` cho cả 26
+  quỹ, VCBFTBF `fmarket_id` 27→31 + tên đúng, xoá `fmarket_id=31` khỏi placeholder rác
+  `FMKT_31` (inactive, gây UniqueViolation khi update); reconcile lại NAV VCBFTBF bằng
+  fmarket id=31 (JWT tcinvest đang hết hạn — `job_check_tcbs_token` sẽ tự báo Harvey refresh,
+  chưa refresh được ngay).
+  **Bài học nhắc lại lần 3**: mỗi lần "khoá" 1 nguồn dữ liệu, phải audit TẤT CẢ pipeline
+  đọc/ghi NAV, không chỉ pipeline đang được nhìn thấy lỗi — hệ thống này có ít nhất 2 job
+  daily độc lập (`job_check_signals` dùng `FUND_CATALOG`, `job_harvest_nav`/`harvest_nav.py
+  --daily` dùng `funds_master`) chạy song song, mỗi job có thể đọc 1 nguồn cấu hình khác
+  nhau cho CÙNG 1 quỹ | 2026-07-14
 
 ---
 
