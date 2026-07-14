@@ -1384,10 +1384,16 @@ def _handle_tcbs_auth_error(config: dict, failed_codes: set):
 
 
 def fetch_all(config: dict, codes: set) -> dict:
+    """GOV-007 tiếp diễn (2026-07-14): fund_cfg TRƯỚC ĐÂY ưu tiên config.json["funds"]
+    (dữ liệu ghi 1 lần, có thể cũ/sai) HƠN FUND_CATALOG (mã nguồn, luôn đúng nhất) —
+    đây chính là lý do bản sửa fmarket_id cho VCBFTBF trong FUND_CATALOG KHÔNG có tác
+    dụng gì cả: config.json trên Railway vẫn giữ fmarket_id=31 cũ, và luôn thắng.
+    Đổi ưu tiên: FUND_CATALOG trước, config.json["funds"] chỉ dùng cho quỹ KHÔNG có
+    trong FUND_CATALOG (khớp đúng pattern đã dùng ở _api_admin_fetch_nav)."""
     result = {}
     funds_cfg = config.get("funds", {})
     for code in sorted(codes):
-        fund_cfg = funds_cfg.get(code) or FUND_CATALOG.get(code, {})
+        fund_cfg = FUND_CATALOG.get(code) or funds_cfg.get(code) or {}
         pts, src = get_nav_series_with_source(code, fund_cfg, config)
         if pts:
             result[code] = calc_signal(code, pts)

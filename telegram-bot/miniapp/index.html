@@ -1661,7 +1661,8 @@ function t2Badge(code, navNow){
   const up=diff>=0;
   const color=up?'var(--buy)':'var(--sell)';
   const arrow=up?'↑':'↓';
-  return `<span title="Dự báo chốt T+2: ${fmt(t2)} đ" style="font-size:9px;white-space:nowrap;background:var(--bg3);color:${color};border:1px solid ${up?'#14532d':'#7f1d1d'};border-radius:4px;padding:1px 4px">🔮T+2 ${arrow}${Math.abs(diff).toFixed(1)}%</span>`;
+  const sign=up?'+':'-';
+  return `<span title="Dự báo chốt T+2: ${fmt(t2)} đ" style="font-size:9px;white-space:nowrap;background:var(--bg3);color:${color};border:1px solid ${up?'#14532d':'#7f1d1d'};border-radius:4px;padding:1px 4px">🔮 ${sign}${Math.abs(diff).toFixed(1)}%</span>`;
 }
 
 function renderSignals(sigs){
