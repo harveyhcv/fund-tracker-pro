@@ -41,7 +41,14 @@ from t2_arima import (  # noqa: E402
     _db_url, _get_conn, _fetch_nav_series, _next_trading_date, _build_features,
 )
 
-MODEL_DIR  = os.path.join(os.path.dirname(__file__), "models")
+
+# GOV-007 (2026-07-14): model PHẢI nằm trong DATA_DIR (Railway volume /data —
+# bền vững qua redeploy), KHÔNG được nằm trong scripts/models (nằm trong image
+# container — bị xoá sạch mỗi lần deploy code mới). Đây là lý do model XGBoost
+# chưa bao giờ tồn tại được quá 1 lần deploy trên production, khiến T+2 luôn
+# rỗng dù job train chạy hàng tuần.
+DATA_DIR   = os.environ.get("DATA_DIR", os.path.join(os.path.dirname(__file__), "..", "telegram-bot"))
+MODEL_DIR  = os.path.join(DATA_DIR, "models")
 MODEL_PATH = os.path.join(MODEL_DIR, "xgb_t2.json")
 META_PATH  = os.path.join(MODEL_DIR, "xgb_t2_meta.json")
 

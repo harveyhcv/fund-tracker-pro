@@ -50,7 +50,10 @@ W_ARIMA        = 0.3   # fallback tĩnh — dùng khi chưa --reweight lần nà
 W_XGB          = 0.7
 FALLBACK_CI_PCT = 2.0   # dùng khi chưa đủ lịch sử chấm điểm ensemble-v1 (rolling std = None)
 
-WEIGHTS_PATH = os.path.join(os.path.dirname(__file__), "models", "ensemble_weights.json")
+# GOV-007 (2026-07-14): dùng DATA_DIR bền vững (Railway volume /data), không
+# lưu trong scripts/models nữa — xem lý do trong t2_xgboost.py.
+_DATA_DIR = os.environ.get("DATA_DIR", os.path.join(os.path.dirname(__file__), "..", "telegram-bot"))
+WEIGHTS_PATH = os.path.join(_DATA_DIR, "models", "ensemble_weights.json")
 REWEIGHT_WINDOW_DAYS  = 30
 MIN_SAMPLES_REWEIGHT  = 10   # mỗi model cần ≥10 mẫu đã chấm điểm trong window mới tin cậy để reweight
 

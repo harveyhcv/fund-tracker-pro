@@ -3,3 +3,4 @@ schedule>=1.2.2
 psycopg2-binary>=2.9.9
 cryptography>=42.0.0
 xgboost>=2.0.0
+statsmodels>=0.14.0
