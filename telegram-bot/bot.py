@@ -1899,14 +1899,17 @@ def _run_t2_script(name: str, script_name: str, args: list, timeout: int = 300) 
 
 
 def job_t2_predict():
-    """T2-003/T2-004/T2-005: Chạy ARIMA + XGBoost + Ensemble forecast sau harvest
-    lúc 18:31, theo thứ tự (ensemble cần cả 2 dự báo con của cùng ngày đã ghi DB)."""
+    """T2-003/T2-004/T2-005/T2-012: Chạy ARIMA + XGBoost + Naive + Ensemble forecast
+    sau harvest lúc 18:31, theo thứ tự (ensemble cần cả 3 dự báo con của cùng ngày
+    đã ghi DB). Naive (persistence) thêm vào T2-012 sau khi backtest walk-forward
+    cho thấy nó đánh bại ARIMA ở mọi quỹ test — xem BACKLOG.md."""
     if not (_DB_AVAILABLE and _db.is_available()):
         log.debug("[t2_predict] DB không khả dụng — bỏ qua")
         return
-    log.info("══ JOB: T+2 Predict (ARIMA + XGBoost + Ensemble) ══")
+    log.info("══ JOB: T+2 Predict (ARIMA + XGBoost + Naive + Ensemble) ══")
     _run_t2_script("t2_predict_arima",    "t2_arima.py",    ["--predict"])
     _run_t2_script("t2_predict_xgboost",  "t2_xgboost.py",  ["--predict"])
+    _run_t2_script("t2_predict_naive",    "t2_naive.py",    ["--predict"])
     _run_t2_script("t2_predict_ensemble", "t2_ensemble.py", ["--predict"], timeout=120)
 
 
@@ -1948,13 +1951,32 @@ MAPE_ALERT_THRESHOLD_PCT = 8.0
 MAPE_ALERT_STREAK_DAYS = 5
 
 
+def _latest_xgb_version() -> str:
+    """T2-007 bump version (xgb-v1 → xgb-v2 → ...) mỗi lần retrain — không được
+    hardcode 'xgb-v1' (cùng bug đã sửa trong t2_ensemble.py: sau retrain, mọi
+    dự báo XGBoost mới nằm dưới version mới, hardcode cũ sẽ không match được
+    nữa, khiến cảnh báo/monitoring âm thầm ngừng theo dõi XGBoost)."""
+    try:
+        with _db.get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT model_version FROM nav_predictions
+                    WHERE model_version LIKE 'xgb-v%'
+                    ORDER BY created_at DESC LIMIT 1
+                """)
+                row = cur.fetchone()
+        return row[0] if row else "xgb-v1"
+    except Exception:
+        return "xgb-v1"
+
+
 def _check_mape_streak_alerts() -> None:
     if not (_DB_AVAILABLE and _db.is_available()):
         return
     config = load_config()
     token = config.get("bot_token", "")
     admin_id = str(config.get("admin_telegram_id", "")).strip()
-    for model_version in ("arima-v1", "xgb-v1", "ensemble-v1"):
+    for model_version in ("arima-v1", _latest_xgb_version(), "naive-v1", "ensemble-v1"):
         streak = _db.get_mape_breach_streak(model_version, MAPE_ALERT_THRESHOLD_PCT,
                                              max_days=MAPE_ALERT_STREAK_DAYS)
         if streak != MAPE_ALERT_STREAK_DAYS:
@@ -1984,8 +2006,9 @@ def job_t2_retrain():
 
 
 def job_t2_reweight():
-    """T2-008: Tính lại trọng số ensemble (W_ARIMA/W_XGB) mỗi 30 ngày dựa trên
-    MAPE 30 ngày qua của arima-v1 vs xgb-v1 — model lỗi ít hơn được trọng số cao hơn."""
+    """T2-008/T2-012: Tính lại trọng số ensemble (W_ARIMA/W_XGB/W_NAIVE) mỗi 30
+    ngày dựa trên MAPE 30 ngày qua của cả 3 model con — model lỗi ít hơn được
+    trọng số cao hơn."""
     if not (_DB_AVAILABLE and _db.is_available()):
         log.debug("[t2_reweight] DB không khả dụng — bỏ qua")
         return
