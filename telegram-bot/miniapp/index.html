@@ -1255,13 +1255,12 @@ function renderPortfolio(me){
         <div class="fund-code">${h.code}</div>
         <div class="fund-info">
           <div class="fund-nav">NAV ${fmt(h.nav)} đ <span class="pnl ${pnlC(chg)}" style="font-size:11px">${fmtP(chg)}</span></div>
-          <div style="font-size:11px;color:var(--txt2)">${fmt(h.units)} CCQ · CP ${fmt(h.avg_cost)}</div>
+          <div style="font-size:11px;color:var(--txt2)">${fmt(h.units)} CCQ · CP ${fmt(h.avg_cost)}${_t2Html(h.code, h.nav, true)}</div>
         </div>
         <div class="fund-right">
           <div class="badge ${sigC(h.signal)}">${sigLabel(h.signal)}</div>
           <div class="pnl ${pnlC(h.pnl_pct)}" style="font-size:12px;margin-top:4px">${fmtP(h.pnl_pct)}</div>
           <div style="font-size:11px;color:var(--txt2)">${h.pnl>=0?'+':''}${fmt(h.pnl)}</div>
-          ${_t2Html(h.code, h.nav, true)}
         </div>
       </div>`;
     }
@@ -1652,7 +1651,10 @@ function _t2Html(code, navNow, compact=false){
   const color=up?'var(--buy)':'var(--sell)';
   const arrow=up?'↑':'↓';
   if(compact){
-    return `<div style="font-size:10px;margin-top:3px;color:var(--txt2)">Chốt T+2 <span style="color:${color};font-weight:600">${arrow}${Math.abs(diff).toFixed(1)}%</span> <span style="color:var(--txt2)">${fmt(t2)} đ</span></div>`;
+    // Inline (không phải div riêng) để gộp vào hàng cuối bên trái fund-row,
+    // giữ cân đối 3 hàng mỗi bên. NAV làm tròn hàng đơn vị chỉ để hiển thị —
+    // dữ liệu gốc trong pred.predicted_nav vẫn giữ nguyên 2 chữ số thập phân.
+    return ` · <span style="color:${color};font-weight:600">T+2 ${arrow}${Math.abs(diff).toFixed(1)}%</span> <span style="color:var(--txt2)">${fmt(Math.round(t2))} đ</span>`;
   }
   return `<div style="margin-top:8px;padding:8px 10px;background:var(--bg3);border-radius:8px;border-left:3px solid ${color}">
     <div style="font-size:11px;color:var(--txt2);margin-bottom:2px">⏱ Giá chốt T+2 (dự báo ${_t2ModelLabel(pred.model_version)})</div>
