@@ -359,10 +359,23 @@ def upsert_nav(fund_code: str, nav_date: date, nav: float, source: str = "fmarke
                 WHERE nav_history.source NOT IN ('fixed', 'manual', 'tcinvest')
                    OR (nav_history.source = 'tcinvest' AND EXCLUDED.source = 'tcinvest')
             """, (fund_code, nav_date, nav, source))
+        # Đọc lại giá trị THẬT sự đang nằm trong DB sau upsert — nếu bị khóa (vd
+        # tcinvest chặn 1 fetch fmarket sai) thì `nav` (tham số đầu vào) KHÔNG
+        # phải giá trị đã lưu. Dùng thẳng `nav` ở đây sẽ so sánh draft của user
+        # với 1 giá trị đã bị TỪ CHỐI, có thể làm rớt oan draft đúng (agree với
+        # giá trị đã khóa) chỉ vì nó khác giá trị fetch sai bị chặn.
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT nav FROM nav_history WHERE fund_code=%s AND nav_date=%s",
+                (fund_code, nav_date)
+            )
+            row = cur.fetchone()
+    stored_nav = float(row[0]) if row else nav
     logger.debug("upsert_nav %s %s %.4f src=%s", fund_code, nav_date, nav, source)
-    # Sau khi API data confirmed → unify pending Pro drafts nếu khớp
+    # Sau khi API data confirmed → unify pending Pro drafts nếu khớp (dùng giá trị
+    # ĐÃ LƯU THẬT trong DB, không phải tham số đầu vào — xem comment ở trên)
     try:
-        unify_nav_drafts(fund_code, nav_date, nav)
+        unify_nav_drafts(fund_code, nav_date, stored_nav)
     except Exception as e:
         logger.debug("unify_nav_drafts skip: %s", e)
 
