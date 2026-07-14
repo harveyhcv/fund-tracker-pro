@@ -51,16 +51,27 @@ PREDICT_STEPS = 2  # T+2 trading days
 
 
 def _fetch_nav_series(conn, fund_code: str, limit: int = 500) -> list:
-    """Lấy NAV series (date, nav) từ nav_history, sắp xếp tăng dần theo ngày.
+    """Lấy `limit` điểm NAV GẦN NHẤT (date, nav) từ nav_history, trả về sắp xếp
+    tăng dần theo ngày để feature/lag tính đúng thứ tự thời gian.
     Ép nav về float — cột NUMERIC trong Postgres trả về decimal.Decimal qua
     psycopg2, gây lỗi "unsupported operand type" khi tính toán chung với
-    float (numpy/xgboost) ở các bước sau (VD: t2_xgboost.py cmd_train)."""
+    float (numpy/xgboost) ở các bước sau (VD: t2_xgboost.py cmd_train).
+
+    BUG cũ (2026-07-14): "ORDER BY nav_date ASC LIMIT %s" lấy `limit` điểm
+    CŨ NHẤT chứ không phải gần nhất — với quỹ có >500 điểm lịch sử (VD:
+    VCBFTBF, DCDS, TCGF...), series[-1] (điểm "mới nhất" theo code) thực ra
+    là 1 ngày từ nhiều năm trước, khiến T+2 dự báo ra ngày trong quá khứ
+    (đã thấy trực tiếp: T+2=2005-10-04, 2009-07-14...). Sửa: lấy DESC LIMIT
+    (điểm mới nhất) trước, rồi đảo lại ASC."""
     with conn.cursor() as cur:
         cur.execute("""
-            SELECT nav_date, nav FROM nav_history
-            WHERE fund_code = %s AND nav IS NOT NULL AND nav > 0
+            SELECT nav_date, nav FROM (
+                SELECT nav_date, nav FROM nav_history
+                WHERE fund_code = %s AND nav IS NOT NULL AND nav > 0
+                ORDER BY nav_date DESC
+                LIMIT %s
+            ) recent
             ORDER BY nav_date ASC
-            LIMIT %s
         """, (fund_code.upper(), limit))
         return [(r[0], float(r[1])) for r in cur.fetchall()]
 
