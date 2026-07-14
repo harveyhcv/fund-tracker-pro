@@ -151,9 +151,13 @@ def _arima_predict(nav_series: list) -> dict:
         pred_mean = forecast.predicted_mean
         conf_int  = forecast.conf_int(alpha=0.2)  # 80% CI
 
-        t2_nav   = float(pred_mean.iloc[-1])
-        t2_ci_lo = float(conf_int.iloc[-1, 0])
-        t2_ci_hi = float(conf_int.iloc[-1, 1])
+        # ARIMA(prices,...) nhận plain list (không phải pandas Series có index
+        # ngày) → statsmodels trả predicted_mean/conf_int là numpy.ndarray
+        # thuần, không có .iloc (lỗi thấy trực tiếp khi chạy thật trên
+        # production: "'numpy.ndarray' object has no attribute 'iloc'").
+        t2_nav   = float(pred_mean[-1])
+        t2_ci_lo = float(conf_int[-1, 0])
+        t2_ci_hi = float(conf_int[-1, 1])
 
         # Sanity: dự báo không được cách giá cuối > 10%
         last_nav = prices[-1]
