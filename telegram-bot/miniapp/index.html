@@ -1274,10 +1274,13 @@ function renderPfGoldSub(){
   }
   const pnlC2=pf.pnl>=0?'var(--buy)':'var(--sell)';
   const pnlSign=pf.pnl>=0?'+':'';
-  // Breakdown theo từng loại vàng — mỗi loại định giá riêng, KHÔNG gộp chung 1 giá SJC
+  const avgCostTotal=pf.total_luong>0?Math.round(pf.total_cost/pf.total_luong):0;
+  // Breakdown theo từng loại vàng — mỗi loại định giá riêng, KHÔNG gộp chung 1 giá SJC.
+  // Chỉ hiện khi có >1 loại — nếu chỉ 1 loại thì trùng lặp 100% với box tổng ở trên.
   const byProduct=pf.by_product||{};
   let productRows='';
-  for(const [prod,pp] of Object.entries(byProduct)){
+  const showBreakdown=Object.keys(byProduct).length>1;
+  for(const [prod,pp] of (showBreakdown?Object.entries(byProduct):[])){
     if(pp.price_missing){
       productRows+=`<div class="card" style="margin-top:8px;border-color:#854d0e">
         <div class="card-title" style="font-size:11px">${pp.label||prod}</div>
@@ -1298,26 +1301,28 @@ function renderPfGoldSub(){
       <div class="sum-row"><span class="sum-label">Lãi/lỗ</span><span class="sum-val" style="color:${ppnlC}">${ppnlSign}${fmt(pp.pnl)} ₫ (${ppnlSign}${pp.pnl_pct}%)</span></div>
     </div>`;
   }
-  // Bảng giá nhanh (giá bán ra tham khảo — không dùng để tính P&L)
+  // Bảng giá nhanh (giá mua vào + bán ra tham khảo — không dùng để tính P&L)
   const domesticKeys=['VANGTODAYAPI:SJC_1L','VANGTODAYAPI:DOJI_NHAN_9999','VANGTODAYAPI:DOJI_NHAN_HCM','VANGTODAYAPI:SJC_NHAN'];
   let priceRows='';
   for(const k of domesticKeys){
     const p=prices[k];
     if(!p) continue;
+    const buyM=(p.buy/1e6).toFixed(2)+'M';
     const sellM=(p.sell/1e6).toFixed(2)+'M';
-    priceRows+=`<div class="sum-row"><span class="sum-label" style="font-size:11px">${_goldLabel(p.source,p.product)||p.label||k}</span><span class="sum-val" style="color:var(--sell);font-size:12px">${sellM}</span></div>`;
+    priceRows+=`<div class="sum-row"><span class="sum-label" style="font-size:11px">${_goldLabel(p.source,p.product)||p.label||k}</span><span class="sum-val" style="font-size:12px"><span style="color:var(--buy)">Mua ${buyM}</span> <span style="color:var(--txt2)">/</span> <span style="color:var(--sell)">Bán ${sellM}</span></span></div>`;
   }
   const missingCount=(pf.missing_price_products||[]).length;
   el.innerHTML=`<div class="card">
     <div class="card-title">TỔNG DANH MỤC VÀNG</div>
     <div class="sum-row"><span class="sum-label">Tổng lượng (mọi loại)</span><span class="sum-val" style="color:var(--c0)">${pf.total_luong} lượng</span></div>
+    <div class="sum-row"><span class="sum-label">Giá vốn TB</span><span class="sum-val">${fmt(avgCostTotal)} ₫/lượng</span></div>
     <div class="sum-row"><span class="sum-label">Tổng vốn</span><span class="sum-val">${fmt(pf.total_cost)} ₫</span></div>
     <div class="sum-row"><span class="sum-label">Tổng giá trị</span><span class="sum-val">${fmt(pf.current_value)} ₫</span></div>
     <div class="sum-row"><span class="sum-label">Lãi/lỗ</span><span class="sum-val" style="color:${pnlC2}">${pnlSign}${fmt(pf.pnl)} ₫ (${pnlSign}${pf.pnl_pct}%)</span></div>
     ${missingCount?`<div style="font-size:10px;color:#facc15;margin-top:6px">⚠️ ${missingCount} loại vàng chưa có dữ liệu giá — chưa tính vào giá trị/lãi lỗ tổng (xem chi tiết bên dưới)</div>`:''}
   </div>
   ${productRows}
-  ${priceRows?`<div class="card" style="margin-top:8px"><div class="card-title">GIÁ BÁN RA HIỆN TẠI (tham khảo)</div>${priceRows}</div>`:''}`;
+  ${priceRows?`<div class="card" style="margin-top:8px"><div class="card-title">GIÁ MUA/BÁN HIỆN TẠI (tham khảo)</div>${priceRows}</div>`:''}`;
 }
 
 // ── Gold Signal Tab ───────────────────────────────────────────────────────
