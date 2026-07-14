@@ -38,7 +38,7 @@ HTML_FILE = Path(__file__).parent / "miniapp" / "index.html"
 # Bump cùng lúc với APP_VERSION trong miniapp/index.html mỗi khi deploy thay
 # đổi đáng kể — GET /api/version dùng để xác nhận server đã chạy đúng bản
 # mới (không phải image cũ do deploy lỗi/chưa restart).
-_SERVER_VERSION = "v1.2.3"
+_SERVER_VERSION = "v1.3"
 
 # Railway inject PORT; fallback PORT_MINIAPP cho local dev
 PORT_MINIAPP = int(os.environ.get("PORT_MINIAPP") or os.environ.get("PORT") or 8443)
