@@ -317,7 +317,7 @@ def _calc_gold_portfolio(cfg: dict, tg_id: str, prices: dict) -> dict:
             # tổng vốn để "tổng vốn" đúng, nhưng loại khỏi tổng giá trị/lãi lỗ vì
             # không xác định được — tránh gây hiểu lầm đã mất trắng.
             breakdown[product] = {
-                "label":          product,
+                "label":          "Vàng khác" if product == "OTHER" else product,
                 "luong":          round(luong, 4),
                 "avg_cost":       round(cost / luong, 0) if luong else 0,
                 "cost":           round(cost, 0),

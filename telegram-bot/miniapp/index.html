@@ -807,6 +807,8 @@ function showSubtab(page, sub, el){
   if(page==='signals'&&sub==='gold') loadGoldSignalTab();
   if(page==='portfolio'&&sub==='gold') renderPfGoldSub();
   if(page==='dca'&&sub==='gold') calcGoldDCA();
+  if(page==='trade'&&sub==='gold') _refreshGoldProductSelect();
+  if(page==='trade'&&sub==='ccq') _updateTradeFundOptions();
 }
 
 let _toastTimer;
@@ -1278,9 +1280,23 @@ function renderPfGoldSub(){
   // Breakdown theo từng loại vàng — mỗi loại định giá riêng, KHÔNG gộp chung 1 giá SJC.
   // Chỉ hiện khi có >1 loại — nếu chỉ 1 loại thì trùng lặp 100% với box tổng ở trên.
   const byProduct=pf.by_product||{};
+  // "Vàng khác" (product='OTHER') luôn hiện riêng 1 box ngay dưới box Tổng, có nút Bán —
+  // tách khỏi vòng lặp breakdown các loại vàng có giá thị trường thật bên dưới.
+  const otherPP=byProduct['OTHER'];
+  let otherRow='';
+  if(otherPP && otherPP.luong>0.001){
+    otherRow=`<div class="card" style="margin-top:8px;border-color:#854d0e">
+      <div class="card-title" style="font-size:11px">${otherPP.label||'Vàng khác'}</div>
+      <div class="sum-row"><span class="sum-label">Số lượng</span><span class="sum-val" style="color:var(--c0)">${otherPP.luong} lượng</span></div>
+      <div class="sum-row"><span class="sum-label">Giá vốn TB</span><span class="sum-val">${fmt(otherPP.avg_cost)} ₫/lượng</span></div>
+      <div style="font-size:11px;color:#facc15;margin:6px 0">⚠️ Không có giá thị trường tham chiếu — không tính lãi/lỗ cho phần này.</div>
+      <button onclick="openSellOtherGold()" class="btn btn-sell" style="width:100%;padding:8px;font-size:12px">BÁN VÀNG KHÁC</button>
+    </div>`;
+  }
+  const realEntries=Object.entries(byProduct).filter(([prod])=>prod!=='OTHER');
   let productRows='';
-  const showBreakdown=Object.keys(byProduct).length>1;
-  for(const [prod,pp] of (showBreakdown?Object.entries(byProduct):[])){
+  const showBreakdown=realEntries.length>1;
+  for(const [prod,pp] of (showBreakdown?realEntries:[])){
     if(pp.price_missing){
       productRows+=`<div class="card" style="margin-top:8px;border-color:#854d0e">
         <div class="card-title" style="font-size:11px">${pp.label||prod}</div>
@@ -1321,6 +1337,7 @@ function renderPfGoldSub(){
     <div class="sum-row"><span class="sum-label">Lãi/lỗ</span><span class="sum-val" style="color:${pnlC2}">${pnlSign}${fmt(pf.pnl)} ₫ (${pnlSign}${pf.pnl_pct}%)</span></div>
     ${missingCount?`<div style="font-size:10px;color:#facc15;margin-top:6px">⚠️ ${missingCount} loại vàng chưa có dữ liệu giá — chưa tính vào giá trị/lãi lỗ tổng (xem chi tiết bên dưới)</div>`:''}
   </div>
+  ${otherRow}
   ${productRows}
   ${priceRows?`<div class="card" style="margin-top:8px"><div class="card-title">GIÁ MUA/BÁN HIỆN TẠI (tham khảo)</div>${priceRows}</div>`:''}`;
 }
@@ -2294,21 +2311,43 @@ function setTradeType(type){
   // Ẩn/hiện giá NAV khi là lợi tức
   const priceRow=document.getElementById('trade-price-row');
   if(priceRow)priceRow.style.display=isDiv?'none':'';
+  _updateTradeFundOptions();
 }
-function _refreshFundSelect(funds){
+function _refreshFundSelect(funds,includeAdd){
   const sel=document.getElementById('trade-fund');
+  const cur=sel.value;
   sel.innerHTML='<option value="">-- Chọn quỹ --</option>';
   (funds||[]).forEach(code=>{const o=document.createElement('option');o.value=code;o.textContent=code;sel.appendChild(o);});
-  const add=document.createElement('option');add.value='__ADD__';add.textContent='+ Thêm quỹ mới...';sel.appendChild(add);
+  if(includeAdd){
+    const add=document.createElement('option');add.value='__ADD__';add.textContent='+ Thêm quỹ mới...';sel.appendChild(add);
+  }
+  if((funds||[]).includes(cur)) sel.value=cur;
+}
+// Kho CCQ đang nắm giữ (units>0) — dùng để lọc dropdown khi BÁN/LỢI TỨC, tránh
+// chọn nhầm mã không có, gây sai lệch số lượng/giá vốn/lãi lỗ trong portfolio.
+function _heldFundCodes(){
+  const items=_me?.portfolio?.items||[];
+  return items.filter(h=>(h.units||0)>0.001).map(h=>h.code);
+}
+function _updateTradeFundOptions(){
+  const needHeld=(_tradeType==='sell'||_tradeType==='dividend');
+  if(needHeld){
+    const held=_heldFundCodes();
+    if(!held.length){
+      document.getElementById('trade-fund').innerHTML='<option value="">-- Không có CCQ đang nắm giữ --</option>';
+      return;
+    }
+    _refreshFundSelect(held,false);
+  } else {
+    _refreshFundSelect(_me?.watched_funds||[],true);
+  }
 }
 async function setupTrade(){
-  const sel=document.getElementById('trade-fund');
-  if(sel.options.length>2)return;
-  let funds=[];
-  if(_me?.watched_funds)funds=_me.watched_funds;
-  else if(USER_ID){try{const d=await apiFetch('/api/me');_me=d;funds=d.watched_funds||[];}catch{}}
-  _refreshFundSelect(funds);
-  document.getElementById('trade-date').value=new Date().toISOString().split('T')[0];
+  if(!_me?.watched_funds && USER_ID){try{const d=await apiFetch('/api/me');_me=d;}catch{}}
+  if(!_goldData && USER_ID){try{_goldData=await apiFetch(`/api/gold?user_id=${USER_ID}`);}catch{}}
+  _updateTradeFundOptions();
+  const dateEl=document.getElementById('trade-date');
+  if(!dateEl.value) dateEl.value=new Date().toISOString().split('T')[0];
 }
 async function onTradeFundChange(){
   const sel=document.getElementById('trade-fund');
@@ -2334,7 +2373,7 @@ async function addNewFundAndWatch(){
     if(d.ok){
       if(_me)_me.watched_funds=watched;
       _watchedSet=new Set(watched);
-      _refreshFundSelect(watched);
+      _refreshFundSelect(watched,true);
       document.getElementById('trade-fund').value=code;
       document.getElementById('trade-add-fund-row').style.display='none';
       document.getElementById('trade-new-fund-code').value='';
@@ -2610,7 +2649,7 @@ function renderUnifiedHistory(){
     if(t._asset==='gold'){
       const qtyL=t.qty_luong??t.qty;
       const priceM=t.price_per_luong>0?(t.price_per_luong/1e6).toFixed(2)+'M':'tặng';
-      const rawLabel=t.product?.startsWith('OTHER:')?t.product.slice(6):(_GOLD_LABELS[t.product]||t.product||'Vàng');
+      const rawLabel=t.product==='OTHER'?(t.note?.trim()||'Vàng khác'):(_GOLD_LABELS[t.product]||t.product||'Vàng');
       return `<div class="tlog-row">
 <div class="tlog-left">
   <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
@@ -3335,6 +3374,8 @@ function drawChart(points, color){
 }
 
 // Trade form
+const _GOLD_ALL_PRODUCTS = ['SJC_1L','DOJI_NHAN_9999','DOJI_NHAN_HCM','SJC_NHAN','PNJ_VANGMY','PNJ_24K','BAOTINNGUYEN','VIETTIN_SJC','OTHER'];
+
 function toggleGoldType() {
   _goldType = _goldType==='buy' ? 'sell' : 'buy';
   const isBuy = _goldType==='buy';
@@ -3346,10 +3387,50 @@ function toggleGoldType() {
   spans[1].style.color = isBuy ? 'var(--txt2)' : '#000';
   document.getElementById('gold-submit-btn').textContent = isBuy ? 'XÁC NHẬN MUA' : 'XÁC NHẬN BÁN';
   document.getElementById('gold-submit-btn').className = 'btn ' + (isBuy?'btn-buy':'btn-sell');
+  _refreshGoldProductSelect();
+}
+// Kho vàng đang nắm giữ (luong>0) — dùng để lọc dropdown khi BÁN, tránh chọn nhầm
+// sản phẩm không có, gây sai lệch số lượng/giá vốn/lãi lỗ trong portfolio.
+function _heldGoldProducts(){
+  const byProduct=_goldData?.portfolio?.by_product||{};
+  return Object.entries(byProduct).filter(([,pp])=>(pp.luong||0)>0.001);
+}
+function _refreshGoldProductSelect(){
+  const sel=document.getElementById('gold-product-select');
+  if(!sel) return;
+  const cur=sel.value;
+  let opts;
+  if(_goldType==='sell'){
+    const held=_heldGoldProducts();
+    if(!held.length){
+      sel.innerHTML='<option value="">-- Không có vàng để bán --</option>';
+      onGoldProductChange();
+      return;
+    }
+    opts=held.map(([prod,pp])=>({value:prod,label:pp.label||_GOLD_LABELS[prod]||prod}));
+  } else {
+    opts=_GOLD_ALL_PRODUCTS.map(p=>({value:p,label:_GOLD_LABELS[p]||p}));
+  }
+  sel.innerHTML=opts.map(o=>`<option value="${o.value}">${o.label}</option>`).join('');
+  if(opts.some(o=>o.value===cur)) sel.value=cur;
+  onGoldProductChange();
 }
 function onGoldProductChange() {
   const v = document.getElementById('gold-product-select').value;
   document.getElementById('gold-other-name').style.display = v==='OTHER' ? 'block' : 'none';
+}
+// Mở sẵn form Giao dịch > Vàng > Bán > Vàng khác — gọi từ nút "Bán" trên box
+// Vàng khác trong Portfolio.
+function openSellOtherGold(){
+  const tradeBtn=document.querySelector('button.nav-btn[onclick^="goPage(\'trade\'"]');
+  if(tradeBtn) goPage('trade', tradeBtn);
+  const goldSubtab=document.querySelector('#page-trade .subtab-bar .subtab:nth-child(2)');
+  if(goldSubtab) showSubtab('trade','gold',goldSubtab);
+  if(_goldType!=='sell') toggleGoldType();
+  else _refreshGoldProductSelect();
+  const sel=document.getElementById('gold-product-select');
+  if(sel){ sel.value='OTHER'; onGoldProductChange(); }
+  document.getElementById('gold-qty')?.focus();
 }
 
 function setGoldUnit(unit) {
@@ -3383,10 +3464,11 @@ async function submitGoldTrade() {
   if (totalRaw == null || totalRaw < 0) { toast('Nhập tổng giá trị (≥ 0)'); return; }
   if (!dt) { toast('Chọn ngày giao dịch'); return; }
   let product = document.getElementById('gold-product-select')?.value || 'SJC_1L';
+  let customName = '';
   if (product === 'OTHER') {
-    const customName = document.getElementById('gold-other-name')?.value?.trim();
-    if (!customName) { toast('Nhập tên sản phẩm vàng'); return; }
-    product = 'OTHER:' + customName;
+    // Tên tự nhập chỉ để hiển thị/ghi chú — mọi giao dịch "Vàng khác" luôn gộp
+    // chung 1 mã 'OTHER' để số lượng/giá vốn được tính thành 1 khối duy nhất.
+    customName = document.getElementById('gold-other-name')?.value?.trim() || '';
   }
   const unitF = {'luong':1,'chi':0.1,'gram':1/37.5}[_goldUnit] || 1;
   const qtyLuong = qty * unitF;
@@ -3396,10 +3478,10 @@ async function submitGoldTrade() {
   btn.disabled = true;
   try {
     const d = await apiPost('/api/gold/trade',{telegram_id:USER_ID, type:_goldType, unit:_goldUnit,
-                            product, qty, price_per_luong:price, total_vnd:total, date:dt});
+                            product, qty, price_per_luong:price, total_vnd:total, date:dt, note:customName});
     if (d.ok) {
       const label = _goldType==='buy'?'Mua':'Bán';
-      const pLabel = _GOLD_LABELS[product]||product;
+      const pLabel = product==='OTHER' ? (customName||'Vàng khác') : (_GOLD_LABELS[product]||product);
       toast(`✓ ${label} ${qty} ${_goldUnit} ${pLabel}`);
       document.getElementById('gold-qty').value = '';
       document.getElementById('gold-price').value = '';
