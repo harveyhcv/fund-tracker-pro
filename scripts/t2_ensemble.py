@@ -103,6 +103,8 @@ def _latest_pred(conn, fund_code: str, model_version: str) -> dict:
 def cmd_predict(only_code: str = None):
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../telegram-bot"))
     import db
+    if not db.is_available():
+        db.init_pool()  # save_prediction() dùng db.get_conn() (pooled) — cần init trước
 
     w_arima, w_xgb = _load_weights()
 
