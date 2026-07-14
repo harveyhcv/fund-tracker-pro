@@ -1285,12 +1285,22 @@ function renderPfGoldSub(){
   const otherPP=byProduct['OTHER'];
   let otherRow='';
   if(otherPP && otherPP.luong>0.001){
+    const subItems=otherPP.sub_items||[];
+    // Chỉ hiện dropdown khi user thực sự có đặt tên riêng cho ít nhất 1 khoản —
+    // nếu không thì hiện số lượng như bình thường (đỡ rối mắt).
+    const qtyHtml=subItems.length
+      ? `<select style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--bdr);color:var(--c0);border-radius:6px;padding:3px 6px;font-size:11px;font-family:var(--mono)">
+          <option value="">Tổng ${otherPP.luong} lượng (${subItems.length} loại)</option>
+          ${subItems.map(s=>`<option>${s.name}: ${s.luong} lượng</option>`).join('')}
+        </select>`
+      : `<span class="sum-val" style="color:var(--c0)">${otherPP.luong} lượng</span>`;
     otherRow=`<div class="card" style="margin-top:8px;border-color:#854d0e">
-      <div class="card-title" style="font-size:11px">${otherPP.label||'Vàng khác'}</div>
-      <div class="sum-row"><span class="sum-label">Số lượng</span><span class="sum-val" style="color:var(--c0)">${otherPP.luong} lượng</span></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <div class="card-title" style="font-size:11px;margin:0">${otherPP.label||'Vàng khác'}</div>
+        <button onclick="openSellOtherGold()" class="btn btn-sell" style="width:auto;padding:4px 12px;font-size:10px">BÁN</button>
+      </div>
+      <div class="sum-row"><span class="sum-label">Số lượng</span>${qtyHtml}</div>
       <div class="sum-row"><span class="sum-label">Giá vốn TB</span><span class="sum-val">${fmt(otherPP.avg_cost)} ₫/lượng</span></div>
-      <div style="font-size:11px;color:#facc15;margin:6px 0">⚠️ Không có giá thị trường tham chiếu — không tính lãi/lỗ cho phần này.</div>
-      <button onclick="openSellOtherGold()" class="btn btn-sell" style="width:100%;padding:8px;font-size:12px">BÁN VÀNG KHÁC</button>
     </div>`;
   }
   const realEntries=Object.entries(byProduct).filter(([prod])=>prod!=='OTHER');
@@ -1327,15 +1337,17 @@ function renderPfGoldSub(){
     const sellM=(p.sell/1e6).toFixed(2)+'M';
     priceRows+=`<div class="sum-row"><span class="sum-label" style="font-size:11px">${_goldLabel(p.source,p.product)||p.label||k}</span><span class="sum-val" style="font-size:12px"><span style="color:var(--buy)">Mua ${buyM}</span> <span style="color:var(--txt2)">/</span> <span style="color:var(--sell)">Bán ${sellM}</span></span></div>`;
   }
-  const missingCount=(pf.missing_price_products||[]).length;
+  const hasOther=otherPP && otherPP.luong>0.001;
   el.innerHTML=`<div class="card">
-    <div class="card-title">TỔNG DANH MỤC VÀNG</div>
+    <div style="display:flex;justify-content:space-between;align-items:baseline">
+      <div class="card-title" style="margin:0">TỔNG DANH MỤC VÀNG</div>
+      ${hasOther?`<span style="font-size:10px;font-style:italic;color:var(--txt2);text-align:right">*không tính Vàng Khác</span>`:''}
+    </div>
     <div class="sum-row"><span class="sum-label">Tổng lượng (mọi loại)</span><span class="sum-val" style="color:var(--c0)">${pf.total_luong} lượng</span></div>
     <div class="sum-row"><span class="sum-label">Giá vốn TB</span><span class="sum-val">${fmt(avgCostTotal)} ₫/lượng</span></div>
     <div class="sum-row"><span class="sum-label">Tổng vốn</span><span class="sum-val">${fmt(pf.total_cost)} ₫</span></div>
     <div class="sum-row"><span class="sum-label">Tổng giá trị</span><span class="sum-val">${fmt(pf.current_value)} ₫</span></div>
     <div class="sum-row"><span class="sum-label">Lãi/lỗ</span><span class="sum-val" style="color:${pnlC2}">${pnlSign}${fmt(pf.pnl)} ₫ (${pnlSign}${pf.pnl_pct}%)</span></div>
-    ${missingCount?`<div style="font-size:10px;color:#facc15;margin-top:6px">⚠️ ${missingCount} loại vàng chưa có dữ liệu giá — chưa tính vào giá trị/lãi lỗ tổng (xem chi tiết bên dưới)</div>`:''}
   </div>
   ${otherRow}
   ${productRows}

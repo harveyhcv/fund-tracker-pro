@@ -279,11 +279,15 @@ def _calc_gold_portfolio(cfg: dict, tg_id: str, prices: dict) -> dict:
     (giá mà user sẽ nhận được nếu bán ra — không dùng giá bán vì đó là giá tiệm
     bán RA cho khách, không phải giá tiệm trả lại cho khách)."""
     by_product: dict[str, dict] = {}
+    # "OTHER" (Vàng khác) gộp chung 1 khối để tính số lượng/giá vốn, nhưng vẫn giữ
+    # riêng theo TÊN user tự đặt (note) — chỉ để hiển thị breakdown tham khảo
+    # trong dropdown UI, không ảnh hưởng tới cách tính tổng.
+    other_by_name: dict[str, dict] = {}
     try:
         conn = _get_db_conn()
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT product, type, qty_luong, total_vnd FROM user_gold_trades "
+                "SELECT product, type, qty_luong, total_vnd, note FROM user_gold_trades "
                 "WHERE telegram_id=%s ORDER BY trade_date, id",
                 [tg_id]
             )
@@ -292,7 +296,7 @@ def _calc_gold_portfolio(cfg: dict, tg_id: str, prices: dict) -> dict:
     except Exception as _e:
         log.warning(f"[gold_portfolio] DB error: {_e}")
         rows = []
-    for (product, tx_type, qty_luong, total_vnd) in rows:
+    for (product, tx_type, qty_luong, total_vnd, note) in rows:
         agg = by_product.setdefault(product, {"luong": 0.0, "cost": 0.0})
         ql = float(qty_luong or 0)
         tv = float(total_vnd or 0)
@@ -303,6 +307,16 @@ def _calc_gold_portfolio(cfg: dict, tg_id: str, prices: dict) -> dict:
             frac = ql / agg["luong"] if agg["luong"] > 0 else 0
             agg["cost"]  -= agg["cost"] * frac
             agg["luong"] -= ql
+        if product == "OTHER":
+            name = (note or "").strip() or "Vàng khác"
+            sub = other_by_name.setdefault(name, {"luong": 0.0, "cost": 0.0})
+            if tx_type == "buy":
+                sub["luong"] += ql
+                sub["cost"]  += tv
+            elif tx_type == "sell":
+                sfrac = ql / sub["luong"] if sub["luong"] > 0 else 0
+                sub["cost"]  -= sub["cost"] * sfrac
+                sub["luong"] -= ql
 
     breakdown = {}
     missing_price_products = []
@@ -323,6 +337,15 @@ def _calc_gold_portfolio(cfg: dict, tg_id: str, prices: dict) -> dict:
                 "cost":           round(cost, 0),
                 "price_missing":  True,
             }
+            if product == "OTHER":
+                sub_items = [
+                    {"name": name, "luong": round(v["luong"], 4)}
+                    for name, v in other_by_name.items() if v["luong"] > 0.001
+                ]
+                # Chỉ đính kèm breakdown theo tên khi user THỰC SỰ có đặt tên riêng —
+                # nếu toàn bộ đều là bucket mặc định "Vàng khác" thì không cần dropdown.
+                if any(s["name"] != "Vàng khác" for s in sub_items):
+                    breakdown[product]["sub_items"] = sub_items
             missing_price_products.append(product)
             total_cost += cost
             continue
