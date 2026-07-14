@@ -331,6 +331,11 @@ def get_bank_transfer_order(ref_code: str) -> "dict | None":
 # ─── NAV ────────────────────────────────────────────────────────────────────
 
 def upsert_nav(fund_code: str, nav_date: date, nav: float, source: str = "fmarket") -> None:
+    """GOV-007: 'tcinvest' được khóa cứng như 'fixed'/'manual' — một khi đã ghi,
+    chỉ 1 fetch 'tcinvest' MỚI mới được phép cập nhật (tự làm mới), mọi nguồn khác
+    (fmarket, tcbs cũ) không bao giờ ghi đè được nữa. Root cause của vụ VCBFTBF bị
+    NAV sai (2026-07-14): hàm này trước đây chỉ bảo vệ ('fixed','manual'), nên
+    fmarket_id cấu hình sai đã âm thầm ghi đè NAV đúng từ TCinvest nhiều ngày liền."""
     if not is_available():
         return
     with get_conn() as conn:
@@ -341,15 +346,18 @@ def upsert_nav(fund_code: str, nav_date: date, nav: float, source: str = "fmarke
                 ON CONFLICT (fund_code, nav_date) DO UPDATE
                     SET nav        = CASE
                             WHEN nav_history.source IN ('fixed', 'manual') THEN nav_history.nav
+                            WHEN nav_history.source = 'tcinvest' AND EXCLUDED.source <> 'tcinvest' THEN nav_history.nav
                             ELSE EXCLUDED.nav
                         END,
                         source     = CASE
                             WHEN nav_history.source = 'fixed'  THEN 'fixed'
                             WHEN nav_history.source = 'manual' THEN 'fixed'
+                            WHEN nav_history.source = 'tcinvest' AND EXCLUDED.source <> 'tcinvest' THEN 'tcinvest'
                             ELSE EXCLUDED.source
                         END,
                         fetched_at = NOW()
-                WHERE nav_history.source NOT IN ('fixed', 'manual')
+                WHERE nav_history.source NOT IN ('fixed', 'manual', 'tcinvest')
+                   OR (nav_history.source = 'tcinvest' AND EXCLUDED.source = 'tcinvest')
             """, (fund_code, nav_date, nav, source))
     logger.debug("upsert_nav %s %s %.4f src=%s", fund_code, nav_date, nav, source)
     # Sau khi API data confirmed → unify pending Pro drafts nếu khớp
@@ -372,8 +380,15 @@ def upsert_nav(fund_code: str, nav_date: date, nav: float, source: str = "fmarke
 # Priority hiển thị: fixed > confirmed > manual > tcbs/fmarket > provisional
 
 CONFIDENCE_EPSILON = 1.0   # Trong vòng 1 VND = cùng giá trị (NAV thường 10k-20k)
-PROTECTED_SOURCES  = ('fixed', 'confirmed')   # không bao giờ bị ghi đè tự động
-TRUSTED_SOURCES    = ('fixed', 'confirmed', 'manual')  # không bị tính là provisional
+# GOV-007 (2026-07-14): TCinvest là NGUỒN CHUẨN (Harvey xác nhận sau vụ VCBFTBF bị
+# fmarket_id sai ghi đè NAV đúng từ TCinvest liên tục nhiều ngày — root cause:
+# upsert_nav() chỉ bảo vệ fixed/manual, không bảo vệ tcinvest). Từ giờ 'tcinvest'
+# được coi ngang hàng 'fixed'/'confirmed' — MỘT KHI đã ghi vào nav_history, không
+# nguồn tự động nào (fmarket, tcbs cũ) được phép ghi đè nữa ("khóa cứng" theo đúng
+# yêu cầu — giống mô hình append-only/immutable-after-verify). Chỉ 1 lần fetch
+# tcinvest MỚI hoặc admin thao tác thủ công mới được đổi giá trị đã khóa.
+PROTECTED_SOURCES  = ('fixed', 'confirmed', 'tcinvest')   # không bao giờ bị ghi đè tự động bởi nguồn khác
+TRUSTED_SOURCES    = ('fixed', 'confirmed', 'manual', 'tcinvest')  # không bị tính là provisional
 
 
 def upsert_nav_with_confidence(
@@ -392,9 +407,12 @@ def upsert_nav_with_confidence(
     if not is_available():
         return 'skipped'
 
-    # Detect provisional: fetch == yesterday (API chưa update NAV mới)
+    # Detect provisional: fetch == yesterday (API chưa update NAV mới).
+    # TCinvest KHÔNG bao giờ bị coi là provisional dù trùng NAV hôm qua — đây là
+    # nguồn chuẩn, NAV đứng yên là dữ kiện thật, không phải "chưa chắc chắn".
     is_prov = (
-        yesterday_nav is not None
+        source_api != 'tcinvest'
+        and yesterday_nav is not None
         and abs(nav_fetched - yesterday_nav) <= CONFIDENCE_EPSILON
     )
     effective_source = 'provisional' if is_prov else source_api
@@ -425,6 +443,22 @@ def upsert_nav_with_confidence(
         # ── Immune states ─────────────────────────────────────────────────────
         if existing_source in ('fixed',):
             return 'skipped'
+
+        if existing_source == 'tcinvest':
+            # GOV-007: TCinvest là nguồn chuẩn — "khóa cứng", chỉ 1 fetch TCinvest
+            # MỚI mới được phép cập nhật (tự làm mới chính mình), mọi nguồn khác
+            # (fmarket, tcbs cũ) tuyệt đối không được ghi đè, kể cả khi giá trị
+            # trông "khác biệt" — đây chính là cơ chế lẽ ra phải chặn vụ VCBFTBF.
+            if source_api != 'tcinvest':
+                if abs(nav_fetched - float(existing_nav)) > CONFIDENCE_EPSILON:
+                    logger.warning(
+                        "⚠ Bỏ qua ghi đè nguồn '%s' lên NAV đã khóa (tcinvest): %s %s "
+                        "tcinvest=%.0f %s_fetch=%.0f — TCinvest luôn thắng",
+                        source_api, fund_code, nav_date, existing_nav, source_api, nav_fetched
+                    )
+                return 'skipped'
+            # source_api == 'tcinvest' → cho phép tự cập nhật bình thường (rơi
+            # xuống nhánh auto-sources bên dưới với effective_source='tcinvest')
 
         if existing_source == 'confirmed':
             # Cross-check: nếu fetch mới khác confirmed → log WARNING nhưng không đổi

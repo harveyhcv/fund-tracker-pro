@@ -413,14 +413,34 @@ def fetch_tcbs(code: str, token: str = "", from_date: str = None) -> list:
 
 
 def get_nav_series(code: str, fund_cfg: dict, config: dict = None) -> list:
-    fid = fund_cfg.get("fmarket_id")
-    pts = fetch_fmarket(fid) if fid else []
-    if not pts and fund_cfg.get("tcbs"):
+    """Trả về list điểm NAV (không kèm source — dùng cho hiển thị/tính tín hiệu).
+    Dùng get_nav_series_with_source() nếu cần biết nguồn để ghi DB đúng."""
+    pts, _src = get_nav_series_with_source(code, fund_cfg, config)
+    return pts
+
+
+def get_nav_series_with_source(code: str, fund_cfg: dict, config: dict = None) -> tuple:
+    """GOV-007 (2026-07-14): TCinvest là nguồn CHUẨN — luôn thử trước fmarket.
+    Trước đây fmarket được thử TRƯỚC bất kể quỹ có JWT TCinvest hay không, nên
+    1 fmarket_id cấu hình sai (vụ VCBFTBF) đã âm thầm ghi đè NAV đúng từ TCinvest
+    mỗi lần job chạy — vì hàm gọi upsert_nav() không hề biết dữ liệu thật sự đến
+    từ đâu, chỉ đoán theo fund_cfg tĩnh. Trả kèm source thật để caller ghi DB
+    đúng nguồn (xem fetch_all())."""
+    pts, source = [], None
+    if fund_cfg.get("tcbs"):
         tcbs_token = os.environ.get("TCBS_TOKEN") or (config or {}).get("tcbs_token", "")
         # Không truyền from_date → full history → đủ điểm cho RSI/MACD/BB
         # fetch_tcbs() sẽ thử TCinvest endpoint mới trước, fallback về old nếu cần
         log.info(f"[Nav] {code} fetch full history (token={'yes' if tcbs_token else 'no'})")
         pts = fetch_tcbs(code, tcbs_token)
+        if pts:
+            source = "tcinvest"
+    if not pts:
+        fid = fund_cfg.get("fmarket_id")
+        if fid:
+            pts = fetch_fmarket(fid)
+            if pts:
+                source = "fmarket"
     # Fallback cuối: đọc từ master NAV DB (nav_history) khi fetch live thất bại
     # — giúp quỹ TCinvest-only (vd TCFF) vẫn hiển thị khi token hết hạn.
     if not pts and _DB_AVAILABLE and _db.is_available():
@@ -432,9 +452,10 @@ def get_nav_series(code: str, fund_cfg: dict, config: dict = None) -> list:
             )
             if pts:
                 log.info(f"[Nav] {code} fallback DB nav_history: {len(pts)} điểm")
+                source = None  # đã có sẵn trong DB rồi, không cần ghi lại
         except Exception as e:
             log.warning(f"[Nav] {code} DB fallback lỗi: {e}")
-    return pts
+    return pts, source
 
 
 # ═══════════════════════════════════════
@@ -1348,7 +1369,7 @@ def fetch_all(config: dict, codes: set) -> dict:
     funds_cfg = config.get("funds", {})
     for code in sorted(codes):
         fund_cfg = funds_cfg.get(code) or FUND_CATALOG.get(code, {})
-        pts = get_nav_series(code, fund_cfg, config)
+        pts, src = get_nav_series_with_source(code, fund_cfg, config)
         if pts:
             result[code] = calc_signal(code, pts)
             sig = result[code]["signal"]
@@ -1356,9 +1377,12 @@ def fetch_all(config: dict, codes: set) -> dict:
             today_str = date.today().isoformat()
             stale_warn = f"  ⚠ NAV date={nav_dt} (stale, today={today_str})" if nav_dt < today_str else ""
             log.info(f"  {code:12s}  NAV={result[code]['nav']:>10,.0f}  {sig}{stale_warn}")
-            # Sync full history to DB so miniapp uses same data as bot
-            if _DB_AVAILABLE and _db.is_available():
-                src = "fmarket" if fund_cfg.get("fmarket_id") else "tcbs"
+            # Sync full history to DB so miniapp uses same data as bot. src=None
+            # nghĩa là điểm này đã đọc lại từ chính nav_history (fallback cuối,
+            # không phải fetch mới) — không cần ghi lại, và quan trọng hơn: KHÔNG
+            # còn đoán nguồn theo fund_cfg tĩnh nữa (bug gây ra vụ NAV VCBFTBF sai —
+            # 'fmarket' bị dùng làm nhãn dù dữ liệu thật lấy từ TCinvest).
+            if src and _DB_AVAILABLE and _db.is_available():
                 saved = 0
                 for p in pts:
                     try:
@@ -1550,16 +1574,13 @@ def job_check_signals():
     state["last_signal_check"] = datetime.now().isoformat()
     save_state(state)
 
-    # Persist to PostgreSQL (no-op if DB unavailable)
+    # Persist to PostgreSQL (no-op if DB unavailable). NAV chính nó đã được
+    # fetch_all() ghi với nguồn ĐÚNG ở trên rồi (get_nav_series_with_source) —
+    # gọi lại upsert_nav() ở đây KHÔNG kèm source (mặc định "fmarket") là dư thừa
+    # và từng là 1 trong các chỗ góp phần gây sai nhãn nguồn NAV (vụ VCBFTBF).
     if _DB_AVAILABLE and _db.is_available():
         today = date.today()
         for code, d in nav_data.items():
-            if d.get("nav") and d.get("nav_date"):
-                try:
-                    nav_date = date.fromisoformat(d["nav_date"])
-                    _db.upsert_nav(code, nav_date, d["nav"])
-                except Exception as e:
-                    log.debug("upsert_nav %s: %s", code, e)
             sig = d.get("signal", "")
             strength_map = {
                 "MUA MẠNH": "strong_buy", "MUA": "buy",

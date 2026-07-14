@@ -548,7 +548,7 @@ def cmd_daily(conn, only_code: Optional[str] = None, jwt: Optional[str] = None) 
     updated_list    = []
     provisional_list = []   # quỹ fetch được nhưng NAV == hôm qua (API chưa update, chưa chắc đúng)
 
-    PROVISIONAL_PROTECTED = ('fixed', 'confirmed', 'manual', 'pending_confirm')
+    PROVISIONAL_PROTECTED = ('fixed', 'confirmed', 'manual', 'pending_confirm', 'tcinvest')
 
     for code, fmarket_id, is_tcbs in funds:
         with conn.cursor() as cur:
@@ -578,19 +578,22 @@ def cmd_daily(conn, only_code: Optional[str] = None, jwt: Optional[str] = None) 
             else:
                 from_date = next_day
 
-        if fmarket_id:
-            pts = fetch_fmarket_nav(fmarket_id, from_date=from_date)
-            source = "fmarket"
-        elif is_tcbs:
-            if not jwt:
-                continue
+        # GOV-007 (2026-07-14): TCinvest là nguồn CHUẨN — luôn thử trước, fmarket chỉ
+        # dùng để lấp chỗ trống khi quỹ không có trên TCinvest hoặc JWT hết hạn. Trước
+        # đây fmarket được thử TRƯỚC bất kể is_tcbs, nên 1 fmarket_id cấu hình sai (vụ
+        # VCBFTBF) đã âm thầm ghi đè NAV đúng từ TCinvest — DB layer giờ cũng khóa cứng
+        # 'tcinvest' (xem db.py upsert_nav/upsert_nav_with_confidence) nhưng đổi thứ tự
+        # thử ở đây để dữ liệu ĐÚNG được ưu tiên ngay từ đầu, không chỉ chặn ở lớp ghi.
+        pts, source = [], None
+        if is_tcbs and jwt:
             pts = tcinvest_fetch_nav_hist(code, jwt)
             if last:
                 pts = [p for p in pts if p["date"] >= from_date]
-            source = "tcbs"
-        else:
-            continue
-
+            if pts:
+                source = "tcinvest"
+        if not pts and fmarket_id:
+            pts = fetch_fmarket_nav(fmarket_id, from_date=from_date)
+            source = "fmarket"
         if not pts:
             time.sleep(0.2)
             continue

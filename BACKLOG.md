@@ -26,10 +26,31 @@
 #    Đã sửa: bỏ fmarket_id, sửa tên đúng. CHƯA tự backfill lại lịch sử do token local hết
 #    hạn — cần chạy `python scripts/harvest_nav.py --backfill --code VCBFTBF --jwt <token>`
 #    trên Railway (đã có token mới) để tự sửa lại toàn bộ NAV lịch sử sai.
-#    ⚠️ Lưu ý kiến trúc: `upsert_nav()` (dùng trong job_check_signals/fetch_all) chỉ bảo vệ
-#    ('fixed','manual'), không bảo vệ nguồn tin cậy khác (tcinvest/confirmed) khỏi bị nguồn
-#    kém tin cậy hơn ghi đè — rủi ro tương tự có thể xảy ra ở quỹ khác nếu fmarket_id sai.
-#    Scan 30 ngày gần nhất: chỉ VCBFTBF bị (không phải lỗi hệ thống diện rộng).
+# 2b. GOV-007 · TCinvest = nguồn CHUẨN, khóa cứng sau khi ghi (Harvey yêu cầu sau vụ #2 —
+#    "trước đây không hề bị lỗi, tự dưng hôm qua sai — rủi ro mỗi lần update app đều gây
+#    NAV sai" + mô hình blockchain: verify rồi khóa cứng, không API nào ghi đè được nữa):
+#    - db.py: PROTECTED_SOURCES/TRUSTED_SOURCES thêm 'tcinvest' — ngang hàng fixed/confirmed.
+#      upsert_nav() (plain) + upsert_nav_with_confidence() đều chặn mọi nguồn khác (fmarket,
+#      tcbs cũ) ghi đè 1 khi đã có source='tcinvest'; chỉ 1 fetch tcinvest MỚI mới tự cập
+#      nhật được chính nó. tcinvest cũng không bao giờ bị coi 'provisional' dù NAV trùng
+#      hôm qua (là dữ kiện thật từ nguồn chuẩn, không phải "chưa chắc chắn").
+#    - bot.py: get_nav_series() giữ nguyên chữ ký (backward-compat), thêm
+#      get_nav_series_with_source() trả kèm nguồn THẬT đã dùng (trước đây fetch_all() đoán
+#      nguồn theo fund_cfg tĩnh — 'fmarket' nếu có fmarket_id — bất kể dữ liệu thật lấy từ
+#      đâu, đây chính là cách VCBFTBF bị ghi sai nhãn liên tục). Đổi thứ tự thử: tcbs/tcinvest
+#      TRƯỚC, fmarket chỉ dùng khi tcinvest rỗng/không có JWT (trước đây fmarket luôn thử
+#      trước). Xoá 1 lệnh upsert_nav() dư thừa trong job_check_signals (không kèm source,
+#      mặc định "fmarket" — 1 nguồn gây sai nhãn khác).
+#    - harvest_nav.py --daily: cùng đổi thứ tự (tcinvest trước), sửa nhãn source="tcbs" →
+#      "tcinvest" khi thực sự fetch từ tcinvest_fetch_nav_hist() (trước đây gọi tcinvest
+#      nhưng gắn nhãn "tcbs" — mơ hồ, không được bảo vệ đúng mức). Thêm 'tcinvest' vào
+#      PROVISIONAL_PROTECTED.
+#    - QC: đã test trực tiếp trên DB thật (dùng fund code thật + ngày decoy 2027, dọn sạch
+#      sau khi xong) — xác nhận: fmarket không ghi đè được tcinvest, tcinvest tự cập nhật
+#      được chính nó, tcinvest không bao giờ thành provisional. 246/246 test vẫn xanh.
+#    ⚠️ Còn lại: nếu 1 nguồn khác (fmarket/tcbs) ghi TRƯỚC tcinvest cho cùng ngày (vd tcinvest
+#    JWT hết hạn tạm thời), giá trị đó KHÔNG bị khóa (chỉ tcinvest mới khóa) — tcinvest fetch
+#    sau đó vẫn ghi đè được bình thường (đúng ý — tcinvest luôn thắng cuối cùng).
 # 3. FIX-003 · Admin dashboard "quỹ chưa có NAV hôm nay" hiện 78 mã kỳ quặc (FMKT_8,
 #    FMKT_12...) — đây là placeholder do `--discover` tạo ra khi tìm thấy fmarket
 #    productId hợp lệ nhưng API không trả tên quỹ thật, chưa từng được map/kích hoạt
