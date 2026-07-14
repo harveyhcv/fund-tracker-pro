@@ -4,8 +4,27 @@
 # Priority: P0 (blocker) / P1 (important) / P2 (nice-to-have)
 # Claude đọc file này ĐẦU TIÊN mỗi session. Pick task IN_PROGRESS nếu có, nếu không pick P0 cao nhất.
 #
-# Last updated: 2026-07-14 (v1.2 — badge UI mini app + toàn bộ session 8: DCA riskparity/mpt,
-# VCBFTBF NAV sai, dọn FMKT_* placeholder, rút gọn thông báo bot, khóa cứng TCinvest)
+# Last updated: 2026-07-14 (v1.2.2 — tìm ra root cause THẬT của VCBFTBF NAV sai)
+
+## GOV-007 — root cause thật (2026-07-14, sau khi bug tái diễn dù đã "khóa cứng")
+# Bản sửa trước (bỏ fmarket_id sai của VCBFTBF trong FUND_CATALOG) KHÔNG có tác dụng gì
+# trên production: `fetch_all()` (bot.py) ưu tiên đọc `config.json["funds"][code]` TRƯỚC
+# FUND_CATALOG, chỉ fallback nếu config.json không có entry. config.json trên Railway
+# (ghi 1 lần, không tự đồng bộ lại với code mỗi lần deploy) vẫn giữ fmarket_id=31 cũ —
+# luôn thắng, tiếp tục ghi NAV sai. Phát hiện qua: fetched_at cập nhật ngay sau deploy
+# mới nhưng source vẫn quay lại 'fmarket'.
+# Đã sửa: đổi ưu tiên `FUND_CATALOG.get(code) or funds_cfg.get(code) or {}` (khớp pattern
+# đã đúng từ đầu ở _api_admin_fetch_nav) + sửa trực tiếp config.json trên server (có backup
+# `/data/config.json.bak-before-vcbftbf-fix`) + backfill lại toàn bộ 4,583 điểm lịch sử.
+# Phát hiện thêm: dữ liệu fmarket cho mã này TỰ NÓ không nhất quán qua thời gian — cùng
+# ngày lịch sử, query khác lần trả về ~28k hoặc ~38k — gây pattern xen kẽ suốt từ 07/2025,
+# không phải "tự dưng hôm qua" như quan sát ban đầu (đã sai âm thầm nhiều tháng, chỉ mới
+# bị phát hiện). Verify: 83 anomaly (>8% jump giữa 2 ngày liên tiếp) trong 370 ngày gần
+# nhất → 0 sau khi backfill lại. Đã re-test lock bằng đúng kịch bản config cũ (giả lập
+# fmarket_id=31) — xác nhận giờ không viết đè được nữa. vol_30d: 5.56% (sane).
+# Bài học: khi "khóa" 1 nguồn dữ liệu, phải audit TẤT CẢ nơi đọc cấu hình cho quỹ đó
+# (không chỉ code — còn config.json/DB đã persist từ trước), không chỉ sửa 1 chỗ rồi
+# coi là xong.
 #
 # v1.2 — UI mini app (badge tín hiệu):
 # - navConfidenceBadge tách riêng phần 'manual' ra thành manualNavBadge() (chỉ icon ✍️,
