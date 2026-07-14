@@ -46,13 +46,17 @@ body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14p
 .tlog-btn{padding:4px 8px;border-radius:6px;border:none;font-size:11px;cursor:pointer;font-family:var(--sans)}
 .tlog-edit{background:#1e3a5f;color:#93c5fd}
 .tlog-del{background:#3b0f0f;color:#f87171}
-.fund-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--bdr);gap:8px;cursor:pointer;transition:background .15s;border-radius:6px;padding:8px 4px}
+.fund-row{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--bdr);gap:8px;cursor:pointer;transition:background .15s;border-radius:6px;padding:10px 4px}
 .fund-row:last-child{border:none}
 .fund-row:active{background:var(--bg3)}
-.fund-code{font-family:var(--mono);font-weight:600;font-size:13px;flex:0 0 auto}
-.fund-info{flex:1;min-width:0}
-.fund-nav{font-family:var(--mono);font-size:12px;color:var(--txt2)}
-.fund-right{text-align:right;flex:0 0 auto}
+.fund-code{font-family:var(--mono);font-weight:700;font-size:13px;flex:0 0 auto}
+.fund-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.fund-top{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap}
+.fund-nav{font-family:var(--mono);font-size:14px;font-weight:600;color:var(--txt)}
+.fund-sub{font-size:11px;color:var(--txt2);display:flex;align-items:center;gap:6px}
+.fund-sub-sep{opacity:.4}
+.fund-t2-chip{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-family:var(--mono);background:var(--bg3);border-radius:5px;padding:2px 7px;width:fit-content}
+.fund-right{text-align:right;flex:0 0 auto;display:flex;flex-direction:column;gap:4px}
 .sig-row{display:grid;grid-template-columns:90px 1fr auto;gap:8px;align-items:center;padding:8px 4px;border-bottom:1px solid var(--bdr);cursor:pointer;border-radius:6px;transition:background .15s}
 .sig-row:last-child{border:none}
 .sig-row:active{background:var(--bg3)}
@@ -1252,14 +1256,22 @@ function renderPortfolio(me){
     for(const h of pf.items){
       const chg=h.chg_pct||0;
       html+=`<div class="fund-row" onclick="openResearch('${h.code}')">
-        <div class="fund-code">${h.code}</div>
         <div class="fund-info">
-          <div class="fund-nav">NAV ${fmt(h.nav)} đ <span class="pnl ${pnlC(chg)}" style="font-size:11px">${fmtP(chg)}</span></div>
-          <div style="font-size:11px;color:var(--txt2)">${fmt(h.units)} CCQ · CP ${fmt(h.avg_cost)}${_t2Html(h.code, h.nav, true)}</div>
+          <div class="fund-top">
+            <span class="fund-code">${h.code}</span>
+            <span class="fund-nav">${fmt(h.nav)} đ</span>
+            <span class="pnl ${pnlC(chg)}" style="font-size:11px">${fmtP(chg)}</span>
+          </div>
+          <div class="fund-sub">
+            <span>${fmt(h.units)} CCQ</span>
+            <span class="fund-sub-sep">·</span>
+            <span>Vốn ${fmt(h.avg_cost)} đ</span>
+          </div>
+          ${_t2Html(h.code, h.nav, true)}
         </div>
         <div class="fund-right">
           <div class="badge ${sigC(h.signal)}">${sigLabel(h.signal)}</div>
-          <div class="pnl ${pnlC(h.pnl_pct)}" style="font-size:12px;margin-top:4px">${fmtP(h.pnl_pct)}</div>
+          <div class="pnl ${pnlC(h.pnl_pct)}" style="font-size:12px">${fmtP(h.pnl_pct)}</div>
           <div style="font-size:11px;color:var(--txt2)">${h.pnl>=0?'+':''}${fmt(h.pnl)}</div>
         </div>
       </div>`;
@@ -1651,10 +1663,11 @@ function _t2Html(code, navNow, compact=false){
   const color=up?'var(--buy)':'var(--sell)';
   const arrow=up?'↑':'↓';
   if(compact){
-    // Inline (không phải div riêng) để gộp vào hàng cuối bên trái fund-row,
-    // giữ cân đối 3 hàng mỗi bên. NAV làm tròn hàng đơn vị chỉ để hiển thị —
-    // dữ liệu gốc trong pred.predicted_nav vẫn giữ nguyên 2 chữ số thập phân.
-    return ` · <span style="color:${color};font-weight:600">T+2 ${arrow}${Math.abs(diff).toFixed(1)}%</span> <span style="color:var(--txt2)">${fmt(Math.round(t2))} đ</span>`;
+    // Chip riêng (không nhét chung dòng với số lượng/giá vốn) — tách biệt rõ
+    // ràng bằng nền + viền màu, tránh chữ chen chúc khó đọc. NAV làm tròn
+    // hàng đơn vị chỉ để hiển thị — dữ liệu gốc pred.predicted_nav vẫn giữ
+    // nguyên 2 chữ số thập phân cho phân tích sau này.
+    return `<span class="fund-t2-chip" style="border:1px solid ${up?'#14532d':'#7f1d1d'};color:${color}">🔮 T+2 ${arrow}${Math.abs(diff).toFixed(1)}% · ${fmt(Math.round(t2))}đ</span>`;
   }
   return `<div style="margin-top:8px;padding:8px 10px;background:var(--bg3);border-radius:8px;border-left:3px solid ${color}">
     <div style="font-size:11px;color:var(--txt2);margin-bottom:2px">⏱ Giá chốt T+2 (dự báo ${_t2ModelLabel(pred.model_version)})</div>
