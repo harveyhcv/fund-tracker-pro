@@ -100,6 +100,21 @@ def _latest_pred(conn, fund_code: str, model_version: str) -> dict:
     return {"predicted_for_date": row[0], "predicted_nav": row[1]}
 
 
+def _latest_xgb_version(conn) -> str:
+    """T2-007 bump version (xgb-v1 → xgb-v2 → ...) mỗi lần --train — không được
+    hardcode 'xgb-v1' ở đây (BUG cũ: ensemble skip 100% quỹ ngay sau lần
+    retrain thứ 2 vì tìm 'xgb-v1' trong khi predictions mới nhất đã ghi dưới
+    'xgb-v2'). Lấy version XGBoost được dùng gần đây nhất trong nav_predictions."""
+    with conn.cursor() as cur:
+        cur.execute("""
+            SELECT model_version FROM nav_predictions
+            WHERE model_version LIKE 'xgb-v%'
+            ORDER BY created_at DESC LIMIT 1
+        """)
+        row = cur.fetchone()
+    return row[0] if row else "xgb-v1"
+
+
 def cmd_predict(only_code: str = None):
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../telegram-bot"))
     import db
@@ -109,6 +124,7 @@ def cmd_predict(only_code: str = None):
     w_arima, w_xgb = _load_weights()
 
     conn = _get_conn()
+    xgb_version = _latest_xgb_version(conn)
     with conn.cursor() as cur:
         if only_code:
             cur.execute(
@@ -118,17 +134,17 @@ def cmd_predict(only_code: str = None):
         else:
             cur.execute("""
                 SELECT DISTINCT fund_code FROM nav_predictions
-                WHERE model_version IN ('arima-v1', 'xgb-v1')
+                WHERE model_version IN ('arima-v1', %s)
                 ORDER BY fund_code
-            """)
+            """, (xgb_version,))
         codes = [r[0] for r in cur.fetchall()]
 
-    print(f"Ensemble T+2 cho {len(codes)} quỹ (W_ARIMA={w_arima:.3f}, W_XGB={w_xgb:.3f})...")
+    print(f"Ensemble T+2 cho {len(codes)} quỹ (W_ARIMA={w_arima:.3f}, W_XGB={w_xgb:.3f}, xgb_version={xgb_version})...")
     ok = skipped = errors = 0
 
     for code in codes:
         arima = _latest_pred(conn, code, "arima-v1")
-        xgb_p = _latest_pred(conn, code, "xgb-v1")
+        xgb_p = _latest_pred(conn, code, xgb_version)
         if not arima or not xgb_p:
             skipped += 1
             continue
@@ -168,8 +184,9 @@ def cmd_predict(only_code: str = None):
 def cmd_reweight():
     """T2-008: Tính lại W_ARIMA/W_XGB theo MAPE 30 ngày qua (inverse-MAPE weighting)."""
     conn = _get_conn()
-    mape_arima = _mape_last_days(conn, "arima-v1", REWEIGHT_WINDOW_DAYS, MIN_SAMPLES_REWEIGHT)
-    mape_xgb   = _mape_last_days(conn, "xgb-v1",   REWEIGHT_WINDOW_DAYS, MIN_SAMPLES_REWEIGHT)
+    xgb_version = _latest_xgb_version(conn)
+    mape_arima = _mape_last_days(conn, "arima-v1",  REWEIGHT_WINDOW_DAYS, MIN_SAMPLES_REWEIGHT)
+    mape_xgb   = _mape_last_days(conn, xgb_version, REWEIGHT_WINDOW_DAYS, MIN_SAMPLES_REWEIGHT)
     conn.close()
 
     if mape_arima is None or mape_xgb is None:
@@ -203,6 +220,7 @@ def cmd_status():
           f"({'adaptive (đã --reweight)' if reweighted else 'tĩnh mặc định — chưa --reweight lần nào'})")
 
     conn = _get_conn()
+    xgb_version = _latest_xgb_version(conn)
     with conn.cursor() as cur:
         cur.execute("""
             SELECT np.model_version,
@@ -210,15 +228,15 @@ def cmd_status():
                    COUNT(*) AS n
             FROM prediction_actuals pa
             JOIN nav_predictions np ON np.id = pa.prediction_id
-            WHERE np.model_version IN ('arima-v1', 'xgb-v1', 'ensemble-v1')
+            WHERE np.model_version IN ('arima-v1', %s, 'ensemble-v1')
             GROUP BY np.model_version
             ORDER BY mape
-        """)
+        """, (xgb_version,))
         rows = cur.fetchall()
     conn.close()
 
     if not rows:
-        print("Chưa có dữ liệu chấm điểm cho arima-v1/xgb-v1/ensemble-v1.")
+        print(f"Chưa có dữ liệu chấm điểm cho arima-v1/{xgb_version}/ensemble-v1.")
         return
     print("\nMAPE so sánh toàn thời gian (thấp hơn = tốt hơn):")
     for model_version, mape, n in rows:
