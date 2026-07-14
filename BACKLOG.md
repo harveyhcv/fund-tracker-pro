@@ -4,7 +4,22 @@
 # Priority: P0 (blocker) / P1 (important) / P2 (nice-to-have)
 # Claude đọc file này ĐẦU TIÊN mỗi session. Pick task IN_PROGRESS nếu có, nếu không pick P0 cao nhất.
 #
-# Last updated: 2026-07-14 (session 8 — fix DCA riskparity/mpt, VCBFTBF NAV sai, dọn FMKT_* placeholder, rút gọn thông báo bot)
+# Last updated: 2026-07-14 (v1.2 — badge UI mini app + toàn bộ session 8: DCA riskparity/mpt,
+# VCBFTBF NAV sai, dọn FMKT_* placeholder, rút gọn thông báo bot, khóa cứng TCinvest)
+#
+# v1.2 — UI mini app (badge tín hiệu):
+# - navConfidenceBadge tách riêng phần 'manual' ra thành manualNavBadge() (chỉ icon ✍️,
+#   bỏ chữ "thủ công" cho gọn).
+# - staleNavBadge rút gọn còn ngày ngắn (vd "⏱ 13/07") thay vì câu dài "chưa có NAV hôm
+#   nay — nhập tay"; ẩn hẳn khi NAV đã cập nhật hôm nay.
+# - manualNavBadge + staleNavBadge dời xuống cột phải dưới badge Mua/Bán/Hold (trước đây
+#   nằm chung dòng với giá NAV, dễ tràn dòng trên màn hình hẹp).
+# - positionBadge (P&L vị thế user): đổi icon 💼 → nhãn "T+2" trong 1 bản nháp trước đó,
+#   NHƯNG bị phát hiện lỗi khi kiểm tra lại — "T+2" đã có nghĩa khác (dự báo NAV T+2) ngay
+#   trên cùng 1 thẻ quỹ, gây nhầm lẫn 2 con số khác nhau cùng nhãn. Đã revert lại về 💼.
+# - QC: verify trực tiếp trong browser thật (không phải Node eval giả lập) — gọi thẳng
+#   các hàm badge với dữ liệu mock, và render renderSignals() với 3 quỹ mẫu (stale/manual/
+#   up-to-date) — xác nhận đúng thiết kế, không còn nhãn T+2 gây nhầm.
 
 ## ĐANG LÀM (IN_PROGRESS)
 # Không có. v1.1/v1.1.1/v1.1.2 đã tag (thay v1.0), QA 246/246 pass, QC thủ công payment

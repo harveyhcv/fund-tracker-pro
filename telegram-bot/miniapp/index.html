@@ -1598,18 +1598,28 @@ function _t2Html(code, navNow, compact=false){
 function navConfidenceBadge(s){
   const src=s.nav_source||'';
   if(src==='provisional') return '<span style="font-size:9px;white-space:nowrap;background:#1a1a00;color:#facc15;border:1px solid #854d0e;border-radius:4px;padding:1px 4px;margin-left:4px">⏳ tạm</span>';
-  if(src==='manual')      return '<span style="font-size:9px;white-space:nowrap;background:#001a10;color:#4ade80;border:1px solid #14532d;border-radius:4px;padding:1px 4px;margin-left:4px">📝 thủ công</span>';
   if(src==='pending_confirm') return '<span style="font-size:9px;white-space:nowrap;background:#1a0000;color:#f87171;border:1px solid #7f1d1d;border-radius:4px;padding:1px 4px;margin-left:4px">⚠️ cần xác nhận</span>';
   if(src==='confirmed')   return '<span style="font-size:9px;white-space:nowrap;background:#001020;color:#38bdf8;border:1px solid #0c4a6e;border-radius:4px;padding:1px 4px;margin-left:4px">✅ đã xác nhận</span>';
   if(src==='fixed')       return '<span style="font-size:9px;white-space:nowrap;background:#0a0010;color:#c084fc;border:1px solid #581c87;border-radius:4px;padding:1px 4px;margin-left:4px">🔒 đã khóa</span>';
   return '';
 }
 
+function manualNavBadge(s){
+  if((s.nav_source||'')!=='manual') return '';
+  return '<span title="Nhập NAV thủ công" style="font-size:9px;white-space:nowrap;background:#001a10;color:#4ade80;border:1px solid #14532d;border-radius:4px;padding:1px 4px">✍️</span>';
+}
+
 function _todayISO(){return new Date().toISOString().slice(0,10);}
+
+function _shortDate(iso){
+  if(!iso) return '';
+  const p=iso.split('-');
+  return p.length===3 ? `${p[2]}/${p[1]}` : iso;
+}
 
 function staleNavBadge(code, s){
   if(!s.nav_date || s.nav_date>=_todayISO()) return '';
-  return `<span onclick="event.stopPropagation();openManualNav('${code}','${s.nav_date}')" style="cursor:pointer;font-size:9px;white-space:nowrap;background:#1a1000;color:#fb923c;border:1px solid #7c2d12;border-radius:4px;padding:1px 4px;margin-left:4px">⏱ chưa có NAV hôm nay — nhập tay</span>`;
+  return `<span onclick="event.stopPropagation();openManualNav('${code}','${s.nav_date}')" title="Bấm để nhập NAV thủ công" style="cursor:pointer;font-size:9px;white-space:nowrap;background:#1a1000;color:#fb923c;border:1px solid #7c2d12;border-radius:4px;padding:1px 4px">⏱ ${_shortDate(s.nav_date)}</span>`;
 }
 
 async function openManualNav(code, lastDate){
@@ -1652,7 +1662,6 @@ function renderSignals(sigs){
         <div style="font-size:11px;color:var(--txt2)">${fmt(s.nav)} đ
           <span class="pnl ${pnlC(chg)}" style="font-size:10px"> ${fmtP(chg)}</span>
           ${navConfidenceBadge(s)}
-          ${staleNavBadge(code, s)}
           ${positionBadge(s)}
         </div>
         ${_t2Html(code, s.nav, true)}
@@ -1673,7 +1682,10 @@ function renderSignals(sigs){
           <div class="meter-val" style="font-size:11px;color:${(s.score||0)>=3?'var(--buy)':(s.score||0)<=-3?'var(--sell)':'var(--txt)'}">${s.score>=0?'+':''}${s.score||0}</div>
         </div>
       </div>
-      <div class="badge ${sigC(s.signal)}">${sigLabel(s.signal)}</div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+        <div class="badge ${sigC(s.signal)}">${sigLabel(s.signal)}</div>
+        <div style="display:flex;gap:4px">${manualNavBadge(s)}${staleNavBadge(code, s)}</div>
+      </div>
     </div>`;
   }
   html+='</div>';
