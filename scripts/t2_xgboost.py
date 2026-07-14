@@ -207,7 +207,7 @@ def cmd_train():
             "trained_at": date.today().isoformat(),
             "train_rows": len(X_train),
             "test_rows": len(X_test),
-            "test_mape": mape,
+            "test_mape": float(mape),  # numpy.float32 (từ booster.predict) không JSON serializable
         }, f, ensure_ascii=False, indent=2)
     print(f"  Model saved: {MODEL_PATH}")
     print(f"  Meta saved:  {META_PATH}")
@@ -221,7 +221,7 @@ def cmd_train():
             cur.execute(
                 "INSERT INTO model_metrics (model_version, fund_code, window_days, mape, sample_size) "
                 "VALUES (%s, NULL, %s, %s, %s)",
-                (model_version, 0, mape, len(abs_pct_errors)),
+                (model_version, 0, float(mape), len(abs_pct_errors)),  # psycopg2 không adapt được numpy.float32
             )
     conn.close()
     print(f"\nTrain xong ({model_version}). Chạy --predict để dự báo T+2 với model mới.")
