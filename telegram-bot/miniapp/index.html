@@ -1347,8 +1347,11 @@ function renderPfGoldSub(){
   }
   const hasOther=otherPP && otherPP.luong>0.001;
   // Tổng lượng (mọi loại) — bấm để sổ ra breakdown theo từng loại vàng, giống
-  // hệt cơ chế box "Vàng khác" (accordion, không dùng <select>).
-  const allProductEntries=Object.entries(byProduct).filter(([,pp])=>pp.luong>0.001);
+  // hệt cơ chế box "Vàng khác" (accordion, không dùng <select>). KHÔNG gồm
+  // 'OTHER' — pf.total_luong (backend) đã loại trừ Vàng khác ra khỏi tổng rồi
+  // (khớp với chú thích "*không tính Vàng Khác"), nên breakdown cũng phải
+  // loại trừ để không mâu thuẫn với chú thích đó.
+  const allProductEntries=Object.entries(byProduct).filter(([prod,pp])=>prod!=='OTHER'&&pp.luong>0.001);
   const totalQtyBlock=allProductEntries.length>1
     ? `<div class="sum-row" style="cursor:pointer" onclick="_toggleOtherGoldBreakdown(this)">
         <span class="sum-label">Tổng lượng (mọi loại)</span>
