@@ -367,8 +367,16 @@
   X-Init-Data, mọi GET/POST private data bắt buộc _auth_write() xác thực chữ ký HMAC thật;
   bỏ bypass string-match, thay bằng secret ADMIN_API_KEY (ENV) cho script nội bộ
   (scripts/import_tcbs_xlsx.py). Verify bằng 12 test tự viết giả lập chữ ký Telegram thật,
-  chạy trực tiếp lên DB Railway | 2026-07-13 | Còn lại: auth_date freshness check (chống
-  replay initData cũ) chưa làm — mức độ rủi ro thấp hơn, có thể làm sau
+  chạy trực tiếp lên DB Railway | 2026-07-13
+- [DONE] GOV-005-part2 · auth_date freshness check (chống replay initData cũ) — `_validate_init_data()`
+  (`telegram-bot/miniapp_server.py`) giờ từ chối initData có `auth_date` quá 24h (khớp khuyến
+  nghị Telegram) hoặc ở tương lai ngoài dung sai lệch giờ 5 phút, dù chữ ký HMAC vẫn đúng.
+  Trước đây 1 initData bị chặn bắt (network sniff, log server, browser history...) có thể bị
+  replay vô thời hạn để giả danh user/admin vì chỉ verify chữ ký, không verify thời điểm phát
+  hành. Không cần sửa gì phía client — Telegram SDK luôn tự sinh `auth_date` mới mỗi lần Mini
+  App mở, nên user thật không bị ảnh hưởng. Verify: `py_compile` + pytest 246/246 xanh (không
+  có test nào giả lập initData nên không có gì để break; đã audit tất cả 4 call site
+  `_validate_init_data()` — đều nhận `init_data` trực tiếp từ header request client thật) | 2026-07-15
 - [DONE] GOV-006 · Chính sách "không xoá/đổi dữ liệu khi deploy" — viết thành quy tắc migration
   trong `CLAUDE.md` (section "🔐 CHÍNH SÁCH DỮ LIỆU"): mọi ALTER TABLE phải additive, script sửa
   dữ liệu hàng loạt phải dry-run mặc định, audit_log append-only, PROTECTED_SOURCES cho NAV,

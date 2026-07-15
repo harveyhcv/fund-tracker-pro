@@ -982,9 +982,17 @@ def _calc_dca(profile: dict, signals: dict, budget: float = 0, style: str = "dca
 
 # ── Telegram initData auth ────────────────────────────────────────────────────
 
+_INIT_DATA_MAX_AGE_SECONDS = 86400  # 24h — khớp khuyến nghị chống replay của Telegram
+_INIT_DATA_CLOCK_SKEW_SECONDS = 300  # 5 phút — dung sai lệch giờ giữa client/server
+
+
 def _validate_init_data(init_data_str: str, bot_token: str):
     """Xác thực chữ ký HMAC của Telegram WebApp initData.
     Returns parsed user dict nếu hợp lệ, None nếu không hợp lệ hoặc thiếu.
+
+    Kèm check `auth_date` (chống replay): initData quá cũ (>24h) hoặc auth_date
+    ở tương lai (ngoài dung sai lệch giờ) đều bị từ chối, dù chữ ký HMAC vẫn đúng
+    — vì initData có thể bị chặn bắt/lưu lại rồi replay sau (GOV-005 còn thiếu).
     """
     if not init_data_str or not bot_token:
         return None
@@ -998,6 +1006,14 @@ def _validate_init_data(init_data_str: str, bot_token: str):
         computed   = hmac.new(secret_key, check_string.encode(), hashlib.sha256).hexdigest()
         if not hmac.compare_digest(computed, hash_val):
             return None
+        auth_date_raw = params.get("auth_date")
+        if auth_date_raw is not None:
+            try:
+                age = time.time() - int(auth_date_raw)
+            except (TypeError, ValueError):
+                return None
+            if age > _INIT_DATA_MAX_AGE_SECONDS or age < -_INIT_DATA_CLOCK_SKEW_SECONDS:
+                return None
         return json.loads(params.get("user", "{}"))
     except Exception:
         return None
