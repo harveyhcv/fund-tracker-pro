@@ -1324,11 +1324,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         elif path == "/health":
             _json(self, {"ok": True, "ts": datetime.now().isoformat()})
         elif path == "/api/version":
-            # Đối chiếu với APP_VERSION trong miniapp/index.html — nếu 2 số khác
-            # nhau nghĩa là frontend (HTML) và backend (server) KHÔNG cùng 1 lần
-            # deploy (VD: Telegram WebView cache HTML cũ). Dùng để debug nhanh
-            # "bản đang chạy có đúng bản mới nhất không" mà không cần SSH.
-            _json(self, {"version": _SERVER_VERSION, "ts": datetime.now().isoformat()})
+            self._api_version(qs)
         else:
             _json(self, {"error": "Not found"}, 404)
 
@@ -2381,6 +2377,18 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             _json(self, {"pending": []})
             return
         _json(self, {"pending": _db_mod.get_pending_confirms()})
+
+    def _api_version(self, qs: dict):
+        """GET /api/version?user_id=... — chỉ admin xem được commit hash đang
+        chạy (dùng để xác nhận deploy mới nhất, không phải image cũ). Ẩn với
+        user thường — không có lý do gì để họ thấy chi tiết hạ tầng/mã nguồn."""
+        tg_id = (qs.get("user_id") or [""])[0]
+        if not _is_admin(tg_id):
+            _json(self, {"error": "admin_only"}, 403)
+            return
+        if not _auth_write(self, tg_id):
+            return
+        _json(self, {"version": _SERVER_VERSION, "ts": datetime.now().isoformat()})
 
     def _api_admin_audit(self, qs: dict):
         """GET /api/admin/audit?user_id=&action=&actor_id=&limit= — xem audit log

@@ -774,15 +774,17 @@ const IS_BETA = new URLSearchParams(location.search).get('beta') === '1';
 // tay nữa. Trước đây có 2 chuỗi tách biệt (JS constant ở đây + hardcode trong
 // miniapp_server.py) phải bump tay đồng bộ mỗi lần deploy → dễ quên, dẫn tới
 // badge hiện version cũ dù code đã đổi nhiều lần (phát hiện 2026-07-15).
-(async()=>{
+// CHỈ admin thấy badge này — user thường không cần biết commit hash/hạ tầng
+// (endpoint /api/version cũng chặn admin_only ở server, đây chỉ là UI-level
+// ẩn thêm). Gọi sau loadMe() khi đã biết chắc _me.is_admin.
+async function loadAppVersionIfAdmin(){
   const _v = document.getElementById('app-version');
-  if(!_v) return;
+  if(!_v || !_me?.is_admin) return;
   try{
-    const r = await fetch('/api/version');
-    const d = await r.json();
+    const d = await apiFetch('/api/version');
     _v.textContent = d.version || '?';
-  }catch(e){ _v.textContent = '?'; }
-})();
+  }catch(e){ /* không phải admin hoặc lỗi mạng — im lặng, giữ badge trống */ }
+}
 
 let _me=null, _signals=null, _tradeType='buy', _histCode=null, _histAllPoints=[];
 let _dcaStyle='dca', _goldData=null, _goldType='buy', _goldUnit='chi', _goldTrades=[];
@@ -950,6 +952,7 @@ async function loadMe(){
     // Admin tab + tier bar
     if(_me?.is_admin) document.getElementById('nav-admin').style.display='';
     renderTierBar(_me);
+    loadAppVersionIfAdmin();
     // Load gold data in parallel
     apiFetch(`/api/gold?user_id=${USER_ID}`).then(d=>{_goldData=d;renderPfBanner();renderPfAlloc();renderPfGoldSub();}).catch(()=>{});
     renderPortfolio(_me);
