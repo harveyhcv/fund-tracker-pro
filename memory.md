@@ -643,3 +643,46 @@ thể làm sau.
 2. `railway run python scripts/backup_db.py --backup` — xác nhận `pg_dump` hoạt động thật
    trên Railway (image có `postgresql-client` từ GOV-002 nhưng chưa test thật)
 3. Restore thử trên 1 Postgres TEST riêng theo `telegram-bot/BACKUP.md` checklist
+
+---
+
+## ✅ Session (autonomous, scheduled) — Ca sáng 2026-07-15: GOV-005-part2 + GOV-007-part4
+
+Môi trường session này KHÔNG có `DATABASE_URL`/Railway env vars và không có merchant
+credentials thật (VNPay/Stripe) — không thể verify integration DB thật hay tấn công
+PAY-006/007 (cả 2 P2, BACKLOG đã ghi rõ "cần merchant credentials thật để test có ý nghĩa").
+Theo đúng điều kiện dừng trong scheduled-task brief ("gặp task cần credential thật không
+test được"), không đụng tới PAY-006/007. Toàn bộ P0/P1 trong BACKLOG đã DONE từ trước (xác
+nhận qua đọc lại toàn bộ BACKLOG.md 499 dòng) — 2 việc làm thêm dưới đây là cải tiến tự chọn,
+bám theo các "còn lại"/"bài học" đã ghi rõ trong chính BACKLOG.
+
+**GOV-005-part2 — auth_date freshness check (chống replay initData):**
+`_validate_init_data()` (`telegram-bot/miniapp_server.py`) trước đây chỉ verify chữ ký HMAC,
+không verify THỜI ĐIỂM phát hành — 1 initData bị chặn bắt (log, sniff...) có thể replay vô
+thời hạn. Giờ từ chối nếu `auth_date` > 24h cũ hoặc ở tương lai ngoài dung sai 5 phút. Không
+ảnh hưởng client thật (Telegram SDK luôn tự sinh `auth_date` mới). Không có test tự động nào
+từng cover hàm này trước đó — không có gì để break, verify bằng py_compile + pytest 246/246.
+
+**GOV-007-part4 — tự động hoá weekly NAV source audit:**
+GOV-007-part3 đã ghi ra "quy trình cross-check NAV giữa nhiều nguồn" (bước 3: quét toàn bộ
+hệ thống định kỳ, "nên làm hàng tuần") nhưng chưa BAO GIỜ tự động hoá — đây chính là lý do
+bug VCBFTBF lặp lại 3 LẦN với 3 root cause độc lập khác nhau (FUND_CATALOG sai → config.json
+không đồng bộ → funds_master là nguồn config độc lập thứ 3), mỗi lần chỉ phát hiện SAU KHI
+Harvey report qua screenshot, không phải do hệ thống tự cảnh báo sớm.
+- `db.get_nav_source_audit(days=30)` — quét `nav_history` 30 ngày qua (loại hôm nay, vì hôm
+  nay tạm là fmarket provisional là bình thường), group theo `fund_code`, flag quỹ có dòng
+  `source` KHÔNG thuộc `TRUSTED_SOURCES` (tái dùng constant có sẵn, không hardcode lại).
+- `bot.py job_nav_source_audit()` — chạy Thứ Hai 04:00 (sau backup 03:30), báo Telegram admin
+  danh sách quỹ bị flag + gợi ý chạy lại `harvest_nav.py --tcinvest`, ghi
+  `log_audit(nav_source_audit_flag)`. Mỗi phần lỗi (query DB, log_audit) đều không chặn phần
+  còn lại — cùng triết lý try/except riêng như `get_admin_summary()` (GOV-004).
+- Verify: `tests/test_nav_source_audit.py` (8 test mới, MỚI cho project — bao DB
+  unavailable/rỗng/lỗi query/lỗi log_audit/thiếu config admin) + smoke-test fake cursor độc
+  lập trước khi viết test chính thức. 254/254 tổng test suite xanh (246 cũ + 8 mới).
+- **Chưa verify integration thật trên Railway** (không có DATABASE_URL) — cần đợi job chạy
+  thật Thứ Hai tới, hoặc Harvey chạy tay `railway run python -c "import bot; bot.job_nav_source_audit()"`
+  để xác nhận sớm hơn.
+
+**Không tìm thấy việc P0/P1 nào khác để làm** — đã audit lại note cũ "xem xét thay upsert_nav()
+bằng upsert_nav_with_confidence() ở mọi call site" (từ Session 8): đã lỗi thời, `upsert_nav()`
+plain giờ ĐÃ có logic bảo vệ PROTECTED_SOURCES đầy đủ (được vá trong GOV-007), không cần đổi gì.
