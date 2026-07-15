@@ -18,6 +18,7 @@ import hmac
 import json
 import logging
 import os
+import subprocess
 import sys
 import threading
 import time
@@ -477,6 +478,44 @@ _SIGNAL_SELECT = """
     WHERE fund_code IN ({ph})
     ORDER BY fund_code, signal_date DESC
 """
+
+
+def _trigger_t2_repredict(codes: list):
+    """T2-013 (2026-07-15): NAV vừa được admin sửa/cập nhật/import lại (fetch-nav,
+    nav/confirm, import-nav) — mọi dự báo T+2 đã có cho quỹ đó (ARIMA/XGBoost/
+    Ensemble) giờ dựa trên NAV SAI, phải tính lại NGAY thay vì chờ tới job hàng
+    ngày 18:31. Bug thật đã xảy ra: sửa xong NAV VCBFTBF nhưng T+2 vẫn hiện giá
+    trị cũ tính từ lịch sử sai trước đó, khiến user hoang mang tưởng NAV vẫn sai.
+
+    Chạy nền (thread riêng, không chặn response API) — mỗi model con trước,
+    ensemble sau cùng (cần cả 3 dự báo con của cùng ngày đã ghi DB)."""
+    codes = sorted(set(c.upper() for c in codes if c))
+    if not codes:
+        return
+
+    def _run():
+        scripts_dir = str(Path(__file__).parent.parent / "scripts")
+        for code in codes:
+            for script in ("t2_arima.py", "t2_xgboost.py", "t2_naive.py"):
+                try:
+                    subprocess.run(
+                        [sys.executable, os.path.join(scripts_dir, script), "--predict", "--code", code],
+                        capture_output=True, text=True, timeout=60,
+                        env={**os.environ},
+                    )
+                except Exception as ex:
+                    log.warning(f"[t2-repredict] {script} {code}: {ex}")
+            try:
+                subprocess.run(
+                    [sys.executable, os.path.join(scripts_dir, "t2_ensemble.py"), "--predict", "--code", code],
+                    capture_output=True, text=True, timeout=60,
+                    env={**os.environ},
+                )
+            except Exception as ex:
+                log.warning(f"[t2-repredict] ensemble {code}: {ex}")
+        log.info(f"[t2-repredict] xong cho {len(codes)} quỹ: {codes}")
+
+    threading.Thread(target=_run, daemon=True, name="t2-repredict").start()
 
 
 def _compute_from_nav_history(codes: list, cfg: dict, telegram_id: str = None):
@@ -2559,6 +2598,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             return
         ok = _db_mod.resolve_nav_confirm(fund_code, nav_date, choice, actor_id=tg_id)
         if ok:
+            _trigger_t2_repredict([fund_code])
             _json(self, {"ok": True, "fund_code": fund_code, "nav_date": nav_date, "choice": choice})
         else:
             _json(self, {"error": f"Không tìm thấy pending_confirm cho {fund_code} {nav_date}"}, 404)
@@ -2780,6 +2820,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
                             errors[f"save_{code}"] = str(ex)
                             log.warning(f"save {code}: {ex}")
                 log.info(f"[fetch-nav] done — results: {results}, errors: {errors}")
+                _trigger_t2_repredict([c for c, n in results.items() if n > 0])
             except Exception as ex:
                 log.error(f"[fetch-nav] fatal: {ex}")
 
@@ -2908,6 +2949,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
                 _compute_from_nav_history(imported_codes, cfg)
             except Exception as ex:
                 log.warning(f"[import-nav] recompute signals failed: {ex}")
+            _trigger_t2_repredict(imported_codes)
 
         resp = {"ok": True, "inserted": results, "errors": errors,
                 "total": sum(results.values()), "force": force}

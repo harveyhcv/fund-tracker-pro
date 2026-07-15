@@ -456,6 +456,23 @@
   daily độc lập (`job_check_signals` dùng `FUND_CATALOG`, `job_harvest_nav`/`harvest_nav.py
   --daily` dùng `funds_master`) chạy song song, mỗi job có thể đọc 1 nguồn cấu hình khác
   nhau cho CÙNG 1 quỹ | 2026-07-14
+- [DONE] T2-013 · JWT tcinvest refresh (Harvey cung cấp token mới) → cập nhật
+  `/data/config.json.tcbs_token`, verify fetch sống, reconcile lại toàn bộ 31/31 quỹ tcbs
+  bằng token mới (31/31 OK). Ngay sau đó Harvey báo T+2 của VCBFTBF vẫn sai dù NAV đã đúng
+  — root cause: dự báo T+2 (arima-v1/xgb-vN/naive-v1/ensemble-v1) được tính TRƯỚC khi NAV
+  vừa được sửa, nên vẫn dựa trên lịch sử NAV sai cũ, không tự động refresh khi NAV thay đổi.
+  Fix ngay: chạy lại --predict cả 4 model cho toàn bộ quỹ vừa reconcile.
+  Fix hệ thống (yêu cầu rõ từ Harvey: "Bắt buộc đổi T+2 nếu như NAV bị sửa lại, cập nhật,
+  thay đổi"): thêm `_trigger_t2_repredict(codes)` trong `miniapp_server.py` — chạy nền
+  (thread riêng, không chặn response API) gọi lại `t2_arima/xgboost/naive/ensemble.py
+  --predict --code X` ngay sau khi NAV được admin sửa. Gắn vào 3 điểm: `_api_admin_fetch_nav`
+  (sau khi fetch xong, chỉ cho mã có `results[code]>0`), `_api_admin_nav_confirm` (sau khi
+  resolve pending thành công), `_api_admin_import_nav` (sau khi import xong). KHÔNG gắn vào
+  `_api_nav_draft` (NAV draft của user Pro chưa confirm vào nav_history, chưa nên trigger
+  recompute T+2 toàn cục) hay `_api_admin_fixportfolio` (sửa portfolio, không phải NAV).
+  Verify: py_compile, pytest (246 passed), verify sống VCBFTBF T+2 sau khi chạy lại thủ công
+  — ensemble-v1 predicted_nav=38.251 (khớp NAV thật 38.220,82, trước đó T+2 vẫn dựa trên
+  chuỗi NAV sai ~30k) | 2026-07-15
 
 ---
 
