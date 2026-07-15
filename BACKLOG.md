@@ -517,10 +517,13 @@
     `reverify_nav_tier()` cho từng điểm.
   - `bot.py`: job `job_nav_reverify()` chạy 21:00 hàng ngày (sau cả 2 lần harvest
     18:30/20:00), đủ thời gian để TCBS tự sửa nếu là số tạm tính trước khi verify.
-  - Thứ tự ưu tiên hiển thị mới (thấp→cao): provisional < tcbs/fmarket < user draft <
-    admin draft (pending_confirm) < Fixed DB (trong đó tự phân cấp: tcinvest tier=0 <
-    T+1 < T+8 < T+31); `fixed`/`confirmed`/`manual` luôn cao nhất, không tham gia chu
-    kỳ re-verify vì đã là quyết định của con người.
+  - Thứ tự ưu tiên hiển thị mới (thấp→cao, Harvey chỉnh lại 2026-07-15): provisional <
+    tcbs/fmarket < user draft < tcinvest tier=0 < tcinvest T+1 < **admin draft
+    (pending_confirm)** < tcinvest T+8 < tcinvest T+31. Admin draft nằm XEN GIỮA T+1
+    và T+8 (không phải đứng dưới toàn bộ Fixed DB) — 1 admin xác nhận thủ công đáng
+    tin hơn máy tự re-check khớp sau 1 ngày, nhưng kém đáng tin hơn giá trị đã tự ổn
+    định ≥8 ngày không cần con người can thiệp. `fixed`/`confirmed`/`manual` luôn cao
+    nhất, không tham gia chu kỳ re-verify vì đã là quyết định cuối cùng của con người.
   Verify: py_compile 3 file, pytest suite (254 passed), test sống trực tiếp trên
   production DB (không dùng mock) — xác nhận tier nâng đúng 0→1 (2 ngày tuổi) và
   0→8 (11 ngày tuổi, nhảy thẳng lên tier cao nhất đủ điều kiện) với giá trị khớp thật.

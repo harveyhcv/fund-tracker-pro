@@ -419,12 +419,16 @@ def upsert_nav(fund_code: str, nav_date: date, nav: float, source: str = "fmarke
 # dần theo thời gian đã trôi qua mà KHÔNG bị TCBS sửa lại), lệch thì coi là
 # TCBS tự sửa NAV, cập nhật + reset tier để bắt đầu lại chu kỳ xác nhận.
 #
-# Thứ tự ưu tiên hiển thị (thấp → cao, theo yêu cầu Harvey 2026-07-15):
-#   user draft < admin draft (pending_confirm) < Fixed DB, trong đó Fixed DB tự
-#   phân cấp: tcinvest (tier=0, vừa fetch) < tcinvest T+1 (tier>=1) <
-#   tcinvest T+8 (tier>=8) < tcinvest T+31 (tier>=31, tin cậy cao nhất, coi như
-#   đã ổn định lâu dài). 'fixed'/'manual' (admin khóa tay) vẫn đứng trên cùng,
-#   không tham gia chu kỳ re-verify vì đã là quyết định của con người.
+# Thứ tự ưu tiên hiển thị (thấp → cao, Harvey chỉnh lại 2026-07-15 — admin draft
+# nằm XEN GIỮA 2 mốc tcinvest, không phải đứng dưới toàn bộ chu kỳ verify):
+#   user draft < tcinvest tier=0 (vừa fetch) < tcinvest T+1 (tier>=1) <
+#   admin draft (pending_confirm) < tcinvest T+8 (tier>=8) <
+#   tcinvest T+31 (tier>=31, tin cậy cao nhất, coi như đã ổn định lâu dài).
+# Lý do: 1 admin xem xét/xác nhận thủ công đáng tin hơn máy tự re-check khớp
+# sau có 1 ngày (T+1), nhưng vẫn kém đáng tin hơn 1 giá trị đã tự ổn định
+# (không bị TCBS sửa lại) suốt ≥8 ngày liên tục mà không cần con người can
+# thiệp. 'fixed'/'confirmed'/'manual' (admin khóa tay, quyết định cuối cùng)
+# vẫn đứng trên cùng tất cả, không tham gia chu kỳ re-verify.
 
 NAV_VERIFY_TIERS = (1, 8, 31)   # số ngày — mỗi mốc re-fetch khớp mới được nâng tier
 NAV_VERIFY_TOLERANCE_PCT = 0.05  # lệch <=0.05% coi là "khớp" (làm tròn số lẻ khác nhau)
@@ -503,13 +507,16 @@ def reverify_nav_tier(fund_code: str, nav_date: date, fresh_nav: float,
 #   confirmed       → fetch ≈ manual HOẶC admin đã chọn
 #   fixed           → admin khóa cứng vĩnh viễn
 #
-# Priority hiển thị (GOV-008 cập nhật 2026-07-15, thấp → cao):
-#   provisional < tcbs/fmarket < user draft < admin draft (pending_confirm) <
-#   Fixed DB — trong đó Fixed DB tự phân cấp theo verify_tier:
-#     tcinvest (tier=0) < tcinvest T+1 (tier>=1) < tcinvest T+8 (tier>=8) <
-#     tcinvest T+31 (tier>=31, tin cậy cao nhất) — xem reverify_nav_tier() bên dưới.
-#   'fixed'/'confirmed'/'manual' (quyết định của admin) luôn đứng trên cùng,
-#   không tham gia chu kỳ re-verify vì đã là con người xác nhận.
+# Priority hiển thị (GOV-008, Harvey chỉnh lại 2026-07-15, thấp → cao):
+#   provisional < tcbs/fmarket < user draft < tcinvest (tier=0) <
+#   tcinvest T+1 (tier>=1) < admin draft (pending_confirm) <
+#   tcinvest T+8 (tier>=8) < tcinvest T+31 (tier>=31, tin cậy cao nhất) —
+#   xem reverify_nav_tier() bên dưới. Admin draft nằm XEN GIỮA tier T+1 và
+#   T+8 (không phải đứng dưới toàn bộ Fixed DB) — 1 admin xác nhận thủ công
+#   đáng tin hơn máy tự re-check khớp sau 1 ngày, nhưng kém đáng tin hơn 1
+#   giá trị đã tự ổn định ≥8 ngày mà không cần con người can thiệp.
+#   'fixed'/'confirmed'/'manual' (quyết định cuối cùng của admin) luôn đứng
+#   trên cùng tất cả, không tham gia chu kỳ re-verify vì đã là con người xác nhận.
 
 CONFIDENCE_EPSILON = 1.0   # Trong vòng 1 VND = cùng giá trị (NAV thường 10k-20k)
 # GOV-007 (2026-07-14): TCinvest là NGUỒN CHUẨN (Harvey xác nhận sau vụ VCBFTBF bị
