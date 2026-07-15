@@ -650,8 +650,17 @@ def _get_signals_for_codes(codes: list, cfg: dict, background_compute: bool = Tr
     stale = []
     for row in rows:
         results[row[0]] = _row_to_signal(row)
-        signal_date = row[7] or ""  # signal_date::text, index 7
-        if signal_date < today_str:
+        signal_date = row[7] or ""   # signal_date::text, index 7
+        nav_date    = row[12] or ""  # nav_date::text, index 12
+        # GOV-011 (2026-07-15): trước đây chỉ so signal_date — nhưng
+        # _compute_from_nav_history() luôn ghi signal_date=hôm nay bất kể nav_date
+        # dùng để tính là ngày nào, nên 1 lần tính ra nav_date=hôm qua (nguồn
+        # chưa publish) sẽ bị coi là "fresh" CẢ NGÀY dù sau đó nav_history đã có
+        # NAV mới hơn (SSISCA: tính lúc sáng ra 14/7, sau đó harvest ghi thêm
+        # 15/7 nhưng cache không bao giờ refresh lại vì signal_date đã = hôm nay).
+        # Phải so cả nav_date — cache re-tính (rẻ, chỉ đọc nav_history, không gọi
+        # API ngoài) mỗi khi nav_date cũ hơn hôm nay, để luôn bắt kịp NAV mới nhất.
+        if signal_date < today_str or nav_date < today_str:
             stale.append(row[0])
 
     missing = [c for c in codes if c not in results] + stale
