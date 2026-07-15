@@ -686,3 +686,50 @@ Harvey report qua screenshot, không phải do hệ thống tự cảnh báo s�
 **Không tìm thấy việc P0/P1 nào khác để làm** — đã audit lại note cũ "xem xét thay upsert_nav()
 bằng upsert_nav_with_confidence() ở mọi call site" (từ Session 8): đã lỗi thời, `upsert_nav()`
 plain giờ ĐÃ có logic bảo vệ PROTECTED_SOURCES đầy đủ (được vá trong GOV-007), không cần đổi gì.
+
+---
+
+## ✅ Session (autonomous, scheduled) — Ca chiều 2026-07-15: verify production, không code thêm
+
+Tiếp nối ca sáng cùng ngày (GOV-005-part2, GOV-007-part4, GOV-007-part3, T2-013,
+GOV-008/T2-014 — xem entry phía trên). Đọc lại BACKLOG.md 558 dòng: tất cả P0/P1 đã DONE,
+chỉ còn PAY-006/PAY-007 (P2, cần merchant credentials thật — đúng điều kiện dừng của
+scheduled-task brief "gặp task cần credential không test được").
+
+**Phát hiện quan trọng**: `telegram-bot/config.json` có sẵn `database_url` trỏ thẳng
+Railway production (host `thomas.proxy.rlwy.net`) — không cần SSH, connect trực tiếp
+bằng `psycopg2` từ máy local để verify READ-ONLY các cơ chế ca sáng vừa code có chạy thật
+trên production không (khác với chỉ đọc code rồi tin là xong — bài học lặp lại nhiều lần
+trong project này là "code trông đúng ≠ đã chạy thật thành công", xem T2-011).
+
+**Kết quả verify (tất cả healthy, không tìm thấy bug):**
+- `verify_tier` (GOV-008) đang hoạt động thật: phân bố tier0=353/tier1=186/tier8=713/
+  tier31=930 trong 60 ngày qua — không phải cột chết.
+- 20× `nav_reverify_corrected` trong audit_log 3 ngày qua (TCBS tự sửa provisional→final,
+  lệch 0.08-2.4%, đúng thiết kế). 0 `nav_jump_anomaly` MỚI hôm nay (3 lần cũ đều trước khi
+  GOV-008 xong, không phải sự cố đang diễn ra).
+- VCBFTBF (quỹ 3 lần sự cố trước) — 10 ngày gần nhất TOÀN BỘ nguồn tcinvest/manual nhất
+  quán, không còn xen kẽ nguồn khác. Đã ổn định thật, không chỉ "trông có vẻ" ổn định.
+- T2 predictions: 4 model (arima-v1/xgb-v2/naive-v1/ensemble-v1) đều 51/51 quỹ dự báo tươi
+  cho T+2=2026-07-16 — pipeline T2-011 vẫn chạy khỏe sau khi fix hôm 07-14.
+- `prediction_actuals` trống 100% (0 dòng) — KHÔNG phải bug, chỉ là pipeline T2 mới chạy
+  thật từ 07-14 (T2-011), chưa đủ thời gian để dự báo T+2 có NAV thật để chấm điểm. Cần
+  đợi vài ngày. **Việc theo dõi cho session sau**: nếu sau ~1 tuần `prediction_actuals`
+  vẫn trống, đó MỚI là dấu hiệu `job_t2_score` có vấn đề thật, đáng điều tra.
+- 39/40 quỹ "chưa có NAV hôm nay" lúc kiểm tra (14:08 giờ VN) — bình thường, harvest job
+  chạy tối 18:30/20:00, chưa tới giờ.
+
+**Không code gì mới ca này** — theo đúng nguyên tắc "producing a report of what you found
+is the correct output" khi không có task ghi cụ thể cần làm và không có write action nào
+được yêu cầu. Test suite xác nhận baseline: 254/254 pass trước khi kết thúc.
+
+**⚠️ Phát hiện ngoài lề, KHÔNG xử lý** (để Harvey tự quyết định, không phải việc của session
+autonomous): `git status` cho thấy toàn bộ `Fund Tracker Pro.xcodeproj/` + file Swift cũ ở
+top-level (`Fund Tracker Pro/ContentView.swift`...) bị đánh dấu deleted, trong khi có thư
+mục `ios/` mới hoàn toàn chưa track (`git add`). Trông giống 1 đợt tái cấu trúc thủ công
+trên máy local của Harvey chưa commit — KHÔNG tự ý gộp vào commit nào của session này (an
+toàn hơn để Harvey xác nhận ý định, đúng tinh thần GOV-006 "hỏi trước khi động vào thay đổi
+không phải do session tạo ra").
+
+**Việc còn lại duy nhất trong BACKLOG**: PAY-006 (VNPay)/PAY-007 (Stripe) — cả 2 P2, chờ
+Harvey cung cấp merchant credentials thật.

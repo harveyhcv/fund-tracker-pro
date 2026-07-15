@@ -4,7 +4,43 @@
 # Priority: P0 (blocker) / P1 (important) / P2 (nice-to-have)
 # Claude đọc file này ĐẦU TIÊN mỗi session. Pick task IN_PROGRESS nếu có, nếu không pick P0 cao nhất.
 #
-# Last updated: 2026-07-14 (v1.2.2 — tìm ra root cause THẬT của VCBFTBF NAV sai)
+# Last updated: 2026-07-15 (ca chiều — verify production, không có task P0/P1 nào mới)
+
+## Session (autonomous, scheduled) — Ca chiều 2026-07-15: verify production, không code thêm
+# Đọc lại toàn bộ BACKLOG (558 dòng) + memory.md: ca sáng cùng ngày đã làm GOV-005-part2,
+# GOV-007-part4, GOV-007-part3, T2-013, GOV-008/T2-014 — TẤT CẢ P0/P1 đã DONE. Chỉ còn
+# PAY-006 (VNPay)/PAY-007 (Stripe), cả 2 P2 và cần merchant credentials thật (đã ghi rõ
+# trong chính BACKLOG là blocker) — đúng điều kiện dừng trong session brief.
+# Phát hiện `telegram-bot/config.json` có sẵn `database_url` trỏ thẳng Railway production
+# (thomas.proxy.rlwy.net) — dùng để VERIFY (read-only) các cơ chế mới ca sáng vừa code có
+# thực sự chạy đúng trên production không, thay vì chỉ dừng ở "chưa verify integration thật":
+# - verify_tier (GOV-008): cột tồn tại, phân bố thật 60 ngày gần nhất (tier0=353, tier1=186,
+#   tier8=713, tier31=930) — cơ chế đang hoạt động, không phải code chết.
+# - audit_log 3 ngày qua: 20x `nav_reverify_corrected` (TCBS tự sửa NAV provisional→final,
+#   lệch 0.08%-2.4%, đúng thiết kế), 0 `nav_jump_anomaly` MỚI hôm nay (3 lần cũ đều từ
+#   07-13/07-14, trước khi GOV-008 xong — không phải sự cố đang diễn ra).
+# - VCBFTBF (quỹ có 3 sự cố trước đó): NAV 10 ngày gần nhất TOÀN BỘ nguồn tcinvest/manual
+#   nhất quán, không còn xen kẽ nguồn khác — xác nhận đã ổn định thật.
+# - T2 predictions: cả 4 model (arima-v1/xgb-v2/naive-v1/ensemble-v1) đều có 51/51 quỹ dự
+#   báo tươi cho T+2=2026-07-16 — pipeline T2-011 sau khi fix vẫn chạy khỏe.
+# - `prediction_actuals` TRỐNG HOÀN TOÀN (0 dòng all-time) — KHÔNG PHẢI bug: pipeline T2
+#   chỉ mới chạy thật từ 2026-07-14 (T2-011), dự báo T+2 hôm nay chưa tới hạn có NAV thật
+#   để so sánh/chấm điểm. Cần chờ vài ngày để `job_t2_score` có dữ liệu chấm.
+# - 39/40 quỹ "chưa có NAV hôm nay" lúc 14:08 giờ VN — BÌNH THƯỜNG, không phải bug: harvest
+#   job chạy 18:30/20:00 tối, giờ kiểm tra là buổi chiều, chưa tới giờ harvest.
+# - 0 pending_confirm tồn đọng, 2 user tier=pro (không phải bug, chỉ là số liệu kinh doanh).
+# - `grep TODO/FIXME` toàn bộ `telegram-bot/*.py` → 0 kết quả, code không có việc dở dang.
+# Kết luận: không có task P0/P1 nào để làm thêm, không code gì mới ca này (đúng tinh thần
+# "producing a report of what you found is the correct output" khi không có write action
+# nào được yêu cầu cụ thể). Không đụng PAY-006/007 (thiếu credentials thật).
+# ⚠️ Phát hiện ngoài lề (KHÔNG xử lý, chỉ ghi lại cho Harvey): `git status` cho thấy toàn bộ
+# `Fund Tracker Pro.xcodeproj/` + các file Swift cũ (`Fund Tracker Pro/ContentView.swift`...)
+# bị đánh dấu deleted, trong khi có thư mục `ios/` mới HOÀN TOÀN chưa track — trông giống 1
+# đợt tái cấu trúc thủ công trên máy local CHƯA được git add/commit. Không tự ý commit vì
+# đây không phải task trong BACKLOG và constraint ghi rõ "KHÔNG implement iOS trước khi
+# Phase 1-4 xong" — an toàn hơn để Harvey tự xác nhận ý định trước khi ai đó commit.
+#
+## GOV-007 — root cause thật (2026-07-14, sau khi bug tái diễn dù đã "khóa cứng")
 
 ## GOV-007 — root cause thật (2026-07-14, sau khi bug tái diễn dù đã "khóa cứng")
 # Bản sửa trước (bỏ fmarket_id sai của VCBFTBF trong FUND_CATALOG) KHÔNG có tác dụng gì
