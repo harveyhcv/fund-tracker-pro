@@ -74,6 +74,29 @@ def _migrate_nav_confidence_cols() -> None:
         logger.warning("_migrate_nav_confidence_cols (non-fatal): %s", e)
 
 
+def _migrate_nav_verify_cols() -> None:
+    """GOV-008 (2026-07-15): thêm verify_tier + last_verified_at cho cơ chế
+    3-layer re-verification (T+1/T+8/T+31). Xem reverify_nav_tier() bên dưới
+    cho lý do — 1 lần fetch tcinvest KHÔNG đủ để coi là "chốt" (NAV ngày mới
+    nhất TCBS công bố thường là tạm tính, có thể tự sửa lại vài giờ/vài ngày
+    sau — đã xảy ra thật với VCBFTBF 2026-07-15)."""
+    db_url = os.environ.get("DATABASE_URL")
+    if not db_url:
+        return
+    try:
+        conn = psycopg2.connect(db_url)
+        with conn.cursor() as cur:
+            cur.execute("""
+                ALTER TABLE nav_history
+                    ADD COLUMN IF NOT EXISTS verify_tier     SMALLINT NOT NULL DEFAULT 0,
+                    ADD COLUMN IF NOT EXISTS last_verified_at TIMESTAMPTZ
+            """)
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.warning("_migrate_nav_verify_cols (non-fatal): %s", e)
+
+
 def init_pool(min_conn: int = 1, max_conn: int = 5) -> None:
     global _pool
     db_url = os.environ.get("DATABASE_URL")
@@ -82,6 +105,7 @@ def init_pool(min_conn: int = 1, max_conn: int = 5) -> None:
         return
     _migrate_data_src_enum()      # Chạy trước khi mở pool
     _migrate_nav_confidence_cols()
+    _migrate_nav_verify_cols()
     _pool = ThreadedConnectionPool(min_conn, max_conn, db_url)
     logger.info("PostgreSQL pool initialised (min=%d max=%d)", min_conn, max_conn)
 
@@ -380,6 +404,95 @@ def upsert_nav(fund_code: str, nav_date: date, nav: float, source: str = "fmarke
         logger.debug("unify_nav_drafts skip: %s", e)
 
 
+# ─── NAV 3-LAYER RE-VERIFICATION (GOV-008 / T2-014) ──────────────────────────
+#
+# Bài học 2026-07-15 (vụ VCBFTBF): script reconcile thủ công dùng upsert_nav()
+# khóa cứng NAV thành 'tcinvest' NGAY khi fetch lần đầu — nhưng TCBS công bố
+# NAV ngày mới nhất có thể còn TẠM TÍNH, tự sửa lại vài giờ/vài ngày sau khi
+# có số liệu chính thức (đã xảy ra thật: fetch lúc 07:20 sáng ra 38.220,82,
+# fetch lại lúc ~10h cùng ngày ra 37.945,51 — số sau mới khớp trang NAV/CCQ
+# chính thức của TCBS). "Khóa cứng ngay lần fetch đầu" không đủ an toàn cho
+# NGÀY GẦN NHẤT dù vẫn đúng cho các ngày đã cũ/ổn định.
+#
+# Cơ chế: mỗi ngày (job_nav_reverify), fetch lại tcinvest và so với giá trị đã
+# lưu cho các ngày đủ "tuổi" — khớp thì nâng verify_tier (mức độ tin cậy tăng
+# dần theo thời gian đã trôi qua mà KHÔNG bị TCBS sửa lại), lệch thì coi là
+# TCBS tự sửa NAV, cập nhật + reset tier để bắt đầu lại chu kỳ xác nhận.
+#
+# Thứ tự ưu tiên hiển thị (thấp → cao, theo yêu cầu Harvey 2026-07-15):
+#   user draft < admin draft (pending_confirm) < Fixed DB, trong đó Fixed DB tự
+#   phân cấp: tcinvest (tier=0, vừa fetch) < tcinvest T+1 (tier>=1) <
+#   tcinvest T+8 (tier>=8) < tcinvest T+31 (tier>=31, tin cậy cao nhất, coi như
+#   đã ổn định lâu dài). 'fixed'/'manual' (admin khóa tay) vẫn đứng trên cùng,
+#   không tham gia chu kỳ re-verify vì đã là quyết định của con người.
+
+NAV_VERIFY_TIERS = (1, 8, 31)   # số ngày — mỗi mốc re-fetch khớp mới được nâng tier
+NAV_VERIFY_TOLERANCE_PCT = 0.05  # lệch <=0.05% coi là "khớp" (làm tròn số lẻ khác nhau)
+
+
+def reverify_nav_tier(fund_code: str, nav_date: date, fresh_nav: float,
+                       tolerance_pct: float = NAV_VERIFY_TOLERANCE_PCT) -> str:
+    """Re-verify 1 điểm NAV nguồn 'tcinvest' đã lưu, so với giá trị fetch lại.
+    Chỉ áp dụng cho source='tcinvest' — 'fixed'/'manual' đã khóa tuyệt đối,
+    không cần (và không nên) re-verify.
+
+    Trả về:
+      'upgraded'  — khớp, đã đủ tuổi để nâng lên tier cao hơn
+      'unchanged' — khớp nhưng chưa đủ tuổi cho tier tiếp theo, hoặc đã tier cao nhất
+      'corrected' — LỆCH quá tolerance — TCBS tự sửa lại, đã cập nhật + reset tier=0
+      'skip'      — chưa đủ 1 ngày kể từ nav_date, không tìm thấy row, hoặc source khác tcinvest
+    """
+    if not is_available():
+        return "skip"
+    days_elapsed = (date.today() - nav_date).days
+    if days_elapsed < 1:
+        return "skip"
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT nav, source, verify_tier FROM nav_history "
+                "WHERE fund_code=%s AND nav_date=%s",
+                (fund_code, nav_date)
+            )
+            row = cur.fetchone()
+        if not row or row[1] != "tcinvest":
+            return "skip"
+        stored_nav, _source, cur_tier = float(row[0]), row[1], int(row[2] or 0)
+        diff_pct = abs(fresh_nav - stored_nav) / stored_nav * 100 if stored_nav else 100.0
+
+        if diff_pct > tolerance_pct:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE nav_history SET nav=%s, verify_tier=0, "
+                    "last_verified_at=NOW(), fetched_at=NOW() "
+                    "WHERE fund_code=%s AND nav_date=%s",
+                    (fresh_nav, fund_code, nav_date)
+                )
+            logger.warning(
+                "reverify_nav_tier: %s %s TCBS tự sửa NAV %.4f -> %.4f (lệch %.3f%%) sau %d ngày — reset tier",
+                fund_code, nav_date, stored_nav, fresh_nav, diff_pct, days_elapsed
+            )
+            log_audit(None, "nav_reverify_corrected", "nav_history", f"{fund_code}/{nav_date}",
+                      before={"nav": stored_nav, "verify_tier": cur_tier},
+                      after={"nav": fresh_nav, "verify_tier": 0},
+                      note=f"TCBS tự sửa lại NAV sau {days_elapsed} ngày — lệch {diff_pct:.3f}%")
+            return "corrected"
+
+        new_tier = cur_tier
+        for tier in NAV_VERIFY_TIERS:
+            if days_elapsed >= tier and tier > new_tier:
+                new_tier = tier
+        if new_tier > cur_tier:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE nav_history SET verify_tier=%s, last_verified_at=NOW() "
+                    "WHERE fund_code=%s AND nav_date=%s",
+                    (new_tier, fund_code, nav_date)
+                )
+            return "upgraded"
+        return "unchanged"
+
+
 # ─── NAV CONFIDENCE WORKFLOW ─────────────────────────────────────────────────
 #
 # Source state machine:
@@ -390,7 +503,13 @@ def upsert_nav(fund_code: str, nav_date: date, nav: float, source: str = "fmarke
 #   confirmed       → fetch ≈ manual HOẶC admin đã chọn
 #   fixed           → admin khóa cứng vĩnh viễn
 #
-# Priority hiển thị: fixed > confirmed > manual > tcbs/fmarket > provisional
+# Priority hiển thị (GOV-008 cập nhật 2026-07-15, thấp → cao):
+#   provisional < tcbs/fmarket < user draft < admin draft (pending_confirm) <
+#   Fixed DB — trong đó Fixed DB tự phân cấp theo verify_tier:
+#     tcinvest (tier=0) < tcinvest T+1 (tier>=1) < tcinvest T+8 (tier>=8) <
+#     tcinvest T+31 (tier>=31, tin cậy cao nhất) — xem reverify_nav_tier() bên dưới.
+#   'fixed'/'confirmed'/'manual' (quyết định của admin) luôn đứng trên cùng,
+#   không tham gia chu kỳ re-verify vì đã là con người xác nhận.
 
 CONFIDENCE_EPSILON = 1.0   # Trong vòng 1 VND = cùng giá trị (NAV thường 10k-20k)
 # GOV-007 (2026-07-14): TCinvest là NGUỒN CHUẨN (Harvey xác nhận sau vụ VCBFTBF bị

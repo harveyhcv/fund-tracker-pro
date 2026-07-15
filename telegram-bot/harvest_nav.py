@@ -8,6 +8,10 @@ Modes:
   --backfill          Fetch full history từ ngày thành lập (idempotent)
   --backfill --code X Chỉ backfill 1 quỹ
   --daily             Fetch NAV mới nhất (chạy hàng ngày lúc 18:30)
+  --reverify          GOV-008: re-verify 3 lớp T+1/T+8/T+31 cho NAV tcinvest đã
+                      lưu — NAV ngày mới nhất TCBS công bố có thể còn tạm tính,
+                      tự sửa lại sau; khớp thì nâng độ tin cậy, lệch thì cập
+                      nhật + reset (chạy hàng ngày, sau --daily)
   --status            Tổng quan database: bao nhiêu quỹ, bao nhiêu datapoints
 
 Yêu cầu:
@@ -20,6 +24,7 @@ Chạy lần đầu:
 
 Chạy hàng ngày (cron 18:30):
   python3 scripts/harvest_nav.py --daily
+  python3 scripts/harvest_nav.py --reverify
 """
 
 import argparse
@@ -1015,6 +1020,64 @@ def cmd_tcinvest(conn, jwt: str) -> None:
         log(f"   {len(skip_funds)} quỹ không có data: {', '.join(skip_funds[:10])}")
 
 
+def cmd_reverify(conn, jwt: str, only_code: Optional[str] = None) -> None:
+    """GOV-008/T2-014 (2026-07-15): Cơ chế 3-layer re-verification cho NAV nguồn
+    'tcinvest'. Bài học vụ VCBFTBF: script reconcile thủ công khóa cứng NAV ngay
+    lần fetch đầu, nhưng TCBS công bố NAV ngày mới nhất có thể còn tạm tính, tự
+    sửa lại vài giờ/vài ngày sau. Chạy hàng ngày: fetch lại tcinvest, so với giá
+    trị đã lưu cho từng ngày — khớp thì nâng verify_tier (T+1/T+8/T+31), lệch
+    thì coi là TCBS tự sửa, cập nhật + reset tier (xem db.reverify_nav_tier()).
+    """
+    sys.path.insert(0, str(ROOT / "telegram-bot"))
+    import db as _db
+    _db.init_pool()
+
+    codes_to_fetch = [only_code.upper()] if only_code else list(TCINVEST_FUNDS.keys())
+    log(f"Re-verify NAV (3-layer) cho {len(codes_to_fetch)} quỹ...")
+
+    upgraded = corrected = unchanged = skipped = 0
+    for i, code in enumerate(sorted(codes_to_fetch), 1):
+        if code.startswith("FMKT_"):
+            continue
+        pts = tcinvest_fetch_nav_hist(code, jwt)
+        if not pts:
+            log(f"  [{i:3d}/{len(codes_to_fetch)}] {code:10} → 0 điểm, bỏ qua")
+            skipped += 1
+            time.sleep(0.3)
+            continue
+
+        code_upgraded = code_corrected = code_unchanged = 0
+        for p in pts:
+            try:
+                nav_dt = date.fromisoformat(p["date"])
+            except ValueError:
+                continue
+            result = _db.reverify_nav_tier(code, nav_dt, p["nav"])
+            if result == "upgraded":
+                code_upgraded += 1
+            elif result == "corrected":
+                code_corrected += 1
+            elif result == "unchanged":
+                code_unchanged += 1
+
+        upgraded += code_upgraded
+        corrected += code_corrected
+        unchanged += code_unchanged
+        if code_corrected:
+            log(f"  [{i:3d}/{len(codes_to_fetch)}] {code:10} ⚠ {code_corrected} điểm bị TCBS tự sửa lại, "
+                f"{code_upgraded} nâng tier, {code_unchanged} không đổi")
+        else:
+            log(f"  [{i:3d}/{len(codes_to_fetch)}] {code:10} {code_upgraded} nâng tier, {code_unchanged} không đổi")
+        time.sleep(0.3)
+
+    log(f"\n{'=' * 60}")
+    log(f"✅ Re-verify hoàn tất: {upgraded} nâng tier, {corrected} bị TCBS tự sửa lại "
+        f"(đã cập nhật + reset tier), {unchanged} không đổi, {skipped} quỹ bỏ qua")
+    if corrected:
+        log(f"⚠ Có {corrected} điểm NAV đã 'chốt' trước đó bị TCBS tự sửa lại — "
+            f"xem audit_log (action=nav_reverify_corrected) để biết chi tiết quỹ/ngày nào.")
+
+
 def cmd_tcinvest_nodb(jwt: str, out_path: Optional[str] = None) -> None:
     """
     Fetch NAV history toàn bộ 31 TCinvest funds mà KHÔNG cần database.
@@ -1131,6 +1194,8 @@ Kiểm tra:
     parser.add_argument("--backfill",   action="store_true", help="Fetch full history từ fmarket")
     parser.add_argument("--tcinvest",   action="store_true", help="One-time bulk fetch từ TCinvest (dùng JWT)")
     parser.add_argument("--daily",      action="store_true", help="Fetch NAV mới nhất (daily job)")
+    parser.add_argument("--reverify",   action="store_true",
+                        help="GOV-008: re-verify NAV tcinvest 3 lớp T+1/T+8/T+31 (daily job)")
     parser.add_argument("--status",     action="store_true", help="Tổng quan DB")
     parser.add_argument("--code",       type=str, default=None, metavar="CODE",
                         help="Giới hạn 1 quỹ (dùng với --backfill hoặc --daily)")
@@ -1142,7 +1207,7 @@ Kiểm tra:
                         help="Chạy --tcinvest không cần DB, lưu kết quả ra JSON")
     args = parser.parse_args()
 
-    if not any([args.discover, args.backfill, args.tcinvest, args.daily, args.status]):
+    if not any([args.discover, args.backfill, args.tcinvest, args.daily, args.reverify, args.status]):
         parser.print_help()
         return
 
@@ -1182,6 +1247,15 @@ Kiểm tra:
             cmd_backfill(conn, only_code=args.code)
         if args.daily:
             cmd_daily(conn, only_code=args.code, jwt=args.jwt)
+        if args.reverify:
+            jwt = args.jwt or _load_jwt_from_config()
+            if not jwt:
+                sys.exit(
+                    "❌ Cần TCBS JWT token cho --reverify.\n"
+                    "Truyền trực tiếp: --jwt eyJhbGci...\n"
+                    "Hoặc đảm bảo telegram-bot/config.json có 'tcbs_token'."
+                )
+            cmd_reverify(conn, jwt, only_code=args.code)
     finally:
         conn.close()
 

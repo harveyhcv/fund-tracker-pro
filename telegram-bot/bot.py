@@ -1839,6 +1839,42 @@ def job_harvest_nav():
         log.error("[harvest] %s", e)
 
 
+def job_nav_reverify():
+    """GOV-008/T2-014 (2026-07-15): Cơ chế 3-layer re-verification cho NAV
+    nguồn 'tcinvest' — chạy sau job_harvest_nav (21:00, sau cả 2 lần harvest
+    18:30/20:00). Bài học vụ VCBFTBF: fetch tcinvest lần đầu KHÔNG đủ để coi
+    NAV ngày mới nhất là "chốt" — TCBS có thể tự sửa lại vài giờ sau khi công
+    bố chính thức. Job này fetch lại và nâng verify_tier (T+1/T+8/T+31) cho
+    các ngày đã đủ tuổi và vẫn khớp, hoặc phát hiện+sửa nếu TCBS đã tự đổi.
+    """
+    if not (_DB_AVAILABLE and _db.is_available()):
+        log.debug("[nav_reverify] DB không khả dụng — bỏ qua")
+        return
+    log.info("══ JOB: NAV 3-Layer Re-verify (T+1/T+8/T+31) ══")
+    import subprocess
+    script = Path(__file__).parent / "harvest_nav.py"
+    if not script.exists():
+        log.error("[nav_reverify] harvest_nav.py không tìm thấy")
+        return
+    try:
+        result = subprocess.run(
+            [sys.executable, str(script), "--reverify"],
+            capture_output=True, text=True, timeout=300,
+            env={**__import__("os").environ},
+        )
+        output = (result.stdout or "").strip()
+        if result.returncode == 0:
+            summary = output.splitlines()[-1] if output else "OK"
+            log.info("[nav_reverify] %s", summary)
+        else:
+            log.error("[nav_reverify] exit=%d stderr=%s", result.returncode,
+                      (result.stderr or "")[:500])
+    except subprocess.TimeoutExpired:
+        log.error("[nav_reverify] Timeout sau 300s")
+    except Exception as e:
+        log.error("[nav_reverify] %s", e)
+
+
 def _handle_nav_jump_alert(harvest_stdout: str) -> None:
     """GOV-003: parse dòng 'JUMP_ALERT: CODE:old->new:pct%;...' từ harvest_nav.py --daily
     (NAV nhảy >15%/phiên — có thể là data glitch, không phải lỗi manual/fetch mismatch đã
@@ -3462,6 +3498,9 @@ def main():
     schedule.every().day.at("18:33").do(job_check_alerts)
     # Second pass: sửa giá trị provisional sau khi TCinvest finalize NAV (~19:30-20:00)
     schedule.every().day.at("20:00").do(job_harvest_nav)
+    # GOV-008/T2-014: re-verify 3 lớp T+1/T+8/T+31 — chạy sau cả 2 lần harvest,
+    # cho NAV hôm nay/gần đây đủ thời gian để TCBS tự sửa nếu là số tạm tính
+    schedule.every().day.at("21:00").do(job_nav_reverify)
     schedule.every().sunday.at("02:00").do(job_t2_retrain)
     schedule.every(30).days.at("03:00").do(job_t2_reweight)
     schedule.every().day.at("03:30").do(job_backup_db)
