@@ -35,8 +35,14 @@ body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14p
 .pnl.pos{color:var(--buy)}.pnl.neg{color:var(--sell)}.pnl.zero{color:var(--txt2)}
 .sum-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--bdr)}
 .sum-row:last-child{border:none}
+.sum-row-toggle{cursor:pointer}
+.sum-row-toggle:active{opacity:.7}
 .sum-label{color:var(--txt2);font-size:12px}
 .sum-val{font-family:var(--mono);font-size:13px}
+.sum-chevron{display:inline-block;font-size:9px;margin-left:2px;transition:transform .15s}
+.sum-chevron.open{transform:rotate(180deg)}
+.sum-detail{padding:2px 0 8px 4px;display:flex;flex-direction:column;gap:4px}
+.sum-detail-row{display:flex;justify-content:space-between;font-size:11px;color:var(--txt2);font-family:var(--mono)}
 .tlog-row{background:var(--bg2);border:1px solid var(--bdr);border-radius:8px;padding:10px 12px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:flex-start}
 .tlog-left{flex:1;min-width:0}
 .tlog-code{font-family:var(--mono);font-size:13px;font-weight:700;color:var(--c0)}
@@ -49,7 +55,7 @@ body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14p
 .fund-row{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--bdr);gap:8px;cursor:pointer;transition:background .15s;border-radius:6px;padding:10px 4px}
 .fund-row:last-child{border:none}
 .fund-row:active{background:var(--bg3)}
-.fund-code{font-family:var(--mono);font-weight:700;font-size:13px;flex:0 0 auto}
+.fund-code{font-family:var(--mono);font-weight:700;font-size:12px;flex:0 0 auto;background:var(--bg3);border:1px solid var(--bdr);border-radius:5px;padding:2px 6px}
 .fund-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
 .fund-top{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap}
 .fund-nav{font-family:var(--mono);font-size:14px;font-weight:600;color:var(--txt)}
@@ -125,12 +131,19 @@ canvas{width:100%!important;height:100%!important}
 @keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
 .modal-handle{width:36px;height:4px;background:var(--bdr);border-radius:2px;margin:12px auto 0}
 .modal-header{padding:12px 16px 8px;border-bottom:1px solid var(--bdr);display:flex;justify-content:space-between;align-items:center}
-.modal-title{font-family:var(--mono);font-size:15px;font-weight:600;color:var(--c0)}
+.modal-title{font-family:var(--mono);font-size:15px;font-weight:600;color:var(--c0);display:flex;align-items:baseline;gap:8px;min-width:0;flex:1;overflow:hidden}
+.modal-title-code{flex-shrink:0}
+.modal-title-name-wrap{overflow:hidden;white-space:nowrap;flex:1;min-width:0}
+.modal-title-name{display:inline-block;color:var(--txt2);font-size:12px;font-weight:400;white-space:nowrap}
+.modal-title-name.marquee{animation:titleMarquee 6s ease-in-out infinite alternate}
+@keyframes titleMarquee{0%,12%{transform:translateX(0)}88%,100%{transform:translateX(var(--marquee-dist,0))}}
 .modal-close{background:none;border:none;color:var(--txt2);font-size:20px;cursor:pointer;padding:4px 8px}
 .modal-body{padding:12px 16px 16px}
 .section{margin-bottom:14px}
-.section-hdr{font-family:var(--mono);font-size:11px;color:var(--c0);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;display:flex;align-items:center;gap:6px}
-.section-hdr::after{content:'';flex:1;height:1px;background:var(--bdr)}
+.section-hdr{font-family:var(--mono);font-size:11px;color:var(--c0);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;display:flex;align-items:center;gap:6px;flex-wrap:nowrap;white-space:nowrap;overflow-x:auto;scrollbar-width:none}
+.section-hdr::-webkit-scrollbar{display:none}
+.section-hdr span{white-space:nowrap;flex-shrink:0}
+.section-hdr::after{content:'';flex:1;height:1px;background:var(--bdr);min-width:12px}
 .verdict{font-size:13px;font-weight:600;margin-bottom:6px}
 .ind-row{display:flex;gap:6px;align-items:flex-start;font-size:12px;color:var(--txt2);padding:3px 0}
 .ind-lbl{font-family:var(--mono);font-size:11px;min-width:52px;color:var(--txt2)}
@@ -195,7 +208,10 @@ canvas{width:100%!important;height:100%!important}
   <div class="modal-sheet" id="modal-sheet">
     <div class="modal-handle"></div>
     <div class="modal-header">
-      <div class="modal-title" id="modal-title">Phân tích quỹ</div>
+      <div class="modal-title" id="modal-title">
+        <span class="modal-title-code" id="modal-title-code">Phân tích quỹ</span>
+        <span class="modal-title-name-wrap" id="modal-title-name-wrap"><span class="modal-title-name" id="modal-title-name"></span></span>
+      </div>
       <button class="modal-close" onclick="closeModalBtn()">✕</button>
     </div>
     <div class="modal-body" id="modal-body">
@@ -321,7 +337,7 @@ canvas{width:100%!important;height:100%!important}
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:12px" id="gold-school-group">
           <div id="gs-btn-short" class="style-btn" style="border-color:var(--c0);background:#052e3a;color:var(--c0)" onclick="setGoldSchool('short')">⚡ Lướt sóng</div>
           <div id="gs-btn-dca" class="style-btn" onclick="setGoldSchool('dca')">📅 DCA</div>
-          <div id="gs-btn-ct" class="style-btn" onclick="setGoldSchool('contrarian')">📊 Phân kỳ</div>
+          <div id="gs-btn-contrarian" class="style-btn" onclick="setGoldSchool('contrarian')">📊 Phân kỳ</div>
         </div>
         <label>Dữ liệu thị trường hiện tại</label>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
@@ -1244,6 +1260,15 @@ function renderPfAlloc(){
   </div>`;
 }
 
+function toggleSumDetail(id,rowEl){
+  const el=document.getElementById(id);
+  if(!el)return;
+  const open=el.style.display==='none';
+  el.style.display=open?'flex':'none';
+  const chev=rowEl?.querySelector('.sum-chevron');
+  if(chev)chev.classList.toggle('open',open);
+}
+
 function renderPortfolio(me){
   renderPfBanner();
   renderPfAlloc();
@@ -1265,7 +1290,7 @@ function renderPortfolio(me){
           <div class="fund-sub">
             <span>${fmt(h.units)} CCQ</span>
             <span class="fund-sub-sep">·</span>
-            <span>Vốn ${fmt(h.avg_cost)} đ</span>
+            <span>Giá vốn ${fmt(h.avg_cost)} đ</span>
           </div>
           ${_t2Html(h.code, h.nav, true)}
         </div>
@@ -1277,9 +1302,13 @@ function renderPortfolio(me){
       </div>`;
     }
     html+='</div>';
+    const costDetail=pf.items.map(h=>`<div class="sum-detail-row"><span>${h.code}</span><span>${fmt(h.cost)} đ</span></div>`).join('');
+    const valueDetail=pf.items.map(h=>`<div class="sum-detail-row"><span>${h.code}</span><span class="pnl ${pnlC(h.pnl_pct)}">${fmt(h.value)} đ</span></div>`).join('');
     html+=`<div class="card">
-      <div class="sum-row"><span class="sum-label">Vốn CCQ</span><span class="sum-val">${fmt(pf.total_cost)} đ</span></div>
-      <div class="sum-row"><span class="sum-label">Giá trị hiện tại</span><span class="sum-val">${fmt(pf.total_value)} đ</span></div>
+      <div class="sum-row sum-row-toggle" onclick="toggleSumDetail('sum-detail-cost',this)"><span class="sum-label">Vốn CCQ <span class="sum-chevron">▾</span></span><span class="sum-val">${fmt(pf.total_cost)} đ</span></div>
+      <div id="sum-detail-cost" class="sum-detail" style="display:none">${costDetail}</div>
+      <div class="sum-row sum-row-toggle" onclick="toggleSumDetail('sum-detail-value',this)"><span class="sum-label">Giá trị hiện tại <span class="sum-chevron">▾</span></span><span class="sum-val">${fmt(pf.total_value)} đ</span></div>
+      <div id="sum-detail-value" class="sum-detail" style="display:none">${valueDetail}</div>
       <div class="sum-row"><span class="sum-label">Lãi/lỗ CCQ</span><span class="sum-val pnl ${pnlC(pf.total_pnl_pct)}">${pf.total_pnl>=0?'+':''}${fmt(pf.total_pnl)} đ</span></div>
     </div>`;
   }
@@ -1676,7 +1705,6 @@ function _t2Html(code, navNow, compact=false){
       <span style="font-size:13px;color:${color};font-weight:600">${arrow}${Math.abs(diff).toFixed(2)}% so với NAV hiện tại</span>
     </div>
     ${pred.ci_low&&pred.ci_high?`<div style="font-size:10px;color:var(--txt2);margin-top:2px">Khoảng tin cậy 80%: ${fmt(pred.ci_low)} – ${fmt(pred.ci_high)} đ</div>`:''}
-    <div style="font-size:10px;color:var(--txt2);margin-top:4px;font-style:italic">Tham khảo — không phải khuyến nghị đầu tư</div>
   </div>`;
 }
 
@@ -1793,8 +1821,26 @@ function renderSignals(sigs){
 }
 
 // ── Research Modal ───────────────────────────────────────────────────────
+function setModalTitle(code,name){
+  document.getElementById('modal-title-code').textContent=name?code+' —':code;
+  const nameEl=document.getElementById('modal-title-name');
+  nameEl.textContent=name||'';
+  nameEl.classList.remove('marquee');
+  nameEl.style.removeProperty('--marquee-dist');
+  if(!name)return;
+  requestAnimationFrame(()=>{
+    const wrap=document.getElementById('modal-title-name-wrap');
+    const overflow=nameEl.scrollWidth-wrap.clientWidth;
+    if(overflow>8){
+      nameEl.style.setProperty('--marquee-dist',(-overflow-6)+'px');
+      nameEl.classList.add('marquee');
+    }
+  });
+}
+
 async function openResearch(code){
-  document.getElementById('modal-title').textContent=code+' — Phân tích';
+  setModalTitle(code,'');
+  document.getElementById('modal-title-name').textContent='Phân tích...';
   document.getElementById('modal-body').innerHTML='<div class="loading"><div class="spinner"></div>Đang phân tích...</div>';
   document.getElementById('modal').classList.add('open');
   try{
@@ -1815,7 +1861,7 @@ function _positionHtml(p){
   const c=p.pnl_pct>=0?'var(--buy)':'var(--sell)';
   const sign=p.pnl_pct>=0?'+':'';
   return `<div class="section" style="border-color:${c}">
-    <div class="section-hdr">💼 Vị thế của bạn <span style="font-weight:400;color:var(--txt2);font-size:10px">(chỉ hiển thị — không ảnh hưởng tín hiệu)</span></div>
+    <div class="section-hdr">💼 Vị thế của bạn <span style="font-weight:400;color:var(--txt2);font-size:9px">(chỉ hiển thị)</span></div>
     <div class="ind-row"><span class="ind-lbl">Đang nắm</span><span class="ind-val">${p.units} CCQ · vốn ${fmt(p.avg_cost)} đ/CCQ</span></div>
     <div class="ind-row"><span class="ind-lbl">Giá trị hiện tại</span><span class="ind-val">${fmt(p.current_value)} đ</span></div>
     <div class="ind-row"><span class="ind-lbl">Lãi/lỗ</span><span class="ind-val pnl" style="color:${c}">${sign}${fmt(p.pnl)} đ (${sign}${p.pnl_pct}%)</span></div>
@@ -1846,7 +1892,7 @@ function renderResearch(d){
     conclusion+='Tiếp tục <b>DCA theo kế hoạch</b> là lựa chọn phù hợp nhất.';
   }
 
-  document.getElementById('modal-title').textContent=d.code+(d.fund_name?' — '+d.fund_name.substring(0,20):'');
+  setModalTitle(d.code,d.fund_name||'');
 
   const taC   = ta.verdict?.includes('MUA')?'var(--buy)':ta.verdict?.includes('BÁN')?'var(--sell)':'var(--txt2)';
   const valC  = val.verdict?.includes('RẺ')?'var(--buy)':val.verdict?.includes('ĐẮT')?'var(--sell)':val.verdict?.includes('⚠️')?'var(--hold)':'var(--txt2)';

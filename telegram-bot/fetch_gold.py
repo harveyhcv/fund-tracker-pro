@@ -295,6 +295,34 @@ def fetch_xauusd_yahoo() -> Optional[float]:
     return None
 
 
+def fetch_xauusd_yahoo_history(days: int = 30) -> "list[dict]":
+    """Lấy lịch sử XAU/USD (đóng cửa hàng ngày) từ Yahoo Finance — dùng để
+    backfill các ngày bị miss (vang.today lỗi hoặc job_morning không chạy do
+    bot restart/deploy). Khác SJC_1L, XAUUSD trước đây KHÔNG có cơ chế backfill
+    nào — job hàng ngày là nguồn duy nhất, nên 1 lần lỡ chạy là mất vĩnh viễn
+    ngày đó (nguyên nhân chính của các khoảng trống 5-9 ngày phát hiện 2026-07-15)."""
+    for symbol in ("GC=F", "XAUUSD=X"):
+        try:
+            url = (f"https://query1.finance.yahoo.com/v8/finance/chart/"
+                   f"{urllib.parse.quote(symbol)}?interval=1d&range={days}d")
+            data   = json.loads(_req(url))
+            result = data["chart"]["result"][0]
+            from datetime import datetime as _dt, timezone as _tz
+            timestamps = result["timestamp"]
+            closes     = result["indicators"]["quote"][0]["close"]
+            out = []
+            for ts, c in zip(timestamps, closes):
+                if c is None:
+                    continue
+                d = _dt.fromtimestamp(ts, tz=_tz.utc).date()
+                out.append({"date": d.isoformat(), "close": round(c, 2)})
+            if out:
+                return out
+        except Exception as e:
+            print(f"  XAU/USD Yahoo history ({symbol}): {e}", file=sys.stderr)
+    return []
+
+
 def fetch_usd_vnd() -> Optional[float]:
     try:
         url  = "https://portal.vietcombank.com.vn/Usercontrols/TVPortal.TyGia/pXML.aspx"
@@ -420,23 +448,54 @@ def run_daily(verbose: bool = True) -> dict:
 
 
 def run_backfill(days: int = 14, verbose: bool = True) -> int:
-    """Điền các ngày SJC_1L bị thiếu trong gold_prices (vd: bot restart/deploy làm
-    job_morning bỏ lỡ vài ngày) bằng lịch sử nhúng sẵn trong giavang.org."""
-    hist = fetch_giavang_org_history(days=days)
-    if not hist:
-        if verbose:
-            print("  Không lấy được lịch sử giavang.org")
-        return 0
+    """Điền các ngày bị thiếu trong gold_prices (vd: bot restart/deploy làm
+    job_morning bỏ lỡ vài ngày) — SJC_1L từ lịch sử nhúng sẵn trong giavang.org,
+    XAUUSD từ Yahoo Finance. Idempotent (chỉ điền ngày CHƯA có, không ghi đè ngày
+    đã có dữ liệu thật từ vang.today) — an toàn để gọi lại mỗi ngày trong
+    job_morning để tự vá khoảng trống thay vì phải chạy tay."""
     conn = connect_db()
     ensure_schema(conn)
     filled = 0
-    for pt in hist:
-        d = date.fromisoformat(pt["date"])
-        upsert(conn, d, "VANGTODAYAPI", "SJC_1L", pt["buy"], pt["sell"],
-               extra={"source": "giavang.org", "source_url": "https://giavang.org/", "backfilled": True})
-        filled += 1
-        if verbose:
-            print(f"  {pt['date']}  Mua:{pt['buy']/1e6:.3f}M  Bán:{pt['sell']/1e6:.3f}M")
+
+    # SJC_1L
+    hist = fetch_giavang_org_history(days=days)
+    if hist:
+        with conn.cursor() as cur:
+            cur.execute("SELECT price_date FROM gold_prices WHERE product='SJC_1L'")
+            existing = {r[0].isoformat() for r in cur.fetchall()}
+        for pt in hist:
+            if pt["date"] in existing:
+                continue
+            d = date.fromisoformat(pt["date"])
+            upsert(conn, d, "VANGTODAYAPI", "SJC_1L", pt["buy"], pt["sell"],
+                   extra={"source": "giavang.org", "source_url": "https://giavang.org/", "backfilled": True})
+            filled += 1
+            if verbose:
+                print(f"  SJC_1L {pt['date']}  Mua:{pt['buy']/1e6:.3f}M  Bán:{pt['sell']/1e6:.3f}M")
+    elif verbose:
+        print("  Không lấy được lịch sử giavang.org")
+
+    # XAUUSD — trước đây không có backfill nào, 1 lần job lỡ chạy là mất vĩnh viễn
+    xau_hist = fetch_xauusd_yahoo_history(days=days)
+    if xau_hist:
+        usd_vnd = fetch_usd_vnd() or 25_400.0
+        with conn.cursor() as cur:
+            cur.execute("SELECT price_date FROM gold_prices WHERE product='XAUUSD'")
+            existing = {r[0].isoformat() for r in cur.fetchall()}
+        for pt in xau_hist:
+            if pt["date"] in existing:
+                continue
+            d = date.fromisoformat(pt["date"])
+            xau_vnd = round(pt["close"] * usd_vnd * (37.5 / 31.1035))
+            upsert(conn, d, "VANGTODAYAPI", "XAUUSD", pt["close"], pt["close"], currency="USD",
+                   extra={"usd_vnd": usd_vnd, "xau_vnd_luong": xau_vnd,
+                          "backfilled": True, "source": "yahoo_history"})
+            filled += 1
+            if verbose:
+                print(f"  XAUUSD {pt['date']}  {pt['close']:,.2f} USD/oz")
+    elif verbose:
+        print("  Không lấy được lịch sử XAU/USD Yahoo")
+
     conn.commit()
     conn.close()
     return filled

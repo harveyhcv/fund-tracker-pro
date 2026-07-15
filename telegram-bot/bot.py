@@ -1457,7 +1457,10 @@ def job_morning():
             _gmod  = _ilu.module_from_spec(_gspec)
             _gspec.loader.exec_module(_gmod)
             _gmod.run_daily(verbose=False)
-            log.info("[job_morning] Giá vàng đã cập nhật")
+            # Tự vá khoảng trống (bot restart/deploy làm lỡ vài ngày) — idempotent,
+            # chỉ điền ngày chưa có dữ liệu nên gọi lại mỗi sáng vẫn an toàn.
+            _filled = _gmod.run_backfill(days=10, verbose=False)
+            log.info(f"[job_morning] Giá vàng đã cập nhật (backfill {_filled} điểm)")
     except Exception as _ge:
         log.warning(f"[job_morning] fetch_gold: {_ge}")
     codes    = all_watched_codes(config)
