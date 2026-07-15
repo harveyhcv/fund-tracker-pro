@@ -56,11 +56,19 @@ _MOMO_ACCESS_KEY   = os.environ.get("MOMO_ACCESS_KEY", "F8BBA842ECF85")
 _MOMO_SECRET_KEY   = os.environ.get("MOMO_SECRET_KEY", "K951B6PE1waDMi640xX08PD3vg6EkVlz")
 
 # PAY-009: SePay VietQR — chuyển khoản ngân hàng cá nhân (không cần merchant
-# license), SePay bắn webhook khi tiền về khớp nội dung chuyển khoản. Field
-# name webhook payload theo tài liệu công khai phổ biến của SePay (docs.sepay.vn)
-# — CHƯA verify với tài khoản SePay thật, kiểm tra lại `_api_payment_sepay_webhook`
-# khi có API key thật nếu field không khớp thực tế.
-_SEPAY_API_KEY        = os.environ.get("SEPAY_API_KEY", "")           # header Authorization: Apikey <key>
+# license), SePay bắn webhook khi tiền về khớp nội dung chuyển khoản.
+# Đã xác nhận trực tiếp với tài khoản SePay thật (2026-07-15, đọc từ trang
+# "Hướng dẫn xác thực trên server" trong dashboard SePay):
+#   - Xác thực HMAC-SHA256 (an toàn hơn Apikey tĩnh — chống replay/giả mạo tốt
+#     hơn vì chữ ký gắn với từng request, không phải 1 key cố định dùng mãi):
+#     header X-SePay-Signature: "sha256=<hex hmac>", header X-SePay-Timestamp:
+#     <unix seconds>, chuỗi được ký = "{timestamp}.{raw_body}".
+#   - Field webhook payload (id/gateway/transferAmount/transferType/content):
+#     CHƯA verify field-level với tài khoản thật, log payload thô để dễ chỉnh
+#     nếu field không khớp thực tế.
+_SEPAY_API_KEY        = os.environ.get("SEPAY_API_KEY", "")           # fallback: header Authorization: Apikey <key>
+_SEPAY_HMAC_SECRET    = os.environ.get("SEPAY_HMAC_SECRET", "")       # Secret Key (whsec_...) — ưu tiên dùng nếu có
+_SEPAY_HMAC_MAX_AGE_S = 300   # chống replay: từ chối nếu X-SePay-Timestamp cách hiện tại >5 phút
 _SEPAY_ACCOUNT_NUMBER = os.environ.get("SEPAY_ACCOUNT_NUMBER", "")    # số tài khoản ngân hàng nhận tiền
 _SEPAY_BANK_CODE      = os.environ.get("SEPAY_BANK_CODE", "")         # mã ngân hàng VietQR (vd MBBank, TPBank...)
 _SEPAY_QR_BASE        = os.environ.get("SEPAY_QR_BASE", "https://qr.sepay.vn/img")
@@ -1324,6 +1332,10 @@ class MiniAppHandler(BaseHTTPRequestHandler):
     def _read_body(self):
         length = int(self.headers.get("Content-Length", 0))
         body   = self.rfile.read(length)
+        # Lưu raw bytes — cần cho xác thực chữ ký HMAC-SHA256 (SePay webhook):
+        # chữ ký ký trên ĐÚNG byte stream gốc, parse lại JSON rồi re-serialize
+        # có thể đổi thứ tự key/khoảng trắng → sai chữ ký dù nội dung giống hệt.
+        self._raw_body = body
         try:
             return json.loads(body) if body else {}
         except Exception:
@@ -3322,23 +3334,64 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             return
         _json(self, {"status": order["status"]})
 
+    def _verify_sepay_hmac(self) -> bool:
+        """Xác thực chữ ký HMAC-SHA256 của SePay — công thức lấy TRỰC TIẾP từ
+        trang "Hướng dẫn xác thực trên server" trong dashboard SePay (đã đọc
+        code mẫu Python 2026-07-15, khớp chính xác):
+            X-SePay-Signature: "sha256=" + hexdigest(HMAC-SHA256(secret, f"{timestamp}.{raw_body}"))
+            X-SePay-Timestamp: unix seconds
+        Trả False nếu thiếu header, sai chữ ký, hoặc timestamp quá cũ (>5 phút
+        — chống replay: 1 webhook cũ bị chặn lại và gửi lại sau không được
+        chấp nhận lần 2)."""
+        signature = self.headers.get("X-SePay-Signature", "")
+        timestamp = self.headers.get("X-SePay-Timestamp", "")
+        if not signature or not timestamp:
+            log.error("[PAY][SePay] webhook thiếu X-SePay-Signature/X-SePay-Timestamp")
+            return False
+        try:
+            ts_int = int(timestamp)
+        except ValueError:
+            log.error(f"[PAY][SePay] X-SePay-Timestamp không hợp lệ: {timestamp!r}")
+            return False
+        if abs(time.time() - ts_int) > _SEPAY_HMAC_MAX_AGE_S:
+            log.error(f"[PAY][SePay] webhook timestamp quá cũ/tương lai (chống replay): {timestamp!r}")
+            return False
+
+        raw_body = getattr(self, "_raw_body", b"")
+        payload = raw_body.decode("utf-8", errors="replace")
+        signed_str = f"{timestamp}.{payload}"
+        expected = "sha256=" + hmac.new(
+            _SEPAY_HMAC_SECRET.encode("utf-8"), signed_str.encode("utf-8"), hashlib.sha256
+        ).hexdigest()
+        if not hmac.compare_digest(expected, signature):
+            log.error("[PAY][SePay] webhook chữ ký HMAC không khớp")
+            return False
+        return True
+
     def _api_sepay_webhook(self, data: dict):
         """POST /api/payment/sepay/webhook — PAY-009: SePay bắn khi có biến động
         số dư khớp giao dịch chuyển khoản vào tài khoản đã cấu hình.
 
-        LƯU Ý: tên field bên dưới theo định dạng webhook phổ biến của SePay
-        (id/gateway/transferAmount/transferType/content) — CHƯA verify với tài
-        khoản SePay thật, log toàn bộ payload thô để dễ chỉnh nếu field không khớp.
-        Xác thực bằng Authorization header (Apikey tĩnh do SePay gửi kèm mỗi request,
-        cấu hình trong dashboard SePay) — không phải HMAC như MoMo vì đây là mô hình
-        "static API key" của SePay, không phải chữ ký theo từng request.
+        LƯU Ý: tên field payload bên dưới (id/gateway/transferAmount/
+        transferType/content) theo định dạng webhook phổ biến của SePay — CHƯA
+        verify field-level với tài khoản thật, log toàn bộ payload thô để dễ
+        chỉnh nếu field không khớp thực tế.
+
+        Xác thực (2026-07-15, Harvey chọn HMAC-SHA256 thay vì Apikey tĩnh để an
+        toàn hơn — xem SEPAY_HMAC_SECRET): ưu tiên HMAC-SHA256 nếu đã cấu hình
+        secret, tự động fallback về Apikey tĩnh nếu chưa (không phá server cũ).
         """
-        auth_header = self.headers.get("Authorization", "")
-        expected = f"Apikey {_SEPAY_API_KEY}"
-        if not _SEPAY_API_KEY or not hmac.compare_digest(auth_header, expected):
-            log.error("[PAY][SePay] webhook Authorization không hợp lệ")
-            _json(self, {"error": "invalid api key"}, 401)
-            return
+        if _SEPAY_HMAC_SECRET:
+            if not self._verify_sepay_hmac():
+                _json(self, {"error": "invalid signature"}, 401)
+                return
+        else:
+            auth_header = self.headers.get("Authorization", "")
+            expected = f"Apikey {_SEPAY_API_KEY}"
+            if not _SEPAY_API_KEY or not hmac.compare_digest(auth_header, expected):
+                log.error("[PAY][SePay] webhook Authorization không hợp lệ")
+                _json(self, {"error": "invalid api key"}, 401)
+                return
 
         log.info(f"[PAY][SePay] webhook payload: {json.dumps(data, ensure_ascii=False)[:500]}")
 
