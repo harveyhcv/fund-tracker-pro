@@ -43,6 +43,7 @@ body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14p
 .sum-chevron.open{transform:rotate(180deg)}
 .sum-detail{padding:2px 0 8px 4px;display:flex;flex-direction:column;gap:4px}
 .sum-detail-row{display:flex;justify-content:space-between;font-size:11px;color:var(--txt2);font-family:var(--mono)}
+.sum-detail-pct{opacity:.6;font-size:10px}
 .tlog-row{background:var(--bg2);border:1px solid var(--bdr);border-radius:8px;padding:10px 12px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:flex-start}
 .tlog-left{flex:1;min-width:0}
 .tlog-code{font-family:var(--mono);font-size:13px;font-weight:700;color:var(--c0)}
@@ -1302,8 +1303,14 @@ function renderPortfolio(me){
       </div>`;
     }
     html+='</div>';
-    const costDetail=pf.items.map(h=>`<div class="sum-detail-row"><span>${h.code}</span><span>${fmt(h.cost)} đ</span></div>`).join('');
-    const valueDetail=pf.items.map(h=>`<div class="sum-detail-row"><span>${h.code}</span><span class="pnl ${pnlC(h.pnl_pct)}">${fmt(h.value)} đ</span></div>`).join('');
+    const costDetail=pf.items.map(h=>{
+      const pct=pf.total_cost?(h.cost/pf.total_cost*100):0;
+      return `<div class="sum-detail-row"><span>${h.code}</span><span>${fmt(h.cost)} đ <span class="sum-detail-pct">(${pct.toFixed(1)}%)</span></span></div>`;
+    }).join('');
+    const valueDetail=pf.items.map(h=>{
+      const pct=pf.total_value?(h.value/pf.total_value*100):0;
+      return `<div class="sum-detail-row"><span>${h.code}</span><span class="pnl ${pnlC(h.pnl_pct)}">${fmt(h.value)} đ <span class="sum-detail-pct">(${pct.toFixed(1)}%)</span></span></div>`;
+    }).join('');
     html+=`<div class="card">
       <div class="sum-row sum-row-toggle" onclick="toggleSumDetail('sum-detail-cost',this)"><span class="sum-label">Vốn CCQ <span class="sum-chevron">▾</span></span><span class="sum-val">${fmt(pf.total_cost)} đ</span></div>
       <div id="sum-detail-cost" class="sum-detail" style="display:none">${costDetail}</div>
