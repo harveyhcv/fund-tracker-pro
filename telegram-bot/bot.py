@@ -2054,6 +2054,46 @@ def job_backup_db():
         tg_send(tok, admin_id, f"⚠️ <b>Backup DB thất bại</b>\n<code>{err}</code>\nKiểm tra Railway logs ngay.")
 
 
+def job_nav_source_audit():
+    """Tự động hoá quy trình cross-check định kỳ ghi trong BACKLOG GOV-007-part3
+    (trước đây phải chạy tay, và vì thế bug NAV-source-chưa-khoá kiểu VCBFTBF chỉ
+    được phát hiện sau khi Harvey report — đã lặp lại 3 lần với 3 root cause khác
+    nhau). Chạy hàng tuần, báo admin ngay nếu có quỹ nào trong 30 ngày qua có dòng
+    nav_history không đến từ tcinvest/fixed/manual (dấu hiệu sớm của việc 1 job
+    daily nào đó ghi đè lên dữ liệu đã khoá)."""
+    if not (_DB_AVAILABLE and _db.is_available()):
+        log.debug("[nav_source_audit] DB không khả dụng — bỏ qua")
+        return
+    log.info("══ JOB: NAV Source Audit (weekly) ══")
+    try:
+        flagged = _db.get_nav_source_audit(days=30)
+    except Exception as e:
+        log.error(f"[nav_source_audit] lỗi: {e}")
+        return
+    if not flagged:
+        log.info("[nav_source_audit] Sạch — không có quỹ nào bị nguồn lạ ghi đè")
+        return
+
+    lines = ["⚠️ <b>NAV Source Audit</b> — phát hiện quỹ có nguồn chưa khoá (30 ngày qua):"]
+    for f in flagged[:15]:
+        sources = ", ".join(s for s in (f.get("sources_seen") or []) if s)
+        dates = ", ".join((f.get("sample_dates") or [])[:3])
+        lines.append(f"• <code>{f['fund_code']}</code>: {f['untrusted_count']} ngày ({sources}) — gần nhất {dates}")
+    lines.append("\nChạy lại <code>harvest_nav.py --tcinvest</code> (lệnh reconcile) để tcinvest tự khoá lại toàn bộ lịch sử các mã này.")
+    msg = "\n".join(lines)
+
+    config = load_config()
+    tok = config.get("bot_token", "")
+    admin_id = str(config.get("admin_telegram_id", "")).strip()
+    if tok and admin_id:
+        tg_send(tok, admin_id, msg)
+    try:
+        _db.log_audit(None, "nav_source_audit_flag", "nav_history", None,
+                       note=f"{len(flagged)} quỹ bị flag: {[f['fund_code'] for f in flagged[:20]]}")
+    except Exception:
+        pass
+
+
 def job_check_alerts():
     """PRO-004: Kiểm tra ngưỡng cảnh báo user tự đặt (bảng `alerts`), chạy 18:33
     sau daily harvest (18:30) + T+2 predict/score (18:31/18:32) để có NAV mới nhất.
@@ -3425,6 +3465,7 @@ def main():
     schedule.every().sunday.at("02:00").do(job_t2_retrain)
     schedule.every(30).days.at("03:00").do(job_t2_reweight)
     schedule.every().day.at("03:30").do(job_backup_db)
+    schedule.every().monday.at("04:00").do(job_nav_source_audit)
     schedule.every().day.at("07:30").do(job_check_tcbs_token)
     # job_watchdog_ping đã bỏ — tin nhắn "Bot alive" không cần thiết
 

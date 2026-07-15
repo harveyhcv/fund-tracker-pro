@@ -1975,6 +1975,36 @@ def get_admin_summary() -> dict:
     return summary
 
 
+# ─── NAV SOURCE AUDIT (tự động hoá quy trình cross-check GOV-007-part3) ──────
+
+def get_nav_source_audit(days: int = 30) -> "list[dict]":
+    """Tự động hoá quy trình cross-check ghi trong BACKLOG GOV-007-part3 (trước đây
+    phải chạy tay) — với mỗi quỹ, tìm các ngày TRONG QUÁ KHỨ (loại hôm nay, vì hôm
+    nay có thể tạm là fmarket provisional — bình thường) mà `nav_history.source`
+    KHÔNG thuộc TRUSTED_SOURCES. Có dòng như vậy nghĩa là tcinvest/fixed/manual chưa
+    khoá hết lịch sử quỹ đó — dấu hiệu sớm của bug tái diễn kiểu VCBFTBF (đã xảy ra
+    3 lần vì trước đây không có cách nào phát hiện tự động, chỉ lộ ra khi Harvey báo).
+    Trả list dict {fund_code, untrusted_count, sources_seen, sample_dates} — CHỈ gồm
+    quỹ có vấn đề (không trả quỹ sạch), sort theo untrusted_count giảm dần."""
+    if not is_available():
+        return []
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT fund_code,
+                       COUNT(*) AS untrusted_count,
+                       array_agg(DISTINCT source) AS sources_seen,
+                       (array_agg(nav_date::text ORDER BY nav_date DESC))[1:5] AS sample_dates
+                FROM nav_history
+                WHERE nav_date < CURRENT_DATE
+                  AND nav_date >= CURRENT_DATE - (%s * INTERVAL '1 day')
+                  AND source != ALL(%s)
+                GROUP BY fund_code
+                ORDER BY untrusted_count DESC
+            """, (days, list(TRUSTED_SOURCES)))
+            return [dict(r) for r in cur.fetchall()]
+
+
 # ─── POOL ────────────────────────────────────────────────────────────────────
 
 def close_pool() -> None:

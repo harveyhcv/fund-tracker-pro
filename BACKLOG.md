@@ -377,6 +377,22 @@
   App mở, nên user thật không bị ảnh hưởng. Verify: `py_compile` + pytest 246/246 xanh (không
   có test nào giả lập initData nên không có gì để break; đã audit tất cả 4 call site
   `_validate_init_data()` — đều nhận `init_data` trực tiếp từ header request client thật) | 2026-07-15
+- [DONE] GOV-007-part4 · Tự động hoá quy trình cross-check NAV source (bước 3 trong quy
+  trình đã ghi ở GOV-007-part3, trước đây phải chạy tay hàng tuần — chính vì không tự động
+  nên bug VCBFTBF chỉ được phát hiện 3 lần liên tiếp sau khi Harvey report, không phải do hệ
+  thống tự cảnh báo sớm). `db.get_nav_source_audit(days=30)` — quét `nav_history` 30 ngày
+  qua (loại hôm nay, vì hôm nay có thể tạm là fmarket provisional — bình thường), group theo
+  `fund_code`, flag quỹ nào có dòng `source` KHÔNG thuộc `TRUSTED_SOURCES`
+  (fixed/confirmed/manual/tcinvest) — dấu hiệu tcinvest chưa khoá hết lịch sử, y hệt pattern
+  đã gây ra 3 lần sự cố VCBFTBF trước đó. `bot.py job_nav_source_audit()` chạy hàng tuần
+  (Thứ Hai 04:00, sau backup 03:30) — báo Telegram admin danh sách quỹ bị flag + gợi ý chạy
+  lại `harvest_nav.py --tcinvest` (lệnh reconcile), ghi `log_audit(nav_source_audit_flag)`.
+  Verify: `tests/test_nav_source_audit.py` (8 test mới — query SQL dùng đúng TRUSTED_SOURCES
+  không hardcode lại, DB unavailable/rỗng/lỗi query/lỗi log_audit đều không crash job, admin
+  thiếu config thì không gửi) + smoke-test bằng fake cursor mô phỏng response DB thật. Không
+  có DATABASE_URL trong môi trường session này nên chưa verify integration thật trên Railway
+  — cần chờ Thứ Hai tới hoặc chạy tay `job_nav_source_audit()` qua `railway run` để xác nhận
+  | 2026-07-15 (autonomous run)
 - [DONE] GOV-006 · Chính sách "không xoá/đổi dữ liệu khi deploy" — viết thành quy tắc migration
   trong `CLAUDE.md` (section "🔐 CHÍNH SÁCH DỮ LIỆU"): mọi ALTER TABLE phải additive, script sửa
   dữ liệu hàng loạt phải dry-run mặc định, audit_log append-only, PROTECTED_SOURCES cho NAV,
