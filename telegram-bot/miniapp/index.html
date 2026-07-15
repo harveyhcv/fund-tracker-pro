@@ -769,12 +769,20 @@ const USER_NAME = tg?.initDataUnsafe?.user?.first_name || new URLSearchParams(lo
 // telegram_id âm (không đụng dữ liệu thật), NAV/tín hiệu/dự báo vẫn dùng chung.
 const IS_BETA = new URLSearchParams(location.search).get('beta') === '1';
 
-// Bump mỗi khi deploy thay đổi UI/logic đáng kể — hiện ở góc trên (cạnh tên
-// user) để Harvey xác nhận bản đang chạy trên điện thoại đã cập nhật chưa
-// (Telegram WebView hay cache lại HTML cũ, version tag giúp phát hiện ngay
-// thay vì phải đoán qua behavior).
-const APP_VERSION = 'v1.3';
-{ const _v = document.getElementById('app-version'); if (_v) _v.textContent = APP_VERSION; }
+// Hiện version thật của bản đang chạy — lấy từ /api/version (server trả về
+// RAILWAY_GIT_COMMIT_SHA rút gọn của chính commit đang deploy), không hardcode
+// tay nữa. Trước đây có 2 chuỗi tách biệt (JS constant ở đây + hardcode trong
+// miniapp_server.py) phải bump tay đồng bộ mỗi lần deploy → dễ quên, dẫn tới
+// badge hiện version cũ dù code đã đổi nhiều lần (phát hiện 2026-07-15).
+(async()=>{
+  const _v = document.getElementById('app-version');
+  if(!_v) return;
+  try{
+    const r = await fetch('/api/version');
+    const d = await r.json();
+    _v.textContent = d.version || '?';
+  }catch(e){ _v.textContent = '?'; }
+})();
 
 let _me=null, _signals=null, _tradeType='buy', _histCode=null, _histAllPoints=[];
 let _dcaStyle='dca', _goldData=null, _goldType='buy', _goldUnit='chi', _goldTrades=[];

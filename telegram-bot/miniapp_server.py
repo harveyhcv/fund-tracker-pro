@@ -36,10 +36,13 @@ DATA_DIR  = Path(os.environ.get("DATA_DIR", Path(__file__).parent))
 CFG_FILE  = DATA_DIR / "config.json"
 HTML_FILE = Path(__file__).parent / "miniapp" / "index.html"
 
-# Bump cùng lúc với APP_VERSION trong miniapp/index.html mỗi khi deploy thay
-# đổi đáng kể — GET /api/version dùng để xác nhận server đã chạy đúng bản
-# mới (không phải image cũ do deploy lỗi/chưa restart).
-_SERVER_VERSION = "v1.3"
+# Lấy từ RAILWAY_GIT_COMMIT_SHA (Railway tự inject mỗi lần deploy) thay vì
+# hardcode tay — trước đây có 2 chuỗi version tách biệt (1 ở đây, 1 trong
+# APP_VERSION của index.html) phải bump tay đồng bộ, dẫn tới lệch bản thật
+# (badge hiện v1.3 dù code đã qua nhiều lần deploy). Giờ GET /api/version là
+# nguồn version DUY NHẤT, luôn khớp commit đang thực sự chạy — frontend fetch
+# giá trị này thay vì tự giữ 1 chuỗi riêng.
+_SERVER_VERSION = os.environ.get("RAILWAY_GIT_COMMIT_SHA", "dev")[:7]
 
 # Railway inject PORT; fallback PORT_MINIAPP cho local dev
 PORT_MINIAPP = int(os.environ.get("PORT_MINIAPP") or os.environ.get("PORT") or 8443)
