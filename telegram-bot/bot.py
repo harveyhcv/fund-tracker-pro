@@ -1875,6 +1875,55 @@ def job_nav_reverify():
         log.error("[nav_reverify] %s", e)
 
 
+def job_nav_integrity_check():
+    """GOV-008-part2 (2026-07-15): Harvey yêu cầu xác thực NAV tới TỪNG datapoint
+    và chống bị sửa ngầm (manipulate) — chạy sau job_nav_reverify (21:30), quét
+    row_hash toàn bộ nav_history, báo admin ngay nếu phát hiện dòng nào có hash
+    không khớp giá trị hiện tại (dấu hiệu bị sửa bằng SQL thô, bỏ qua các hàm
+    ứng dụng upsert_nav/reverify_nav_tier/resolve_nav_confirm)."""
+    if not (_DB_AVAILABLE and _db.is_available()):
+        log.debug("[nav_integrity] DB không khả dụng — bỏ qua")
+        return
+    log.info("══ JOB: NAV Integrity Check (row_hash) ══")
+    import subprocess
+    script = Path(__file__).parent / "harvest_nav.py"
+    if not script.exists():
+        log.error("[nav_integrity] harvest_nav.py không tìm thấy")
+        return
+    try:
+        result = subprocess.run(
+            [sys.executable, str(script), "--verify-integrity"],
+            capture_output=True, text=True, timeout=180,
+            env={**__import__("os").environ},
+        )
+        output = (result.stdout or "").strip()
+        if "MISMATCH_ALERT:" in output:
+            mismatch_line = next((l for l in output.splitlines() if l.startswith("MISMATCH_ALERT:")), "")
+            codes = mismatch_line.replace("MISMATCH_ALERT:", "").strip()
+            log.warning("[nav_integrity] Phát hiện NAV bị sửa ngầm: %s", codes)
+            config = load_config()
+            token = config.get("bot_token", "")
+            admin_id = str(config.get("admin_telegram_id", "")).strip()
+            if token and admin_id:
+                tg_send(token, admin_id, (
+                    "🚨 <b>Phát hiện NAV bị sửa ngầm (row_hash không khớp)</b>\n"
+                    f"{codes[:300]}\n"
+                    "Kiểm tra ngay — có thể do script/thao tác bỏ qua hàm ứng dụng chuẩn."
+                ))
+            if _DB_AVAILABLE and _db.is_available():
+                _db.log_audit(None, "nav_integrity_mismatch", "nav_history", None,
+                               note=f"row_hash không khớp: {codes[:500]}")
+        elif result.returncode == 0:
+            log.info("[nav_integrity] %s", output.splitlines()[-1] if output else "OK")
+        else:
+            log.error("[nav_integrity] exit=%d stderr=%s", result.returncode,
+                      (result.stderr or "")[:500])
+    except subprocess.TimeoutExpired:
+        log.error("[nav_integrity] Timeout sau 180s")
+    except Exception as e:
+        log.error("[nav_integrity] %s", e)
+
+
 def _handle_nav_jump_alert(harvest_stdout: str) -> None:
     """GOV-003: parse dòng 'JUMP_ALERT: CODE:old->new:pct%;...' từ harvest_nav.py --daily
     (NAV nhảy >15%/phiên — có thể là data glitch, không phải lỗi manual/fetch mismatch đã
@@ -3501,6 +3550,7 @@ def main():
     # GOV-008/T2-014: re-verify 3 lớp T+1/T+8/T+31 — chạy sau cả 2 lần harvest,
     # cho NAV hôm nay/gần đây đủ thời gian để TCBS tự sửa nếu là số tạm tính
     schedule.every().day.at("21:00").do(job_nav_reverify)
+    schedule.every().day.at("21:30").do(job_nav_integrity_check)
     schedule.every().sunday.at("02:00").do(job_t2_retrain)
     schedule.every(30).days.at("03:00").do(job_t2_reweight)
     schedule.every().day.at("03:30").do(job_backup_db)

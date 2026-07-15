@@ -2821,6 +2821,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
                             _conn = psycopg2.connect(db_url)
                             _cur = _conn.cursor()
                             _saved = 0
+                            _new_dates = []
                             for _pt in pts_all:
                                 _cur.execute(
                                     "INSERT INTO nav_history (fund_code, nav_date, nav, source) "
@@ -2828,8 +2829,19 @@ class MiniAppHandler(BaseHTTPRequestHandler):
                                     "ON CONFLICT (fund_code, nav_date) DO NOTHING",
                                     (code, _pt['date'], float(_pt['nav']), 'tcinvest')
                                 )
+                                if _cur.rowcount:
+                                    _new_dates.append(_pt['date'])
                                 _saved += _cur.rowcount
                             _conn.commit(); _conn.close()
+                            # GOV-008-part2: hash cho các dòng MỚI vừa insert trực tiếp
+                            # (bỏ qua db.upsert_nav() nên chưa có row_hash)
+                            if _db_mod is not None:
+                                from datetime import date as _date2
+                                for _d in _new_dates:
+                                    try:
+                                        _db_mod._update_nav_row_hash(code, _date2.fromisoformat(_d))
+                                    except Exception:
+                                        pass
                             results[code] = _saved
                             log.info(f"[fetch-nav] saved {code}: +{_saved}")
                         except Exception as ex:
@@ -2912,6 +2924,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             conn = psycopg2.connect(db_url)
             cur = conn.cursor()
             skipped = inserted = 0
+            touched_dates = []
             for pt in points:
                 if force:
                     # Ghi đè mọi source kể cả 'fixed' — reset về 'manual' để API re-confirm
@@ -2923,6 +2936,8 @@ class MiniAppHandler(BaseHTTPRequestHandler):
                         (code, pt["date"], float(pt["nav"]))
                     )
                     inserted += cur.rowcount
+                    if cur.rowcount:
+                        touched_dates.append(pt["date"])
                 else:
                     # Bình thường: chỉ ghi nếu chưa có hoặc source='manual'
                     cur.execute(
@@ -2935,10 +2950,21 @@ class MiniAppHandler(BaseHTTPRequestHandler):
                     )
                     if cur.rowcount:
                         inserted += 1
+                        touched_dates.append(pt["date"])
                     else:
                         skipped += 1
             conn.commit()
             conn.close()
+            # GOV-008-part2: cập nhật row_hash cho từng dòng vừa ghi trực tiếp bằng SQL
+            # (đường ghi này bỏ qua db.upsert_nav() nên không tự có hash) — đảm bảo MỌI
+            # datapoint đều có row_hash để verify_nav_integrity() không báo sai.
+            if _db_mod is not None:
+                from datetime import date as _date
+                for d_str in touched_dates:
+                    try:
+                        _db_mod._update_nav_row_hash(code, _date.fromisoformat(d_str))
+                    except Exception as ex:
+                        log.debug(f"[import-nav] row_hash {code}/{d_str}: {ex}")
             return inserted, skipped
 
         results = {}

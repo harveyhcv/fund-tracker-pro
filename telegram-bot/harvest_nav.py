@@ -720,6 +720,61 @@ def cmd_status(conn) -> None:
     log(f"{'=' * 70}")
 
 
+def cmd_verify_integrity(only_code: Optional[str] = None) -> None:
+    """GOV-008-part2 (2026-07-15): quét nav_history, tính lại row_hash kỳ vọng
+    cho từng dòng và so với hash đã lưu — phát hiện dữ liệu bị sửa ngầm ngoài
+    luồng ứng dụng (raw SQL bỏ qua upsert_nav/reverify_nav_tier/resolve_nav_confirm)."""
+    sys.path.insert(0, str(ROOT / "telegram-bot"))
+    import db as _db
+    _db.init_pool()
+
+    mismatches = _db.verify_nav_integrity(fund_code=only_code)
+    if not mismatches:
+        log("✅ Toàn vẹn dữ liệu NAV: không phát hiện bất thường.")
+        return
+
+    log(f"⚠ Phát hiện {len(mismatches)} dòng NAV có row_hash KHÔNG khớp giá trị hiện tại:")
+    for m in mismatches[:50]:
+        flag = "(chưa từng có hash)" if not m["has_hash"] else "(hash LỆCH — nghi bị sửa ngầm)"
+        log(f"  {m['fund_code']:10} {m['nav_date']}  nav={m['nav']:.4f}  "
+            f"source={m['source']}  tier={m['verify_tier']}  {flag}")
+    if len(mismatches) > 50:
+        log(f"  ... và {len(mismatches) - 50} dòng khác")
+    log("MISMATCH_ALERT: " + ";".join(f"{m['fund_code']}/{m['nav_date']}" for m in mismatches[:50]))
+
+
+def cmd_backfill_hash() -> None:
+    """GOV-008-part2 (2026-07-15): chạy MỘT LẦN để tính row_hash cho toàn bộ
+    datapoint đã có sẵn trong nav_history TRƯỚC khi tính năng này ra đời (hàng
+    chục nghìn điểm) — nếu không, verify_nav_integrity() sẽ báo "chưa có hash"
+    cho gần như toàn bộ dữ liệu cũ mỗi ngày, không phân biệt được với dấu hiệu
+    bị sửa ngầm thật sự. Idempotent — chạy lại an toàn (ghi đè hash cũ bằng
+    hash tính lại từ giá trị hiện tại, không đổi dữ liệu)."""
+    sys.path.insert(0, str(ROOT / "telegram-bot"))
+    import db as _db
+    _db.init_pool()
+
+    with _db.get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT fund_code, nav_date, nav, source, verify_tier FROM nav_history ORDER BY fund_code, nav_date")
+            rows = cur.fetchall()
+        log(f"Tính row_hash cho {len(rows):,} datapoint...")
+        n = 0
+        with conn.cursor() as cur:
+            for code, nav_dt, nav_val, src, tier in rows:
+                row_hash = _db._compute_nav_row_hash(code, nav_dt, float(nav_val), src, int(tier or 0))
+                cur.execute(
+                    "UPDATE nav_history SET row_hash=%s WHERE fund_code=%s AND nav_date=%s",
+                    (row_hash, code, nav_dt)
+                )
+                n += 1
+                if n % 5000 == 0:
+                    conn.commit()
+                    log(f"  ... {n:,}/{len(rows):,}")
+        conn.commit()
+    log(f"✅ Đã tính row_hash cho {n:,} datapoint.")
+
+
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
 def _get_fetchable_funds(conn, only_code: Optional[str]) -> list[tuple]:
@@ -764,6 +819,12 @@ def _insert_nav_points(conn, fund_code: str, pts: list[dict], source: str) -> in
       mới hơn (dùng cho correction pass lúc 20:00 sau khi NAV đã finalize)
     Returns: số rows thực sự thay đổi (insert + update).
     """
+    # GOV-008-part2: cần _compute_nav_row_hash() để mọi datapoint ghi qua đây
+    # cũng có row_hash — đường ghi này bulk (hàng nghìn điểm/quỹ) nên tính hash
+    # ngay trong cùng cursor/transaction, không mở kết nối riêng qua db.get_conn().
+    sys.path.insert(0, str(ROOT / "telegram-bot"))
+    import db as _db
+
     inserted = 0
     with conn.cursor() as cur:
         # Guard FK: nav_history.fund_code phải tồn tại trong `funds`.
@@ -792,6 +853,18 @@ def _insert_nav_points(conn, fund_code: str, pts: list[dict], source: str) -> in
             """, (fund_code, p["date"], p["nav"], source))
             if cur.rowcount > 0:
                 inserted += 1
+            cur.execute(
+                "SELECT nav, source, verify_tier FROM nav_history WHERE fund_code=%s AND nav_date=%s",
+                (fund_code, p["date"])
+            )
+            row = cur.fetchone()
+            if row:
+                nav_val, src, tier = float(row[0]), row[1], int(row[2] or 0)
+                row_hash = _db._compute_nav_row_hash(fund_code, date.fromisoformat(p["date"]), nav_val, src, tier)
+                cur.execute(
+                    "UPDATE nav_history SET row_hash=%s WHERE fund_code=%s AND nav_date=%s",
+                    (row_hash, fund_code, p["date"])
+                )
     conn.commit()
     return inserted
 
@@ -1196,6 +1269,10 @@ Kiểm tra:
     parser.add_argument("--daily",      action="store_true", help="Fetch NAV mới nhất (daily job)")
     parser.add_argument("--reverify",   action="store_true",
                         help="GOV-008: re-verify NAV tcinvest 3 lớp T+1/T+8/T+31 (daily job)")
+    parser.add_argument("--verify-integrity", action="store_true",
+                        help="GOV-008-part2: quét row_hash phát hiện NAV bị sửa ngầm")
+    parser.add_argument("--backfill-hash", action="store_true",
+                        help="GOV-008-part2: tính row_hash cho toàn bộ data cũ (chạy 1 lần)")
     parser.add_argument("--status",     action="store_true", help="Tổng quan DB")
     parser.add_argument("--code",       type=str, default=None, metavar="CODE",
                         help="Giới hạn 1 quỹ (dùng với --backfill hoặc --daily)")
@@ -1207,8 +1284,18 @@ Kiểm tra:
                         help="Chạy --tcinvest không cần DB, lưu kết quả ra JSON")
     args = parser.parse_args()
 
-    if not any([args.discover, args.backfill, args.tcinvest, args.daily, args.reverify, args.status]):
+    if not any([args.discover, args.backfill, args.tcinvest, args.daily, args.reverify,
+                args.verify_integrity, args.backfill_hash, args.status]):
         parser.print_help()
+        return
+
+    # --verify-integrity/--backfill-hash tự quản lý connection qua db.get_conn() —
+    # không cần connect_db()/ensure_schema() của phần còn lại
+    if args.verify_integrity:
+        cmd_verify_integrity(only_code=args.code)
+        return
+    if args.backfill_hash:
+        cmd_backfill_hash()
         return
 
     # --no-db mode: chỉ hỗ trợ --tcinvest, không cần DATABASE_URL

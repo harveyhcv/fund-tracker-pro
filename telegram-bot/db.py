@@ -4,6 +4,7 @@ ThreadedConnectionPool: safe cho bot.py multi-thread (scheduler + long-polling).
 Usage:
     from db import db_conn, set_app_uid, upsert_nav, save_signal
 """
+import hashlib
 import os
 import logging
 from contextlib import contextmanager
@@ -97,6 +98,136 @@ def _migrate_nav_verify_cols() -> None:
         logger.warning("_migrate_nav_verify_cols (non-fatal): %s", e)
 
 
+def _migrate_nav_integrity() -> None:
+    """GOV-008-part2 (2026-07-15): Harvey yêu cầu xác thực NAV tới TỪNG datapoint
+    và chống bị sửa ngầm (manipulate) sau này — thêm 2 cơ chế:
+    1. row_hash trên nav_history — hash(fund_code, nav_date, nav, source,
+       verify_tier). Mọi ghi/re-verify qua đúng hàm ứng dụng (upsert_nav,
+       reverify_nav_tier) đều cập nhật hash khớp giá trị hiện tại. Nếu ai đó
+       (người hoặc bug) chạy UPDATE nav_history trực tiếp bằng SQL thô mà
+       không qua các hàm này, row_hash sẽ LỆCH khỏi giá trị thực — phát hiện
+       được qua verify_nav_integrity() (job quét định kỳ).
+    2. nav_verification_log — append-only, ghi lại MỌI lần 1 datapoint được
+       kiểm tra (ghi lần đầu hoặc re-verify), kể cả khi không đổi gì — cho
+       phép truy vết lại toàn bộ lịch sử xác thực của bất kỳ điểm NAV nào,
+       không chỉ tin vào 1 con số verify_tier hiện tại."""
+    db_url = os.environ.get("DATABASE_URL")
+    if not db_url:
+        return
+    try:
+        conn = psycopg2.connect(db_url)
+        with conn.cursor() as cur:
+            cur.execute("""
+                ALTER TABLE nav_history ADD COLUMN IF NOT EXISTS row_hash TEXT
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS nav_verification_log (
+                    id                  BIGSERIAL PRIMARY KEY,
+                    fund_code           TEXT NOT NULL,
+                    nav_date            DATE NOT NULL,
+                    nav_checked         NUMERIC NOT NULL,
+                    nav_stored_before   NUMERIC,
+                    result              TEXT NOT NULL,
+                    verify_tier_before  SMALLINT,
+                    verify_tier_after   SMALLINT,
+                    source              TEXT,
+                    checked_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+            """)
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_navverify_fund_date
+                    ON nav_verification_log(fund_code, nav_date)
+            """)
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.warning("_migrate_nav_integrity (non-fatal): %s", e)
+
+
+def _compute_nav_row_hash(fund_code: str, nav_date: date, nav: float, source: str, verify_tier: int) -> str:
+    """Hash xác định 1 dòng nav_history — dùng để phát hiện sửa ngầm ngoài luồng
+    ứng dụng (raw SQL UPDATE bỏ qua upsert_nav/reverify_nav_tier)."""
+    payload = f"{fund_code.upper()}|{nav_date.isoformat()}|{round(float(nav), 4)}|{source}|{int(verify_tier)}"
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _log_nav_verification(fund_code: str, nav_date: date, nav_checked: float,
+                           nav_stored_before: float, result: str,
+                           tier_before: int, tier_after: int, source: str) -> None:
+    """Ghi 1 dòng vào nav_verification_log — append-only, không bao giờ UPDATE/DELETE.
+    Lỗi ghi log không được phép làm hỏng thao tác chính (giống log_audit)."""
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO nav_verification_log
+                        (fund_code, nav_date, nav_checked, nav_stored_before, result,
+                         verify_tier_before, verify_tier_after, source)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """, (fund_code.upper(), nav_date, nav_checked, nav_stored_before, result,
+                      tier_before, tier_after, source))
+    except Exception as e:
+        logger.debug("_log_nav_verification skip: %s", e)
+
+
+def _update_nav_row_hash(fund_code: str, nav_date: date) -> None:
+    """Đọc lại giá trị THẬT đang lưu và ghi row_hash khớp — gọi sau MỌI thao tác
+    ghi/sửa nav_history qua đường ứng dụng (upsert_nav, reverify_nav_tier)."""
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT nav, source, verify_tier FROM nav_history "
+                    "WHERE fund_code=%s AND nav_date=%s",
+                    (fund_code.upper(), nav_date)
+                )
+                row = cur.fetchone()
+                if not row:
+                    return
+                nav_val, src, tier = float(row[0]), row[1], int(row[2] or 0)
+                row_hash = _compute_nav_row_hash(fund_code, nav_date, nav_val, src, tier)
+                cur.execute(
+                    "UPDATE nav_history SET row_hash=%s WHERE fund_code=%s AND nav_date=%s",
+                    (row_hash, fund_code.upper(), nav_date)
+                )
+    except Exception as e:
+        logger.debug("_update_nav_row_hash skip: %s", e)
+
+
+def verify_nav_integrity(fund_code: str = None, limit: int = 20000) -> list[dict]:
+    """Quét nav_history, tính lại row_hash kỳ vọng cho từng dòng và so với hash
+    đã lưu — trả về danh sách các dòng LỆCH (row_hash không khớp giá trị hiện
+    tại — dấu hiệu bị sửa ngầm ngoài luồng ứng dụng, hoặc dòng cũ chưa từng có
+    row_hash trước khi tính năng này được bật). Rỗng = mọi thứ khớp."""
+    if not is_available():
+        return []
+    mismatches = []
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            if fund_code:
+                cur.execute(
+                    "SELECT fund_code, nav_date, nav, source, verify_tier, row_hash "
+                    "FROM nav_history WHERE fund_code=%s ORDER BY nav_date",
+                    (fund_code.upper(),)
+                )
+            else:
+                cur.execute(
+                    "SELECT fund_code, nav_date, nav, source, verify_tier, row_hash "
+                    "FROM nav_history ORDER BY fund_code, nav_date LIMIT %s",
+                    (limit,)
+                )
+            rows = cur.fetchall()
+    for code, nav_dt, nav_val, src, tier, stored_hash in rows:
+        expected = _compute_nav_row_hash(code, nav_dt, float(nav_val), src, int(tier or 0))
+        if stored_hash != expected:
+            mismatches.append({
+                "fund_code": code, "nav_date": nav_dt.isoformat(), "nav": float(nav_val),
+                "source": src, "verify_tier": tier,
+                "has_hash": stored_hash is not None,
+            })
+    return mismatches
+
+
 def init_pool(min_conn: int = 1, max_conn: int = 5) -> None:
     global _pool
     db_url = os.environ.get("DATABASE_URL")
@@ -106,6 +237,7 @@ def init_pool(min_conn: int = 1, max_conn: int = 5) -> None:
     _migrate_data_src_enum()      # Chạy trước khi mở pool
     _migrate_nav_confidence_cols()
     _migrate_nav_verify_cols()
+    _migrate_nav_integrity()
     _pool = ThreadedConnectionPool(min_conn, max_conn, db_url)
     logger.info("PostgreSQL pool initialised (min=%d max=%d)", min_conn, max_conn)
 
@@ -396,6 +528,13 @@ def upsert_nav(fund_code: str, nav_date: date, nav: float, source: str = "fmarke
             row = cur.fetchone()
     stored_nav = float(row[0]) if row else nav
     logger.debug("upsert_nav %s %s %.4f src=%s", fund_code, nav_date, nav, source)
+    # GOV-008-part2: cập nhật row_hash (chống sửa ngầm) + ghi vào nav_verification_log
+    # (mọi lần ghi đều để lại dấu vết, không chỉ khi có bất đồng) — lỗi ở đây không
+    # được phép làm hỏng upsert chính, nên _update_nav_row_hash/_log_nav_verification
+    # tự nuốt exception bên trong.
+    _update_nav_row_hash(fund_code, nav_date)
+    _log_nav_verification(fund_code, nav_date, nav, stored_nav, "write",
+                           None, None, source)
     # Sau khi API data confirmed → unify pending Pro drafts nếu khớp (dùng giá trị
     # ĐÃ LƯU THẬT trong DB, không phải tham số đầu vào — xem comment ở trên)
     try:
@@ -480,6 +619,9 @@ def reverify_nav_tier(fund_code: str, nav_date: date, fresh_nav: float,
                       before={"nav": stored_nav, "verify_tier": cur_tier},
                       after={"nav": fresh_nav, "verify_tier": 0},
                       note=f"TCBS tự sửa lại NAV sau {days_elapsed} ngày — lệch {diff_pct:.3f}%")
+            _update_nav_row_hash(fund_code, nav_date)
+            _log_nav_verification(fund_code, nav_date, fresh_nav, stored_nav, "corrected",
+                                   cur_tier, 0, "tcinvest")
             return "corrected"
 
         new_tier = cur_tier
@@ -493,7 +635,12 @@ def reverify_nav_tier(fund_code: str, nav_date: date, fresh_nav: float,
                     "WHERE fund_code=%s AND nav_date=%s",
                     (new_tier, fund_code, nav_date)
                 )
+            _update_nav_row_hash(fund_code, nav_date)
+            _log_nav_verification(fund_code, nav_date, fresh_nav, stored_nav, "upgraded",
+                                   cur_tier, new_tier, "tcinvest")
             return "upgraded"
+        _log_nav_verification(fund_code, nav_date, fresh_nav, stored_nav, "unchanged",
+                               cur_tier, cur_tier, "tcinvest")
         return "unchanged"
 
 
@@ -714,6 +861,10 @@ def resolve_nav_confirm(fund_code: str, nav_date_str: str, choice: str, actor_id
     log_audit(actor_id, "nav.confirm", "nav_history", f"{fund_code}:{nav_date_str}",
               before={"manual_nav": float(existing_nav), "fetch_nav": float(pending_nav) if pending_nav else None},
               after={"final_nav": final_nav, "choice": choice})
+    nav_dt = nav_date_str if isinstance(nav_date_str, date) else date.fromisoformat(str(nav_date_str))
+    _update_nav_row_hash(fund_code, nav_dt)
+    _log_nav_verification(fund_code, nav_dt, final_nav, float(existing_nav), "admin_confirm",
+                           None, None, "confirmed")
     return True
 
 
