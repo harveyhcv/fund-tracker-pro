@@ -1424,6 +1424,13 @@ def _ensure_user_tiers_table(conn) -> None:
                 created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
             )
         """)
+        # GOV-010: admin ban thủ công (fraud referral/promo) — chỉ chặn hành động
+        # tiếp theo (redeem mã, nhận bonus referral), KHÔNG xoá tier/pro_expires_at
+        # đang có của user (đúng chính sách GOV-006, không mất dữ liệu khi xử lý).
+        cur.execute("ALTER TABLE user_tiers ADD COLUMN IF NOT EXISTS banned BOOLEAN NOT NULL DEFAULT false")
+        cur.execute("ALTER TABLE user_tiers ADD COLUMN IF NOT EXISTS banned_at TIMESTAMPTZ")
+        cur.execute("ALTER TABLE user_tiers ADD COLUMN IF NOT EXISTS banned_by BIGINT")
+        cur.execute("ALTER TABLE user_tiers ADD COLUMN IF NOT EXISTS ban_reason TEXT")
 
 
 def get_tier(telegram_id) -> dict:
@@ -1502,14 +1509,99 @@ def extend_pro(telegram_id, days: int, actor_id=None, note: str = None) -> dict:
     return result
 
 
+# ─── BAN / UNBAN (GOV-010 — thủ công, dùng khi phát hiện fraud referral/promo) ──
+
+def is_banned(telegram_id) -> bool:
+    if not is_available():
+        return False
+    try:
+        tg = int(telegram_id)
+    except (TypeError, ValueError):
+        return False
+    with get_conn() as conn:
+        _ensure_user_tiers_table(conn)
+        with conn.cursor() as cur:
+            cur.execute("SELECT banned FROM user_tiers WHERE telegram_id = %s", (tg,))
+            row = cur.fetchone()
+            return bool(row and row[0])
+
+
+def ban_user(telegram_id, actor_id=None, reason: str = "") -> dict:
+    """Khoá tài khoản thủ công — chặn redeem mã promo/referral và nhận bonus
+    referral tiếp theo. KHÔNG xoá tier/pro_expires_at đang có (đúng GOV-006,
+    không mất dữ liệu khi xử lý — chỉ chặn hành động MỚI)."""
+    tg  = int(telegram_id)
+    now = datetime.now(timezone.utc)
+    with get_conn() as conn:
+        _ensure_user_tiers_table(conn)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                INSERT INTO user_tiers (telegram_id, banned, banned_at, banned_by, ban_reason)
+                VALUES (%s, true, %s, %s, %s)
+                ON CONFLICT (telegram_id) DO UPDATE SET
+                    banned = true, banned_at = EXCLUDED.banned_at,
+                    banned_by = EXCLUDED.banned_by, ban_reason = EXCLUDED.ban_reason
+                RETURNING telegram_id, tier, pro_expires_at, banned, ban_reason
+            """, (tg, now, int(actor_id) if actor_id else None, reason))
+            result = dict(cur.fetchone())
+    log_audit(actor_id, "user.ban", "user_tiers", tg, after=result, note=reason)
+    return result
+
+
+def unban_user(telegram_id, actor_id=None) -> dict:
+    tg = int(telegram_id)
+    with get_conn() as conn:
+        _ensure_user_tiers_table(conn)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                UPDATE user_tiers SET banned = false, ban_reason = NULL
+                WHERE telegram_id = %s
+                RETURNING telegram_id, tier, pro_expires_at, banned
+            """, (tg,))
+            row = cur.fetchone()
+    result = dict(row) if row else {"telegram_id": tg, "banned": False}
+    log_audit(actor_id, "user.unban", "user_tiers", tg, after=result)
+    return result
+
+
+def list_banned_users() -> "list[dict]":
+    with get_conn() as conn:
+        _ensure_user_tiers_table(conn)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT telegram_id, banned_at, banned_by, ban_reason
+                FROM user_tiers WHERE banned = true ORDER BY banned_at DESC
+            """)
+            return [dict(r) for r in cur.fetchall()]
+
+
 # ─── PROMO / REFERRAL CODES ──────────────────────────────────────────────────
 # 2 loại code dùng chung 1 cơ chế redeem:
 #   kind='admin'    — admin tự tạo (trial cho bạn bè...), giới hạn max_uses tuỳ ý.
+#                     Redeem cấp `days` NGAY cho người dùng (hành vi cũ, không đổi).
 #   kind='referral' — mỗi user có 1 code cá nhân cố định (không giới hạn lượt dùng
-#                     tổng), ai nhập vào sẽ được +days và NGƯỜI TẠO code (referrer)
-#                     cũng được +days — khuyến khích giới thiệu bạn bè thật.
+#                     tổng). THIẾT KẾ LẠI 2026-07-15 (GOV-010) thành 2 giai đoạn để
+#                     chống fraud — bản cũ cấp Pro miễn phí ngay lúc redeem cho cả 2
+#                     bên, không đòi hỏi thanh toán thật nào → farm được vô hạn bằng
+#                     tài khoản Telegram ảo (SIM ảo rẻ), vì max_uses=NULL không giới
+#                     hạn tổng lượt:
+#     Giai đoạn 1 (redeem)            : referee KHÔNG nhận Pro miễn phí nữa.
+#                                        Referrer nhận REFERRAL_SIGNUP_BONUS_DAYS,
+#                                        nhưng tối đa 1 lần / REFERRAL_COOLDOWN_DAYS
+#                                        ngày (dùng promo_codes.last_referrer_bonus_at)
+#                                        — chặn sybil farm redeem liên tục ăn bonus
+#                                        vô hạn.
+#     Giai đoạn 2 (referee mua lần đầu): grant_referral_purchase_bonus() cấp thêm
+#                                        REFERRAL_PURCHASE_BONUS_DAYS cho CẢ referrer
+#                                        và referee — CHỈ khi referee thanh toán
+#                                        thật lần đầu (SePay/MoMo/Stars), sửa tận gốc
+#                                        lỗ hổng "in Pro miễn phí không cần doanh thu".
 # promo_redemptions.UNIQUE(code, telegram_id) đảm bảo mỗi code chỉ dùng được
 # 1 lần/tài khoản, chặn share tràn lan cùng 1 người dùng nhiều lần.
+
+REFERRAL_SIGNUP_BONUS_DAYS   = 15   # referrer nhận khi có người redeem mã (giai đoạn 1)
+REFERRAL_PURCHASE_BONUS_DAYS = 30   # cả 2 bên nhận khi referee thanh toán thật lần đầu (giai đoạn 2)
+REFERRAL_COOLDOWN_DAYS       = 30   # referrer chỉ nhận bonus giai đoạn 1 tối đa 1 lần / N ngày này
 
 def _ensure_promo_tables(conn) -> None:
     with conn.cursor() as cur:
@@ -1535,6 +1627,13 @@ def _ensure_promo_tables(conn) -> None:
                 UNIQUE (code, telegram_id)
             )
         """)
+        # GOV-010: referral thiết kế lại 2 giai đoạn (2026-07-15) để chống fraud —
+        # trước đây redeem mã referral cấp Pro miễn phí NGAY cho referee, không đòi
+        # hỏi thanh toán thật nào → có thể farm bằng tài khoản Telegram ảo (SIM ảo
+        # rẻ) vô hạn lần vì promo_codes.max_uses=NULL. Xem redeem_promo_code() và
+        # grant_referral_purchase_bonus() để biết cơ chế mới.
+        cur.execute("ALTER TABLE promo_codes ADD COLUMN IF NOT EXISTS last_referrer_bonus_at TIMESTAMPTZ")
+        cur.execute("ALTER TABLE promo_redemptions ADD COLUMN IF NOT EXISTS referral_purchase_bonus_at TIMESTAMPTZ")
 
 
 def _gen_promo_code(prefix: str = "") -> str:
@@ -1639,9 +1738,9 @@ def get_or_create_referral_code(telegram_id) -> str:
             code = _gen_promo_code(prefix="REF-")
             cur.execute("""
                 INSERT INTO promo_codes (code, kind, days, max_uses, created_by, note)
-                VALUES (%s, 'referral', 30, NULL, %s, 'auto-generated referral code')
+                VALUES (%s, 'referral', %s, NULL, %s, 'auto-generated referral code')
                 RETURNING code
-            """, (code, tg))
+            """, (code, REFERRAL_SIGNUP_BONUS_DAYS, tg))
             return cur.fetchone()["code"]
 
 
@@ -1660,12 +1759,35 @@ def get_referral_stats(telegram_id) -> dict:
             return {"code": row["code"], "uses_count": n}
 
 
+def count_recent_redemptions(code: str, hours: int = 24) -> int:
+    """Đếm số lượt redeem mã trong N giờ gần đây — dùng để cảnh báo admin nếu 1
+    mã referral bị nhiều tài khoản khác nhau redeem dồn dập trong thời gian ngắn
+    (dấu hiệu sybil farm), kể cả khi bonus giai đoạn 1 đã bị cooldown chặn."""
+    code = (code or "").strip().upper()
+    with get_conn() as conn:
+        _ensure_promo_tables(conn)
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT COUNT(*) FROM promo_redemptions "
+                "WHERE code = %s AND redeemed_at > NOW() - make_interval(hours => %s)",
+                (code, hours),
+            )
+            return cur.fetchone()[0]
+
+
 def redeem_promo_code(code: str, telegram_id) -> dict:
-    """Áp dụng mã giảm giá/giới thiệu cho telegram_id. Trả {ok, error, days, referrer_bonus_days}."""
+    """Áp dụng mã. kind='admin' cấp `days` ngay như cũ. kind='referral' (GOV-010,
+    xem ghi chú đầu section PROMO/REFERRAL CODES): referee KHÔNG nhận Pro miễn
+    phí — chỉ referrer nhận REFERRAL_SIGNUP_BONUS_DAYS, tối đa 1 lần/
+    REFERRAL_COOLDOWN_DAYS ngày. Bonus giai đoạn 2 (referee mua lần đầu) xem
+    grant_referral_purchase_bonus(). Trả {ok, error, days, referrer_bonus_days}."""
     tg = int(telegram_id)
     code = (code or "").strip().upper()
     if not code:
         return {"ok": False, "error": "Vui lòng nhập mã"}
+    if is_banned(tg):
+        return {"ok": False, "error": "Tài khoản của bạn đang bị khoá"}
+
     with get_conn() as conn:
         _ensure_promo_tables(conn)
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -1677,6 +1799,8 @@ def redeem_promo_code(code: str, telegram_id) -> dict:
                 return {"ok": False, "error": "Mã đã bị vô hiệu hoá"}
             if promo["kind"] == "referral" and promo["created_by"] == tg:
                 return {"ok": False, "error": "Không thể dùng mã giới thiệu của chính mình"}
+            if promo["kind"] == "referral" and promo["created_by"] and is_banned(promo["created_by"]):
+                return {"ok": False, "error": "Mã giới thiệu này hiện không khả dụng"}
             if promo["max_uses"] is not None and promo["uses_count"] >= promo["max_uses"]:
                 return {"ok": False, "error": "Mã đã hết lượt sử dụng"}
             cur.execute("SELECT 1 FROM promo_redemptions WHERE code = %s AND telegram_id = %s", (code, tg))
@@ -1688,15 +1812,87 @@ def redeem_promo_code(code: str, telegram_id) -> dict:
             cur.execute(
                 "UPDATE promo_codes SET uses_count = uses_count + 1 WHERE code = %s", (code,)
             )
-    # Ngoài transaction ở trên (extend_pro tự mở connection riêng)
-    extend_pro(tg, promo["days"], actor_id=tg, note=f"redeem mã {code}")
+
+    if promo["kind"] == "admin":
+        # Mã trial/giảm giá admin tạo — giữ nguyên hành vi cũ, cấp ngay.
+        extend_pro(tg, promo["days"], actor_id=tg, note=f"redeem mã {code}")
+        log_audit(tg, "promo.redeem", "promo_codes", code,
+                  after={"days": promo["days"], "kind": "admin"})
+        return {"ok": True, "kind": "admin", "days": promo["days"], "referrer_bonus_days": 0}
+
+    # kind == 'referral': referee không nhận gì ở bước này (xem docstring).
+    referrer_id    = promo["created_by"]
     referrer_bonus = 0
-    if promo["kind"] == "referral" and promo["created_by"]:
-        extend_pro(promo["created_by"], promo["days"], actor_id=tg, note=f"referral bonus từ mã {code}")
-        referrer_bonus = promo["days"]
+    if referrer_id:
+        with get_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(
+                    "SELECT last_referrer_bonus_at FROM promo_codes WHERE code = %s FOR UPDATE",
+                    (code,),
+                )
+                row         = cur.fetchone()
+                last_bonus  = row["last_referrer_bonus_at"] if row else None
+                cooldown_ok = (last_bonus is None) or (
+                    datetime.now(timezone.utc) - last_bonus >= timedelta(days=REFERRAL_COOLDOWN_DAYS)
+                )
+                if cooldown_ok:
+                    cur.execute(
+                        "UPDATE promo_codes SET last_referrer_bonus_at = NOW() WHERE code = %s",
+                        (code,),
+                    )
+                    referrer_bonus = promo["days"] or REFERRAL_SIGNUP_BONUS_DAYS
+        if referrer_bonus:
+            extend_pro(referrer_id, referrer_bonus, actor_id=tg,
+                       note=f"referral signup bonus từ mã {code}")
+
+    recent_24h = count_recent_redemptions(code, hours=24)
     log_audit(tg, "promo.redeem", "promo_codes", code,
-              after={"days": promo["days"], "referrer_bonus_days": referrer_bonus, "kind": promo["kind"]})
-    return {"ok": True, "days": promo["days"], "referrer_bonus_days": referrer_bonus}
+              after={"kind": "referral", "referrer_bonus_days": referrer_bonus,
+                     "cooldown_blocked": referrer_bonus == 0, "recent_24h": recent_24h})
+    return {"ok": True, "kind": "referral", "days": 0, "referrer_bonus_days": referrer_bonus,
+            "referrer_id": referrer_id, "recent_redemptions_24h": recent_24h}
+
+
+def grant_referral_purchase_bonus(telegram_id, actor_id=None) -> "dict | None":
+    """Gọi ngay sau 1 lần thanh toán THẬT thành công (SePay/MoMo/Stars — xem
+    miniapp_server.py và bot.py). Nếu telegram_id từng redeem 1 mã referral và
+    CHƯA nhận bonus giai đoạn 2 (referral_purchase_bonus_at IS NULL), cấp thêm
+    REFERRAL_PURCHASE_BONUS_DAYS cho CẢ referrer và referee. Idempotent — cột
+    referral_purchase_bonus_at đảm bảo chỉ chạy đúng 1 lần/referee dù họ mua
+    thêm bao nhiêu lần sau đó. Trả None nếu không có referral nào để thưởng."""
+    tg = int(telegram_id)
+    with get_conn() as conn:
+        _ensure_promo_tables(conn)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT r.id, r.code, p.created_by AS referrer_id
+                FROM promo_redemptions r
+                JOIN promo_codes p ON p.code = r.code
+                WHERE r.telegram_id = %s AND p.kind = 'referral'
+                      AND r.referral_purchase_bonus_at IS NULL
+                ORDER BY r.redeemed_at ASC
+                LIMIT 1
+                FOR UPDATE OF r
+            """, (tg,))
+            row = cur.fetchone()
+            if not row or not row["referrer_id"]:
+                return None
+            cur.execute(
+                "UPDATE promo_redemptions SET referral_purchase_bonus_at = NOW() WHERE id = %s",
+                (row["id"],),
+            )
+    referrer_id = row["referrer_id"]
+    if is_banned(tg) or is_banned(referrer_id):
+        log_audit(actor_id, "referral.purchase_bonus_blocked", "promo_redemptions", row["id"],
+                  note="referee hoặc referrer đang bị khoá — không cấp bonus")
+        return None
+    extend_pro(tg, REFERRAL_PURCHASE_BONUS_DAYS, actor_id=actor_id,
+               note=f"referral purchase bonus (mã {row['code']})")
+    extend_pro(referrer_id, REFERRAL_PURCHASE_BONUS_DAYS, actor_id=actor_id,
+               note=f"referral purchase bonus — referee {tg} mua lần đầu (mã {row['code']})")
+    log_audit(actor_id, "referral.purchase_bonus", "promo_redemptions", row["id"],
+              after={"referee": tg, "referrer": referrer_id, "days_each": REFERRAL_PURCHASE_BONUS_DAYS})
+    return {"referee": tg, "referrer": referrer_id, "days_each": REFERRAL_PURCHASE_BONUS_DAYS}
 
 
 # ─── ALERTS (PRO-004) ────────────────────────────────────────────────────────

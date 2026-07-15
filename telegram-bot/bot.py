@@ -474,6 +474,25 @@ def get_nav_series_with_source(code: str, fund_cfg: dict, config: dict = None) -
         pts = [{"date": p["date"], "nav": p["nav"]} for p in db_pts]
         log.info(f"[Nav] {code} fallback DB nav_history: {len(pts)} điểm")
         source = None  # đã có sẵn trong DB rồi, không cần ghi lại
+
+    # GOV-011 (2026-07-15, Harvey phát hiện SSISCA hiện NAV 14/7 dù DB đã có NAV
+    # 15/7): pts fetch live (tcbs/fmarket) có thể CHƯA có NAV hôm nay dù DB đã có
+    # sẵn — vd TCinvest công bố trễ hơn fmarket, hoặc script/admin khác đã ghi
+    # NAV hôm nay trước khi job này chạy (đúng tình huống vừa xảy ra: harvest_nav
+    # --daily ghi NAV 15/7 nguồn fmarket, nhưng job fetch live sau đó gọi lại
+    # TCBS — TCBS chưa publish 15/7 nên trả về pts chỉ tới 14/7, âm thầm "lùi"
+    # NAV hiển thị). Tín hiệu PHẢI luôn ưu tiên NGÀY MỚI NHẤT bất kể nguồn nào
+    # "đáng tin" hơn — merge thêm điểm mới nhất từ DB nếu nó mới hơn pts vừa fetch,
+    # và bỏ qua ghi lại (source=None) để không mất nhãn nguồn thật đã lưu đúng.
+    if pts and db_pts and db_pts[-1]["date"] > pts[-1]["date"]:
+        log.info(f"[Nav] {code} DB đã có NAV mới hơn ({db_pts[-1]['date']}) so với "
+                 f"fetch live ({pts[-1]['date']}) — merge, không ghi đè lại")
+        pts_by_date = {p["date"]: p for p in pts}
+        for p in db_pts:
+            pts_by_date.setdefault(p["date"], p)
+        pts = sorted(pts_by_date.values(), key=lambda x: x["date"])
+        source = None
+
     return pts, source
 
 
@@ -3326,6 +3345,10 @@ def _handle_successful_payment(token: str, chat_id: str, msg: dict) -> None:
             result = _db.extend_pro(chat_id, days, note=f"stars {plan['label']} ({stars}⭐)")
             expires_at = result.get("pro_expires_at")
             log.info(f"[PAY] tier=pro extended {days}d for {chat_id}, expires {expires_at}")
+            try:
+                _db.grant_referral_purchase_bonus(chat_id)
+            except Exception as _rbe:
+                log.warning(f"[PAY] grant_referral_purchase_bonus lỗi: {_rbe}")
         else:
             log.error(f"[PAY] DB unavailable — cannot persist tier for {chat_id}")
     except Exception as e:

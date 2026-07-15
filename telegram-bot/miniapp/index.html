@@ -2262,8 +2262,8 @@ async function redeemPromoCode(){
   try{
     const d=await apiPost('/api/promo/redeem',{telegram_id:USER_ID, code});
     status.style.color='var(--buy)';
-    status.textContent = d.referrer_bonus_days
-      ? `✓ Đã cộng +${d.days} ngày Pro cho bạn (mã giới thiệu)!`
+    status.textContent = d.kind==='referral'
+      ? `✓ Đã ghi nhận mã giới thiệu! Bạn sẽ nhận +30 ngày Pro ngay khi nâng cấp Pro lần đầu.`
       : `✓ Đã cộng +${d.days} ngày Pro!`;
     input.value='';
     tg?.HapticFeedback?.notificationOccurred('success');

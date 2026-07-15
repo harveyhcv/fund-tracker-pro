@@ -569,6 +569,34 @@
   `database_url` trong `telegram-bot/config.json` để kết nối psycopg2 trực tiếp từ máy
   local, bỏ qua SSH hoàn toàn cho các thao tác đọc/ghi DB thuần | 2026-07-15
 
+- [DONE] GOV-010 · Referral fraud audit + thiết kế lại 2 giai đoạn + ban/unban thủ công
+  **Root cause**: Harvey hỏi review bảo mật cơ chế referral. Bản cũ (`redeem_promo_code`)
+  cấp Pro miễn phí NGAY cho cả referee và referrer lúc redeem — không đòi hỏi thanh toán
+  thật nào, và `promo_codes.max_uses=NULL` cho referral code (không giới hạn tổng lượt
+  dùng) → có thể farm vô hạn bằng tài khoản Telegram ảo (SIM ảo giá rẻ), tốn 0 đồng
+  doanh thu cho mỗi lượt farm. Thêm lỗ hổng phụ: referral ring (A↔B redeem chéo) chỉ bị
+  chặn ở check tự-dùng-mã-mình, không chặn vòng lặp nhiều tài khoản.
+  **Fix (theo yêu cầu Harvey, thiết kế 2 giai đoạn)**:
+  - Giai đoạn 1 (redeem mã): referee KHÔNG còn nhận Pro miễn phí. Referrer nhận
+    `REFERRAL_SIGNUP_BONUS_DAYS=15`, nhưng tối đa **1 lần / 30 ngày**
+    (`promo_codes.last_referrer_bonus_at`) — chặn sybil farm redeem liên tục.
+  - Giai đoạn 2 (referee thanh toán thật lần đầu): `grant_referral_purchase_bonus()` cấp
+    thêm `REFERRAL_PURCHASE_BONUS_DAYS=30` cho CẢ referrer và referee — chỉ khi referee
+    thực sự trả tiền (SePay/MoMo/Telegram Stars), sửa tận gốc lỗ hổng kinh tế. Idempotent
+    qua cột `promo_redemptions.referral_purchase_bonus_at` (chỉ chạy 1 lần/referee).
+  - Wire vào cả 3 payment success path: `_api_sepay_webhook`, `_api_momo_ipn`
+    (`miniapp_server.py`), `_handle_successful_payment` (`bot.py`).
+  - Cảnh báo admin qua Telegram khi 1 mã referral bị ≥3 tài khoản khác nhau redeem
+    trong 24h (`REFERRAL_SYBIL_ALERT_THRESHOLD`, `_notify_admin_referral_sybil`).
+  - Thêm ban/unban thủ công: `user_tiers.banned/banned_at/banned_by/ban_reason` (additive,
+    không xoá tier/pro_expires_at đang có — GOV-006), `db.ban_user/unban_user/is_banned`,
+    admin API `POST /api/admin/user/ban`, `/unban`, `GET /api/admin/user/banned-list`
+    (đều `_is_admin` + `_auth_write`). `redeem_promo_code`/`grant_referral_purchase_bonus`
+    chặn cả referee và referrer đang bị ban.
+  Verify: `py_compile` sạch cho `db.py`/`bot.py`/`miniapp_server.py`. Chưa test sống trên
+  production (chưa có giao dịch referral thật để trigger) — cần theo dõi lần redeem/mua
+  Pro tiếp theo để xác nhận đúng luồng | 2026-07-15
+
 ---
 
 ## XONG (DONE)

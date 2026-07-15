@@ -1147,6 +1147,33 @@ def _check_promo_abuse(tg_id: str) -> bool:
     return len(hist) > PROMO_ABUSE_MAX_ATTEMPTS
 
 
+# GOV-010: ngưỡng cảnh báo sybil farm referral — số lượt redeem KHÁC NHAU của
+# cùng 1 mã referral trong 24h. Referrer chỉ nhận bonus 1 lần/30 ngày nên giá
+# trị kinh tế của farm đã bị chặn phần lớn, nhưng vẫn cảnh báo để admin biết mà
+# ban thủ công nếu cần (xem POST /api/admin/user/ban).
+REFERRAL_SYBIL_ALERT_THRESHOLD = 3
+
+
+def _notify_admin_referral_sybil(code: str, referrer_id, recent_count: int) -> None:
+    cfg = _load_cfg()
+    admin_id = str(cfg.get("admin_telegram_id") or os.environ.get("ADMIN_TELEGRAM_ID", "")).strip()
+    token = cfg.get("bot_token") or os.environ.get("BOT_TOKEN", "")
+    if not admin_id or not token or token.startswith("NHAP"):
+        return
+    try:
+        import requests as _req
+        _req.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            json={"chat_id": admin_id,
+                  "text": f"⚠️ Nghi ngờ sybil farm mã giới thiệu: code={code} "
+                          f"referrer={referrer_id} — {recent_count} lượt redeem trong 24h.\n"
+                          f"Dùng /api/admin/user/ban nếu cần khoá thủ công."},
+            timeout=8,
+        )
+    except Exception:
+        pass
+
+
 def _notify_admin_promo_abuse(tg_id: str) -> None:
     cfg = _load_cfg()
     admin_id = str(cfg.get("admin_telegram_id") or os.environ.get("ADMIN_TELEGRAM_ID", "")).strip()
@@ -1321,6 +1348,8 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             self._api_admin_audit(qs)
         elif path == "/api/admin/summary":
             self._api_admin_summary(qs)
+        elif path == "/api/admin/user/banned-list":
+            self._api_admin_banned_list(qs)
         elif path == "/health":
             _json(self, {"ok": True, "ts": datetime.now().isoformat()})
         elif path == "/api/version":
@@ -1413,6 +1442,10 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             self._api_admin_promo_activate(data)
         elif path == "/api/admin/promo/edit":
             self._api_admin_promo_edit(data)
+        elif path == "/api/admin/user/ban":
+            self._api_admin_ban_user(data)
+        elif path == "/api/admin/user/unban":
+            self._api_admin_unban_user(data)
         else:
             _json(self, {"error": "Not found"}, 404)
 
@@ -2487,6 +2520,13 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         if not result.get("ok"):
             _json(self, {"error": result.get("error", "Mã không hợp lệ")}, 400)
             return
+        # GOV-010: nhiều tài khoản khác nhau redeem cùng 1 mã referral trong thời
+        # gian ngắn là dấu hiệu sybil farm — cap 1 lần/30 ngày đã chặn được phần
+        # lớn giá trị kinh tế, nhưng vẫn cảnh báo admin để có thể ban thủ công nếu
+        # cần (referrer_bonus_days=0 không có nghĩa là an toàn, cooldown có thể
+        # đang bị lợi dụng để "test" trước khi tấn công quy mô lớn hơn).
+        if result.get("recent_redemptions_24h", 0) >= REFERRAL_SYBIL_ALERT_THRESHOLD:
+            _notify_admin_referral_sybil(code, result.get("referrer_id"), result["recent_redemptions_24h"])
         _json(self, result)
 
     def _api_admin_promo_list(self, qs: dict):
@@ -2577,6 +2617,66 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             return
         ok = _db_mod.activate_promo_code(code, actor_id=tg_id)
         _json(self, {"ok": ok})
+
+    def _api_admin_ban_user(self, data: dict):
+        """POST /api/admin/user/ban — {telegram_id, target_id, reason} — khoá thủ
+        công 1 tài khoản (GOV-010, dùng khi phát hiện fraud referral/promo qua
+        cảnh báo Telegram). KHÔNG xoá tier/pro_expires_at đang có (GOV-006)."""
+        tg_id = str(data.get("telegram_id", ""))
+        if not _is_admin(tg_id):
+            _json(self, {"error": "admin_only"}, 403)
+            return
+        if not _auth_write(self, tg_id):
+            return
+        target = str(data.get("target_id", "")).strip()
+        reason = str(data.get("reason", "")).strip()
+        if not target:
+            _json(self, {"error": "target_id required"}, 400)
+            return
+        if _db_mod is None or not _db_mod.is_available():
+            _json(self, {"error": "DB không khả dụng"}, 503)
+            return
+        try:
+            result = _db_mod.ban_user(target, actor_id=tg_id, reason=reason)
+        except Exception as e:
+            _json(self, {"error": str(e)}, 400)
+            return
+        _json(self, {"ok": True, "user": result})
+
+    def _api_admin_unban_user(self, data: dict):
+        """POST /api/admin/user/unban — {telegram_id, target_id}."""
+        tg_id = str(data.get("telegram_id", ""))
+        if not _is_admin(tg_id):
+            _json(self, {"error": "admin_only"}, 403)
+            return
+        if not _auth_write(self, tg_id):
+            return
+        target = str(data.get("target_id", "")).strip()
+        if not target:
+            _json(self, {"error": "target_id required"}, 400)
+            return
+        if _db_mod is None or not _db_mod.is_available():
+            _json(self, {"error": "DB không khả dụng"}, 503)
+            return
+        try:
+            result = _db_mod.unban_user(target, actor_id=tg_id)
+        except Exception as e:
+            _json(self, {"error": str(e)}, 400)
+            return
+        _json(self, {"ok": True, "user": result})
+
+    def _api_admin_banned_list(self, qs: dict):
+        """GET /api/admin/user/banned-list?user_id=... — danh sách tài khoản đang bị khoá."""
+        tg_id = (qs.get("user_id") or [""])[0]
+        if not _is_admin(tg_id):
+            _json(self, {"error": "admin_only"}, 403)
+            return
+        if not _auth_write(self, tg_id):
+            return
+        if _db_mod is None or not _db_mod.is_available():
+            _json(self, {"banned": []})
+            return
+        _json(self, {"banned": _db_mod.list_banned_users()})
 
     def _api_admin_promo_edit(self, data: dict):
         """POST /api/admin/promo/edit — {telegram_id, code, days, max_uses, note}.
@@ -3261,6 +3361,10 @@ class MiniAppHandler(BaseHTTPRequestHandler):
                     result = _db_mod.extend_pro(tg_id, plan_days, note=f"momo {PRO_PLANS[plan_key]['label']} ({amount}đ)")
                     expires_at = result.get("pro_expires_at")
                     log.info(f"[PAY][MoMo] tier=pro extended {plan_days}d for {tg_id}, expires {expires_at}")
+                    try:
+                        _db_mod.grant_referral_purchase_bonus(tg_id)
+                    except Exception as _rbe:
+                        log.warning(f"[PAY][MoMo] grant_referral_purchase_bonus lỗi: {_rbe}")
                 except Exception as e:
                     log.error(f"[PAY][MoMo] extend_pro error: {e}")
                     expires_at = datetime.now(timezone.utc) + timedelta(days=plan_days)
@@ -3452,6 +3556,10 @@ class MiniAppHandler(BaseHTTPRequestHandler):
                                          note=f"sepay {plan['label']} (ref={order['ref_code']}, {amount}đ)")
             expires_at = result.get("pro_expires_at")
             log.info(f"[PAY][SePay] tier=pro extended {plan['days']}d for {tg_id}, expires {expires_at}")
+            try:
+                _db_mod.grant_referral_purchase_bonus(tg_id)
+            except Exception as _rbe:
+                log.warning(f"[PAY][SePay] grant_referral_purchase_bonus lỗi: {_rbe}")
         except Exception as e:
             log.error(f"[PAY][SePay] extend_pro error: {e}")
 
