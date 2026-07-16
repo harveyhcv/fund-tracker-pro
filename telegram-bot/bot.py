@@ -22,7 +22,7 @@ import sys
 import time
 import logging
 import threading
-from datetime import datetime, date
+from datetime import datetime, date, timezone, timedelta
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Optional
@@ -2161,6 +2161,57 @@ def job_backup_db():
         tg_send(tok, admin_id, f"⚠️ <b>Backup DB thất bại</b>\n<code>{err}</code>\nKiểm tra Railway logs ngay.")
 
 
+# GOV-014 (2026-07-16) — sự cố Postgres crash do volume đầy (479/500MB) khiến bot/Mini
+# App down hoàn toàn ~4 tiếng, backup gần nhất lúc đó đã cách 11 tiếng vì job_backup_db
+# trước đây chỉ chạy 1 lần/ngày (03:30). Không có cách nào cảnh báo TRƯỚC khi volume đầy
+# — Railway không tự báo, phải tự theo dõi. Hai lớp phòng ngừa thêm ở đây:
+#   1) job_backup_db chạy dày hơn (mỗi 2 tiếng thay vì 1 lần/ngày) — thu hẹp khoảng dữ
+#      liệu có thể mất nếu volume lại đầy bất ngờ, từ tối đa 24h xuống tối đa ~2h.
+#   2) job_check_disk_usage — theo dõi pg_database_size() mỗi giờ, cảnh báo Telegram
+#      admin khi vượt ngưỡng % của DB_VOLUME_LIMIT_MB (đặt bằng dung lượng volume thật
+#      trên Railway, xem Railway Variables). Đây là proxy — pg_database_size() không
+#      tính WAL/temp file Postgres cần thêm lúc build index/backup/vacuum (chính là thứ
+#      đã gây crash dù DB mới dùng 197MB/500MB) — nên ngưỡng cảnh báo đặt THẤP (70%) để
+#      còn dư khoảng đệm cho phần WAL/temp không đo được trực tiếp qua SQL.
+_DISK_ALERT_PCT = 70
+_disk_alert_sent_at: "datetime | None" = None  # tránh spam — chỉ báo lại sau mỗi 6 tiếng
+
+
+def job_check_disk_usage():
+    """Cảnh báo sớm khi Postgres database size sắp chạm ngưỡng volume — xem ghi chú
+    GOV-014 phía trên job_backup_db. Không raise, chỉ log nếu lỗi."""
+    global _disk_alert_sent_at
+    if not (_DB_AVAILABLE and _db.is_available()):
+        return
+    try:
+        limit_mb = float(os.environ.get("DB_VOLUME_LIMIT_MB", "2000"))
+        with _db.get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT pg_database_size(current_database())")
+                size_bytes = cur.fetchone()[0]
+        size_mb = size_bytes / (1024 * 1024)
+        pct = (size_mb / limit_mb) * 100 if limit_mb else 0
+    except Exception as e:
+        log.error(f"[disk_usage] lỗi kiểm tra: {e}")
+        return
+    log.info(f"[disk_usage] {size_mb:.0f}MB / {limit_mb:.0f}MB ({pct:.1f}%)")
+    if pct < _DISK_ALERT_PCT:
+        return
+    now = datetime.now(timezone.utc)
+    if _disk_alert_sent_at and (now - _disk_alert_sent_at) < timedelta(hours=6):
+        return
+    _disk_alert_sent_at = now
+    config = load_config()
+    tok = config.get("bot_token", "")
+    admin_id = str(config.get("admin_telegram_id", "")).strip()
+    if tok and admin_id:
+        tg_send(tok, admin_id,
+                f"⚠️ <b>Postgres sắp đầy dung lượng</b>\n"
+                f"DB size: {size_mb:.0f}MB / giới hạn {limit_mb:.0f}MB ({pct:.0f}%)\n"
+                f"Cần tăng volume trên Railway TRƯỚC KHI đầy hẳn (WAL/temp file có thể "
+                f"cần thêm không gian ngoài số này — xem GOV-014 trong bot.py).")
+
+
 def job_nav_source_audit():
     """Tự động hoá quy trình cross-check định kỳ ghi trong BACKLOG GOV-007-part3
     (trước đây phải chạy tay, và vì thế bug NAV-source-chưa-khoá kiểu VCBFTBF chỉ
@@ -3579,7 +3630,8 @@ def main():
     schedule.every().day.at("21:30").do(job_nav_integrity_check)
     schedule.every().sunday.at("02:00").do(job_t2_retrain)
     schedule.every(30).days.at("03:00").do(job_t2_reweight)
-    schedule.every().day.at("03:30").do(job_backup_db)
+    schedule.every(2).hours.do(job_backup_db)  # GOV-014: 1/ngày → mỗi 2h, thu hẹp khoảng mất dữ liệu
+    schedule.every().hour.do(job_check_disk_usage)  # GOV-014: cảnh báo sớm trước khi volume đầy
     schedule.every().monday.at("04:00").do(job_nav_source_audit)
     schedule.every().day.at("07:30").do(job_check_tcbs_token)
     # job_watchdog_ping đã bỏ — tin nhắn "Bot alive" không cần thiết

@@ -5,10 +5,23 @@
 - `scripts/backup_db.py --backup` chạy `pg_dump -F c` (custom format, nén sẵn), lưu vào
   `$DATA_DIR/backups/ftp_backup_<timestamp>.dump` — `DATA_DIR` là Railway persistent volume
   (mặc định `/data`, đã dùng chung với `config.json`/`state.json`).
-- `bot.py` chạy job này tự động **hàng ngày lúc 03:30** (`job_backup_db`, xem `main()`).
+- `bot.py` chạy job này tự động **mỗi 2 tiếng** (`job_backup_db`, xem `main()`) — trước
+  GOV-014 là 1 lần/ngày lúc 03:30, đã tăng tần suất sau sự cố Postgres crash 2026-07-16
+  (backup gần nhất lúc đó cách 11 tiếng vì chỉ chạy hàng ngày).
 - Retention: giữ tối đa 14 bản gần nhất (~2 tuần), luôn giữ ít nhất 1 bản bất kể tuổi
   (không bao giờ xoá sạch nếu có lỗi cấu hình ngày giờ).
 - Nếu backup thất bại → bot gửi cảnh báo Telegram cho admin (`admin_telegram_id`).
+
+## GOV-014 — Cảnh báo dung lượng sớm (2026-07-16)
+
+Sự cố: Postgres volume đầy (479/500MB) khiến DB crash không khởi động lại được — Railway
+không hề tự cảnh báo trước khi đầy. `job_check_disk_usage` (`bot.py`, chạy mỗi giờ) theo dõi
+`pg_database_size(current_database())` so với `DB_VOLUME_LIMIT_MB` (đặt trong Railway
+Variables bằng đúng dung lượng volume Postgres thật, vd `2000` cho volume 2GB) — cảnh báo
+Telegram admin khi vượt **70%**. Ngưỡng đặt thấp vì `pg_database_size()` KHÔNG tính WAL/temp
+file Postgres cần thêm lúc build index/backup/vacuum — chính phần này đã gây crash dù DB data
+mới chỉ dùng 197MB/500MB lúc restore. Nhớ set `DB_VOLUME_LIMIT_MB` khớp với volume mới sau khi
+upgrade lên gói Hobby.
 
 ## Giới hạn cần biết
 
