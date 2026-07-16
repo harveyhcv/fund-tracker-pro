@@ -2403,8 +2403,10 @@ function renderDCA(data){
         </div>
       </div>
       <div class="dca-bar-wrap"><div class="dca-bar" style="width:${item.skip?0:item.pct_alloc}%;background:${barColor}"></div></div>
-      ${item.reason?`<div class="dca-reason">💡 ${item.reason}</div>`:''}
-      ${item.nav?`<div style="margin-top:4px">${_t2Html(item.code, item.nav, true)}</div>`:''}
+      ${(item.reason||item.nav)?`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:3px">
+        ${item.reason?`<div class="dca-reason" style="margin-top:0">💡 ${item.reason}</div>`:'<span></span>'}
+        ${item.nav?`<div style="flex-shrink:0">${_t2Html(item.code, item.nav, true)}</div>`:''}
+      </div>`:''}
     </div>`;
   }
   const rem=data.remainder||0;
