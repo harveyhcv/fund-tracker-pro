@@ -1901,7 +1901,16 @@ def get_real_pnl_summary() -> dict:
             cur.execute("SELECT COUNT(*) AS n FROM discount_redemptions")
             discount_uses = cur.fetchone()["n"]
 
-            hosting_cost = get_setting("hosting_cost_vnd", "0")
+            # KHÔNG gọi get_setting() ở đây — hàm đó tự mở get_conn() riêng, và gọi
+            # nó trong khi connection ngoài này còn đang mở (transaction chưa commit)
+            # tự gây deadlock với chính nó (2 connection cùng cố CREATE TABLE IF NOT
+            # EXISTS app_settings, connection sau chờ lock của connection trước —
+            # nhưng connection trước lại đang chờ connection sau trả kết quả). Phát
+            # hiện thật trên production 2026-07-16 — 8 connection bị treo hàng phút,
+            # phải pg_terminate_backend thủ công mới gỡ được. Dùng thẳng cursor đã mở.
+            cur.execute("SELECT value FROM app_settings WHERE key = %s", ("hosting_cost_vnd",))
+            row = cur.fetchone()
+            hosting_cost = row["value"] if row else "0"
 
     return {
         "total_users": total_users,
