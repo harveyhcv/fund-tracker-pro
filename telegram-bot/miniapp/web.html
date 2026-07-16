@@ -52,7 +52,14 @@ footer{text-align:center;padding:16px 0;color:var(--muted);font-size:10px}
     <div class="card" style="width:100%">
       <div class="ctitle">Đăng nhập</div>
       <p>Đăng nhập bằng tài khoản Telegram của bạn để xem danh mục, tín hiệu và dự báo — không cần mở qua app Telegram.</p>
-      <div id="widget-box"></div>
+      <div id="widget-box">
+        <script async src="https://telegram.org/js/telegram-widget.js?22"
+                data-telegram-login="FundTrackerPro_bot"
+                data-size="large"
+                data-radius="8"
+                data-onauth="onTelegramAuth(user)"
+                data-request-access="write"></script>
+      </div>
       <div id="err"></div>
     </div>
   </div>
@@ -88,13 +95,6 @@ footer{text-align:center;padding:16px 0;color:var(--muted);font-size:10px}
 
   <footer>Fund Tracker Pro</footer>
 </div>
-
-<script src="https://telegram.org/js/telegram-widget.js?22"
-        data-telegram-login="FundTrackerPro_bot"
-        data-size="large"
-        data-radius="8"
-        data-onauth="onTelegramAuth(user)"
-        data-request-access="write"></script>
 
 <script>
 const SESSION_KEY = 'ftp_web_session';
