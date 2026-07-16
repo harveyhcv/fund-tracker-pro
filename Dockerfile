@@ -1,9 +1,21 @@
-FROM python:3.11-slim
+FROM python:3.11-slim-bookworm
 
 WORKDIR /app
 
-# postgresql-client cho pg_dump/pg_restore (GOV-002 backup tự động)
-RUN apt-get update && apt-get install -y --no-install-recommends postgresql-client \
+# postgresql-client cho pg_dump/pg_restore (GOV-002 backup tự động).
+# GOV-011-part3 (2026-07-16): Railway Postgres đã lên bản 18 (image
+# ghcr.io/railwayapp-templates/postgres-ssl:18), nhưng gói postgresql-client mặc định
+# của Debian base image chỉ có v17 — lệch major version khiến pg_dump từ chối chạy
+# ("aborting because of server version mismatch"), backup tự động fail âm thầm mỗi
+# đêm. Cài trực tiếp từ repo chính thức PGDG để lấy đúng postgresql-client-18, pin
+# base image về "bookworm" tường minh (PGDG hỗ trợ ổn định) thay vì để trôi theo
+# codename Debian mặc định của image gốc.
+RUN apt-get update && apt-get install -y --no-install-recommends wget gnupg ca-certificates \
+    && wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /usr/share/keyrings/postgresql.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/postgresql.gpg] http://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
+    && apt-get update && apt-get install -y --no-install-recommends postgresql-client-18 \
+    && apt-get purge -y wget gnupg \
+    && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install dependencies

@@ -434,7 +434,7 @@ canvas{width:100%!important;height:100%!important}
             <option value="DOJI_NHAN_9999">DOJI 9999 (HN)</option>
             <option value="DOJI_NHAN_HCM">DOJI 9999 (HCM)</option>
             <option value="SJC_NHAN">SJC 9999 (nhẫn)</option>
-            <option value="PNJ_VANGMY">PNJ Vàng mỹ</option>
+            <option value="PNJ_HN">PNJ Hà Nội</option>
             <option value="PNJ_24K">PNJ 24K</option>
             <option value="BAOTINNGUYEN">Bảo Tín 9999</option>
             <option value="VIETTIN_SJC">Việt Tín SJC</option>
@@ -1355,25 +1355,11 @@ function renderPfGoldSub(){
   let otherRow='';
   if(otherPP && otherPP.luong>0.001){
     const subItems=otherPP.sub_items||[];
-    // Chỉ hiện box sổ xuống khi user thực sự có đặt tên riêng cho ít nhất 1 khoản —
-    // nếu không thì hiện số lượng như bình thường (đỡ rối mắt). Bấm vào dòng
-    // "Số lượng" để mở/đóng breakdown theo tên (không dùng <select> vì đó là
-    // menu chọn, ở đây chỉ cần xem thông tin).
-    const qtyBlock=subItems.length
-      ? `<div class="sum-row" style="cursor:pointer" onclick="_toggleOtherGoldBreakdown(this)">
-          <span class="sum-label">Số lượng</span>
-          <span class="sum-val" style="color:var(--c0)">${otherPP.luong} lượng <span class="other-gold-chevron" style="display:inline-block;font-size:10px;transition:transform .15s">▾</span></span>
-        </div>
-        <div class="other-gold-breakdown" style="display:none">
-          ${subItems.map(s=>`<div class="sum-row" style="padding-left:14px">
-            <span class="sum-label">${s.name}</span>
-            <span class="sum-val" style="font-size:12px">${s.luong} lượng</span>
-          </div>`).join('')}
-        </div>`
-      : `<div class="sum-row"><span class="sum-label">Số lượng</span><span class="sum-val" style="color:var(--c0)">${otherPP.luong} lượng</span></div>`;
+    // Đơn giản — chỉ hiện tổng số lượng, KHÔNG sổ xuống nữa (breakdown theo tên
+    // giờ chỉ cần thiết lúc BÁN, xem dropdown chọn sản phẩm trong tab Giao dịch).
+    const qtyBlock=`<div class="sum-row"><span class="sum-label">Số lượng</span><span class="sum-val" style="color:var(--c0)">${otherPP.luong} lượng</span></div>`;
     // Chỉ 1 tên riêng duy nhất (vd toàn bộ là "Vàng mẹ mua cho") → hiện thẳng tên đó
-    // làm tiêu đề thay vì "Vàng khác" chung chung. Nhiều tên khác nhau → giữ tiêu đề
-    // chung, xem chi tiết qua breakdown sổ xuống ở trên.
+    // làm tiêu đề thay vì "Vàng khác" chung chung.
     const otherTitle=(subItems.length===1?subItems[0].name:null)||otherPP.label||'Vàng khác';
     otherRow=`<div class="card" style="margin-top:8px;border-color:#854d0e">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
@@ -3509,7 +3495,7 @@ function drawChart(points, color){
 }
 
 // Trade form
-const _GOLD_ALL_PRODUCTS = ['SJC_1L','DOJI_NHAN_9999','DOJI_NHAN_HCM','SJC_NHAN','PNJ_VANGMY','PNJ_24K','BAOTINNGUYEN','VIETTIN_SJC','OTHER'];
+const _GOLD_ALL_PRODUCTS = ['SJC_1L','DOJI_NHAN_9999','DOJI_NHAN_HCM','SJC_NHAN','PNJ_HN','PNJ_24K','BAOTINNGUYEN','VIETTIN_SJC','OTHER'];
 
 function toggleGoldType() {
   _goldType = _goldType==='buy' ? 'sell' : 'buy';
@@ -3542,7 +3528,22 @@ function _refreshGoldProductSelect(){
       onGoldProductChange();
       return;
     }
-    opts=held.map(([prod,pp])=>({value:prod,label:pp.label||_GOLD_LABELS[prod]||prod}));
+    // "Vàng khác" (OTHER) có tên riêng (vd "Vàng mẹ mua cho") → tách thành từng lựa
+    // chọn riêng theo tên khi BÁN, để không phải gõ tay lại tên (dễ gõ sai → tạo
+    // nhầm bucket mới thay vì trừ đúng bucket cũ). Phần KHÔNG đặt tên (nếu có) gộp
+    // vào "Vàng khác còn lại" — value mã hoá "OTHER:<tên>" (rỗng nếu là "còn lại"),
+    // submitGoldTrade() giải mã lại thành note khi gửi API.
+    opts=[];
+    for(const [prod,pp] of held){
+      if(prod==='OTHER' && pp.sub_items && pp.sub_items.length){
+        for(const s of pp.sub_items){
+          const noteVal=(s.name==='Vàng khác còn lại'||s.name==='Vàng khác')?'':s.name;
+          opts.push({value:'OTHER:'+encodeURIComponent(noteVal), label:`${s.name} — ${s.luong} lượng`});
+        }
+      } else {
+        opts.push({value:prod, label:pp.label||_GOLD_LABELS[prod]||prod});
+      }
+    }
   } else {
     opts=_GOLD_ALL_PRODUCTS.map(p=>({value:p,label:_GOLD_LABELS[p]||p}));
   }
@@ -3552,6 +3553,8 @@ function _refreshGoldProductSelect(){
 }
 function onGoldProductChange() {
   const v = document.getElementById('gold-product-select').value;
+  // v==='OTHER' (Mua, hoặc Bán khi chưa có tên riêng nào) → cho gõ tay tên.
+  // v bắt đầu 'OTHER:' (Bán, đã chọn đúng tên/"còn lại" có sẵn) → ẩn, khỏi gõ lại.
   document.getElementById('gold-other-name').style.display = v==='OTHER' ? 'block' : 'none';
 }
 // Mở sẵn form Giao dịch > Vàng > Bán > Vàng khác — gọi từ nút "Bán" trên box
@@ -3564,7 +3567,11 @@ function openSellOtherGold(){
   if(_goldType!=='sell') toggleGoldType();
   else _refreshGoldProductSelect();
   const sel=document.getElementById('gold-product-select');
-  if(sel){ sel.value='OTHER'; onGoldProductChange(); }
+  // Nếu có nhiều tên riêng (options dạng "OTHER:<tên>"), để nguyên lựa chọn đầu
+  // tiên thay vì đoán — user tự chọn đúng tên muốn bán. Chỉ auto-select khi có
+  // đúng 1 lựa chọn "OTHER" đơn giản (không có tên riêng nào).
+  if(sel && Array.from(sel.options).some(o=>o.value==='OTHER')){ sel.value='OTHER'; }
+  if(sel) onGoldProductChange();
   document.getElementById('gold-qty')?.focus();
 }
 // Mở/đóng box breakdown "Vàng khác" theo tên (bấm vào dòng "Số lượng")
@@ -3609,7 +3616,12 @@ async function submitGoldTrade() {
   if (!dt) { toast('Chọn ngày giao dịch'); return; }
   let product = document.getElementById('gold-product-select')?.value || 'SJC_1L';
   let customName = '';
-  if (product === 'OTHER') {
+  if (product.startsWith('OTHER:')) {
+    // Bán "Vàng khác" đã chọn đúng tên có sẵn (hoặc "còn lại") từ dropdown —
+    // giải mã lại thành note, không cần gõ tay (tránh gõ sai tên tạo nhầm bucket mới).
+    customName = decodeURIComponent(product.slice('OTHER:'.length));
+    product = 'OTHER';
+  } else if (product === 'OTHER') {
     // Tên tự nhập chỉ để hiển thị/ghi chú — mọi giao dịch "Vàng khác" luôn gộp
     // chung 1 mã 'OTHER' để số lượng/giá vốn được tính thành 1 khối duy nhất.
     customName = document.getElementById('gold-other-name')?.value?.trim() || '';

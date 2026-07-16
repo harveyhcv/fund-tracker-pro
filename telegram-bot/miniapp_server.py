@@ -384,9 +384,14 @@ def _calc_gold_portfolio(cfg: dict, tg_id: str, prices: dict) -> dict:
                     {"name": name, "luong": round(v["luong"], 4)}
                     for name, v in other_by_name.items() if v["luong"] > 0.001
                 ]
-                # Chỉ đính kèm breakdown theo tên khi user THỰC SỰ có đặt tên riêng —
-                # nếu toàn bộ đều là bucket mặc định "Vàng khác" thì không cần dropdown.
+                # Chỉ tách breakdown theo tên khi user THỰC SỰ có đặt tên riêng —
+                # nếu toàn bộ đều là bucket mặc định "Vàng khác" thì không cần tách
+                # (dùng cho dropdown Bán — mỗi tên riêng là 1 lựa chọn, phần KHÔNG đặt
+                # tên gộp vào "Vàng khác còn lại" để phân biệt với các tên riêng khác).
                 if any(s["name"] != "Vàng khác" for s in sub_items):
+                    for s in sub_items:
+                        if s["name"] == "Vàng khác":
+                            s["name"] = "Vàng khác còn lại"
                     breakdown[product]["sub_items"] = sub_items
             missing_price_products.append(product)
             total_cost += cost
