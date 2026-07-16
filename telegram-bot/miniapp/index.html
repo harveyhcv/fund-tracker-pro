@@ -796,8 +796,9 @@ const _GOLD_LABELS = {
   'SJC_1L':        'Vàng miếng SJC 9999 — 1 lượng',
   'DOJI_NHAN_9999':'Nhẫn tròn DOJI 9999 (HN)',
   'DOJI_NHAN_HCM': 'Nhẫn tròn DOJI 9999 (HCM)',
+  'DOJI_JEWELRY':  'DOJI Jewelry',
   'SJC_NHAN':      'Nhẫn tròn SJC 9999',
-  'PNJ_VANGMY':    'Nhẫn vàng mỹ PNJ',
+  'PNJ_HN':        'PNJ Hà Nội',
   'PNJ_24K':       'Nhẫn 24K PNJ 9999',
   'BAOTINNGUYEN':  'Vàng nhẫn Bảo Tín 9999',
   'BAOTINSJC':     'Vàng SJC tại Bảo Tín',
@@ -808,8 +809,9 @@ const _GOLD_LABELS = {
   'VANGTODAYAPI:SJC_1L':        'Vàng miếng SJC 9999 — 1L',
   'VANGTODAYAPI:DOJI_NHAN_9999':'Nhẫn tròn DOJI 9999 (HN)',
   'VANGTODAYAPI:DOJI_NHAN_HCM': 'Nhẫn tròn DOJI 9999 (HCM)',
+  'VANGTODAYAPI:DOJI_JEWELRY':  'DOJI Jewelry',
   'VANGTODAYAPI:SJC_NHAN':      'Nhẫn tròn SJC 9999',
-  'VANGTODAYAPI:PNJ_VANGMY':    'Nhẫn vàng mỹ PNJ',
+  'VANGTODAYAPI:PNJ_HN':        'PNJ Hà Nội',
   'VANGTODAYAPI:PNJ_24K':       'Nhẫn 24K PNJ 9999',
   'VANGTODAYAPI:BAOTINNGUYEN':  'Vàng nhẫn Bảo Tín 9999',
   'VANGTODAYAPI:BAOTINSJC':     'Vàng SJC tại Bảo Tín',
@@ -1304,7 +1306,6 @@ function renderPortfolio(me){
             <span class="fund-sub-sep">·</span>
             <span>Giá vốn ${fmt(h.avg_cost)} đ</span>
           </div>
-          ${_t2Html(h.code, h.nav, true)}
         </div>
         <div class="fund-right">
           <div class="badge ${sigC(h.signal)}">${sigLabel(h.signal)}</div>
@@ -1370,9 +1371,13 @@ function renderPfGoldSub(){
           </div>`).join('')}
         </div>`
       : `<div class="sum-row"><span class="sum-label">Số lượng</span><span class="sum-val" style="color:var(--c0)">${otherPP.luong} lượng</span></div>`;
+    // Chỉ 1 tên riêng duy nhất (vd toàn bộ là "Vàng mẹ mua cho") → hiện thẳng tên đó
+    // làm tiêu đề thay vì "Vàng khác" chung chung. Nhiều tên khác nhau → giữ tiêu đề
+    // chung, xem chi tiết qua breakdown sổ xuống ở trên.
+    const otherTitle=(subItems.length===1?subItems[0].name:null)||otherPP.label||'Vàng khác';
     otherRow=`<div class="card" style="margin-top:8px;border-color:#854d0e">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-        <div class="card-title" style="font-size:11px;margin:0">${otherPP.label||'Vàng khác'}</div>
+        <div class="card-title" style="font-size:11px;margin:0">${otherTitle}</div>
         <button onclick="openSellOtherGold()" class="btn btn-sell" style="width:auto;padding:4px 12px;font-size:10px">BÁN</button>
       </div>
       ${qtyBlock}
@@ -2413,6 +2418,7 @@ function renderDCA(data){
       </div>
       <div class="dca-bar-wrap"><div class="dca-bar" style="width:${item.skip?0:item.pct_alloc}%;background:${barColor}"></div></div>
       ${item.reason?`<div class="dca-reason">💡 ${item.reason}</div>`:''}
+      ${item.nav?`<div style="margin-top:4px">${_t2Html(item.code, item.nav, true)}</div>`:''}
     </div>`;
   }
   const rem=data.remainder||0;

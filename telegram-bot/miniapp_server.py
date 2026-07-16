@@ -144,10 +144,35 @@ _GOLD_LABELS = {
     "DOJI:DOJI_NHAN":      "Nhẫn DOJI 999.9",
     "DOJI:DOJI_NHAN_9999": "Nhẫn DOJI 9999 24K",
     "INTERNATIONAL:XAU_USD": "Vàng QT (XAU/USD)",
+    # VANGTODAYAPI (nguồn chính, fetch_gold.py) — trước đây thiếu các mã này nên
+    # rơi vào fallback "{source} {product}" thô (vd "VANGTODAYAPI DOJI_NHAN_HCM"),
+    # hiện nguyên trong dropdown chọn sản phẩm bán vàng (Harvey phát hiện 2026-07-16).
+    "VANGTODAYAPI:SJC_1L":         "Vàng miếng SJC 9999 — 1L",
+    "VANGTODAYAPI:DOJI_NHAN_9999": "Nhẫn tròn DOJI 9999 (HN)",
+    "VANGTODAYAPI:DOJI_NHAN_HCM":  "Nhẫn tròn DOJI 9999 (HCM)",
+    "VANGTODAYAPI:DOJI_JEWELRY":   "DOJI Jewelry",
+    "VANGTODAYAPI:SJC_NHAN":       "Nhẫn tròn SJC 9999",
+    "VANGTODAYAPI:PNJ_HN":         "PNJ Hà Nội",
+    "VANGTODAYAPI:PNJ_24K":        "Nhẫn 24K PNJ 9999",
+    "VANGTODAYAPI:BAOTINNGUYEN":   "Vàng nhẫn Bảo Tín 9999",
+    "VANGTODAYAPI:BAOTINSJC":      "Vàng SJC tại Bảo Tín",
+    "VANGTODAYAPI:VNGOLD_SJC":     "Vàng SJC tại VN Gold",
+    "VANGTODAYAPI:VIETTIN_SJC":    "Vàng SJC tại Việt Tín",
+    "VANGTODAYAPI:XAUUSD":         "Vàng quốc tế XAU/USD",
 }
 
 def _gold_product_label(source: str, product: str) -> str:
     return _GOLD_LABELS.get(f"{source}:{product}", f"{source} {product}")
+
+
+def _gold_label_for_product(product: str) -> str:
+    """Tên hiển thị chỉ theo product (không biết source) — dùng khi sản phẩm
+    chưa có giá hôm nay (price_entry=None) nên không xác định được nguồn. Tra
+    ngược trong _GOLD_LABELS bất kỳ key nào khớp product, fallback về product thô."""
+    for key, label in _GOLD_LABELS.items():
+        if key.split(":", 1)[-1] == product:
+            return label
+    return product
 
 
 def _unit_to_luong(unit: str) -> float:
@@ -348,7 +373,7 @@ def _calc_gold_portfolio(cfg: dict, tg_id: str, prices: dict) -> dict:
             # tổng vốn để "tổng vốn" đúng, nhưng loại khỏi tổng giá trị/lãi lỗ vì
             # không xác định được — tránh gây hiểu lầm đã mất trắng.
             breakdown[product] = {
-                "label":          "Vàng khác" if product == "OTHER" else product,
+                "label":          "Vàng khác" if product == "OTHER" else _gold_label_for_product(product),
                 "luong":          round(luong, 4),
                 "avg_cost":       round(cost / luong, 0) if luong else 0,
                 "cost":           round(cost, 0),
