@@ -36,6 +36,7 @@ DATA_DIR  = Path(os.environ.get("DATA_DIR", Path(__file__).parent))
 CFG_FILE  = DATA_DIR / "config.json"
 HTML_FILE     = Path(__file__).parent / "miniapp" / "index.html"
 HTML_FILE_PNL = Path(__file__).parent / "miniapp" / "admin_pnl.html"
+HTML_FILE_WEB = Path(__file__).parent / "miniapp" / "web.html"
 
 # Trang /admin/pnl mở trực tiếp qua trình duyệt (không phải trong Telegram Mini
 # App) nên không có X-Init-Data để xác thực như các endpoint khác — dùng token
@@ -1094,7 +1095,21 @@ def _auth_write(handler, claimed_tg_id: str) -> bool:
     bot_token = cfg.get("bot_token") or os.environ.get("BOT_TOKEN", "")
     admin_id  = str(cfg.get("admin_telegram_id", ""))
 
-    init_data = handler.headers.get("X-Init-Data", "")
+    init_data   = handler.headers.get("X-Init-Data", "")
+    web_session = handler.headers.get("X-Web-Session", "")
+
+    if not init_data and web_session:
+        # Bản Web độc lập (ngoài Telegram) — đăng nhập qua Telegram Login Widget,
+        # xem _verify_telegram_login_widget()/_issue_web_session() phía trên.
+        real_id = _verify_web_session(web_session)
+        if not real_id:
+            _json(handler, {"error": "Phiên đăng nhập Web đã hết hạn, vui lòng đăng nhập lại"}, 403)
+            return False
+        if claimed_tg_id == real_id:
+            return True
+        _json(handler, {"error": "Không có quyền thao tác trên tài khoản này"}, 403)
+        return False
+
     if not init_data:
         # Dev/local mode CHỈ khi ENV MINIAPP_NO_AUTH được set thủ công trên server
         # (không phải thứ client có thể tự bật) — dùng khi test cục bộ.
@@ -1118,6 +1133,72 @@ def _auth_write(handler, claimed_tg_id: str) -> bool:
 
     _json(handler, {"error": "Không có quyền thao tác trên tài khoản này"}, 403)
     return False
+
+
+# ── Telegram Login Widget auth (bản Web độc lập, ngoài Telegram) ─────────────
+# Mini App dùng "initData" (window.Telegram.WebApp) — chỉ hoạt động khi mở QUA
+# app Telegram. Web bên ngoài (browser thường) dùng cơ chế khác của Telegram:
+# "Login Widget" (https://core.telegram.org/widgets/login) — thuật toán ký
+# HÁC KHÁC initData (secret_key = SHA256(bot_token) thẳng, không phải
+# HMAC(bot_token, key="WebAppData") như initData) nên không thể tái dùng
+# _validate_init_data() ở trên. Sau khi verify xong 1 lần lúc đăng nhập, server
+# tự phát hành 1 "web session token" riêng (ký bằng WEB_SESSION_SECRET) để các
+# request ghi (write) sau đó gửi qua header X-Web-Session — xem _auth_write().
+_WEB_SESSION_SECRET = os.environ.get("WEB_SESSION_SECRET", "")
+_WEB_SESSION_MAX_AGE_SECONDS = 30 * 86400  # 30 ngày — user Web không re-login mỗi lần mở tab
+_LOGIN_WIDGET_MAX_AGE_SECONDS = 86400      # 24h — chống replay payload widget cũ
+
+
+def _verify_telegram_login_widget(payload: dict, bot_token: str) -> "dict | None":
+    """Xác thực payload trả về từ Telegram Login Widget (KHÁC initData của Mini
+    App — xem ghi chú phía trên). Trả dict user (id, first_name, username...)
+    nếu hợp lệ, None nếu sai chữ ký hoặc quá hạn (chống replay)."""
+    if not payload or not bot_token:
+        return None
+    data = {k: v for k, v in payload.items() if k != "hash"}
+    hash_val = str(payload.get("hash", ""))
+    if not hash_val:
+        return None
+    check_string = "\n".join(f"{k}={data[k]}" for k in sorted(data.keys()))
+    secret_key = hashlib.sha256(bot_token.encode()).digest()
+    computed   = hmac.new(secret_key, check_string.encode(), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(computed, hash_val):
+        return None
+    try:
+        age = time.time() - int(data.get("auth_date", 0))
+    except (TypeError, ValueError):
+        return None
+    if age > _LOGIN_WIDGET_MAX_AGE_SECONDS or age < -_INIT_DATA_CLOCK_SKEW_SECONDS:
+        return None
+    return data
+
+
+def _issue_web_session(telegram_id: str) -> str:
+    """Phát hành session token cho Web sau khi đăng nhập Telegram Login Widget
+    thành công — format `<tg_id>.<expiry_unix>.<hmac_hex>`. Không dùng JWT thư
+    viện ngoài để tránh thêm dependency chỉ cho 1 việc đơn giản này."""
+    expiry = int(time.time()) + _WEB_SESSION_MAX_AGE_SECONDS
+    body = f"{telegram_id}.{expiry}"
+    sig = hmac.new(_WEB_SESSION_SECRET.encode(), body.encode(), hashlib.sha256).hexdigest()
+    return f"{body}.{sig}"
+
+
+def _verify_web_session(token: str) -> "str | None":
+    """Kiểm tra web session token — trả telegram_id nếu hợp lệ và chưa hết hạn."""
+    if not token or not _WEB_SESSION_SECRET:
+        return None
+    try:
+        tg_id, expiry_str, sig = token.split(".", 2)
+        expiry = int(expiry_str)
+    except (ValueError, AttributeError):
+        return None
+    body = f"{tg_id}.{expiry_str}"
+    expected = hmac.new(_WEB_SESSION_SECRET.encode(), body.encode(), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(expected, sig):
+        return None
+    if time.time() > expiry:
+        return None
+    return tg_id
 
 
 def _check_admin_secret(data: dict) -> bool:
@@ -1343,7 +1424,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-HTTP-Method-Override, X-Init-Data")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-HTTP-Method-Override, X-Init-Data, X-Web-Session")
         self.end_headers()
 
     def do_GET(self):
@@ -1355,6 +1436,8 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             self._serve_html()
         elif path == "/admin/pnl":
             self._serve_pnl_html()
+        elif path == "/web":
+            self._serve_web_html()
         elif path == "/api/admin/pnl":
             self._api_admin_pnl_get(qs)
         elif path == "/api/me":
@@ -1508,6 +1591,8 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             self._api_admin_discount_set_active(data, True)
         elif path == "/api/admin/discount/deactivate":
             self._api_admin_discount_set_active(data, False)
+        elif path == "/api/auth/telegram-login":
+            self._api_auth_telegram_login(data)
         else:
             _json(self, {"error": "Not found"}, 404)
 
@@ -1541,6 +1626,46 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(content)))
         self.end_headers()
         self.wfile.write(content)
+
+    def _serve_web_html(self):
+        """GET /web — bản Web độc lập, đăng nhập qua Telegram Login Widget thay
+        vì mở trong Telegram (xem _verify_telegram_login_widget() ở trên)."""
+        if not HTML_FILE_WEB.exists():
+            self.send_response(404)
+            self.end_headers()
+            self.wfile.write(b"miniapp/web.html not found")
+            return
+        content = HTML_FILE_WEB.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(content)))
+        self.end_headers()
+        self.wfile.write(content)
+
+    def _api_auth_telegram_login(self, data: dict):
+        """POST /api/auth/telegram-login — body là object Telegram Login Widget
+        trả về nguyên văn (id, first_name, username, photo_url, auth_date, hash).
+        Verify xong thì phát hành web session token cho client lưu lại, gửi kèm
+        header X-Web-Session ở mọi request ghi tiếp theo (xem _auth_write())."""
+        if not _WEB_SESSION_SECRET:
+            _json(self, {"error": "Web login chưa được cấu hình (thiếu WEB_SESSION_SECRET)"}, 503)
+            return
+        cfg       = _load_cfg()
+        bot_token = cfg.get("bot_token") or os.environ.get("BOT_TOKEN", "")
+        user = _verify_telegram_login_widget(data, bot_token)
+        if not user:
+            _json(self, {"error": "Xác thực Telegram thất bại hoặc đã hết hạn"}, 403)
+            return
+        tg_id = str(user.get("id", ""))
+        session = _issue_web_session(tg_id)
+        if _db_mod is not None and _db_mod.is_available():
+            _db_mod.log_audit(tg_id, "web.login", "users", tg_id,
+                               note=f"username={user.get('username', '')}")
+        _json(self, {
+            "ok": True, "telegram_id": tg_id, "session": session,
+            "first_name": user.get("first_name", ""), "username": user.get("username", ""),
+            "photo_url": user.get("photo_url", ""),
+        })
 
     def _check_admin_web_token(self, token: str) -> bool:
         if not _ADMIN_WEB_TOKEN:

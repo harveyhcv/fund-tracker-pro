@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fund Tracker Pro — Web</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#060b14;--s1:#0d1625;--s2:#121e30;--s3:#1a2840;--border:#1e3050;--b2:#2d4a70;
+--text:#dde6f0;--muted:#5a7898;--c0:#00e5ff;--buy:#4ade80;--sell:#f87171;--warn:#fb923c;
+--mono:'IBM Plex Mono',monospace;--sans:'DM Sans',sans-serif;--r:10px}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100vh}
+body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellipse 80% 50% at 15% 0%,rgba(0,229,255,.05),transparent 55%),radial-gradient(ellipse 60% 40% at 85% 100%,rgba(192,132,252,.04),transparent 55%);pointer-events:none}
+.wrap{max-width:520px;margin:0 auto;padding:16px;min-height:100vh;display:flex;flex-direction:column}
+header{padding:20px 0 16px;text-align:center}
+.logo{font-family:var(--mono);font-size:16px;color:var(--c0);letter-spacing:1px}
+.logo small{color:var(--muted);font-size:10px;display:block;margin-top:4px;letter-spacing:2px;text-transform:uppercase}
+.card{background:var(--s1);border:1px solid var(--border);border-radius:var(--r);padding:20px;margin-bottom:14px}
+.ctitle{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:12px}
+#gate{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;text-align:center;padding:24px 0}
+#gate p{color:var(--muted);font-size:13px;max-width:340px;line-height:1.6}
+#widget-box{display:flex;justify-content:center;min-height:44px}
+#app{display:none}
+.profile-row{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+.avatar{width:44px;height:44px;border-radius:50%;background:var(--s2);border:1px solid var(--border);object-fit:cover}
+.pname{font-weight:600;font-size:15px}
+.puser{color:var(--muted);font-size:11px;font-family:var(--mono)}
+.tier-badge{display:inline-block;padding:3px 10px;border-radius:5px;font-size:9px;font-weight:700;letter-spacing:1px;font-family:var(--mono);margin-top:6px}
+.tier-pro{background:rgba(0,229,255,.12);color:var(--c0);border:1px solid rgba(0,229,255,.25)}
+.tier-free{background:rgba(148,163,184,.1);color:var(--muted);border:1px solid var(--border)}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+.stat{background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:12px}
+.stat-l{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.stat-v{font-family:var(--mono);font-size:18px;font-weight:600}
+.pos{color:var(--buy)}.neg{color:var(--sell)}
+.note{background:rgba(0,229,255,.06);border:1px solid rgba(0,229,255,.18);border-radius:8px;padding:12px 14px;font-size:11px;color:var(--muted);line-height:1.6;margin-top:14px}
+.note b{color:var(--text)}
+.btn{padding:9px 18px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;transition:.2s;font-family:var(--sans);border:none;background:var(--s2);border:1px solid var(--border);color:var(--text)}
+.btn:hover{border-color:var(--c0);color:var(--c0)}
+#err{display:none;color:var(--sell);font-size:11px;margin-top:10px}
+footer{text-align:center;padding:16px 0;color:var(--muted);font-size:10px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">FUND TRACKER PRO<small>Web · beta</small></div>
+  </header>
+
+  <div id="gate">
+    <div class="card" style="width:100%">
+      <div class="ctitle">Đăng nhập</div>
+      <p>Đăng nhập bằng tài khoản Telegram của bạn để xem danh mục, tín hiệu và dự báo — không cần mở qua app Telegram.</p>
+      <div id="widget-box"></div>
+      <div id="err"></div>
+    </div>
+  </div>
+
+  <div id="app">
+    <div class="card">
+      <div class="profile-row">
+        <img class="avatar" id="pf-avatar" src="" alt="">
+        <div>
+          <div class="pname" id="pf-name">—</div>
+          <div class="puser" id="pf-user">—</div>
+        </div>
+      </div>
+      <span class="tier-badge" id="pf-tier">—</span>
+      <div class="g2">
+        <div class="stat">
+          <div class="stat-l">Giá trị hiện tại</div>
+          <div class="stat-v" id="st-value">—</div>
+        </div>
+        <div class="stat">
+          <div class="stat-l">Lãi/Lỗ</div>
+          <div class="stat-v" id="st-pnl">—</div>
+        </div>
+      </div>
+      <div class="note">
+        <b>Bản Web đang trong giai đoạn hoàn thiện.</b> Đăng nhập &amp; xem tổng quan danh mục
+        đã hoạt động. Các tính năng đầy đủ (DCA, giao dịch, admin...) vẫn đang được chuyển
+        dần từ Mini App sang — dùng <a href="https://t.me/FundTrackerPro_bot" style="color:var(--c0)">Telegram Mini App</a> cho trải nghiệm đầy đủ trong lúc chờ.
+      </div>
+    </div>
+    <button class="btn" onclick="logout()">Đăng xuất</button>
+  </div>
+
+  <footer>Fund Tracker Pro</footer>
+</div>
+
+<script src="https://telegram.org/js/telegram-widget.js?22"
+        data-telegram-login="FundTrackerPro_bot"
+        data-size="large"
+        data-radius="8"
+        data-onauth="onTelegramAuth(user)"
+        data-request-access="write"></script>
+
+<script>
+const SESSION_KEY = 'ftp_web_session';
+const TGID_KEY    = 'ftp_web_tgid';
+
+function showErr(msg){
+  const el = document.getElementById('err');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+async function onTelegramAuth(user){
+  try{
+    const resp = await fetch('/api/auth/telegram-login', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(user),
+    });
+    const d = await resp.json();
+    if(!resp.ok || !d.ok){
+      showErr(d.error || 'Đăng nhập thất bại');
+      return;
+    }
+    localStorage.setItem(SESSION_KEY, d.session);
+    localStorage.setItem(TGID_KEY, d.telegram_id);
+    document.getElementById('pf-avatar').src = d.photo_url || '';
+    document.getElementById('pf-name').textContent = d.first_name || 'User';
+    document.getElementById('pf-user').textContent = d.username ? '@'+d.username : d.telegram_id;
+    loadProfile();
+  }catch(e){
+    showErr('Lỗi kết nối: ' + e.message);
+  }
+}
+
+async function loadProfile(){
+  const session = localStorage.getItem(SESSION_KEY);
+  const tgId    = localStorage.getItem(TGID_KEY);
+  if(!session || !tgId) return;
+  document.getElementById('gate').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  try{
+    const resp = await fetch('/api/me?user_id=' + encodeURIComponent(tgId), {
+      headers: {'X-Web-Session': session},
+    });
+    const d = await resp.json();
+    if(!resp.ok){
+      if(resp.status === 403){ logout(); return; }
+      showErr(d.error || 'Không tải được dữ liệu — Postgres có thể đang bảo trì');
+      return;
+    }
+    const tierEl = document.getElementById('pf-tier');
+    const isPro = d.tier === 'pro' || d.tier === 'admin';
+    tierEl.textContent = isPro ? 'PRO' : 'FREE';
+    tierEl.className = 'tier-badge ' + (isPro ? 'tier-pro' : 'tier-free');
+    const p = d.portfolio || {};
+    document.getElementById('st-value').textContent = p.total_value != null
+      ? Math.round(p.total_value).toLocaleString('vi-VN') + ' đ' : '—';
+    const pnl = p.total_pnl;
+    const pnlEl = document.getElementById('st-pnl');
+    if(pnl != null){
+      pnlEl.textContent = (pnl >= 0 ? '+' : '') + Math.round(pnl).toLocaleString('vi-VN') + ' đ';
+      pnlEl.className = 'stat-v ' + (pnl >= 0 ? 'pos' : 'neg');
+    }
+  }catch(e){
+    showErr('Lỗi tải dữ liệu: ' + e.message);
+  }
+}
+
+function logout(){
+  localStorage.removeItem(SESSION_KEY);
+  localStorage.removeItem(TGID_KEY);
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('gate').style.display = 'flex';
+}
+
+// Tự đăng nhập lại nếu đã có session còn hạn (30 ngày) từ lần trước
+if(localStorage.getItem(SESSION_KEY) && localStorage.getItem(TGID_KEY)){
+  loadProfile();
+}
+</script>
+</body>
+</html>
