@@ -4,7 +4,9 @@
 # Priority: P0 (blocker) / P1 (important) / P2 (nice-to-have)
 # Claude đọc file này ĐẦU TIÊN mỗi session. Pick task IN_PROGRESS nếu có, nếu không pick P0 cao nhất.
 #
-# Last updated: 2026-07-16 (ca sáng — update BACKLOG với 5 commits Harvey từ 15/07, verify 254/254 pass)
+# Last updated: 2026-07-16 (ca chiều — ghi nhận 6 commit live-session giữa ca sáng/chiều
+# [nhãn vàng, GOV-011 breakdown vàng, chip T+2, fix T2-006, khuyến mãi SePay, GOV-012], verify
+# production healthy, không code thêm — xem session note bên dưới)
 
 ## Session (autonomous, scheduled) — Ca sáng 2026-07-16: update BACKLOG, verify baseline
 # Tình trạng: tất cả P0/P1 đã DONE từ trước. Điều kiện dừng ca này: "Hết P0+P1".
@@ -657,6 +659,85 @@
   từ lúc sau. Fix: staleness so cả nav_date (không chỉ signal_date) — tính lại rẻ (chỉ
   đọc nav_history, không gọi API ngoài) nên an toàn để trigger thường xuyên hơn
   | 2026-07-15 (Harvey commit 5748fde)
+
+- [DONE] GOV-012 · Hệ thống discount_codes quản lý được, thay hardcode SePay -10% — Harvey
+  yêu cầu cơ chế mã giảm giá linh hoạt thay vì phải sửa code mỗi lần đổi khuyến mãi. 2 kiểu:
+  auto_apply (tự động áp dụng mọi purchase trong kênh/khoảng thời gian, không giới hạn lượt
+  trừ khi đặt max_uses) hoặc thủ công (user tự nhập, có thể giới hạn lượt/thời gian). Bảng
+  `discount_codes` + `discount_redemptions` (UNIQUE order_ref — không stack 2 mã/1 đơn).
+  `_api_sepay_create` ưu tiên mã user nhập (validate_discount_code) nếu có, không thì tự tìm
+  mã auto-apply kênh sepay (get_active_auto_discount, chọn % cao nhất nếu nhiều mã trùng).
+  Admin API tạo/kích hoạt/danh sách mã. `pricing.py` xoá SEPAY_PROMO_PCT/sepay_price() hardcode.
+  Mini App: ô nhập mã tuỳ chọn trước nút SePay, badge "-X%" động thay vì cứng "-10%" | 2026-07-16
+  (live session, Harvey + Claude, không phải scheduled task)
+  **Verify ca chiều (2026-07-16)**: review bảo mật/tính đúng đắn tài chính — amount_vnd tính
+  hoàn toàn server-side từ `plan["vnd"]` + `discount_pct` đã validate (không tin client gửi
+  amount), `create_bank_transfer_order()` lưu amount_vnd ĐÃ áp dụng giảm giá vào DB, webhook
+  `_api_sepay_webhook` so khớp tiền nhận với `order["amount_vnd"]` đã lưu (không tính lại từ
+  plan gốc) → không có khoảng hở giữa giá hiển thị và giá webhook verify. Cả 4 admin endpoint
+  (`create/list/activate/deactivate`) đều gate `_is_admin`+`_auth_write` đúng pattern GOV-005.
+  Confirm mã `SEPAY10` (auto_apply, channel=sepay, active=true) đã tồn tại thật trên production
+  DB — không có khoảng trống giữa lúc xoá hardcode và tạo mã DB thay thế. `pricing.py` xác
+  nhận không còn tham chiếu chết `SEPAY_PROMO_PCT`/`sepay_price` ở bất kỳ file nào khác.
+
+- [DONE] · 4 fix nhỏ khác (live session, cùng khung giờ 10:59–12:02 ngày 2026-07-16, trước
+  GOV-012, không qua scheduled task):
+  1. Nhãn sản phẩm vàng hiện raw code thay vì tên đẹp — `_GOLD_LABELS` thiếu hầu hết mã
+     `VANGTODAYAPI:*`, sửa mismatch PNJ_VANGMY→PNJ_HN, thêm DOJI_JEWELRY. "Vàng khác" hiện tên
+     riêng user đặt làm tiêu đề nếu chỉ có 1 tên. Chip T+2 chuyển từ Dashboard sang tab DCA.
+  2. GOV-011 (phần 2) · "Vàng khác" khi BÁN giờ tách theo từng tên riêng (dropdown chọn thay vì
+     gõ tay) + gộp phần chưa đặt tên vào "Vàng khác còn lại". Fix Dockerfile: pin postgresql-
+     client-18 từ PGDG (Railway Postgres đã lên v18, base image chỉ có v17 → pg_dump backup
+     đêm fail do lệch major version).
+  3. Chip T+2 trong tab DCA chuyển lên cùng hàng với dòng "💡 lý do" (gọn hơn, đỡ chiếm chỗ dọc).
+  4. fix(T2-006) · `score_predictions()` crash Decimal/float — `nav_history.nav` là NUMERIC
+     (psycopg2 trả Decimal) trừ trực tiếp với `predicted_nav` (float) → TypeError, khiến
+     `job_t2_score` (18:32 hàng ngày) crash ÂM THẦM mỗi khi thực sự có dữ liệu để chấm kể từ
+     khi pipeline T2 chạy thật (14/7) — đây là lý do `prediction_actuals` trống suốt 2 ngày,
+     KHÔNG phải "chưa tới hạn" như session trước suy đoán. Fix: ép `float()` trước khi trừ.
+     **Verify ca chiều**: `prediction_actuals` trên production giờ có 48 dòng (0 trước đó),
+     4 model (arima-v1/xgb-v2/naive-v1/ensemble-v1) đều có 12 mẫu chấm điểm trong 30 ngày qua,
+     MAPE trung bình 0.6-0.7% mỗi model — pipeline tự cải thiện (score→retrain→reweight) giờ
+     mới thực sự có dữ liệu lần đầu. **Chưa đủ để chạy T2-008 `--reweight` có ý nghĩa**: dù đạt
+     ngưỡng thô "≥10 mẫu/model", cả 48 dòng đều ghi cùng 1 timestamp (batch chấm điểm đầu tiên
+     ngay sau khi fix deploy) — chỉ là 1 ngày dữ liệu, chưa đủ đa dạng để tin cậy trọng số
+     adaptive. Nên đợi vài ngày nữa (nhiều batch `job_t2_score` khác nhau) trước khi chạy
+     `t2_ensemble.py --reweight` lần đầu.
+
+## Session (autonomous, scheduled) — Ca chiều 2026-07-16: verify + cập nhật BACKLOG, không code thêm
+# S1-S3: đọc BACKLOG (683 dòng) + memory.md (775 dòng) + `git log` — phát hiện 6 commit MỚI
+# (10:59-12:30) chưa có trong BACKLOG, tất cả đã DONE bởi 1 live session (Harvey + Claude Sonnet
+# 5, "Co-Authored-By" trong message), KHÔNG phải do ca sáng scheduled task tạo ra — ca sáng chỉ
+# update BACKLOG lúc 09:09-09:10 rồi dừng đúng như session note của nó.
+# S4-S5: baseline — py_compile 5 file chính OK, pytest 254/254 pass (không đổi so với ca sáng).
+# Verify sống trên production (railway CLI, đã login sẵn, đọc DB qua database_url trong
+# config.json — read-only, không sửa gì):
+#   - GOV-012 discount system: review bảo mật + tính đúng đắn tài chính, xác nhận mã SEPAY10
+#     đã live trên DB, không có khoảng hở webhook verify (xem entry GOV-012 trên).
+#   - T2-006 fix: xác nhận prediction_actuals đã bắt đầu có dữ liệu thật (48 dòng), nhưng
+#     CHƯA đủ đa dạng để reweight (xem entry trên) — quyết định KHÔNG chạy `--reweight` ca này,
+#     để dành cho session sau khi có ≥2-3 batch score khác nhau.
+#   - audit_log 3 ngày qua: 3x `nav_jump_anomaly` đều là bản ghi CŨ (07-13/07-14, trước GOV-008),
+#     0 anomaly MỚI hôm nay — không phải sự cố đang diễn ra, khớp kết luận ca chiều 15/07.
+#   - Worker logs (railway logs --service worker): phát hiện TCinvest JWT đã hết hạn lại (401
+#     toàn bộ quỹ sáng nay 06:xx VN giờ) — bot tự fallback về DB (400 điểm/quỹ, NAV "stale" 1
+#     ngày), không crash, nhưng cần Harvey cấp token mới để tcinvest fetch lại hoạt động (giống
+#     pattern JWT-expiry đã xảy ra nhiều lần trước — `job_check_jwt` sẽ tự báo Telegram admin).
+#   - FK violation NTPPF/VMEEF khi harvest_nav lưu NAV (`Key (fund_code)=(NTPPF) is not present
+#     in table "funds"`) — ĐÃ được ghi nhận từ GOV-007-part2 (14/7), KHÔNG PHẢI lỗi mới, vẫn
+#     đang chờ Harvey xác nhận có nên track 2 mã này không trước khi thêm vào bảng `funds`.
+#     Không tự ý thêm (GOV-006: không sửa dữ liệu không phải do session tạo mà chưa hỏi).
+# S6: grep TOÀN BỘ `telegram-bot/*.py` + `scripts/*.py` cho TODO/FIXME → 0 kết quả thật (chỉ có
+#   2 dòng match giả trong docstring của import_nav_excel.py, không phải TODO thật).
+# Kết luận: KHÔNG còn P0/P1 nào để code — toàn bộ đã DONE (kể cả 6 commit mới từ live session).
+# Chỉ còn PAY-006 (VNPay)/PAY-007 (Stripe), cả 2 P2 và cần merchant credentials thật Harvey chưa
+# cung cấp — đúng điều kiện dừng "hết P0+P1" trong session brief. Không code thêm task giả để
+# lấp đầy quota — đúng tinh thần "producing a report of what you found is the correct output"
+# khi không có việc thật để làm. Việc thật duy nhất của ca này là: cập nhật BACKLOG (6 commit
+# live-session) + verify production sống (không chỉ đọc code) — cả 2 đã xong.
+# ⚠️ Việc cần Harvey (không tự làm được): (1) cấp JWT tcinvest mới (token hết hạn lại), (2) xác
+# nhận NTPPF/VMEEF có nên track không, (3) nếu muốn T2-008 reweight sớm hơn, không cần làm gì —
+# tự chạy khi đủ dữ liệu qua các lần `job_t2_score` tiếp theo (18:32 hàng ngày).
 
 ---
 

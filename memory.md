@@ -772,3 +772,57 @@ Harvey committed 5 tính năng lớn sau session chiều 15/07 (BACKLOG chưa k�
 - `prediction_actuals` trống vào 14:08 15/07 (bình thường, T2 mới chạy từ 07-14). Nếu
   sau ~1 tuần (23/07) vẫn trống → `job_t2_score` có vấn đề thật, cần điều tra.
 - SePay HMAC: cần set `SEPAY_HMAC_SECRET` trên Railway và test với giao dịch thật.
+
+---
+
+## ✅ Session (autonomous, scheduled) — Ca chiều 2026-07-16: verify + BACKLOG, không code thêm
+
+Đọc BACKLOG (683 dòng) + memory.md + `git log`: phát hiện **6 commit MỚI** (10:59-12:30, cùng
+ngày, SAU khi ca sáng update BACKLOG lúc 09:09) chưa có trong BACKLOG — tất cả có
+"Co-Authored-By: Claude Sonnet 5" trong message, tức là **1 phiên live-edit tương tác giữa
+Harvey và Claude** (không phải scheduled task ca sáng/chiều), xen giữa 2 lần scheduled task
+chạy trong cùng ngày. Đã cập nhật BACKLOG ghi lại đầy đủ 6 commit này (xem entry GOV-012 và
+"4 fix nhỏ khác" trong BACKLOG.md ngay trước "## XONG (DONE)").
+
+**Baseline**: `py_compile` 5 file chính OK, `pytest` 254/254 pass (82.6s) — không đổi.
+
+**Verify sống trên production (railway CLI đã login sẵn `harvey.hcv@gmail.com`, đọc DB qua
+`database_url` trong `config.json` — toàn bộ read-only):**
+- **GOV-012 discount system** (mới nhất, tài chính-nhạy cảm nên review kỹ dù đã DONE): amount
+  tính hoàn toàn server-side, order lưu amount ĐÃ giảm giá vào DB, webhook so khớp với giá trị
+  đã lưu (không tính lại từ giá gốc) → không có khoảng hở giữa giá hiển thị/giá webhook verify.
+  4 admin endpoint đều gate `_is_admin`+`_auth_write` đúng pattern. Mã `SEPAY10` (auto_apply)
+  đã tồn tại thật trên DB — không có khoảng trống giữa lúc xoá hardcode và tạo mã thay thế.
+- **T2-006 fix xác nhận hoạt động thật**: `prediction_actuals` từ 0 dòng (ca chiều 15/07) →
+  48 dòng, 4 model đều có 12 mẫu/30 ngày, MAPE 0.6-0.7%. Nhưng **quyết định KHÔNG chạy
+  `t2_ensemble.py --reweight` ca này** dù đạt ngưỡng thô "≥10 mẫu" — cả 48 dòng cùng 1
+  timestamp (1 batch duy nhất ngay sau fix), chưa đủ đa dạng ngày để trọng số adaptive đáng
+  tin. Để dành cho session sau khi có ≥2-3 batch `job_t2_score` khác nhau (mỗi ngày 1 batch
+  lúc 18:32).
+- `railway logs --service worker`: phát hiện **TCinvest JWT hết hạn LẠI** (401 toàn bộ ~40 quỹ
+  sáng 07-16) — bot tự fallback DB (400 điểm/quỹ, NAV "stale" 1 ngày), không crash. Đây là
+  pattern lặp lại nhiều lần (xem T2-013, GOV-007-part3) — cần Harvey cấp token mới định kỳ,
+  không phải bug code. `job_check_jwt` sẽ tự báo Telegram admin.
+- FK violation `NTPPF`/`VMEEF` khi harvest lưu NAV (2 mã chưa có trong bảng `funds`) — **KHÔNG
+  PHẢI lỗi mới**, đã ghi nhận từ GOV-007-part2 (14/7), vẫn đang chờ Harvey xác nhận có nên
+  track 2 mã này không. Không tự ý thêm (GOV-006).
+- `nav_jump_anomaly` trong audit_log: vẫn chỉ 3 bản ghi CŨ (07-13/07-14), 0 mới — khớp kết
+  luận ca chiều 15/07, không phải sự cố đang diễn ra.
+- `grep TODO/FIXME` toàn bộ `telegram-bot/*.py` + `scripts/*.py` → 0 kết quả thật.
+
+**Không code gì mới ca này** — đã xác nhận không còn P0/P1 nào ngoài 6 commit vừa ghi nhận
+(đã DONE từ trước bởi live session). Chỉ còn PAY-006/PAY-007 (P2, chờ merchant credentials
+thật) — đúng điều kiện dừng. Việc thật của ca này: cập nhật BACKLOG + verify production SỐNG
+(không chỉ đọc code) cho tính năng tài chính mới nhất (GOV-012) và xác nhận T2-006 fix hoạt
+động đúng trên production.
+
+**Việc cần Harvey (không tự làm được)**:
+1. Cấp JWT tcinvest mới (hết hạn lại, ~lần thứ N)
+2. Xác nhận NTPPF/VMEEF có nên track hay bỏ hẳn
+3. `ios/` + `Fund Tracker Pro.xcodeproj/` deleted vẫn chưa commit (tồn đọng từ ≥2 ca trước,
+   không tự ý động vào)
+4. `dashboard/portfolio.html` (1059 dòng) + ~15 script mới trong `scripts/` vẫn chưa commit
+   (WIP của Harvey, không phải việc của session)
+
+**Không cần làm gì để T2-008 reweight sớm hơn** — tự đủ điều kiện khi có thêm vài batch
+`job_t2_score` (chạy hàng ngày 18:32), không cần can thiệp thủ công.
