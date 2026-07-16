@@ -2154,17 +2154,22 @@ def score_predictions(target_date: date) -> list:
         for row in rows:
             if not row["actual_nav"]:
                 continue
-            err_pct = (row["actual_nav"] - row["predicted_nav"]) / row["actual_nav"] * 100
+            # nav_history.nav là NUMERIC → trả về Decimal, predicted_nav là float —
+            # trừ trực tiếp 2 kiểu này raise TypeError (phát hiện 2026-07-16: đây là lý do
+            # THẬT khiến prediction_actuals trống suốt từ 10/7, không phải do lỡ lịch chạy
+            # job — code luôn crash mỗi khi thực sự có dữ liệu để chấm điểm).
+            actual_nav = float(row["actual_nav"])
+            err_pct = (actual_nav - row["predicted_nav"]) / actual_nav * 100
             with conn.cursor() as cur:
                 cur.execute(
                     "INSERT INTO prediction_actuals (prediction_id, actual_nav, error_pct) VALUES (%s, %s, %s)",
-                    (row["id"], row["actual_nav"], err_pct)
+                    (row["id"], actual_nav, err_pct)
                 )
             results.append({
                 "fund_code": row["fund_code"],
                 "model_version": row["model_version"],
                 "predicted_nav": row["predicted_nav"],
-                "actual_nav": row["actual_nav"],
+                "actual_nav": actual_nav,
                 "error_pct": err_pct,
                 "prediction_id": row["id"],
             })
