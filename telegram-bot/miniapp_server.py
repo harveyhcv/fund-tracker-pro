@@ -76,7 +76,7 @@ _SEPAY_ACCOUNT_NUMBER = os.environ.get("SEPAY_ACCOUNT_NUMBER", "")    # số tà
 _SEPAY_BANK_CODE      = os.environ.get("SEPAY_BANK_CODE", "")         # mã ngân hàng VietQR (vd MBBank, TPBank...)
 _SEPAY_QR_BASE        = os.environ.get("SEPAY_QR_BASE", "https://qr.sepay.vn/img")
 
-from pricing import PRO_PLANS, PLAN_ORDER, DEFAULT_PLAN, resolve_plan, sepay_price, SEPAY_PROMO_PCT
+from pricing import PRO_PLANS, PLAN_ORDER, DEFAULT_PLAN, resolve_plan
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -1389,6 +1389,8 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             self._api_admin_summary(qs)
         elif path == "/api/admin/user/banned-list":
             self._api_admin_banned_list(qs)
+        elif path == "/api/admin/discount/list":
+            self._api_admin_discount_list(qs)
         elif path == "/health":
             _json(self, {"ok": True, "ts": datetime.now().isoformat()})
         elif path == "/api/version":
@@ -1485,6 +1487,12 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             self._api_admin_ban_user(data)
         elif path == "/api/admin/user/unban":
             self._api_admin_unban_user(data)
+        elif path == "/api/admin/discount/create":
+            self._api_admin_discount_create(data)
+        elif path == "/api/admin/discount/activate":
+            self._api_admin_discount_set_active(data, True)
+        elif path == "/api/admin/discount/deactivate":
+            self._api_admin_discount_set_active(data, False)
         else:
             _json(self, {"error": "Not found"}, 404)
 
@@ -2757,6 +2765,85 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             return
         _json(self, {"ok": True, "promo": promo})
 
+    def _api_admin_discount_create(self, data: dict):
+        """POST /api/admin/discount/create — {telegram_id, discount_pct, auto_apply,
+        channel?, valid_from?, valid_until?, max_uses?, note?, code?}.
+        auto_apply=true → tự động áp dụng cho mọi purchase kênh này, không giới hạn
+        lượt trừ khi max_uses được đặt. auto_apply=false → user phải tự nhập mã."""
+        tg_id = str(data.get("telegram_id", ""))
+        if not _is_admin(tg_id):
+            _json(self, {"error": "admin_only"}, 403)
+            return
+        if not _auth_write(self, tg_id):
+            return
+        try:
+            discount_pct = int(data.get("discount_pct"))
+            assert 0 < discount_pct <= 100
+        except (TypeError, ValueError, AssertionError):
+            _json(self, {"error": "discount_pct phải là số nguyên 1-100"}, 400)
+            return
+        auto_apply = bool(data.get("auto_apply", False))
+        channel    = str(data.get("channel", "sepay")).strip().lower() or "sepay"
+        if channel not in ("sepay", "stars", "all"):
+            _json(self, {"error": "channel phải là sepay/stars/all"}, 400)
+            return
+        max_uses_raw = data.get("max_uses")
+        max_uses = None
+        if max_uses_raw not in (None, "", 0):
+            try:
+                max_uses = int(max_uses_raw)
+                if max_uses <= 0:
+                    max_uses = None
+            except (TypeError, ValueError):
+                max_uses = None
+        valid_from  = data.get("valid_from")  or None
+        valid_until = data.get("valid_until") or None
+        note = str(data.get("note", ""))[:200]
+        custom_code = str(data.get("code", "")).strip() or None
+        if _db_mod is None or not _db_mod.is_available():
+            _json(self, {"error": "DB không khả dụng"}, 503)
+            return
+        try:
+            discount = _db_mod.create_discount_code(
+                discount_pct, auto_apply, channel, valid_from, valid_until,
+                max_uses, created_by=tg_id, note=note, code=custom_code,
+            )
+        except Exception as e:
+            log.error(f"[admin_discount_create] {e}")
+            _json(self, {"error": str(e)}, 400)
+            return
+        _json(self, {"ok": True, "discount": discount})
+
+    def _api_admin_discount_list(self, qs: dict):
+        """GET /api/admin/discount/list?user_id=... — xem tất cả mã giảm giá đã tạo."""
+        tg_id = (qs.get("user_id") or [""])[0]
+        if not _is_admin(tg_id):
+            _json(self, {"error": "admin_only"}, 403)
+            return
+        if not _auth_write(self, tg_id):
+            return
+        if _db_mod is None or not _db_mod.is_available():
+            _json(self, {"discounts": []})
+            return
+        _json(self, {"discounts": _db_mod.list_discount_codes()})
+
+    def _api_admin_discount_set_active(self, data: dict, active: bool):
+        tg_id = str(data.get("telegram_id", ""))
+        if not _is_admin(tg_id):
+            _json(self, {"error": "admin_only"}, 403)
+            return
+        if not _auth_write(self, tg_id):
+            return
+        code = str(data.get("code", "")).strip()
+        if not code:
+            _json(self, {"error": "code required"}, 400)
+            return
+        if _db_mod is None or not _db_mod.is_available():
+            _json(self, {"error": "DB không khả dụng"}, 503)
+            return
+        ok = _db_mod.set_discount_code_active(code, active, actor_id=tg_id)
+        _json(self, {"ok": ok})
+
     def _api_admin_nav_confirm(self, data: dict):
         """POST /api/admin/nav/confirm — admin chọn manual hoặc fetch cho pending NAV."""
         tg_id     = str(data.get("telegram_id", ""))
@@ -3463,21 +3550,43 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         if _db_mod is None or not _db_mod.is_available():
             _json(self, {"error": "DB không khả dụng"}, 503)
             return
-        # Khuyến mãi kênh SePay (2026-07-16, xem pricing.py) — giảm thêm SEPAY_PROMO_PCT%
-        # trên giá niêm yết. Đơn tạo ra + QR + kiểm tra webhook đều dùng giá ĐÃ giảm này
-        # làm số tiền cần thu, không phải giá gốc.
-        promo_amount = sepay_price(plan)
-        ref_code = _db_mod.create_bank_transfer_order(user_id, plan_key, promo_amount)
+
+        # Discount code (2026-07-16, GOV-012) — 2 kiểu:
+        #  - auto_apply: tự động tìm mã đang hiệu lực cho kênh 'sepay', không cần user
+        #    nhập gì (get_active_auto_discount).
+        #  - manual: nếu user có nhập discount_code trong request, ưu tiên validate mã
+        #    đó (validate_discount_code) — cho phép override/dùng mã ngon hơn auto nếu có.
+        discount_code = str((data or {}).get("discount_code", "")).strip().upper()
+        discount_row  = None
+        if discount_code:
+            v = _db_mod.validate_discount_code(discount_code, "sepay")
+            if not v.get("ok"):
+                _json(self, {"error": v.get("error", "Mã giảm giá không hợp lệ")}, 400)
+                return
+            discount_row = v["discount"]
+        else:
+            discount_row = _db_mod.get_active_auto_discount("sepay")
+
+        discount_pct = discount_row["discount_pct"] if discount_row else 0
+        amount_vnd = int(plan["vnd"] * (1 - discount_pct / 100) // 1000 * 1000) if discount_pct else plan["vnd"]
+
+        ref_code = _db_mod.create_bank_transfer_order(user_id, plan_key, amount_vnd)
+        if discount_row:
+            try:
+                _db_mod.apply_discount_code(discount_row["code"], user_id, ref_code, discount_pct)
+            except Exception as e:
+                log.warning(f"[PAY][SePay] apply_discount_code lỗi (không chặn tạo đơn): {e}")
         qr_url = (
             f"{_SEPAY_QR_BASE}?acc={_SEPAY_ACCOUNT_NUMBER}&bank={_SEPAY_BANK_CODE}"
-            f"&amount={promo_amount}&des={ref_code}"
+            f"&amount={amount_vnd}&des={ref_code}"
         )
         log.info(f"[PAY][SePay] order created ref={ref_code} user={user_id} plan={plan_key} "
-                 f"amount={promo_amount} (giá gốc {plan['vnd']}, -{SEPAY_PROMO_PCT}%)")
+                 f"amount={amount_vnd}" + (f" (mã {discount_row['code']} -{discount_pct}%)" if discount_row else ""))
         _json(self, {
             "ref_code": ref_code, "qr_url": qr_url,
-            "amount_vnd": promo_amount, "original_vnd": plan["vnd"],
-            "promo_pct": SEPAY_PROMO_PCT, "plan_label": plan["label"],
+            "amount_vnd": amount_vnd, "original_vnd": plan["vnd"],
+            "promo_pct": discount_pct, "discount_code": discount_row["code"] if discount_row else None,
+            "plan_label": plan["label"],
             "account_number": _SEPAY_ACCOUNT_NUMBER, "bank_code": _SEPAY_BANK_CODE,
         })
 

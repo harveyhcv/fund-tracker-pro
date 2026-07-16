@@ -241,7 +241,10 @@ canvas{width:100%!important;height:100%!important}
       </div>
       <div id="plan-cards" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0 14px"></div>
       <button class="btn btn-primary" id="upgrade-cta-btn" onclick="startUpgrade()">⭐ NÂNG CẤP PRO NGAY</button>
-      <button class="btn" id="upgrade-sepay-btn" style="background:var(--bg3);color:var(--c0);border:1px solid var(--c0);margin-top:8px" onclick="startUpgradeSepay()">🏦 CHUYỂN KHOẢN NGÂN HÀNG (VietQR) <span style="background:var(--buy);color:#000;font-size:10px;font-weight:700;padding:1px 6px;border-radius:99px;margin-left:4px">-10%</span></button>
+      <button class="btn" id="upgrade-sepay-btn" style="background:var(--bg3);color:var(--c0);border:1px solid var(--c0);margin-top:8px" onclick="startUpgradeSepay()">🏦 CHUYỂN KHOẢN NGÂN HÀNG (VietQR)</button>
+      <div style="display:flex;gap:6px;margin-top:6px">
+        <input type="text" id="sepay-discount-input" placeholder="Mã giảm giá (nếu có)" style="flex:1;background:var(--bg3);border:1px solid var(--bdr);color:var(--txt);border-radius:8px;padding:6px 8px;font-size:12px;text-transform:uppercase">
+      </div>
       <div id="sepay-qr-box" style="display:none;text-align:center;margin-top:12px;padding:14px;background:var(--bg3);border-radius:10px;border:1px solid var(--bdr)">
         <img id="sepay-qr-img" style="max-width:220px;width:100%;border-radius:8px;background:#fff;padding:6px" alt="QR chuyển khoản">
         <div style="font-size:12px;color:var(--txt2);margin-top:8px">Quét bằng app ngân hàng hoặc app MoMo (hỗ trợ quét VietQR)</div>
@@ -2323,8 +2326,9 @@ async function startUpgradeSepay(){
   const btn=document.getElementById('upgrade-sepay-btn');
   const box=document.getElementById('sepay-qr-box');
   if(btn){btn.disabled=true;btn.textContent='Đang tạo mã QR...';}
+  const discountCode=(document.getElementById('sepay-discount-input')?.value||'').trim().toUpperCase();
   try{
-    const d=await apiPost('/api/payment/sepay/create',{plan:_selectedPlan});
+    const d=await apiPost('/api/payment/sepay/create',{plan:_selectedPlan, discount_code:discountCode});
     document.getElementById('sepay-qr-img').src=d.qr_url;
     document.getElementById('sepay-amount').textContent=Number(d.amount_vnd).toLocaleString('vi-VN')+' đ';
     const origEl=document.getElementById('sepay-original'), badgeEl=document.getElementById('sepay-promo-badge');

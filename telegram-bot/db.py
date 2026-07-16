@@ -1642,6 +1642,157 @@ def _gen_promo_code(prefix: str = "") -> str:
     return f"{prefix}{body}" if prefix else body
 
 
+# ─── DISCOUNT CODES (giảm giá % trên thanh toán thật — khác promo_codes ở trên,
+# promo_codes cấp NGÀY PRO MIỄN PHÍ, discount_codes giảm GIÁ TIỀN của 1 lần mua) ──
+# 2026-07-16, Harvey yêu cầu 2 kiểu:
+#   auto_apply=true  — tự động áp dụng cho MỌI purchase trong kênh/khoảng thời gian,
+#                      không cần ai nhập mã, không giới hạn lượt (max_uses=NULL).
+#   auto_apply=false — user phải tự nhập đúng mã mới được giảm, có thể giới hạn
+#                      max_uses (số lượt) và/hoặc thời gian hiệu lực.
+# discount_redemptions.UNIQUE(order_ref) đảm bảo 1 đơn hàng chỉ áp dụng ĐÚNG 1 mã,
+# không stack nhiều mã trên cùng 1 lần mua.
+
+def _ensure_discount_tables(conn) -> None:
+    with conn.cursor() as cur:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS discount_codes (
+                code            TEXT PRIMARY KEY,
+                discount_pct    INT  NOT NULL CHECK (discount_pct > 0 AND discount_pct <= 100),
+                auto_apply      BOOLEAN NOT NULL DEFAULT false,
+                channel         TEXT NOT NULL DEFAULT 'sepay',
+                valid_from      TIMESTAMPTZ,
+                valid_until     TIMESTAMPTZ,
+                max_uses        INT,
+                uses_count      INT NOT NULL DEFAULT 0,
+                active          BOOLEAN NOT NULL DEFAULT true,
+                created_by      BIGINT,
+                note            TEXT,
+                created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS discount_redemptions (
+                id              SERIAL PRIMARY KEY,
+                code            TEXT NOT NULL REFERENCES discount_codes(code),
+                telegram_id     BIGINT NOT NULL,
+                order_ref       TEXT NOT NULL,
+                discount_pct    INT NOT NULL,
+                created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                UNIQUE (order_ref)
+            )
+        """)
+
+
+def create_discount_code(discount_pct: int, auto_apply: bool, channel: str = "sepay",
+                          valid_from=None, valid_until=None, max_uses: "int | None" = None,
+                          created_by=None, note: str = "", code: str = None) -> dict:
+    """Admin tạo mã giảm giá. code=None → tự sinh mã 6 ký tự dễ đọc (prefix SALE)."""
+    with get_conn() as conn:
+        _ensure_discount_tables(conn)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            final_code = (code or _gen_promo_code(prefix="SALE")).strip().upper()
+            cur.execute("""
+                INSERT INTO discount_codes
+                    (code, discount_pct, auto_apply, channel, valid_from, valid_until, max_uses, created_by, note)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING *
+            """, (final_code, discount_pct, auto_apply, channel, valid_from, valid_until,
+                  max_uses, int(created_by) if created_by else None, note))
+            result = dict(cur.fetchone())
+    log_audit(created_by, "discount.create", "discount_codes", final_code, after=result)
+    return result
+
+
+def list_discount_codes() -> "list[dict]":
+    with get_conn() as conn:
+        _ensure_discount_tables(conn)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT * FROM discount_codes ORDER BY created_at DESC")
+            return [dict(r) for r in cur.fetchall()]
+
+
+def set_discount_code_active(code: str, active: bool, actor_id=None) -> bool:
+    code = code.strip().upper()
+    with get_conn() as conn:
+        _ensure_discount_tables(conn)
+        with conn.cursor() as cur:
+            cur.execute("UPDATE discount_codes SET active = %s WHERE code = %s", (active, code))
+            ok = cur.rowcount > 0
+    if ok:
+        log_audit(actor_id, "discount.activate" if active else "discount.deactivate",
+                   "discount_codes", code)
+    return ok
+
+
+def _discount_code_usable(row: dict) -> bool:
+    now = datetime.now(timezone.utc)
+    if not row["active"]:
+        return False
+    if row["valid_from"] and now < row["valid_from"]:
+        return False
+    if row["valid_until"] and now > row["valid_until"]:
+        return False
+    if row["max_uses"] is not None and row["uses_count"] >= row["max_uses"]:
+        return False
+    return True
+
+
+def get_active_auto_discount(channel: str) -> "dict | None":
+    """Tìm mã auto_apply đang hiệu lực cho kênh này — tự động áp dụng, user không
+    cần nhập gì. Nếu có nhiều mã cùng lúc, chọn mã giảm % CAO NHẤT (có lợi nhất
+    cho khách)."""
+    with get_conn() as conn:
+        _ensure_discount_tables(conn)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT * FROM discount_codes
+                WHERE auto_apply = true AND active = true
+                  AND channel IN (%s, 'all')
+                ORDER BY discount_pct DESC
+            """, (channel,))
+            for row in cur.fetchall():
+                if _discount_code_usable(row):
+                    return row
+    return None
+
+
+def validate_discount_code(code: str, channel: str) -> dict:
+    """Kiểm tra mã user tự nhập (thủ công) — trả {ok, error} hoặc {ok:True, discount:row}."""
+    code = (code or "").strip().upper()
+    if not code:
+        return {"ok": False, "error": "Vui lòng nhập mã"}
+    with get_conn() as conn:
+        _ensure_discount_tables(conn)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT * FROM discount_codes WHERE code = %s", (code,))
+            row = cur.fetchone()
+    if not row:
+        return {"ok": False, "error": "Mã không tồn tại"}
+    if row["channel"] not in (channel, "all"):
+        return {"ok": False, "error": "Mã không áp dụng cho kênh thanh toán này"}
+    if not _discount_code_usable(dict(row)):
+        return {"ok": False, "error": "Mã đã hết hạn hoặc hết lượt sử dụng"}
+    return {"ok": True, "discount": dict(row)}
+
+
+def apply_discount_code(code: str, telegram_id, order_ref: str, discount_pct: int) -> None:
+    """Ghi nhận 1 đơn hàng đã dùng mã — UNIQUE(order_ref) đảm bảo không stack 2 mã
+    trên cùng 1 đơn. Tăng uses_count để mã có max_uses tự hết hạn đúng lúc."""
+    tg = int(telegram_id)
+    code = code.strip().upper()
+    with get_conn() as conn:
+        _ensure_discount_tables(conn)
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO discount_redemptions (code, telegram_id, order_ref, discount_pct)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (order_ref) DO NOTHING
+            """, (code, tg, order_ref, discount_pct))
+            if cur.rowcount:
+                cur.execute("UPDATE discount_codes SET uses_count = uses_count + 1 WHERE code = %s", (code,))
+    log_audit(tg, "discount.redeem", "discount_codes", code, note=f"order={order_ref}, -{discount_pct}%")
+
+
 def create_promo_code(days: int, max_uses: "int | None", created_by, note: str = "",
                        code: str = None) -> dict:
     """T2-ADMIN: admin tạo mã trial/giảm giá. code=None → tự sinh mã 8 ký tự ngẫu nhiên."""
