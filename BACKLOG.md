@@ -4,8 +4,24 @@
 # Priority: P0 (blocker) / P1 (important) / P2 (nice-to-have)
 # Claude đọc file này ĐẦU TIÊN mỗi session. Pick task IN_PROGRESS nếu có, nếu không pick P0 cao nhất.
 #
-# Last updated: 2026-07-15 (ca chiều — verify production, không có task P0/P1 nào mới)
+# Last updated: 2026-07-16 (ca sáng — update BACKLOG với 5 commits Harvey từ 15/07, verify 254/254 pass)
 
+## Session (autonomous, scheduled) — Ca sáng 2026-07-16: update BACKLOG, verify baseline
+# Tình trạng: tất cả P0/P1 đã DONE từ trước. Điều kiện dừng ca này: "Hết P0+P1".
+# Đầu session: đọc BACKLOG + memory.md + git log → phát hiện Harvey committed 5 tính
+# năng/fix lớn sau session chiều 15/07 (GOV-008-part2, GOV-009, GOV-010/011, PAY-009
+# HMAC, GOV-011-part2) chưa được ghi vào BACKLOG. Việc làm ca này:
+# 1. py_compile 3 file Python chính → OK (All OK)
+# 2. pytest 254/254 pass — baseline ổn định, không có regression từ các commits mới
+# 3. Review `dashboard/portfolio.html` mới của Harvey (1059 dòng, chưa commit): xác nhận
+#    cả 2 endpoints nó gọi (/nav-json, GET+POST /transactions) đều ĐÃ TỒN TẠI trong
+#    server.py → trang sẵn sàng hoạt động, Harvey có thể commit + test khi muốn
+# 4. Update BACKLOG với 5 commits Harvey (entries bên dưới)
+# 5. Update memory.md
+# Phát hiện ngoài lề (không xử lý): `dashboard/portfolio.html`, `ios/`, và ~15 scripts
+# mới trong `scripts/` chưa được git add/commit — đây là work-in-progress của Harvey,
+# không tự ý commit (GOV-006: hỏi trước khi động vào thay đổi không phải do session tạo).
+#
 ## Session (autonomous, scheduled) — Ca chiều 2026-07-15: verify production, không code thêm
 # Đọc lại toàn bộ BACKLOG (558 dòng) + memory.md: ca sáng cùng ngày đã làm GOV-005-part2,
 # GOV-007-part4, GOV-007-part3, T2-013, GOV-008/T2-014 — TẤT CẢ P0/P1 đã DONE. Chỉ còn
@@ -258,11 +274,15 @@
     biết đã thanh toán chưa, không cần user tự F5).
   - Mini app: nút "🏦 CHUYỂN KHOẢN NGÂN HÀNG (VietQR)" trong `#upgrade-modal` →
     hiện QR + số tiền + nội dung CK, poll status mỗi 4s, tự đóng modal khi paid.
+  - **Update 2026-07-15** (Harvey commit c04bcbc): xác thực webhook nâng cấp lên HMAC-SHA256
+    thay vì Apikey tĩnh — `X-SePay-Signature: "sha256=" + HMAC-SHA256(secret, timestamp.body)` +
+    replay protection (timestamp ±5 phút). `_read_body()` lưu raw bytes (ký trên bytes gốc,
+    không re-serialize). Fallback về Apikey tĩnh nếu `SEPAY_HMAC_SECRET` chưa set (backward-compat).
   - **CHƯA verify với tài khoản SePay thật** — field name webhook payload
     (`transferType`/`content`/`transferAmount`/`id`) theo định dạng phổ biến
     SePay công khai, cần Harvey đăng ký tài khoản SePay + set
-    `SEPAY_API_KEY`/`SEPAY_ACCOUNT_NUMBER`/`SEPAY_BANK_CODE` trên Railway rồi
-    kiểm tra lại field 1 lần với giao dịch test thật (log payload thô đã có sẵn
+    `SEPAY_HMAC_SECRET`/`SEPAY_API_KEY`/`SEPAY_ACCOUNT_NUMBER`/`SEPAY_BANK_CODE` trên Railway
+    rồi kiểm tra lại field 1 lần với giao dịch test thật (log payload thô đã có sẵn
     trong `_api_sepay_webhook` để dễ chỉnh nếu field không khớp).
   - QC: đã test toàn bộ logic (create order, so khớp content nhiễu, idempotent
     mark-paid, dedup qua txn_id, race 2 webhook đồng thời chỉ extend 1 lần,
@@ -569,6 +589,31 @@
   `database_url` trong `telegram-bot/config.json` để kết nối psycopg2 trực tiếp từ máy
   local, bỏ qua SSH hoàn toàn cho các thao tác đọc/ghi DB thuần | 2026-07-15
 
+- [DONE] GOV-008-part2 · NAV verification log + row_hash chống sửa ngầm — Harvey yêu cầu
+  xác thực tới TỪNG datapoint, tránh tái diễn vụ VCBFTBF (reconcile xong vẫn có thể bị ghi
+  đè ngầm). Bổ sung 2 cơ chế trên nền 3-layer GOV-008:
+  (1) Bảng `nav_verification_log` append-only — ghi lại MỌI lần 1 datapoint được kiểm tra
+  (ghi lần đầu / re-verify khớp / re-verify lệch / admin xác nhận) — truy vết đầy đủ không
+  chỉ tin vào `verify_tier` hiện tại. (2) `row_hash` chống giả mạo — mỗi dòng `nav_history`
+  có `hash(fund_code, nav_date, nav, source, verify_tier)`, được cập nhật qua ĐỦ 4 đường ghi
+  (`upsert_nav`, `reverify_nav_tier`, `resolve_nav_confirm`, `_insert_nav_points`). Nếu ai
+  sửa DB bằng SQL thô bỏ qua các hàm này → hash lệch → `verify_nav_integrity()` phát hiện.
+  `harvest_nav.py --verify-integrity` (scan), `--backfill-hash` (tính hash 1 lần cho ~90k
+  điểm cũ). `bot.py job_nav_integrity_check()` chạy 21:30 hàng ngày, báo Telegram admin +
+  ghi audit_log nếu phát hiện bất thường. Verify: py_compile 4 file, pytest 254/254,
+  test sống trực tiếp production DB — phát hiện đúng 4,634 dòng VCBFTBF chưa hash (trước
+  backfill), hết sau backfill | 2026-07-15 (Harvey commit 73c78c7)
+
+- [DONE] GOV-009 · Gold data gap tự động backfill — XAUUSD khoảng trống 5-9 ngày phát hiện
+  trên production khi bot restart/deploy làm `job_morning` lỡ chạy vài ngày liên tiếp.
+  `telegram-bot/fetch_gold.py`: thêm `fetch_xauusd_yahoo_history()` (lấy lịch sử từ Yahoo
+  Finance) + mở rộng `run_backfill(days=10)` để vá cả XAUUSD (trước chỉ vá SJC_1L).
+  `bot.py job_morning`: tự gọi `run_backfill(days=10)` mỗi sáng thay vì phải chạy tay khi
+  phát hiện khoảng trống. Mini App UI đồng thời: chip mã CCQ, đổi nhãn "Vốn"→"Giá vốn",
+  dropdown chi tiết Vốn CCQ/Giá trị hiện tại, gộp "Vị thế của bạn" về 1 hàng, tên quỹ
+  chạy chữ khi dài thay vì bị cắt, bỏ disclaimer T+2 trùng lặp, sửa bug ID nút "Phân kỳ"
+  DCA Vàng không có hiệu ứng active | 2026-07-15 (Harvey commit 15c8989)
+
 - [DONE] GOV-010 · Referral fraud audit + thiết kế lại 2 giai đoạn + ban/unban thủ công
   **Root cause**: Harvey hỏi review bảo mật cơ chế referral. Bản cũ (`redeem_promo_code`)
   cấp Pro miễn phí NGAY cho cả referee và referrer lúc redeem — không đòi hỏi thanh toán
@@ -596,6 +641,22 @@
   Verify: `py_compile` sạch cho `db.py`/`bot.py`/`miniapp_server.py`. Chưa test sống trên
   production (chưa có giao dịch referral thật để trigger) — cần theo dõi lần redeem/mua
   Pro tiếp theo để xác nhận đúng luồng | 2026-07-15
+
+- [DONE] GOV-011 · NAV hiển thị cũ hơn DB — Harvey phát hiện SSISCA (và các quỹ tcbs=True)
+  hiện NAV hôm qua dù nav_history đã có NAV hôm nay (nguồn fmarket). Root cause:
+  `get_nav_series_with_source()` fetch live TCBS mỗi lần, TCBS chưa publish NAV hôm nay
+  thì trả pts chỉ tới hôm qua → âm thầm bỏ qua NAV mới hơn đã có sẵn trong DB. Fix:
+  luôn merge thêm điểm mới nhất từ DB nếu mới hơn pts vừa fetch — tín hiệu không bao giờ
+  được lùi về NAV cũ hơn khi đã có NAV mới hơn trong DB | 2026-07-15 (Harvey commit 6259b3a)
+
+- [DONE] GOV-011-part2 · Cache buy_signals không refresh khi nav_date cũ hơn hôm nay —
+  `_get_signals_for_codes()` coi cache "stale" khi signal_date < hôm nay, nhưng
+  `_compute_from_nav_history()` luôn ghi signal_date=hôm nay bất kể nav_date thực tế dùng
+  để tính là ngày nào. Hệ quả: Mini App mở lần đầu trong ngày trước khi NAV publish xong
+  → cache bị tính 1 lần với NAV hôm qua rồi "khoá" fresh cả ngày dù DB đã có NAV mới hơn
+  từ lúc sau. Fix: staleness so cả nav_date (không chỉ signal_date) — tính lại rẻ (chỉ
+  đọc nav_history, không gọi API ngoài) nên an toàn để trigger thường xuyên hơn
+  | 2026-07-15 (Harvey commit 5748fde)
 
 ---
 
