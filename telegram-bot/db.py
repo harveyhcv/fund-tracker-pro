@@ -228,7 +228,13 @@ def verify_nav_integrity(fund_code: str = None, limit: int = 20000) -> list[dict
     return mismatches
 
 
-def init_pool(min_conn: int = 1, max_conn: int = 5) -> None:
+def init_pool(min_conn: int = 1, max_conn: int = 20) -> None:
+    # GOV-013 (2026-07-16): max_conn=5 quá thấp — tab Admin của Mini App tự bắn
+    # 5+ request song song lúc mở (summary/nav_pending/promo/discount/audit), cộng
+    # thêm request thường (signals/portfolio) và job nền (schedule) tranh nhau
+    # cùng lúc → "connection pool exhausted" (PoolError), phát hiện khi thêm
+    # loadDiscountList() làm request song song thứ 5 đúng chạm giới hạn cũ. Railway
+    # Postgres managed dư sức chịu 20 kết nối cho 1 app nhỏ này, tăng lên cho an toàn.
     global _pool
     db_url = os.environ.get("DATABASE_URL")
     if not db_url:
