@@ -2828,28 +2828,26 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             return
         _json(self, {"ok": True, "promo": promo})
 
-    def _api_admin_discount_create(self, data: dict):
-        """POST /api/admin/discount/create — {telegram_id, discount_pct, auto_apply,
-        channel?, valid_from?, valid_until?, max_uses?, note?, code?}.
-        auto_apply=true → tự động áp dụng cho mọi purchase kênh này, không giới hạn
-        lượt trừ khi max_uses được đặt. auto_apply=false → user phải tự nhập mã."""
-        tg_id = str(data.get("telegram_id", ""))
-        if not _is_admin(tg_id):
-            _json(self, {"error": "admin_only"}, 403)
-            return
-        if not _auth_write(self, tg_id):
-            return
+    def _parse_voucher_fields(self, data: dict):
+        """Validate các field chung cho create/edit voucher. Trả (fields_dict, None)
+        nếu hợp lệ, hoặc (None, error_msg) nếu không. benefit_type='discount_pct'
+        → benefit_value là % (1-100). benefit_type='bonus_days' → benefit_value là
+        số ngày tặng thêm (>=1, tối đa 365 cho an toàn — tránh gõ nhầm số quá lớn)."""
+        benefit_type = str(data.get("benefit_type", "discount_pct")).strip().lower()
+        if benefit_type not in ("discount_pct", "bonus_days"):
+            return None, "benefit_type phải là discount_pct hoặc bonus_days"
         try:
-            discount_pct = int(data.get("discount_pct"))
-            assert 0 < discount_pct <= 100
-        except (TypeError, ValueError, AssertionError):
-            _json(self, {"error": "discount_pct phải là số nguyên 1-100"}, 400)
-            return
+            benefit_value = int(data.get("benefit_value"))
+        except (TypeError, ValueError):
+            return None, "benefit_value phải là số nguyên"
+        if benefit_type == "discount_pct" and not (0 < benefit_value <= 100):
+            return None, "Giảm % phải trong khoảng 1-100"
+        if benefit_type == "bonus_days" and not (0 < benefit_value <= 365):
+            return None, "Số ngày tặng thêm phải trong khoảng 1-365"
         auto_apply = bool(data.get("auto_apply", False))
         channel    = str(data.get("channel", "sepay")).strip().lower() or "sepay"
         if channel not in ("sepay", "stars", "all"):
-            _json(self, {"error": "channel phải là sepay/stars/all"}, 400)
-            return
+            return None, "channel phải là sepay/stars/all"
         max_uses_raw = data.get("max_uses")
         max_uses = None
         if max_uses_raw not in (None, "", 0):
@@ -2862,19 +2860,42 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         valid_from  = data.get("valid_from")  or None
         valid_until = data.get("valid_until") or None
         note = str(data.get("note", ""))[:200]
-        custom_code = str(data.get("code", "")).strip() or None
         # Không cho phép cả thời gian VÀ số lượt đều "không giới hạn" cùng lúc —
         # bắt buộc ít nhất 1 điều kiện chặn để mã không thể chạy vô thời hạn/vô hạn lượt.
         if valid_until is None and max_uses is None:
-            _json(self, {"error": "Phải giới hạn ít nhất 1: thời gian hiệu lực HOẶC số lượt — không thể để cả 2 không giới hạn"}, 400)
+            return None, "Phải giới hạn ít nhất 1: thời gian hiệu lực HOẶC số lượt — không thể để cả 2 không giới hạn"
+        return {
+            "benefit_type": benefit_type, "benefit_value": benefit_value,
+            "auto_apply": auto_apply, "channel": channel,
+            "valid_from": valid_from, "valid_until": valid_until,
+            "max_uses": max_uses, "note": note,
+        }, None
+
+    def _api_admin_discount_create(self, data: dict):
+        """POST /api/admin/discount/create — {telegram_id, benefit_type, benefit_value,
+        auto_apply, channel?, valid_from?, valid_until?, max_uses?, note?, code?}.
+        Mã Voucher — CẦN có giao dịch thật mới có tác dụng (khác Mã Promo ở trên).
+        auto_apply=true → tự động áp dụng cho mọi purchase kênh này. auto_apply=false
+        → user phải tự nhập mã."""
+        tg_id = str(data.get("telegram_id", ""))
+        if not _is_admin(tg_id):
+            _json(self, {"error": "admin_only"}, 403)
             return
+        if not _auth_write(self, tg_id):
+            return
+        fields, err = self._parse_voucher_fields(data)
+        if err:
+            _json(self, {"error": err}, 400)
+            return
+        custom_code = str(data.get("code", "")).strip() or None
         if _db_mod is None or not _db_mod.is_available():
             _json(self, {"error": "DB không khả dụng"}, 503)
             return
         try:
             discount = _db_mod.create_discount_code(
-                discount_pct, auto_apply, channel, valid_from, valid_until,
-                max_uses, created_by=tg_id, note=note, code=custom_code,
+                fields["benefit_type"], fields["benefit_value"], fields["auto_apply"], fields["channel"],
+                fields["valid_from"], fields["valid_until"], fields["max_uses"],
+                created_by=tg_id, note=fields["note"], code=custom_code,
             )
         except Exception as e:
             log.error(f"[admin_discount_create] {e}")
@@ -2924,38 +2945,16 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         if not code:
             _json(self, {"error": "code required"}, 400)
             return
-        try:
-            discount_pct = int(data.get("discount_pct"))
-            assert 0 < discount_pct <= 100
-        except (TypeError, ValueError, AssertionError):
-            _json(self, {"error": "discount_pct phải là số nguyên 1-100"}, 400)
-            return
-        auto_apply = bool(data.get("auto_apply", False))
-        channel    = str(data.get("channel", "sepay")).strip().lower() or "sepay"
-        if channel not in ("sepay", "stars", "all"):
-            _json(self, {"error": "channel phải là sepay/stars/all"}, 400)
-            return
-        max_uses_raw = data.get("max_uses")
-        max_uses = None
-        if max_uses_raw not in (None, "", 0):
-            try:
-                max_uses = int(max_uses_raw)
-                if max_uses <= 0:
-                    max_uses = None
-            except (TypeError, ValueError):
-                max_uses = None
-        valid_from  = data.get("valid_from")  or None
-        valid_until = data.get("valid_until") or None
-        note = str(data.get("note", ""))[:200]
-        if valid_until is None and max_uses is None:
-            _json(self, {"error": "Phải giới hạn ít nhất 1: thời gian hiệu lực HOẶC số lượt — không thể để cả 2 không giới hạn"}, 400)
+        fields, err = self._parse_voucher_fields(data)
+        if err:
+            _json(self, {"error": err}, 400)
             return
         if _db_mod is None or not _db_mod.is_available():
             _json(self, {"error": "DB không khả dụng"}, 503)
             return
         discount = _db_mod.update_discount_code(
-            code, discount_pct, auto_apply, channel, valid_from, valid_until,
-            max_uses, note, actor_id=tg_id,
+            code, fields["benefit_type"], fields["benefit_value"], fields["auto_apply"], fields["channel"],
+            fields["valid_from"], fields["valid_until"], fields["max_uses"], fields["note"], actor_id=tg_id,
         )
         if not discount:
             _json(self, {"error": f"Không tìm thấy mã {code}"}, 404)
@@ -3669,41 +3668,53 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             _json(self, {"error": "DB không khả dụng"}, 503)
             return
 
-        # Discount code (2026-07-16, GOV-012) — 2 kiểu:
+        # Voucher (GOV-012/GOV-012-part2, 2026-07-16) — 2 loại benefit, CHỈ áp dụng
+        # khi có giao dịch thật (khác Mã Promo, cấp free không cần mua):
+        #  - discount_pct: giảm % ngay trên số tiền cần chuyển khoản (dưới đây).
+        #  - bonus_days:   KHÔNG giảm giá — thu đủ giá gốc, nhưng ghi nhận lại để
+        #    webhook xác nhận thanh toán cộng thêm ngày Pro (xem _api_sepay_webhook).
         #  - auto_apply: tự động tìm mã đang hiệu lực cho kênh 'sepay', không cần user
         #    nhập gì (get_active_auto_discount).
         #  - manual: nếu user có nhập discount_code trong request, ưu tiên validate mã
-        #    đó (validate_discount_code) — cho phép override/dùng mã ngon hơn auto nếu có.
+        #    đó (validate_discount_code) — cho phép dùng mã cụ thể thay vì auto.
         discount_code = str((data or {}).get("discount_code", "")).strip().upper()
-        discount_row  = None
+        voucher = None
         if discount_code:
             v = _db_mod.validate_discount_code(discount_code, "sepay")
             if not v.get("ok"):
-                _json(self, {"error": v.get("error", "Mã giảm giá không hợp lệ")}, 400)
+                _json(self, {"error": v.get("error", "Mã voucher không hợp lệ")}, 400)
                 return
-            discount_row = v["discount"]
+            voucher = v["discount"]
         else:
-            discount_row = _db_mod.get_active_auto_discount("sepay")
+            voucher = _db_mod.get_active_auto_discount("sepay")
 
-        discount_pct = discount_row["discount_pct"] if discount_row else 0
+        is_discount = bool(voucher) and voucher["benefit_type"] == "discount_pct"
+        discount_pct = voucher["benefit_value"] if is_discount else 0
         amount_vnd = int(plan["vnd"] * (1 - discount_pct / 100) // 1000 * 1000) if discount_pct else plan["vnd"]
 
         ref_code = _db_mod.create_bank_transfer_order(user_id, plan_key, amount_vnd)
-        if discount_row:
+        if voucher:
             try:
-                _db_mod.apply_discount_code(discount_row["code"], user_id, ref_code, discount_pct)
+                _db_mod.apply_discount_code(voucher["code"], user_id, ref_code,
+                                             voucher["benefit_type"], voucher["benefit_value"])
             except Exception as e:
                 log.warning(f"[PAY][SePay] apply_discount_code lỗi (không chặn tạo đơn): {e}")
         qr_url = (
             f"{_SEPAY_QR_BASE}?acc={_SEPAY_ACCOUNT_NUMBER}&bank={_SEPAY_BANK_CODE}"
             f"&amount={amount_vnd}&des={ref_code}"
         )
+        voucher_log = ""
+        if voucher:
+            voucher_log = (f" (mã {voucher['code']} -{discount_pct}%)" if is_discount
+                            else f" (mã {voucher['code']} +{voucher['benefit_value']} ngày, cấp lúc thanh toán)")
         log.info(f"[PAY][SePay] order created ref={ref_code} user={user_id} plan={plan_key} "
-                 f"amount={amount_vnd}" + (f" (mã {discount_row['code']} -{discount_pct}%)" if discount_row else ""))
+                 f"amount={amount_vnd}{voucher_log}")
         _json(self, {
             "ref_code": ref_code, "qr_url": qr_url,
             "amount_vnd": amount_vnd, "original_vnd": plan["vnd"],
-            "promo_pct": discount_pct, "discount_code": discount_row["code"] if discount_row else None,
+            "promo_pct": discount_pct,
+            "bonus_days": voucher["benefit_value"] if (voucher and not is_discount) else 0,
+            "discount_code": voucher["code"] if voucher else None,
             "plan_label": plan["label"],
             "account_number": _SEPAY_ACCOUNT_NUMBER, "bank_code": _SEPAY_BANK_CODE,
         })
@@ -3822,12 +3833,23 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         plan_key = paid_order["plan_key"] if paid_order["plan_key"] in PRO_PLANS else DEFAULT_PLAN
         plan     = PRO_PLANS[plan_key]
 
+        # Voucher benefit_type='bonus_days' KHÔNG giảm giá lúc tạo đơn — cấp thêm
+        # ngày ở ĐÚNG lúc này (thanh toán đã xác nhận thật), cộng dồn vào gói vừa mua.
+        bonus_days = 0
+        try:
+            bonus_days = _db_mod.grant_voucher_bonus_days(order["ref_code"]) or 0
+        except Exception as e:
+            log.warning(f"[PAY][SePay] grant_voucher_bonus_days lỗi (không chặn cấp Pro): {e}")
+
         expires_at = None
         try:
-            result = _db_mod.extend_pro(tg_id, plan["days"],
-                                         note=f"sepay {plan['label']} (ref={order['ref_code']}, {amount}đ)")
+            total_days = plan["days"] + bonus_days
+            note = f"sepay {plan['label']} (ref={order['ref_code']}, {amount}đ)"
+            if bonus_days:
+                note += f" + voucher {bonus_days} ngày"
+            result = _db_mod.extend_pro(tg_id, total_days, note=note)
             expires_at = result.get("pro_expires_at")
-            log.info(f"[PAY][SePay] tier=pro extended {plan['days']}d for {tg_id}, expires {expires_at}")
+            log.info(f"[PAY][SePay] tier=pro extended {total_days}d ({plan['days']}+{bonus_days} bonus) for {tg_id}, expires {expires_at}")
             try:
                 _db_mod.grant_referral_purchase_bonus(tg_id)
             except Exception as _rbe:
@@ -3849,7 +3871,8 @@ class MiniAppHandler(BaseHTTPRequestHandler):
                         "text": (
                             f"🌟 <b>Chào mừng bạn đến với Fund Tracker Pro!</b>\n\n"
                             f"✅ Thanh toán chuyển khoản {int(amount):,} đ thành công — gói <b>{plan['label']}</b>\n"
-                            f"📅 Gói Pro có hiệu lực đến: <b>{exp_str}</b>\n\n"
+                            + (f"🎁 Tặng thêm <b>{bonus_days} ngày</b> từ voucher!\n" if bonus_days else "")
+                            + f"📅 Gói Pro có hiệu lực đến: <b>{exp_str}</b>\n\n"
                             f"Gõ /app để mở Mini App ngay. 🚀"
                         ),
                     },

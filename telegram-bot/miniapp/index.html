@@ -243,7 +243,7 @@ canvas{width:100%!important;height:100%!important}
       <button class="btn btn-primary" id="upgrade-cta-btn" onclick="startUpgrade()">⭐ NÂNG CẤP PRO NGAY</button>
       <button class="btn" id="upgrade-sepay-btn" style="background:var(--bg3);color:var(--c0);border:1px solid var(--c0);margin-top:8px" onclick="startUpgradeSepay()">🏦 CHUYỂN KHOẢN NGÂN HÀNG (VietQR)</button>
       <div style="display:flex;gap:6px;margin-top:6px">
-        <input type="text" id="sepay-discount-input" placeholder="Mã giảm giá (nếu có)" style="flex:1;background:var(--bg3);border:1px solid var(--bdr);color:var(--txt);border-radius:8px;padding:6px 8px;font-size:12px;text-transform:uppercase">
+        <input type="text" id="sepay-discount-input" placeholder="Mã voucher (nếu có)" style="flex:1;background:var(--bg3);border:1px solid var(--bdr);color:var(--txt);border-radius:8px;padding:6px 8px;font-size:12px;text-transform:uppercase">
       </div>
       <div id="sepay-qr-box" style="display:none;text-align:center;margin-top:12px;padding:14px;background:var(--bg3);border-radius:10px;border:1px solid var(--bdr)">
         <img id="sepay-qr-img" style="max-width:220px;width:100%;border-radius:8px;background:#fff;padding:6px" alt="QR chuyển khoản">
@@ -254,6 +254,7 @@ canvas{width:100%!important;height:100%!important}
           <span id="sepay-promo-badge" style="background:var(--buy);color:#000;font-size:10px;font-weight:700;padding:1px 6px;border-radius:99px;display:none">-10%</span>
           — Nội dung CK: <b id="sepay-ref" style="color:var(--c0)"></b>
         </div>
+        <div id="sepay-bonus-line" style="font-size:12px;color:var(--hold);margin-top:4px;display:none">🎁 Tặng thêm <b id="sepay-bonus-days"></b> ngày sau khi thanh toán</div>
         <div id="sepay-status" style="font-size:12px;color:var(--txt2);margin-top:8px">⏳ Đang chờ chuyển khoản...</div>
       </div>
       <button class="btn" style="background:transparent;border:1px solid var(--bdr);color:var(--txt2)" onclick="closeUpgradeModalBtn()">Để sau</button>
@@ -554,7 +555,7 @@ canvas{width:100%!important;height:100%!important}
         <div id="admin-nav-confirm-list"><div style="font-size:12px;color:var(--txt2)">Đang tải...</div></div>
       </div>
       <div class="card" style="padding:16px">
-        <div style="font-size:11px;font-weight:700;color:#c084fc;font-family:var(--mono);margin-bottom:10px">🎟️ MÃ TRIAL / GIẢM GIÁ</div>
+        <div style="font-size:11px;font-weight:700;color:#c084fc;font-family:var(--mono);margin-bottom:10px">🎟️ MÃ PROMO</div>
         <div style="font-size:11px;color:var(--txt2);margin-bottom:10px;line-height:1.5">Tạo mã cho bạn bè dùng thử Pro. Để trống ô "Mã" để tự sinh ngẫu nhiên. Số lượt = số NGƯỜI được dùng (mỗi người chỉ dùng được 1 lần dù max_uses lớn hơn 1).</div>
         <div style="display:flex;gap:8px;margin-bottom:4px">
           <input type="text" id="promo-new-code" placeholder="Mã (để trống = tự sinh)" style="flex:1;text-transform:uppercase" oninput="checkPromoCodeDup()">
@@ -573,11 +574,15 @@ canvas{width:100%!important;height:100%!important}
         <div id="promo-list" style="margin-top:12px"></div>
       </div>
       <div class="card" style="padding:16px">
-        <div style="font-size:11px;font-weight:700;color:#fb923c;font-family:var(--mono);margin-bottom:10px">💸 MÃ GIẢM GIÁ (SePay/Stars)</div>
-        <div style="font-size:11px;color:var(--txt2);margin-bottom:10px;line-height:1.5">Giảm % trên giá thanh toán thật (khác mã trial ở trên — mã trial cấp ngày Pro miễn phí). Tự động = áp dụng cho mọi người mua, không cần nhập mã. Bắt buộc giới hạn ít nhất 1: thời gian HOẶC số lượt.</div>
+        <div style="font-size:11px;font-weight:700;color:#fb923c;font-family:var(--mono);margin-bottom:10px">💸 MÃ VOUCHER (SePay/Stars)</div>
+        <div style="font-size:11px;color:var(--txt2);margin-bottom:10px;line-height:1.5">Khác Mã Promo ở trên (cấp free, không cần mua) — Voucher CHỈ có tác dụng khi có giao dịch thật. Tự động = áp dụng cho mọi người mua, không cần nhập mã. Bắt buộc giới hạn ít nhất 1: thời gian HOẶC số lượt.</div>
         <input type="text" id="disc-new-code" placeholder="Mã (để trống = tự sinh)" style="margin-bottom:8px;text-transform:uppercase">
+        <div style="display:flex;gap:6px;margin-bottom:8px">
+          <button type="button" id="disc-type-pct-btn" onclick="_discSetBenefitType('discount_pct')" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--c0);background:#001a33;color:var(--c0);font-size:12px;cursor:pointer;font-family:var(--mono)">Giảm giá %</button>
+          <button type="button" id="disc-type-days-btn" onclick="_discSetBenefitType('bonus_days')" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--bdr);background:var(--bg3);color:var(--txt2);font-size:12px;cursor:pointer;font-family:var(--mono)">Tặng thêm ngày</button>
+        </div>
         <div style="display:flex;gap:8px;margin-bottom:8px">
-          <input type="number" id="disc-new-pct" placeholder="Giảm % (vd 10)" value="10" style="flex:1">
+          <input type="number" id="disc-new-value" placeholder="Giảm % (vd 10)" value="10" style="flex:1">
           <select id="disc-new-channel" style="flex:1;background:var(--bg3);border:1px solid var(--bdr);color:var(--txt);border-radius:8px;padding:8px">
             <option value="sepay">SePay</option>
             <option value="stars">Stars</option>
@@ -1301,6 +1306,23 @@ function _discSyncUnlimited(){
   }
 }
 
+let _discBenefitType='discount_pct';
+function _discSetBenefitType(type){
+  _discBenefitType=type;
+  const pctBtn=document.getElementById('disc-type-pct-btn'), daysBtn=document.getElementById('disc-type-days-btn');
+  const valInput=document.getElementById('disc-new-value');
+  const on={borderColor:'var(--c0)',background:'#001a33',color:'var(--c0)'};
+  const off={borderColor:'var(--bdr)',background:'var(--bg3)',color:'var(--txt2)'};
+  const apply=(el,st)=>{el.style.borderColor=st.borderColor;el.style.background=st.background;el.style.color=st.color;};
+  if(type==='discount_pct'){
+    apply(pctBtn,on); apply(daysBtn,off);
+    valInput.placeholder='Giảm % (vd 10)';
+  } else {
+    apply(daysBtn,on); apply(pctBtn,off);
+    valInput.placeholder='Số ngày tặng thêm (vd 7)';
+  }
+}
+
 function _fmtDiscTime(iso){
   if(!iso) return '';
   const d=new Date(iso);
@@ -1335,12 +1357,13 @@ function renderDiscountList(codes){
     const statusColor = c.active ? 'var(--buy)' : 'var(--txt2)';
     const statusLabel = c.active ? 'Đang hoạt động' : 'Đã vô hiệu hoá';
     const applyLabel = c.auto_apply ? '🔁 Tự động' : '⌨️ Nhập tay';
+    const benefitLabel = c.benefit_type==='bonus_days' ? `🎁 +${c.benefit_value} ngày` : `-${c.benefit_value}%`;
     return `<div style="border:1px solid var(--bdr);border-radius:8px;padding:10px;margin-bottom:8px;background:var(--bg)">
       <div style="display:flex;justify-content:space-between;align-items:center">
         <span style="font-family:var(--mono);font-weight:700;color:#fb923c;font-size:13px;letter-spacing:.04em">${c.code}</span>
         <span style="font-size:10px;color:${statusColor}">${statusLabel}</span>
       </div>
-      <div style="font-size:11px;color:var(--txt2);margin-top:4px">-${c.discount_pct}% · ${c.channel} · ${applyLabel} · ${usesLabel} · ${untilLabel}${c.note?' · '+c.note:''}</div>
+      <div style="font-size:11px;color:var(--txt2);margin-top:4px">${benefitLabel} · ${c.channel} · ${applyLabel} · ${usesLabel} · ${untilLabel}${c.note?' · '+c.note:''}</div>
       <div style="display:flex;gap:6px;margin-top:6px">
         <button onclick="startEditDiscount('${c.code}')" style="padding:5px 10px;background:var(--bg3);border:1px solid var(--c0);color:var(--c0);border-radius:6px;font-size:11px;cursor:pointer">Sửa</button>
         ${c.active
@@ -1357,7 +1380,8 @@ function startEditDiscount(code){
   _editingDiscountCode=c.code;
   document.getElementById('disc-new-code').value=c.code;
   document.getElementById('disc-new-code').disabled=true;
-  document.getElementById('disc-new-pct').value=c.discount_pct;
+  _discSetBenefitType(c.benefit_type||'discount_pct');
+  document.getElementById('disc-new-value').value=c.benefit_value;
   document.getElementById('disc-new-channel').value=c.channel;
   document.getElementById('disc-new-auto').checked=c.auto_apply;
   document.getElementById('disc-new-from').value=_toDatetimeLocal(c.valid_from);
@@ -1376,7 +1400,8 @@ function cancelEditDiscount(){
   _editingDiscountCode=null;
   document.getElementById('disc-new-code').value='';
   document.getElementById('disc-new-code').disabled=false;
-  document.getElementById('disc-new-pct').value='10';
+  _discSetBenefitType('discount_pct');
+  document.getElementById('disc-new-value').value='10';
   document.getElementById('disc-new-channel').value='sepay';
   document.getElementById('disc-new-auto').checked=false;
   document.getElementById('disc-new-from').value='';
@@ -1394,7 +1419,7 @@ function cancelEditDiscount(){
 async function adminCreateDiscount(){
   const status=document.getElementById('disc-create-status');
   const code=(document.getElementById('disc-new-code').value||'').trim().toUpperCase();
-  const discount_pct=parseInt(document.getElementById('disc-new-pct').value||'0',10);
+  const benefit_value=parseInt(document.getElementById('disc-new-value').value||'0',10);
   const channel=document.getElementById('disc-new-channel').value;
   const auto_apply=document.getElementById('disc-new-auto').checked;
   const untilUnlimited=document.getElementById('disc-new-until-unlimited').checked;
@@ -1402,15 +1427,18 @@ async function adminCreateDiscount(){
   if(untilUnlimited && usesUnlimited){
     status.style.color='var(--sell)'; status.textContent='Không thể để cả thời gian và số lượt đều không giới hạn'; return;
   }
-  if(!discount_pct||discount_pct<=0||discount_pct>100){
+  if(_discBenefitType==='discount_pct' && (!benefit_value||benefit_value<=0||benefit_value>100)){
     status.style.color='var(--sell)'; status.textContent='Giảm % phải trong khoảng 1-100'; return;
+  }
+  if(_discBenefitType==='bonus_days' && (!benefit_value||benefit_value<=0||benefit_value>365)){
+    status.style.color='var(--sell)'; status.textContent='Số ngày tặng thêm phải trong khoảng 1-365'; return;
   }
   const fromVal=document.getElementById('disc-new-from').value;
   const untilVal=untilUnlimited?'':document.getElementById('disc-new-until').value;
   const maxUsesVal=usesUnlimited?'':document.getElementById('disc-new-maxuses').value;
   const note=(document.getElementById('disc-new-note').value||'').trim();
   const payload={
-    telegram_id:USER_ID, discount_pct, auto_apply, channel,
+    telegram_id:USER_ID, benefit_type:_discBenefitType, benefit_value, auto_apply, channel,
     valid_from: fromVal ? new Date(fromVal).toISOString() : null,
     valid_until: untilVal ? new Date(untilVal).toISOString() : null,
     max_uses: maxUsesVal ? parseInt(maxUsesVal,10) : null,
@@ -2545,10 +2573,17 @@ async function startUpgradeSepay(){
     if(d.original_vnd && d.original_vnd>d.amount_vnd){
       origEl.textContent=Number(d.original_vnd).toLocaleString('vi-VN')+' đ';
       origEl.style.display='inline';
-      badgeEl.textContent='-'+(d.promo_pct||10)+'%';
+      badgeEl.textContent='-'+(d.promo_pct||0)+'%';
       badgeEl.style.display='inline';
     } else {
       origEl.style.display='none'; badgeEl.style.display='none';
+    }
+    const bonusLine=document.getElementById('sepay-bonus-line');
+    if(d.bonus_days){
+      document.getElementById('sepay-bonus-days').textContent=d.bonus_days;
+      bonusLine.style.display='block';
+    } else {
+      bonusLine.style.display='none';
     }
     document.getElementById('sepay-ref').textContent=d.ref_code;
     document.getElementById('sepay-status').textContent='⏳ Đang chờ chuyển khoản... (tự động nâng cấp trong ít phút sau khi CK)';

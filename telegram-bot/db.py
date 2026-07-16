@@ -1648,22 +1648,38 @@ def _gen_promo_code(prefix: str = "") -> str:
     return f"{prefix}{body}" if prefix else body
 
 
-# ─── DISCOUNT CODES (giảm giá % trên thanh toán thật — khác promo_codes ở trên,
-# promo_codes cấp NGÀY PRO MIỄN PHÍ, discount_codes giảm GIÁ TIỀN của 1 lần mua) ──
-# 2026-07-16, Harvey yêu cầu 2 kiểu:
-#   auto_apply=true  — tự động áp dụng cho MỌI purchase trong kênh/khoảng thời gian,
-#                      không cần ai nhập mã, không giới hạn lượt (max_uses=NULL).
-#   auto_apply=false — user phải tự nhập đúng mã mới được giảm, có thể giới hạn
-#                      max_uses (số lượt) và/hoặc thời gian hiệu lực.
+# ─── VOUCHER CODES (yêu cầu 1 giao dịch thật — khác Mã Promo ở trên, Promo cấp
+# ngày Pro miễn phí KHÔNG cần mua gì, Voucher chỉ có tác dụng khi thanh toán thật) ──
+# GOV-012/GOV-012-part2 (2026-07-16, Harvey chốt lại thuật ngữ) — 3 loại mã tách
+# biệt rõ ràng trong hệ thống:
+#   Mã Promo    (promo_codes kind='admin')    — free ngay, KHÔNG cần mua.
+#   Mã Voucher  (discount_codes, phần này)    — CẦN mua, 2 loại benefit:
+#       benefit_type='discount_pct'  — giảm % trên số tiền phải trả (áp dụng
+#                                      NGAY lúc tạo đơn, thu ít tiền hơn).
+#       benefit_type='bonus_days'    — KHÔNG giảm giá, trả đủ giá gốc, nhưng
+#                                      được TẶNG THÊM benefit_value ngày Pro
+#                                      cộng dồn vào gói đã mua (cấp lúc webhook
+#                                      xác nhận thanh toán thành công, không
+#                                      phải lúc tạo đơn).
+#   Mã Referral (promo_codes kind='referral') — giữ nguyên 2 giai đoạn, không đổi.
+#
+# auto_apply=true  — tự động áp dụng cho MỌI purchase trong kênh/khoảng thời gian,
+#                    không cần ai nhập mã, không giới hạn lượt (max_uses=NULL).
+# auto_apply=false — user phải tự nhập đúng mã mới được áp dụng, có thể giới hạn
+#                    max_uses (số lượt) và/hoặc thời gian hiệu lực.
 # discount_redemptions.UNIQUE(order_ref) đảm bảo 1 đơn hàng chỉ áp dụng ĐÚNG 1 mã,
 # không stack nhiều mã trên cùng 1 lần mua.
+
+_VOUCHER_BENEFIT_TYPES = ("discount_pct", "bonus_days")
+
 
 def _ensure_discount_tables(conn) -> None:
     with conn.cursor() as cur:
         cur.execute("""
             CREATE TABLE IF NOT EXISTS discount_codes (
                 code            TEXT PRIMARY KEY,
-                discount_pct    INT  NOT NULL CHECK (discount_pct > 0 AND discount_pct <= 100),
+                benefit_type    TEXT NOT NULL DEFAULT 'discount_pct',
+                benefit_value   INT  NOT NULL DEFAULT 10,
                 auto_apply      BOOLEAN NOT NULL DEFAULT false,
                 channel         TEXT NOT NULL DEFAULT 'sepay',
                 valid_from      TIMESTAMPTZ,
@@ -1676,33 +1692,62 @@ def _ensure_discount_tables(conn) -> None:
                 created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
             )
         """)
+        # Migration cho DB đã tồn tại từ trước khi redesign benefit_type (GOV-012-part2)
+        # — bảng cũ chỉ có discount_pct, chưa từng có customer thật dùng nên backfill
+        # thẳng vào benefit_value=discount_pct, benefit_type='discount_pct' an toàn.
+        cur.execute("ALTER TABLE discount_codes ADD COLUMN IF NOT EXISTS benefit_type TEXT NOT NULL DEFAULT 'discount_pct'")
+        cur.execute("ALTER TABLE discount_codes ADD COLUMN IF NOT EXISTS benefit_value INT")
+        cur.execute("""
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'discount_codes' AND column_name = 'discount_pct'
+        """)
+        if cur.fetchone():
+            cur.execute("UPDATE discount_codes SET benefit_value = discount_pct WHERE benefit_value IS NULL")
+        cur.execute("UPDATE discount_codes SET benefit_value = 10 WHERE benefit_value IS NULL")
+
         cur.execute("""
             CREATE TABLE IF NOT EXISTS discount_redemptions (
                 id              SERIAL PRIMARY KEY,
                 code            TEXT NOT NULL REFERENCES discount_codes(code),
                 telegram_id     BIGINT NOT NULL,
                 order_ref       TEXT NOT NULL,
-                discount_pct    INT NOT NULL,
+                benefit_type    TEXT NOT NULL DEFAULT 'discount_pct',
+                benefit_value   INT NOT NULL,
+                bonus_granted   BOOLEAN NOT NULL DEFAULT false,
                 created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 UNIQUE (order_ref)
             )
         """)
+        cur.execute("ALTER TABLE discount_redemptions ADD COLUMN IF NOT EXISTS benefit_type TEXT NOT NULL DEFAULT 'discount_pct'")
+        cur.execute("ALTER TABLE discount_redemptions ADD COLUMN IF NOT EXISTS benefit_value INT")
+        cur.execute("ALTER TABLE discount_redemptions ADD COLUMN IF NOT EXISTS bonus_granted BOOLEAN NOT NULL DEFAULT false")
+        cur.execute("""
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'discount_redemptions' AND column_name = 'discount_pct'
+        """)
+        if cur.fetchone():
+            cur.execute("UPDATE discount_redemptions SET benefit_value = discount_pct WHERE benefit_value IS NULL")
+        cur.execute("UPDATE discount_redemptions SET benefit_value = 0 WHERE benefit_value IS NULL")
 
 
-def create_discount_code(discount_pct: int, auto_apply: bool, channel: str = "sepay",
+def create_discount_code(benefit_type: str, benefit_value: int, auto_apply: bool, channel: str = "sepay",
                           valid_from=None, valid_until=None, max_uses: "int | None" = None,
                           created_by=None, note: str = "", code: str = None) -> dict:
-    """Admin tạo mã giảm giá. code=None → tự sinh mã 6 ký tự dễ đọc (prefix SALE)."""
+    """Admin tạo mã Voucher. code=None → tự sinh mã 6 ký tự dễ đọc (prefix SALE).
+    benefit_type='discount_pct' → benefit_value là % (1-100).
+    benefit_type='bonus_days'   → benefit_value là số ngày tặng thêm (>=1)."""
+    if benefit_type not in _VOUCHER_BENEFIT_TYPES:
+        raise ValueError(f"benefit_type không hợp lệ: {benefit_type}")
     with get_conn() as conn:
         _ensure_discount_tables(conn)
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             final_code = (code or _gen_promo_code(prefix="SALE")).strip().upper()
             cur.execute("""
                 INSERT INTO discount_codes
-                    (code, discount_pct, auto_apply, channel, valid_from, valid_until, max_uses, created_by, note)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    (code, benefit_type, benefit_value, auto_apply, channel, valid_from, valid_until, max_uses, created_by, note)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING *
-            """, (final_code, discount_pct, auto_apply, channel, valid_from, valid_until,
+            """, (final_code, benefit_type, benefit_value, auto_apply, channel, valid_from, valid_until,
                   max_uses, int(created_by) if created_by else None, note))
             result = dict(cur.fetchone())
     log_audit(created_by, "discount.create", "discount_codes", final_code, after=result)
@@ -1745,8 +1790,9 @@ def _discount_code_usable(row: dict) -> bool:
 
 def get_active_auto_discount(channel: str) -> "dict | None":
     """Tìm mã auto_apply đang hiệu lực cho kênh này — tự động áp dụng, user không
-    cần nhập gì. Nếu có nhiều mã cùng lúc, chọn mã giảm % CAO NHẤT (có lợi nhất
-    cho khách)."""
+    cần nhập gì. Nếu có nhiều mã cùng lúc, chọn mã tạo GẦN ĐÂY NHẤT (discount_pct
+    và bonus_days không so sánh trực tiếp được với nhau nên không thể xếp hạng
+    "có lợi nhất" như bản cũ chỉ có 1 loại benefit)."""
     with get_conn() as conn:
         _ensure_discount_tables(conn)
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -1754,7 +1800,7 @@ def get_active_auto_discount(channel: str) -> "dict | None":
                 SELECT * FROM discount_codes
                 WHERE auto_apply = true AND active = true
                   AND channel IN (%s, 'all')
-                ORDER BY discount_pct DESC
+                ORDER BY created_at DESC
             """, (channel,))
             for row in cur.fetchall():
                 if _discount_code_usable(row):
@@ -1781,28 +1827,56 @@ def validate_discount_code(code: str, channel: str) -> dict:
     return {"ok": True, "discount": dict(row)}
 
 
-def apply_discount_code(code: str, telegram_id, order_ref: str, discount_pct: int) -> None:
+def apply_discount_code(code: str, telegram_id, order_ref: str, benefit_type: str, benefit_value: int) -> None:
     """Ghi nhận 1 đơn hàng đã dùng mã — UNIQUE(order_ref) đảm bảo không stack 2 mã
-    trên cùng 1 đơn. Tăng uses_count để mã có max_uses tự hết hạn đúng lúc."""
+    trên cùng 1 đơn. Tăng uses_count để mã có max_uses tự hết hạn đúng lúc.
+    benefit_type='bonus_days' CHƯA cấp ngày ở đây — chỉ ghi nhận để webhook xác
+    nhận thanh toán (grant_voucher_bonus_days) đọc lại và cấp SAU KHI tiền về."""
     tg = int(telegram_id)
     code = code.strip().upper()
     with get_conn() as conn:
         _ensure_discount_tables(conn)
         with conn.cursor() as cur:
             cur.execute("""
-                INSERT INTO discount_redemptions (code, telegram_id, order_ref, discount_pct)
-                VALUES (%s, %s, %s, %s)
+                INSERT INTO discount_redemptions (code, telegram_id, order_ref, benefit_type, benefit_value)
+                VALUES (%s, %s, %s, %s, %s)
                 ON CONFLICT (order_ref) DO NOTHING
-            """, (code, tg, order_ref, discount_pct))
+            """, (code, tg, order_ref, benefit_type, benefit_value))
             if cur.rowcount:
                 cur.execute("UPDATE discount_codes SET uses_count = uses_count + 1 WHERE code = %s", (code,))
-    log_audit(tg, "discount.redeem", "discount_codes", code, note=f"order={order_ref}, -{discount_pct}%")
+    note = f"-{benefit_value}%" if benefit_type == "discount_pct" else f"+{benefit_value} ngày"
+    log_audit(tg, "discount.redeem", "discount_codes", code, note=f"order={order_ref}, {note}")
 
 
-def update_discount_code(code: str, discount_pct: int, auto_apply: bool, channel: str,
+def grant_voucher_bonus_days(order_ref: str, actor_id=None) -> "int | None":
+    """Gọi ngay sau khi 1 đơn hàng (SePay/Stars) được xác nhận thanh toán THẬT —
+    nếu order_ref này có dùng voucher benefit_type='bonus_days' và CHƯA cấp
+    (bonus_granted=false), trả về số ngày cần cộng thêm vào extend_pro() của
+    caller và đánh dấu đã cấp (idempotent — gọi lại không cấp trùng nếu webhook
+    retry). Trả None nếu không có voucher bonus_days nào áp dụng cho đơn này."""
+    with get_conn() as conn:
+        _ensure_discount_tables(conn)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT id, code, benefit_value FROM discount_redemptions
+                WHERE order_ref = %s AND benefit_type = 'bonus_days' AND bonus_granted = false
+                FOR UPDATE
+            """, (order_ref,))
+            row = cur.fetchone()
+            if not row:
+                return None
+            cur.execute("UPDATE discount_redemptions SET bonus_granted = true WHERE id = %s", (row["id"],))
+    log_audit(actor_id, "discount.bonus_days_granted", "discount_redemptions", order_ref,
+              note=f"mã {row['code']} +{row['benefit_value']} ngày")
+    return int(row["benefit_value"])
+
+
+def update_discount_code(code: str, benefit_type: str, benefit_value: int, auto_apply: bool, channel: str,
                           valid_from, valid_until, max_uses: "int | None",
                           note: str, actor_id=None) -> "dict | None":
     """Sửa mã đã tạo (không đổi code, không reset uses_count)."""
+    if benefit_type not in _VOUCHER_BENEFIT_TYPES:
+        raise ValueError(f"benefit_type không hợp lệ: {benefit_type}")
     code = code.strip().upper()
     with get_conn() as conn:
         _ensure_discount_tables(conn)
@@ -1811,11 +1885,11 @@ def update_discount_code(code: str, discount_pct: int, auto_apply: bool, channel
             before_row = cur.fetchone()
             cur.execute("""
                 UPDATE discount_codes SET
-                    discount_pct = %s, auto_apply = %s, channel = %s,
+                    benefit_type = %s, benefit_value = %s, auto_apply = %s, channel = %s,
                     valid_from = %s, valid_until = %s, max_uses = %s, note = %s
                 WHERE code = %s
                 RETURNING *
-            """, (discount_pct, auto_apply, channel, valid_from, valid_until, max_uses, note, code))
+            """, (benefit_type, benefit_value, auto_apply, channel, valid_from, valid_until, max_uses, note, code))
             row = cur.fetchone()
     if row:
         log_audit(actor_id, "discount.edit", "discount_codes", code,
