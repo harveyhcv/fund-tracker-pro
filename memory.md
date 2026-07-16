@@ -733,3 +733,42 @@ không phải do session tạo ra").
 
 **Việc còn lại duy nhất trong BACKLOG**: PAY-006 (VNPay)/PAY-007 (Stripe) — cả 2 P2, chờ
 Harvey cung cấp merchant credentials thật.
+
+---
+
+## ✅ Session (autonomous, scheduled) — Ca sáng 2026-07-16: update BACKLOG, không code thêm
+
+Tất cả P0/P1 đã DONE từ trước. Điều kiện dừng ca này "Hết P0+P1" áp dụng ngay từ đầu.
+Harvey committed 5 tính năng lớn sau session chiều 15/07 (BACKLOG chưa kịp cập nhật):
+
+**Harvey commits 2026-07-15 (sau session chiều, ngoài giờ autonomous):**
+- **GOV-008-part2** (commit `73c78c7`): NAV verification log (append-only, mọi datapoint
+  được kiểm tra) + `row_hash` chống sửa ngầm DB — hash deterministic per-row, lệch khi
+  ai dùng SQL thô bỏ qua API functions. `job_nav_integrity_check()` 21:30 hàng ngày.
+- **GOV-009** (commit `15c8989`): XAUUSD gold gap tự động backfill (Yahoo Finance,
+  `run_backfill(days=10)` trong `job_morning`). Loạt UI fixes Mini App (chip CCQ, nhãn
+  "Giá vốn", dropdown chi tiết, chữ chạy tên quỹ, bug nút DCA Vàng ID sai).
+- **PAY-009 HMAC** (commit `c04bcbc`): SePay webhook nâng cấp từ Apikey tĩnh lên
+  HMAC-SHA256 (`X-SePay-Signature` + replay protection ±5 phút). Fallback backward-compat.
+- **GOV-010/011** (commit `6259b3a`): GOV-010 referral fraud 2 giai đoạn (đã ghi trước);
+  GOV-011 fix NAV hiển thị cũ hơn DB — merge điểm mới nhất từ DB vào pts fetch TCBS.
+- **GOV-011-part2** (commit `5748fde`): cache buy_signals staleness check sai — so cả
+  nav_date (không chỉ signal_date) để phát hiện đúng khi DB đã có NAV mới hơn cache.
+
+**Verify baseline ca này:**
+- `py_compile telegram-bot/{bot,miniapp_server,db}.py` → All OK
+- `pytest tests/ -x -q` → 254/254 passed (46.7s)
+- `dashboard/portfolio.html` (1059 dòng, Harvey tạo, chưa commit): review code — xác nhận
+  cả 2 endpoints dùng (`/nav-json`, GET+POST `/transactions`) ĐÃ TỒN TẠI trong `server.py`
+  → trang sẵn sàng hoạt động khi Harvey commit và muốn test.
+
+**Không code gì mới ca này** — chỉ update BACKLOG.md (commit `94a5527`) + memory.md.
+
+**Phát hiện tồn đọng từ session trước (vẫn chưa xử lý, để Harvey quyết định):**
+- `Fund Tracker Pro.xcodeproj/` và file Swift cũ bị deleted, `ios/` mới chưa git add
+- `dashboard/portfolio.html` (1059 dòng), `scripts/*.py` mới (~15 file) chưa commit
+
+**Theo dõi sau deploy (câu hỏi hở từ ca chiều 15/07):**
+- `prediction_actuals` trống vào 14:08 15/07 (bình thường, T2 mới chạy từ 07-14). Nếu
+  sau ~1 tuần (23/07) vẫn trống → `job_t2_score` có vấn đề thật, cần điều tra.
+- SePay HMAC: cần set `SEPAY_HMAC_SECRET` trên Railway và test với giao dịch thật.
