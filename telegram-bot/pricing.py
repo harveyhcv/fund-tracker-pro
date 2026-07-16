@@ -23,8 +23,21 @@ DEFAULT_PLAN = "m1"
 # gần cuối nhưng làm nổi bật bằng nhãn "TIẾT KIỆM NHẤT" phía caller.
 PLAN_ORDER = ["m1", "q1", "h1", "y1"]
 
+# Khuyến mãi riêng kênh SePay (chuyển khoản VietQR) — Harvey chọn giảm thêm 10%
+# TRÊN MỌI GÓI so với giá niêm yết, cộng dồn với discount_pct theo kỳ hạn ở trên.
+# Lý do kinh doanh: SePay không mất phí Apple/Google 30% hay spread rút Fragment
+# 2-3%/hold 21 ngày như Stars — kể cả giảm 10%, doanh thu ròng về túi vẫn cao hơn
+# hẳn Stars, nên khuyến khích user chuyển khoản bằng giá rẻ hơn (2026-07-16).
+SEPAY_PROMO_PCT = 10
+
 
 def resolve_plan(key: str) -> dict:
     """Trả plan dict hợp lệ; fallback về DEFAULT_PLAN nếu key lạ/rỗng
     (vd: payload/orderId cũ trước khi có multi-tier, hoặc dữ liệu hỏng)."""
     return PRO_PLANS.get(key, PRO_PLANS[DEFAULT_PLAN])
+
+
+def sepay_price(plan: dict) -> int:
+    """Giá VND sau khuyến mãi kênh SePay (giảm thêm SEPAY_PROMO_PCT%), làm tròn
+    xuống nghìn gần nhất cho nội dung chuyển khoản gọn (vd 20.000đ → 18.000đ)."""
+    return int(plan["vnd"] * (1 - SEPAY_PROMO_PCT / 100) // 1000 * 1000)

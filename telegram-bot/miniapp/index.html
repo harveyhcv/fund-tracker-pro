@@ -241,11 +241,16 @@ canvas{width:100%!important;height:100%!important}
       </div>
       <div id="plan-cards" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0 14px"></div>
       <button class="btn btn-primary" id="upgrade-cta-btn" onclick="startUpgrade()">⭐ NÂNG CẤP PRO NGAY</button>
-      <button class="btn" id="upgrade-sepay-btn" style="background:var(--bg3);color:var(--c0);border:1px solid var(--c0);margin-top:8px" onclick="startUpgradeSepay()">🏦 CHUYỂN KHOẢN NGÂN HÀNG (VietQR)</button>
+      <button class="btn" id="upgrade-sepay-btn" style="background:var(--bg3);color:var(--c0);border:1px solid var(--c0);margin-top:8px" onclick="startUpgradeSepay()">🏦 CHUYỂN KHOẢN NGÂN HÀNG (VietQR) <span style="background:var(--buy);color:#000;font-size:10px;font-weight:700;padding:1px 6px;border-radius:99px;margin-left:4px">-10%</span></button>
       <div id="sepay-qr-box" style="display:none;text-align:center;margin-top:12px;padding:14px;background:var(--bg3);border-radius:10px;border:1px solid var(--bdr)">
         <img id="sepay-qr-img" style="max-width:220px;width:100%;border-radius:8px;background:#fff;padding:6px" alt="QR chuyển khoản">
         <div style="font-size:12px;color:var(--txt2);margin-top:8px">Quét bằng app ngân hàng hoặc app MoMo (hỗ trợ quét VietQR)</div>
-        <div style="font-family:var(--mono);font-size:13px;margin-top:6px">Số tiền: <b id="sepay-amount"></b> — Nội dung CK: <b id="sepay-ref" style="color:var(--c0)"></b></div>
+        <div style="font-family:var(--mono);font-size:13px;margin-top:6px">
+          Số tiền: <span id="sepay-original" style="color:var(--txt2);text-decoration:line-through;display:none"></span>
+          <b id="sepay-amount" style="color:var(--buy)"></b>
+          <span id="sepay-promo-badge" style="background:var(--buy);color:#000;font-size:10px;font-weight:700;padding:1px 6px;border-radius:99px;display:none">-10%</span>
+          — Nội dung CK: <b id="sepay-ref" style="color:var(--c0)"></b>
+        </div>
         <div id="sepay-status" style="font-size:12px;color:var(--txt2);margin-top:8px">⏳ Đang chờ chuyển khoản...</div>
       </div>
       <button class="btn" style="background:transparent;border:1px solid var(--bdr);color:var(--txt2)" onclick="closeUpgradeModalBtn()">Để sau</button>
@@ -2322,6 +2327,15 @@ async function startUpgradeSepay(){
     const d=await apiPost('/api/payment/sepay/create',{plan:_selectedPlan});
     document.getElementById('sepay-qr-img').src=d.qr_url;
     document.getElementById('sepay-amount').textContent=Number(d.amount_vnd).toLocaleString('vi-VN')+' đ';
+    const origEl=document.getElementById('sepay-original'), badgeEl=document.getElementById('sepay-promo-badge');
+    if(d.original_vnd && d.original_vnd>d.amount_vnd){
+      origEl.textContent=Number(d.original_vnd).toLocaleString('vi-VN')+' đ';
+      origEl.style.display='inline';
+      badgeEl.textContent='-'+(d.promo_pct||10)+'%';
+      badgeEl.style.display='inline';
+    } else {
+      origEl.style.display='none'; badgeEl.style.display='none';
+    }
     document.getElementById('sepay-ref').textContent=d.ref_code;
     document.getElementById('sepay-status').textContent='⏳ Đang chờ chuyển khoản... (tự động nâng cấp trong ít phút sau khi CK)';
     document.getElementById('sepay-status').style.color='var(--txt2)';

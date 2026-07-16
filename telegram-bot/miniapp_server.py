@@ -76,7 +76,7 @@ _SEPAY_ACCOUNT_NUMBER = os.environ.get("SEPAY_ACCOUNT_NUMBER", "")    # số tà
 _SEPAY_BANK_CODE      = os.environ.get("SEPAY_BANK_CODE", "")         # mã ngân hàng VietQR (vd MBBank, TPBank...)
 _SEPAY_QR_BASE        = os.environ.get("SEPAY_QR_BASE", "https://qr.sepay.vn/img")
 
-from pricing import PRO_PLANS, PLAN_ORDER, DEFAULT_PLAN, resolve_plan
+from pricing import PRO_PLANS, PLAN_ORDER, DEFAULT_PLAN, resolve_plan, sepay_price, SEPAY_PROMO_PCT
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -3463,15 +3463,21 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         if _db_mod is None or not _db_mod.is_available():
             _json(self, {"error": "DB không khả dụng"}, 503)
             return
-        ref_code = _db_mod.create_bank_transfer_order(user_id, plan_key, plan["vnd"])
+        # Khuyến mãi kênh SePay (2026-07-16, xem pricing.py) — giảm thêm SEPAY_PROMO_PCT%
+        # trên giá niêm yết. Đơn tạo ra + QR + kiểm tra webhook đều dùng giá ĐÃ giảm này
+        # làm số tiền cần thu, không phải giá gốc.
+        promo_amount = sepay_price(plan)
+        ref_code = _db_mod.create_bank_transfer_order(user_id, plan_key, promo_amount)
         qr_url = (
             f"{_SEPAY_QR_BASE}?acc={_SEPAY_ACCOUNT_NUMBER}&bank={_SEPAY_BANK_CODE}"
-            f"&amount={plan['vnd']}&des={ref_code}"
+            f"&amount={promo_amount}&des={ref_code}"
         )
-        log.info(f"[PAY][SePay] order created ref={ref_code} user={user_id} plan={plan_key}")
+        log.info(f"[PAY][SePay] order created ref={ref_code} user={user_id} plan={plan_key} "
+                 f"amount={promo_amount} (giá gốc {plan['vnd']}, -{SEPAY_PROMO_PCT}%)")
         _json(self, {
             "ref_code": ref_code, "qr_url": qr_url,
-            "amount_vnd": plan["vnd"], "plan_label": plan["label"],
+            "amount_vnd": promo_amount, "original_vnd": plan["vnd"],
+            "promo_pct": SEPAY_PROMO_PCT, "plan_label": plan["label"],
             "account_number": _SEPAY_ACCOUNT_NUMBER, "bank_code": _SEPAY_BANK_CODE,
         })
 
