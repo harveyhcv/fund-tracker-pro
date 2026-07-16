@@ -1793,6 +1793,124 @@ def apply_discount_code(code: str, telegram_id, order_ref: str, discount_pct: in
     log_audit(tg, "discount.redeem", "discount_codes", code, note=f"order={order_ref}, -{discount_pct}%")
 
 
+def update_discount_code(code: str, discount_pct: int, auto_apply: bool, channel: str,
+                          valid_from, valid_until, max_uses: "int | None",
+                          note: str, actor_id=None) -> "dict | None":
+    """Sửa mã đã tạo (không đổi code, không reset uses_count)."""
+    code = code.strip().upper()
+    with get_conn() as conn:
+        _ensure_discount_tables(conn)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT * FROM discount_codes WHERE code = %s", (code,))
+            before_row = cur.fetchone()
+            cur.execute("""
+                UPDATE discount_codes SET
+                    discount_pct = %s, auto_apply = %s, channel = %s,
+                    valid_from = %s, valid_until = %s, max_uses = %s, note = %s
+                WHERE code = %s
+                RETURNING *
+            """, (discount_pct, auto_apply, channel, valid_from, valid_until, max_uses, note, code))
+            row = cur.fetchone()
+    if row:
+        log_audit(actor_id, "discount.edit", "discount_codes", code,
+                  before=dict(before_row) if before_row else None, after=dict(row))
+    return dict(row) if row else None
+
+
+# ─── APP SETTINGS (KV đơn giản — dùng cho trang P&L Admin lưu chi phí hosting
+# thật giữa các lần mở, vì đây là số Harvey tự nhập tay, không lấy được qua API) ──
+
+def _ensure_settings_table(conn) -> None:
+    with conn.cursor() as cur:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS app_settings (
+                key         TEXT PRIMARY KEY,
+                value       TEXT,
+                updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        """)
+
+
+def get_setting(key: str, default=None) -> "str | None":
+    with get_conn() as conn:
+        _ensure_settings_table(conn)
+        with conn.cursor() as cur:
+            cur.execute("SELECT value FROM app_settings WHERE key = %s", (key,))
+            row = cur.fetchone()
+            return row[0] if row else default
+
+
+def set_setting(key: str, value: str, actor_id=None) -> None:
+    with get_conn() as conn:
+        _ensure_settings_table(conn)
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO app_settings (key, value, updated_at) VALUES (%s, %s, NOW())
+                ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+            """, (key, value))
+    log_audit(actor_id, "setting.update", "app_settings", key, note=value)
+
+
+def get_real_pnl_summary() -> dict:
+    """Số liệu P&L THẬT (không mô phỏng/dự đoán) — dùng cho trang /admin/pnl.
+    Doanh thu SePay lấy từ bank_transfer_orders.amount_vnd (đã gồm giảm giá nếu có)
+    — nguồn cấu trúc, đáng tin. Stars CHƯA lưu số tiền VND ở đâu có cấu trúc (chỉ
+    dedup qua processed_payments), nên chỉ đếm được SỐ giao dịch, không quy đổi
+    VND — tránh suy đoán sai số tiền thật."""
+    with get_conn() as conn:
+        _ensure_settings_table(conn)
+        _ensure_promo_tables(conn)
+        _ensure_discount_tables(conn)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT COUNT(*) AS n FROM bot_profiles WHERE is_active = true")
+            total_users = cur.fetchone()["n"]
+
+            cur.execute("""
+                SELECT COUNT(*) AS n FROM user_tiers
+                WHERE tier = 'pro' AND (pro_expires_at IS NULL OR pro_expires_at > NOW())
+            """)
+            active_pro = cur.fetchone()["n"]
+
+            cur.execute("""
+                SELECT COUNT(*) AS n, COALESCE(SUM(amount_vnd), 0) AS total_vnd
+                FROM bank_transfer_orders WHERE status = 'paid'
+            """)
+            sepay = cur.fetchone()
+
+            cur.execute("SELECT COUNT(*) AS n FROM processed_payments WHERE provider = 'stars'")
+            stars_n = cur.fetchone()["n"]
+
+            cur.execute("""
+                SELECT COUNT(*) AS n FROM promo_redemptions
+                WHERE code IN (SELECT code FROM promo_codes WHERE kind = 'referral')
+            """)
+            referral_signups = cur.fetchone()["n"]
+
+            cur.execute("SELECT COUNT(*) AS n FROM promo_redemptions WHERE referral_purchase_bonus_at IS NOT NULL")
+            referral_conversions = cur.fetchone()["n"]
+
+            cur.execute("SELECT COUNT(*) AS n FROM promo_redemptions WHERE code IN (SELECT code FROM promo_codes WHERE kind = 'admin')")
+            trial_redemptions = cur.fetchone()["n"]
+
+            cur.execute("SELECT COUNT(*) AS n FROM discount_redemptions")
+            discount_uses = cur.fetchone()["n"]
+
+            hosting_cost = get_setting("hosting_cost_vnd", "0")
+
+    return {
+        "total_users": total_users,
+        "active_pro": active_pro,
+        "sepay_paid_orders": sepay["n"],
+        "sepay_revenue_vnd": float(sepay["total_vnd"]),
+        "stars_paid_count": stars_n,
+        "trial_redemptions": trial_redemptions,
+        "referral_signups": referral_signups,
+        "referral_conversions": referral_conversions,
+        "discount_code_uses": discount_uses,
+        "hosting_cost_vnd": float(hosting_cost or 0),
+    }
+
+
 def create_promo_code(days: int, max_uses: "int | None", created_by, note: str = "",
                        code: str = None) -> dict:
     """T2-ADMIN: admin tạo mã trial/giảm giá. code=None → tự sinh mã 8 ký tự ngẫu nhiên."""

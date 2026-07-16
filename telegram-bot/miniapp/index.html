@@ -573,6 +573,43 @@ canvas{width:100%!important;height:100%!important}
         <div id="promo-list" style="margin-top:12px"></div>
       </div>
       <div class="card" style="padding:16px">
+        <div style="font-size:11px;font-weight:700;color:#fb923c;font-family:var(--mono);margin-bottom:10px">💸 MÃ GIẢM GIÁ (SePay/Stars)</div>
+        <div style="font-size:11px;color:var(--txt2);margin-bottom:10px;line-height:1.5">Giảm % trên giá thanh toán thật (khác mã trial ở trên — mã trial cấp ngày Pro miễn phí). Tự động = áp dụng cho mọi người mua, không cần nhập mã. Bắt buộc giới hạn ít nhất 1: thời gian HOẶC số lượt.</div>
+        <input type="text" id="disc-new-code" placeholder="Mã (để trống = tự sinh)" style="margin-bottom:8px;text-transform:uppercase">
+        <div style="display:flex;gap:8px;margin-bottom:8px">
+          <input type="number" id="disc-new-pct" placeholder="Giảm % (vd 10)" value="10" style="flex:1">
+          <select id="disc-new-channel" style="flex:1;background:var(--bg3);border:1px solid var(--bdr);color:var(--txt);border-radius:8px;padding:8px">
+            <option value="sepay">SePay</option>
+            <option value="stars">Stars</option>
+            <option value="all">Cả 2</option>
+          </select>
+        </div>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--txt2);margin-bottom:10px">
+          <input type="checkbox" id="disc-new-auto" style="width:auto"> Tự động áp dụng cho mọi người (không cần nhập mã)
+        </label>
+        <div style="font-size:10px;color:var(--txt2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Thời gian hiệu lực</div>
+        <div style="display:flex;gap:8px;margin-bottom:6px">
+          <input type="datetime-local" id="disc-new-from" style="flex:1">
+          <input type="datetime-local" id="disc-new-until" style="flex:1">
+        </div>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--txt2);margin-bottom:10px">
+          <input type="checkbox" id="disc-new-until-unlimited" onchange="_discSyncUnlimited()" style="width:auto"> Không giới hạn thời gian
+        </label>
+        <div style="font-size:10px;color:var(--txt2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Số lượt sử dụng</div>
+        <input type="number" id="disc-new-maxuses" placeholder="Số lượt" style="margin-bottom:6px">
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--txt2);margin-bottom:10px">
+          <input type="checkbox" id="disc-new-uses-unlimited" onchange="_discSyncUnlimited()" style="width:auto"> Không giới hạn số lượt
+        </label>
+        <input type="text" id="disc-new-note" placeholder="Ghi chú (vd: khuyến mãi ra mắt)" style="margin-bottom:8px">
+        <div id="disc-rule-warn" style="font-size:11px;color:var(--sell);min-height:14px;margin-bottom:4px"></div>
+        <div style="display:flex;gap:8px">
+          <button id="disc-submit-btn" onclick="adminCreateDiscount()" style="flex:1;padding:12px;background:#fb923c;color:#000;border:none;border-radius:8px;font-weight:700;font-size:14px;cursor:pointer;font-family:var(--mono)">+ TẠO MÃ</button>
+          <button id="disc-cancel-edit-btn" onclick="cancelEditDiscount()" style="display:none;flex:0 0 90px;padding:12px;background:var(--bg3);border:1px solid var(--bdr);color:var(--txt2);border-radius:8px;cursor:pointer;font-family:var(--mono)">Huỷ sửa</button>
+        </div>
+        <div id="disc-create-status" style="font-size:12px;color:var(--txt2);margin-top:8px;min-height:16px"></div>
+        <div id="disc-list" style="margin-top:12px"></div>
+      </div>
+      <div class="card" style="padding:16px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
           <div style="font-size:11px;font-weight:700;color:var(--c0);font-family:var(--mono)">📜 AUDIT LOG (gần đây)</div>
           <button onclick="loadAdminAudit()" style="padding:4px 10px;background:var(--bg3);border:1px solid var(--bdr);color:var(--txt2);border-radius:6px;font-size:11px;cursor:pointer;font-family:var(--mono)">⟳ Tải lại</button>
@@ -843,7 +880,7 @@ function goPage(name,btn){
   if(name==='dca') loadDCA();
   if(name==='trade'){ setupTrade(); loadUnifiedHistory(); }
   if(name==='history') loadHistory();
-  if(name==='admin'){ loadAdminSummary(); loadAdminNavPending(); loadPromoList(); loadAdminAudit(); }
+  if(name==='admin'){ loadAdminSummary(); loadAdminNavPending(); loadPromoList(); loadDiscountList(); loadAdminAudit(); }
 }
 
 function showSubtab(page, sub, el){
@@ -1240,6 +1277,179 @@ async function adminActivatePromo(code){
     await apiPost('/api/admin/promo/activate',{telegram_id:USER_ID, code});
     toast('✓ Đã kích hoạt lại '+code);
     await loadPromoList();
+  }catch(e){ toast('Lỗi: '+e.message); }
+}
+
+// ── Discount codes (giảm giá % SePay/Stars, khác mã trial ở trên) ──────────
+let _discountCodesCache=[], _editingDiscountCode=null;
+
+function _discSyncUnlimited(){
+  const untilUnlimited=document.getElementById('disc-new-until-unlimited').checked;
+  const usesUnlimited=document.getElementById('disc-new-uses-unlimited').checked;
+  const untilInput=document.getElementById('disc-new-until');
+  const usesInput=document.getElementById('disc-new-maxuses');
+  untilInput.disabled=untilUnlimited; if(untilUnlimited) untilInput.value='';
+  usesInput.disabled=usesUnlimited; if(usesUnlimited) usesInput.value='';
+  const warn=document.getElementById('disc-rule-warn');
+  const btn=document.getElementById('disc-submit-btn');
+  if(untilUnlimited && usesUnlimited){
+    warn.textContent='⚠️ Không thể để cả thời gian VÀ số lượt đều không giới hạn';
+    btn.disabled=true; btn.style.opacity='0.5'; btn.style.cursor='not-allowed';
+  } else {
+    warn.textContent='';
+    btn.disabled=false; btn.style.opacity='1'; btn.style.cursor='pointer';
+  }
+}
+
+function _fmtDiscTime(iso){
+  if(!iso) return '';
+  const d=new Date(iso);
+  return d.toLocaleDateString('vi-VN')+' '+d.toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'});
+}
+function _toDatetimeLocal(iso){
+  if(!iso) return '';
+  const d=new Date(iso);
+  const pad=n=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+async function loadDiscountList(){
+  const el=document.getElementById('disc-list');
+  if(!el) return;
+  el.innerHTML='<div style="font-size:12px;color:var(--txt2)">Đang tải...</div>';
+  try{
+    const d=await apiFetch('/api/admin/discount/list');
+    _discountCodesCache=d.discounts||[];
+    renderDiscountList(_discountCodesCache);
+  }catch(e){
+    el.innerHTML=`<div style="font-size:12px;color:var(--sell)">Lỗi: ${e.message}</div>`;
+  }
+}
+
+function renderDiscountList(codes){
+  const el=document.getElementById('disc-list');
+  if(!codes.length){ el.innerHTML='<div style="font-size:12px;color:var(--txt2)">Chưa có mã nào.</div>'; return; }
+  el.innerHTML=codes.map(c=>{
+    const usesLabel = c.max_uses ? `${c.uses_count}/${c.max_uses} lượt` : `${c.uses_count} lượt (không giới hạn)`;
+    const untilLabel = c.valid_until ? ('đến '+_fmtDiscTime(c.valid_until)) : 'không giới hạn thời gian';
+    const statusColor = c.active ? 'var(--buy)' : 'var(--txt2)';
+    const statusLabel = c.active ? 'Đang hoạt động' : 'Đã vô hiệu hoá';
+    const applyLabel = c.auto_apply ? '🔁 Tự động' : '⌨️ Nhập tay';
+    return `<div style="border:1px solid var(--bdr);border-radius:8px;padding:10px;margin-bottom:8px;background:var(--bg)">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span style="font-family:var(--mono);font-weight:700;color:#fb923c;font-size:13px;letter-spacing:.04em">${c.code}</span>
+        <span style="font-size:10px;color:${statusColor}">${statusLabel}</span>
+      </div>
+      <div style="font-size:11px;color:var(--txt2);margin-top:4px">-${c.discount_pct}% · ${c.channel} · ${applyLabel} · ${usesLabel} · ${untilLabel}${c.note?' · '+c.note:''}</div>
+      <div style="display:flex;gap:6px;margin-top:6px">
+        <button onclick="startEditDiscount('${c.code}')" style="padding:5px 10px;background:var(--bg3);border:1px solid var(--c0);color:var(--c0);border-radius:6px;font-size:11px;cursor:pointer">Sửa</button>
+        ${c.active
+          ?`<button onclick="adminDeactivateDiscount('${c.code}')" style="padding:5px 10px;background:var(--bg3);border:1px solid var(--sell);color:var(--sell);border-radius:6px;font-size:11px;cursor:pointer">Vô hiệu hoá</button>`
+          :`<button onclick="adminActivateDiscount('${c.code}')" style="padding:5px 10px;background:var(--bg3);border:1px solid var(--buy);color:var(--buy);border-radius:6px;font-size:11px;cursor:pointer">Kích hoạt lại</button>`}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function startEditDiscount(code){
+  const c=_discountCodesCache.find(x=>x.code===code);
+  if(!c) return;
+  _editingDiscountCode=c.code;
+  document.getElementById('disc-new-code').value=c.code;
+  document.getElementById('disc-new-code').disabled=true;
+  document.getElementById('disc-new-pct').value=c.discount_pct;
+  document.getElementById('disc-new-channel').value=c.channel;
+  document.getElementById('disc-new-auto').checked=c.auto_apply;
+  document.getElementById('disc-new-from').value=_toDatetimeLocal(c.valid_from);
+  document.getElementById('disc-new-until').value=_toDatetimeLocal(c.valid_until);
+  document.getElementById('disc-new-until-unlimited').checked=!c.valid_until;
+  document.getElementById('disc-new-maxuses').value=c.max_uses||'';
+  document.getElementById('disc-new-uses-unlimited').checked=!c.max_uses;
+  document.getElementById('disc-new-note').value=c.note||'';
+  _discSyncUnlimited();
+  document.getElementById('disc-submit-btn').textContent='LƯU THAY ĐỔI';
+  document.getElementById('disc-cancel-edit-btn').style.display='block';
+  document.getElementById('disc-new-code').scrollIntoView({behavior:'smooth', block:'center'});
+}
+
+function cancelEditDiscount(){
+  _editingDiscountCode=null;
+  document.getElementById('disc-new-code').value='';
+  document.getElementById('disc-new-code').disabled=false;
+  document.getElementById('disc-new-pct').value='10';
+  document.getElementById('disc-new-channel').value='sepay';
+  document.getElementById('disc-new-auto').checked=false;
+  document.getElementById('disc-new-from').value='';
+  document.getElementById('disc-new-until').value='';
+  document.getElementById('disc-new-until-unlimited').checked=false;
+  document.getElementById('disc-new-maxuses').value='';
+  document.getElementById('disc-new-uses-unlimited').checked=false;
+  document.getElementById('disc-new-note').value='';
+  _discSyncUnlimited();
+  document.getElementById('disc-submit-btn').textContent='+ TẠO MÃ';
+  document.getElementById('disc-cancel-edit-btn').style.display='none';
+  document.getElementById('disc-create-status').textContent='';
+}
+
+async function adminCreateDiscount(){
+  const status=document.getElementById('disc-create-status');
+  const code=(document.getElementById('disc-new-code').value||'').trim().toUpperCase();
+  const discount_pct=parseInt(document.getElementById('disc-new-pct').value||'0',10);
+  const channel=document.getElementById('disc-new-channel').value;
+  const auto_apply=document.getElementById('disc-new-auto').checked;
+  const untilUnlimited=document.getElementById('disc-new-until-unlimited').checked;
+  const usesUnlimited=document.getElementById('disc-new-uses-unlimited').checked;
+  if(untilUnlimited && usesUnlimited){
+    status.style.color='var(--sell)'; status.textContent='Không thể để cả thời gian và số lượt đều không giới hạn'; return;
+  }
+  if(!discount_pct||discount_pct<=0||discount_pct>100){
+    status.style.color='var(--sell)'; status.textContent='Giảm % phải trong khoảng 1-100'; return;
+  }
+  const fromVal=document.getElementById('disc-new-from').value;
+  const untilVal=untilUnlimited?'':document.getElementById('disc-new-until').value;
+  const maxUsesVal=usesUnlimited?'':document.getElementById('disc-new-maxuses').value;
+  const note=(document.getElementById('disc-new-note').value||'').trim();
+  const payload={
+    telegram_id:USER_ID, discount_pct, auto_apply, channel,
+    valid_from: fromVal ? new Date(fromVal).toISOString() : null,
+    valid_until: untilVal ? new Date(untilVal).toISOString() : null,
+    max_uses: maxUsesVal ? parseInt(maxUsesVal,10) : null,
+    note,
+  };
+  status.style.color='var(--txt2)'; status.textContent=_editingDiscountCode?'Đang lưu...':'Đang tạo...';
+  try{
+    if(_editingDiscountCode){
+      payload.code=_editingDiscountCode;
+      const d=await apiPost('/api/admin/discount/edit',payload);
+      status.style.color='var(--buy)'; status.textContent=`✓ Đã lưu mã ${d.discount.code}`;
+      cancelEditDiscount();
+    } else {
+      if(code) payload.code=code;
+      const d=await apiPost('/api/admin/discount/create',payload);
+      status.style.color='var(--buy)'; status.textContent=`✓ Đã tạo mã ${d.discount.code}`;
+      document.getElementById('disc-new-code').value='';
+      document.getElementById('disc-new-note').value='';
+    }
+    await loadDiscountList();
+  }catch(e){
+    status.style.color='var(--sell)'; status.textContent='⚠️ '+(e.body?.error||e.message);
+  }
+}
+
+async function adminDeactivateDiscount(code){
+  if(!confirm(`Vô hiệu hoá mã ${code}?`)) return;
+  try{
+    await apiPost('/api/admin/discount/deactivate',{telegram_id:USER_ID, code});
+    toast('✓ Đã vô hiệu hoá '+code);
+    await loadDiscountList();
+  }catch(e){ toast('Lỗi: '+e.message); }
+}
+
+async function adminActivateDiscount(code){
+  try{
+    await apiPost('/api/admin/discount/activate',{telegram_id:USER_ID, code});
+    toast('✓ Đã kích hoạt lại '+code);
+    await loadDiscountList();
   }catch(e){ toast('Lỗi: '+e.message); }
 }
 

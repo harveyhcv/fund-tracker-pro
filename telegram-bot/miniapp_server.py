@@ -34,7 +34,14 @@ log = logging.getLogger("miniapp")
 ROOT      = Path(__file__).parent.parent
 DATA_DIR  = Path(os.environ.get("DATA_DIR", Path(__file__).parent))
 CFG_FILE  = DATA_DIR / "config.json"
-HTML_FILE = Path(__file__).parent / "miniapp" / "index.html"
+HTML_FILE     = Path(__file__).parent / "miniapp" / "index.html"
+HTML_FILE_PNL = Path(__file__).parent / "miniapp" / "admin_pnl.html"
+
+# Trang /admin/pnl mở trực tiếp qua trình duyệt (không phải trong Telegram Mini
+# App) nên không có X-Init-Data để xác thực như các endpoint khác — dùng token
+# bí mật riêng, Harvey tự đặt trên Railway (ADMIN_WEB_TOKEN) và giữ kín trong URL
+# đã bookmark. Không set biến này = endpoint từ chối tất cả (an toàn theo mặc định).
+_ADMIN_WEB_TOKEN = os.environ.get("ADMIN_WEB_TOKEN", "")
 
 # Lấy từ RAILWAY_GIT_COMMIT_SHA (Railway tự inject mỗi lần deploy) thay vì
 # hardcode tay — trước đây có 2 chuỗi version tách biệt (1 ở đây, 1 trong
@@ -1346,6 +1353,10 @@ class MiniAppHandler(BaseHTTPRequestHandler):
 
         if path in ("/", "/index.html"):
             self._serve_html()
+        elif path == "/admin/pnl":
+            self._serve_pnl_html()
+        elif path == "/api/admin/pnl":
+            self._api_admin_pnl_get(qs)
         elif path == "/api/me":
             self._api_me(qs)
         elif path == "/api/signals":
@@ -1487,8 +1498,12 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             self._api_admin_ban_user(data)
         elif path == "/api/admin/user/unban":
             self._api_admin_unban_user(data)
+        elif path == "/api/admin/pnl/cost":
+            self._api_admin_pnl_set_cost(data)
         elif path == "/api/admin/discount/create":
             self._api_admin_discount_create(data)
+        elif path == "/api/admin/discount/edit":
+            self._api_admin_discount_edit(data)
         elif path == "/api/admin/discount/activate":
             self._api_admin_discount_set_active(data, True)
         elif path == "/api/admin/discount/deactivate":
@@ -1510,6 +1525,54 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(content)))
         self.end_headers()
         self.wfile.write(content)
+
+    def _serve_pnl_html(self):
+        """GET /admin/pnl — trang admin xem P&L thật, mở trực tiếp qua trình
+        duyệt (ngoài Telegram). Trang tĩnh, tự fetch dữ liệu qua /api/admin/pnl
+        bằng token trong query string — không cần build gì đặc biệt ở đây."""
+        if not HTML_FILE_PNL.exists():
+            self.send_response(404)
+            self.end_headers()
+            self.wfile.write(b"admin_pnl.html not found")
+            return
+        content = HTML_FILE_PNL.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(content)))
+        self.end_headers()
+        self.wfile.write(content)
+
+    def _check_admin_web_token(self, token: str) -> bool:
+        if not _ADMIN_WEB_TOKEN:
+            return False
+        return hmac.compare_digest(str(token or ""), _ADMIN_WEB_TOKEN)
+
+    def _api_admin_pnl_get(self, qs: dict):
+        token = (qs.get("token") or [""])[0]
+        if not self._check_admin_web_token(token):
+            _json(self, {"error": "invalid token"}, 403)
+            return
+        if _db_mod is None or not _db_mod.is_available():
+            _json(self, {"error": "DB không khả dụng"}, 503)
+            return
+        _json(self, _db_mod.get_real_pnl_summary())
+
+    def _api_admin_pnl_set_cost(self, data: dict):
+        token = str(data.get("token", ""))
+        if not self._check_admin_web_token(token):
+            _json(self, {"error": "invalid token"}, 403)
+            return
+        try:
+            cost = float(data.get("hosting_cost_vnd"))
+            assert cost >= 0
+        except (TypeError, ValueError, AssertionError):
+            _json(self, {"error": "hosting_cost_vnd phải là số >= 0"}, 400)
+            return
+        if _db_mod is None or not _db_mod.is_available():
+            _json(self, {"error": "DB không khả dụng"}, 503)
+            return
+        _db_mod.set_setting("hosting_cost_vnd", str(cost))
+        _json(self, {"ok": True})
 
     def _api_me(self, qs: dict):
         import time as _time
@@ -2800,6 +2863,11 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         valid_until = data.get("valid_until") or None
         note = str(data.get("note", ""))[:200]
         custom_code = str(data.get("code", "")).strip() or None
+        # Không cho phép cả thời gian VÀ số lượt đều "không giới hạn" cùng lúc —
+        # bắt buộc ít nhất 1 điều kiện chặn để mã không thể chạy vô thời hạn/vô hạn lượt.
+        if valid_until is None and max_uses is None:
+            _json(self, {"error": "Phải giới hạn ít nhất 1: thời gian hiệu lực HOẶC số lượt — không thể để cả 2 không giới hạn"}, 400)
+            return
         if _db_mod is None or not _db_mod.is_available():
             _json(self, {"error": "DB không khả dụng"}, 503)
             return
@@ -2843,6 +2911,56 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             return
         ok = _db_mod.set_discount_code_active(code, active, actor_id=tg_id)
         _json(self, {"ok": ok})
+
+    def _api_admin_discount_edit(self, data: dict):
+        """POST /api/admin/discount/edit — sửa mã đã tạo (không đổi code, uses_count)."""
+        tg_id = str(data.get("telegram_id", ""))
+        if not _is_admin(tg_id):
+            _json(self, {"error": "admin_only"}, 403)
+            return
+        if not _auth_write(self, tg_id):
+            return
+        code = str(data.get("code", "")).strip()
+        if not code:
+            _json(self, {"error": "code required"}, 400)
+            return
+        try:
+            discount_pct = int(data.get("discount_pct"))
+            assert 0 < discount_pct <= 100
+        except (TypeError, ValueError, AssertionError):
+            _json(self, {"error": "discount_pct phải là số nguyên 1-100"}, 400)
+            return
+        auto_apply = bool(data.get("auto_apply", False))
+        channel    = str(data.get("channel", "sepay")).strip().lower() or "sepay"
+        if channel not in ("sepay", "stars", "all"):
+            _json(self, {"error": "channel phải là sepay/stars/all"}, 400)
+            return
+        max_uses_raw = data.get("max_uses")
+        max_uses = None
+        if max_uses_raw not in (None, "", 0):
+            try:
+                max_uses = int(max_uses_raw)
+                if max_uses <= 0:
+                    max_uses = None
+            except (TypeError, ValueError):
+                max_uses = None
+        valid_from  = data.get("valid_from")  or None
+        valid_until = data.get("valid_until") or None
+        note = str(data.get("note", ""))[:200]
+        if valid_until is None and max_uses is None:
+            _json(self, {"error": "Phải giới hạn ít nhất 1: thời gian hiệu lực HOẶC số lượt — không thể để cả 2 không giới hạn"}, 400)
+            return
+        if _db_mod is None or not _db_mod.is_available():
+            _json(self, {"error": "DB không khả dụng"}, 503)
+            return
+        discount = _db_mod.update_discount_code(
+            code, discount_pct, auto_apply, channel, valid_from, valid_until,
+            max_uses, note, actor_id=tg_id,
+        )
+        if not discount:
+            _json(self, {"error": f"Không tìm thấy mã {code}"}, 404)
+            return
+        _json(self, {"ok": True, "discount": discount})
 
     def _api_admin_nav_confirm(self, data: dict):
         """POST /api/admin/nav/confirm — admin chọn manual hoặc fetch cho pending NAV."""

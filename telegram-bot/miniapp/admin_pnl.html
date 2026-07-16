@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fund Tracker Pro — P&L Admin (Live)</title>
+<style>
+:root{
+  --bg:#060b14; --bg2:#0b1220; --bg3:#111b2e; --line:#1c2940;
+  --c0:#00e5ff; --buy:#4ade80; --sell:#f87171; --hold:#facc15;
+  --txt:#e8f1f8; --txt2:#7d93ad;
+  --mono: ui-monospace, "IBM Plex Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --sans: -apple-system, "DM Sans", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--txt);font-family:var(--sans);margin:0;padding:28px 20px 60px;line-height:1.5}
+.wrap{max-width:1040px;margin:0 auto}
+h1{font-family:var(--mono);font-size:clamp(20px,3vw,28px);font-weight:700;letter-spacing:-0.01em;margin:0 0 4px}
+.sub{color:var(--txt2);font-size:14px;margin:0 0 6px}
+.badge-live{display:inline-block;font-size:10px;font-family:var(--mono);padding:2px 8px;border-radius:99px;margin-left:8px;background:#0b2e1c;color:var(--buy);border:1px solid #14532d;vertical-align:middle}
+.asof{color:var(--txt2);font-size:12px;font-family:var(--mono);margin:0 0 24px}
+h2{font-family:var(--mono);font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--c0);margin:0 0 14px;display:flex;align-items:center;gap:8px}
+h2::before{content:'';width:3px;height:14px;background:var(--c0);border-radius:2px;display:inline-block}
+section{margin-bottom:30px}
+.out-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-bottom:16px}
+.stat{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:16px}
+.stat .k{font-size:11px;color:var(--txt2);text-transform:uppercase;letter-spacing:.05em}
+.stat .n{font-family:var(--mono);font-size:22px;font-weight:700;margin-top:6px;font-variant-numeric:tabular-nums}
+.stat .sub2{font-size:11.5px;color:var(--txt2);margin-top:4px}
+.stat.buy .n{color:var(--buy)} .stat.sell .n{color:var(--sell)} .stat.c0 .n{color:var(--c0)} .stat.hold .n{color:var(--hold)}
+table{width:100%;border-collapse:collapse;background:var(--bg2);border:1px solid var(--line);border-radius:12px;overflow:hidden;font-size:13px}
+thead th{text-align:right;font-family:var(--mono);font-size:11px;color:var(--txt2);text-transform:uppercase;letter-spacing:.04em;padding:10px 14px;border-bottom:1px solid var(--line)}
+thead th:first-child,td:first-child{text-align:left}
+td{padding:10px 14px;border-bottom:1px solid var(--line);font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:right}
+tr:last-child td{border-bottom:none}
+tr.total td{font-weight:700;color:var(--c0);border-top:1px solid var(--line)}
+.cost-input-row{display:flex;align-items:center;justify-content:space-between;gap:16px;background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:12px;flex-wrap:wrap}
+.cost-input-row .lbl{font-size:13px}
+.cost-input-row .lbl .hint{display:block;font-size:11.5px;color:var(--txt2);margin-top:2px}
+.cost-input-row input{width:160px;background:var(--bg3);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:8px 10px;font-family:var(--mono);font-size:14px;text-align:right}
+.cost-input-row button{background:var(--c0);color:#000;border:none;border-radius:8px;padding:8px 16px;font-weight:700;font-size:13px;cursor:pointer;font-family:var(--mono)}
+.note-box{font-size:12.5px;color:var(--txt2);background:var(--bg3);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-top:14px}
+.note-box b{color:var(--txt)}
+footer{margin-top:36px;font-size:11.5px;color:var(--txt2);text-align:center}
+.refresh-btn{background:var(--bg3);border:1px solid var(--line);color:var(--c0);border-radius:8px;padding:8px 16px;font-family:var(--mono);font-size:12px;cursor:pointer}
+#gate{max-width:420px;margin:80px auto;text-align:center}
+#gate input{width:100%;background:var(--bg3);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:10px 12px;font-family:var(--mono);font-size:14px;margin-bottom:10px}
+#gate button{width:100%;background:var(--c0);color:#000;border:none;border-radius:8px;padding:10px;font-weight:700;font-size:14px;cursor:pointer;font-family:var(--mono)}
+#gate .err{color:var(--sell);font-size:12px;margin-top:8px;min-height:16px}
+#app{display:none}
+</style>
+
+<div id="gate">
+  <h1>🔒 P&amp;L Admin</h1>
+  <p class="sub">Nhập token quản trị để xem số liệu thật</p>
+  <input type="password" id="gate-token" placeholder="Admin token">
+  <button onclick="tryToken()">Mở</button>
+  <div class="err" id="gate-err"></div>
+</div>
+
+<div class="wrap" id="app">
+  <h1>P&amp;L Thực Tế <span class="badge-live">● LIVE — DB THẬT</span></h1>
+  <p class="sub">Fund Tracker Pro — số liệu truy vấn trực tiếp từ production mỗi lần mở trang, không mô phỏng.</p>
+  <p class="asof">Cập nhật lúc: <span id="asof"></span> <button class="refresh-btn" onclick="loadData()" style="margin-left:8px">⟳ Làm mới</button></p>
+
+  <section>
+    <h2>Người dùng</h2>
+    <div class="out-grid">
+      <div class="stat"><div class="k">Tài khoản đăng ký</div><div class="n" id="v_users">—</div></div>
+      <div class="stat hold"><div class="k">Đang Pro (còn hạn)</div><div class="n" id="v_pro">—</div></div>
+      <div class="stat"><div class="k">Trial đã redeem</div><div class="n" id="v_trial">—</div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Referral</h2>
+    <div class="out-grid">
+      <div class="stat"><div class="k">Đã redeem mã giới thiệu</div><div class="n" id="v_ref_signup">—</div></div>
+      <div class="stat buy"><div class="k">Đã chuyển đổi (mua thật)</div><div class="n" id="v_ref_conv">—</div></div>
+      <div class="stat"><div class="k">Mã giảm giá đã dùng</div><div class="n" id="v_disc_uses">—</div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Doanh thu thật</h2>
+    <table>
+      <thead><tr><th>Kênh</th><th>Số giao dịch</th><th>Doanh thu (VNĐ)</th></tr></thead>
+      <tbody>
+        <tr><td>SePay (chuyển khoản)</td><td id="v_sepay_n">—</td><td id="v_sepay_vnd">—</td></tr>
+        <tr><td>Telegram Stars</td><td id="v_stars_n">—</td><td style="color:var(--txt2)">chưa lưu VND chi tiết*</td></tr>
+        <tr class="total"><td>Tổng doanh thu có số liệu VNĐ</td><td></td><td id="v_total_rev">—</td></tr>
+      </tbody>
+    </table>
+    <div class="note-box">* Stars được xử lý qua Telegram trực tiếp — hệ thống hiện chỉ ghi số giao dịch để chống trùng lặp (processed_payments), chưa lưu quy đổi VNĐ có cấu trúc. Số này KHÔNG bị bỏ sót, chỉ chưa monetize được tự động trong trang này.</div>
+  </section>
+
+  <section>
+    <h2>Chi phí thật</h2>
+    <div class="cost-input-row">
+      <div class="lbl">Hosting Railway (worker + Postgres)/tháng
+        <span class="hint">Tự lưu lại — không cần nhập lại mỗi lần mở trang</span>
+      </div>
+      <input type="number" id="i_hosting" step="1000">
+      <button onclick="saveCost()">Lưu</button>
+    </div>
+    <div id="cost-save-status" style="font-size:12px;color:var(--txt2);min-height:16px"></div>
+  </section>
+
+  <section>
+    <h2>Lợi nhuận ròng (dựa trên doanh thu có số liệu VNĐ)</h2>
+    <div class="out-grid">
+      <div class="stat buy"><div class="k">Doanh thu (SePay)</div><div class="n" id="o_rev">—</div></div>
+      <div class="stat sell"><div class="k">Chi phí hosting</div><div class="n" id="o_cost">—</div></div>
+      <div class="stat" id="o_profit_card"><div class="k">Lợi nhuận ròng</div><div class="n" id="o_profit">—</div></div>
+    </div>
+    <div class="note-box" id="stage-note"></div>
+  </section>
+
+  <footer>Fund Tracker Pro — /admin/pnl, chỉ admin. Số liệu truy vấn sống từ production DB mỗi lần tải trang.</footer>
+</div>
+
+<script>
+function fmtVND(n){ return Math.round(n).toLocaleString('vi-VN')+' đ'; }
+let _token = new URLSearchParams(location.search).get('token') || sessionStorage.getItem('pnl_token') || '';
+
+function tryToken(){
+  const t = document.getElementById('gate-token').value.trim();
+  if(!t){ document.getElementById('gate-err').textContent = 'Nhập token'; return; }
+  _token = t;
+  sessionStorage.setItem('pnl_token', t);
+  loadData();
+}
+
+async function api(path, opts){
+  const res = await fetch(path, opts);
+  const d = await res.json().catch(()=>({}));
+  if(!res.ok) throw new Error(d.error || ('HTTP '+res.status));
+  return d;
+}
+
+async function loadData(){
+  try{
+    const d = await api('/api/admin/pnl?token='+encodeURIComponent(_token));
+    document.getElementById('gate').style.display='none';
+    document.getElementById('app').style.display='block';
+
+    document.getElementById('asof').textContent = new Date().toLocaleString('vi-VN');
+    document.getElementById('v_users').textContent = d.total_users;
+    document.getElementById('v_pro').textContent = d.active_pro;
+    document.getElementById('v_trial').textContent = d.trial_redemptions;
+    document.getElementById('v_ref_signup').textContent = d.referral_signups;
+    document.getElementById('v_ref_conv').textContent = d.referral_conversions;
+    document.getElementById('v_disc_uses').textContent = d.discount_code_uses;
+
+    document.getElementById('v_sepay_n').textContent = d.sepay_paid_orders;
+    document.getElementById('v_sepay_vnd').textContent = fmtVND(d.sepay_revenue_vnd);
+    document.getElementById('v_stars_n').textContent = d.stars_paid_count;
+    document.getElementById('v_total_rev').textContent = fmtVND(d.sepay_revenue_vnd);
+
+    document.getElementById('i_hosting').value = d.hosting_cost_vnd;
+
+    const profit = d.sepay_revenue_vnd - d.hosting_cost_vnd;
+    document.getElementById('o_rev').textContent = fmtVND(d.sepay_revenue_vnd);
+    document.getElementById('o_cost').textContent = fmtVND(d.hosting_cost_vnd);
+    document.getElementById('o_profit').textContent = (profit>=0?'+':'') + fmtVND(profit);
+    document.getElementById('o_profit_card').className = 'stat ' + (profit>=0?'buy':'sell');
+
+    const note = document.getElementById('stage-note');
+    if(d.sepay_paid_orders === 0 && d.stars_paid_count === 0){
+      note.innerHTML = '<b>Chưa có giao dịch thật nào.</b> Toàn bộ Pro hiện tại (nếu có) đến từ mã trial/referral miễn phí, không phải doanh thu.';
+    } else {
+      note.innerHTML = `Đã có ${d.sepay_paid_orders + d.stars_paid_count} giao dịch thật (${d.sepay_paid_orders} SePay, ${d.stars_paid_count} Stars).`;
+    }
+  }catch(e){
+    document.getElementById('gate').style.display='block';
+    document.getElementById('app').style.display='none';
+    document.getElementById('gate-err').textContent = 'Lỗi: ' + e.message;
+    sessionStorage.removeItem('pnl_token');
+  }
+}
+
+async function saveCost(){
+  const status = document.getElementById('cost-save-status');
+  const val = parseFloat(document.getElementById('i_hosting').value || '0');
+  status.style.color = 'var(--txt2)'; status.textContent = 'Đang lưu...';
+  try{
+    await api('/api/admin/pnl/cost', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({token: _token, hosting_cost_vnd: val}),
+    });
+    status.style.color = 'var(--buy)'; status.textContent = '✓ Đã lưu';
+    loadData();
+  }catch(e){
+    status.style.color = 'var(--sell)'; status.textContent = 'Lỗi: ' + e.message;
+  }
+}
+
+if(_token) loadData();
+</script>
+</html>
