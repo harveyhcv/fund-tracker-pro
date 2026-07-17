@@ -2176,6 +2176,7 @@ function renderResearch(d){
     </div>
   </div>
   ${_t2Html(d.code, d.nav, false)}
+  <div id="t2-acc-hint-${d.code}" class="t2-acc-hint" onclick="scrollToAccuracy('${d.code}')" style="font-size:10px;color:var(--txt2);margin:2px 0 8px;cursor:pointer">Đang tải độ chính xác dự báo…</div>
   ${_positionHtml(d.position)}
 
   <div class="conclusion" style="margin-bottom:10px">${conclusion}</div>
@@ -2304,7 +2305,7 @@ function renderResearch(d){
     </div>
   </div>
 
-  <div class="school-card" onclick="toggleSchool(this)">
+  <div class="school-card" id="acc-school-${d.code}" onclick="toggleSchool(this)">
     <div class="school-hdr">
       <div>
         <div class="school-title">🎯 Độ chính xác dự báo T+2</div>
@@ -2334,15 +2335,22 @@ async function loadAccuracyForFund(code){
     renderAccuracySummary(code, d.summary||[]);
     drawAccuracyChart(code, d.history||[]);
   }catch(e){
-    if(sumEl) sumEl.textContent = isProRequired(e) ? 'Cần Pro để xem độ chính xác.' : 'Chưa có dữ liệu chấm điểm.';
+    const msg = isProRequired(e) ? 'Cần Pro để xem độ chính xác.' : 'Chưa có dữ liệu chấm điểm.';
+    if(sumEl) sumEl.textContent = msg;
+    const hint=document.getElementById('t2-acc-hint-'+code);
+    if(hint) hint.textContent = isProRequired(e) ? '🎯 Độ chính xác dự báo — cần Pro để xem.' : '';
   }
 }
 function renderAccuracySummary(code, rows){
   const el=document.getElementById('acc-summary-'+code);
-  if(!el) return;
-  if(!rows.length){ el.textContent='Chưa có dự báo nào được chấm điểm cho mã này.'; return; }
+  const hint=document.getElementById('t2-acc-hint-'+code);
+  if(!rows.length){
+    if(el) el.textContent='Chưa có dự báo nào được chấm điểm cho mã này.';
+    if(hint) hint.innerHTML='🎯 Chưa có điểm chính xác nào — mô hình còn quá mới, chưa đủ dữ liệu.';
+    return;
+  }
   const modelLabel={'arima-v1':'ARIMA','xgb-v1':'XGBoost','ensemble-v1':'Ensemble'};
-  el.innerHTML=`<table style="width:100%;border-collapse:collapse;font-family:var(--mono)">
+  if(el) el.innerHTML=`<table style="width:100%;border-collapse:collapse;font-family:var(--mono)">
     <tr style="color:var(--txt2);font-size:10px"><td>Model</td><td style="text-align:right">7 ngày</td><td style="text-align:right">30 ngày</td><td style="text-align:right">Tổng</td></tr>
     ${rows.map(r=>`<tr>
       <td>${modelLabel[r.model_version]||r.model_version}</td>
@@ -2351,6 +2359,22 @@ function renderAccuracySummary(code, rows){
       <td style="text-align:right">${r.mape_all!=null?r.mape_all.toFixed(2)+'% ('+r.n_all+')':'—'}</td>
     </tr>`).join('')}
   </table>`;
+  if(hint){
+    // GOV-016: Harvey không thấy được biểu đồ/chấm điểm vì trước đây chỉ nằm
+    // trong accordion cuối modal, phải cuộn qua 5 school-card + bấm mở mới
+    // thấy. Giờ hiện ngay 1 dòng tóm tắt cạnh box T+2, bấm vào để cuộn xuống
+    // + tự mở accordion chi tiết (biểu đồ dự báo vs thực tế).
+    const ens=rows.find(r=>r.model_version==='ensemble-v1')||rows[0];
+    const n=ens.n_all||0;
+    const mape=ens.mape_all!=null?ens.mape_all.toFixed(2)+'%':'—';
+    hint.innerHTML=`🎯 Độ chính xác (${modelLabel[ens.model_version]||ens.model_version}): sai số TB ${mape} · ${n} lần đã chấm điểm ${n<5?'<span style="color:var(--warn)">(còn quá ít để tin tưởng)</span>':''} — xem biểu đồ ▾`;
+  }
+}
+function scrollToAccuracy(code){
+  const card=document.getElementById('acc-school-'+code);
+  if(!card) return;
+  if(!card.classList.contains('open')) card.classList.add('open');
+  card.scrollIntoView({behavior:'smooth', block:'center'});
 }
 function drawAccuracyChart(code, rows){
   const canvas=document.getElementById('acc-chart-'+code);
