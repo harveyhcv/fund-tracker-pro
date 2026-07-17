@@ -40,6 +40,21 @@ header{padding:20px 0 16px;text-align:center}
 .btn:hover{border-color:var(--c0);color:var(--c0)}
 #err{display:none;color:var(--sell);font-size:11px;margin-top:10px}
 footer{text-align:center;padding:16px 0;color:var(--muted);font-size:10px}
+.fund-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)}
+.fund-row:last-child{border-bottom:none}
+.fund-info{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0;margin-right:10px}
+.fund-code{font-family:var(--mono);font-size:11px;color:var(--c0);font-weight:600}
+.fund-name{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px}
+.fund-data{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.fund-nav{font-family:var(--mono);font-size:11px;color:var(--text)}
+.fund-chg{font-family:var(--mono);font-size:10px;min-width:48px;text-align:right}
+.sig-badge{font-family:var(--mono);font-size:8px;font-weight:700;letter-spacing:.5px;padding:3px 7px;border-radius:4px;white-space:nowrap}
+.sig-buy{background:rgba(74,222,128,.12);color:var(--buy);border:1px solid rgba(74,222,128,.25)}
+.sig-sell{background:rgba(248,113,113,.12);color:var(--sell);border:1px solid rgba(248,113,113,.25)}
+.sig-hold{background:rgba(148,163,184,.08);color:var(--muted);border:1px solid var(--border)}
+.list-note{color:var(--muted);font-size:11px;text-align:center;padding:14px 0}
+.skeleton{height:10px;background:var(--s3);border-radius:4px;margin:4px 0;animation:pulse 1.4s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:.5}50%{opacity:1}}
 </style>
 </head>
 <body>
@@ -84,13 +99,21 @@ footer{text-align:center;padding:16px 0;color:var(--muted);font-size:10px}
           <div class="stat-v" id="st-pnl">—</div>
         </div>
       </div>
-      <div class="note">
-        <b>Bản Web đang trong giai đoạn hoàn thiện.</b> Đăng nhập &amp; xem tổng quan danh mục
-        đã hoạt động. Các tính năng đầy đủ (DCA, giao dịch, admin...) vẫn đang được chuyển
-        dần từ Mini App sang — dùng <a href="https://t.me/FundTrackerPro_bot" style="color:var(--c0)">Telegram Mini App</a> cho trải nghiệm đầy đủ trong lúc chờ.
+    </div>
+
+    <div class="card" id="signals-card" style="display:none">
+      <div class="ctitle">📊 Tín hiệu quỹ</div>
+      <div id="signals-list">
+        <div class="skeleton" style="width:100%;height:36px"></div>
+        <div class="skeleton" style="width:100%;height:36px;margin-top:8px"></div>
       </div>
     </div>
-    <button class="btn" onclick="logout()">Đăng xuất</button>
+
+    <div class="note">
+      <b>Bản Web đang trong giai đoạn hoàn thiện.</b> DCA, giao dịch, admin... đang được chuyển
+      dần từ Mini App sang — dùng <a href="https://t.me/FundTrackerPro_bot" style="color:var(--c0)">Telegram Mini App</a> cho trải nghiệm đầy đủ trong lúc chờ.
+    </div>
+    <button class="btn" style="margin-top:14px" onclick="logout()">Đăng xuất</button>
   </div>
 
   <footer>Fund Tracker Pro</footer>
@@ -160,6 +183,52 @@ async function loadProfile(){
     }
   }catch(e){
     showErr('Lỗi tải dữ liệu: ' + e.message);
+  }
+  loadSignals(session, tgId);
+}
+
+async function loadSignals(session, tgId){
+  const card = document.getElementById('signals-card');
+  const list = document.getElementById('signals-list');
+  card.style.display = 'block';
+  try{
+    const resp = await fetch('/api/signals?user_id=' + encodeURIComponent(tgId), {
+      headers: {'X-Web-Session': session},
+    });
+    const d = await resp.json();
+    if(!resp.ok){ list.innerHTML = '<p class="list-note">Không tải được tín hiệu</p>'; return; }
+    const watched = d.watched || [];
+    const sigs    = d.signals  || {};
+    const names   = d.all_funds || {};
+    if(!watched.length){
+      list.innerHTML = '<p class="list-note">Chưa có quỹ nào được theo dõi</p>';
+      return;
+    }
+    const rows = watched.map(code => {
+      const s    = sigs[code] || {};
+      const name = names[code] || code;
+      const nav  = s.nav ? Math.round(s.nav).toLocaleString('vi-VN') + ' đ' : '—';
+      const chg  = s.chg_pct;
+      const chgStr = chg != null ? (chg >= 0 ? '+' : '') + chg.toFixed(2) + '%' : '—';
+      const chgCls = chg == null ? '' : chg >= 0 ? 'pos' : 'neg';
+      const sig    = s.signal || 'N/A';
+      const sigCls = sig.includes('MUA') ? 'sig-buy' : sig.includes('BÁN') ? 'sig-sell' : 'sig-hold';
+      const sigLabel = sig.replace(/[🟢🔴⚪]/g,'').trim();
+      return `<div class="fund-row">
+        <div class="fund-info">
+          <span class="fund-code">${code}</span>
+          <span class="fund-name">${name}</span>
+        </div>
+        <div class="fund-data">
+          <span class="fund-nav">${nav}</span>
+          <span class="fund-chg ${chgCls}">${chgStr}</span>
+          <span class="sig-badge ${sigCls}">${sigLabel}</span>
+        </div>
+      </div>`;
+    });
+    list.innerHTML = rows.join('');
+  }catch(e){
+    list.innerHTML = '<p class="list-note">Lỗi tải tín hiệu: ' + e.message + '</p>';
   }
 }
 
