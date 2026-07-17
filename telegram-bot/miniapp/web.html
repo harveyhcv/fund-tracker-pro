@@ -52,6 +52,7 @@ footer{text-align:center;padding:16px 0;color:var(--muted);font-size:10px}
 .sig-buy{background:rgba(74,222,128,.12);color:var(--buy);border:1px solid rgba(74,222,128,.25)}
 .sig-sell{background:rgba(248,113,113,.12);color:var(--sell);border:1px solid rgba(248,113,113,.25)}
 .sig-hold{background:rgba(148,163,184,.08);color:var(--muted);border:1px solid var(--border)}
+.t2-hint{font-family:var(--mono);font-size:10px;color:var(--muted)}.t2-hint.pos{color:var(--buy)}.t2-hint.neg{color:var(--sell)}
 .list-note{color:var(--muted);font-size:11px;text-align:center;padding:14px 0}
 .skeleton{height:10px;background:var(--s3);border-radius:4px;margin:4px 0;animation:pulse 1.4s ease-in-out infinite}
 @keyframes pulse{0%,100%{opacity:.5}50%{opacity:1}}
@@ -140,6 +141,7 @@ footer{text-align:center;padding:16px 0;color:var(--muted);font-size:10px}
 <script>
 const SESSION_KEY = 'ftp_web_session';
 const TGID_KEY    = 'ftp_web_tgid';
+let _predictions  = {};
 
 function showErr(msg){
   const el = document.getElementById('err');
@@ -199,10 +201,11 @@ async function loadProfile(){
       pnlEl.textContent = (pnl >= 0 ? '+' : '') + Math.round(pnl).toLocaleString('vi-VN') + ' đ';
       pnlEl.className = 'stat-v ' + (pnl >= 0 ? 'pos' : 'neg');
     }
+    _predictions = d.predictions || {};
   }catch(e){
     showErr('Lỗi tải dữ liệu: ' + e.message);
   }
-  loadSignals(session, tgId);
+  loadSignals(session, tgId, _predictions);
   loadTrades(session, tgId);
 }
 
@@ -245,7 +248,7 @@ async function loadTrades(session, tgId){
   }
 }
 
-async function loadSignals(session, tgId){
+async function loadSignals(session, tgId, predictions){
   const card = document.getElementById('signals-card');
   const list = document.getElementById('signals-list');
   card.style.display = 'block';
@@ -262,6 +265,7 @@ async function loadSignals(session, tgId){
       list.innerHTML = '<p class="list-note">Chưa có quỹ nào được theo dõi</p>';
       return;
     }
+    const preds = predictions || {};
     const rows = watched.map(code => {
       const s    = sigs[code] || {};
       const name = names[code] || code;
@@ -272,10 +276,18 @@ async function loadSignals(session, tgId){
       const sig    = s.signal || 'N/A';
       const sigCls = sig.includes('MUA') ? 'sig-buy' : sig.includes('BÁN') ? 'sig-sell' : 'sig-hold';
       const sigLabel = sig.replace(/[🟢🔴⚪]/g,'').trim();
+      const pred = preds[code];
+      let t2Html = '';
+      if(pred && pred.predicted_nav && s.nav){
+        const t2Chg = (pred.predicted_nav / s.nav - 1) * 100;
+        const t2Cls = t2Chg >= 0 ? 'pos' : 'neg';
+        t2Html = `<span class="t2-hint ${t2Cls}">T+2 ${t2Chg >= 0 ? '↑' : '↓'}${Math.abs(t2Chg).toFixed(2)}%</span>`;
+      }
       return `<div class="fund-row">
         <div class="fund-info">
           <span class="fund-code">${code}</span>
           <span class="fund-name">${name}</span>
+          ${t2Html}
         </div>
         <div class="fund-data">
           <span class="fund-nav">${nav}</span>
