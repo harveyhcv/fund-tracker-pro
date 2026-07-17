@@ -4,9 +4,9 @@
 # Priority: P0 (blocker) / P1 (important) / P2 (nice-to-have)
 # Claude đọc file này ĐẦU TIÊN mỗi session. Pick task IN_PROGRESS nếu có, nếu không pick P0 cao nhất.
 #
-# Last updated: 2026-07-16 (ca chiều — ghi nhận 6 commit live-session giữa ca sáng/chiều
-# [nhãn vàng, GOV-011 breakdown vàng, chip T+2, fix T2-006, khuyến mãi SePay, GOV-012], verify
-# production healthy, không code thêm — xem session note bên dưới)
+# Last updated: 2026-07-17 (ca sáng — GOV-015 web bước 2/3/4/5: signals/trades/T+2/refresh
+# trong web.html; ghi nhận 5 commits Harvey 16/07: GOV-012-part2, GOV-013, GOV-013-part2,
+# GOV-014, GOV-015 bước 1; 254/254 tests pass; deploy cần Harvey push/set WEB_SESSION_SECRET)
 
 ## Session (autonomous, scheduled) — Ca sáng 2026-07-16: update BACKLOG, verify baseline
 # Tình trạng: tất cả P0/P1 đã DONE từ trước. Điều kiện dừng ca này: "Hết P0+P1".
