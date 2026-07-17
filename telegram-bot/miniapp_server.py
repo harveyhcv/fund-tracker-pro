@@ -2748,6 +2748,12 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             return
         try:
             result = _db_mod.redeem_promo_code(code, tg_id)
+            # GOV-017: mã Promo (free ngày, không cần mua) giờ được tạo trong
+            # discount_codes (requires_purchase=false) chứ không còn promo_codes
+            # — nếu không tìm thấy trong promo_codes (referral + legacy admin),
+            # thử tiếp bên discount_codes trước khi báo lỗi "không tồn tại".
+            if not result.get("ok") and result.get("error") == "Mã không tồn tại":
+                result = _db_mod.redeem_instant_discount_code(code, tg_id)
         except Exception as e:
             log.error(f"[promo_redeem] {tg_id} code={code}: {e}")
             _json(self, {"error": "Lỗi áp dụng mã"}, 500)
@@ -2954,10 +2960,12 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         _json(self, {"ok": True, "promo": promo})
 
     def _parse_voucher_fields(self, data: dict):
-        """Validate các field chung cho create/edit voucher. Trả (fields_dict, None)
-        nếu hợp lệ, hoặc (None, error_msg) nếu không. benefit_type='discount_pct'
-        → benefit_value là % (1-100). benefit_type='bonus_days' → benefit_value là
-        số ngày tặng thêm (>=1, tối đa 365 cho an toàn — tránh gõ nhầm số quá lớn)."""
+        """Validate các field chung cho create/edit mã (GOV-017: 1 loại mã duy nhất,
+        gộp Promo+Voucher cũ). Trả (fields_dict, None) nếu hợp lệ, hoặc (None, error_msg)
+        nếu không. benefit_type='discount_pct' → benefit_value là % (1-100), CHỈ hợp lệ
+        khi requires_purchase=true. benefit_type='bonus_days' → benefit_value là số ngày
+        tặng thêm/tặng free (>=1, tối đa 365 cho an toàn)."""
+        requires_purchase = bool(data.get("requires_purchase", True))
         benefit_type = str(data.get("benefit_type", "discount_pct")).strip().lower()
         if benefit_type not in ("discount_pct", "bonus_days"):
             return None, "benefit_type phải là discount_pct hoặc bonus_days"
@@ -2970,6 +2978,11 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         if benefit_type == "bonus_days" and not (0 < benefit_value <= 365):
             return None, "Số ngày tặng thêm phải trong khoảng 1-365"
         auto_apply = bool(data.get("auto_apply", False))
+        if not requires_purchase:
+            if benefit_type != "bonus_days":
+                return None, "Mã không yêu cầu mua hàng chỉ có thể tặng ngày Premium, không thể giảm giá %"
+            if auto_apply:
+                return None, "Mã không yêu cầu mua hàng không thể tự động áp dụng — user phải tự nhập mã"
         channel    = str(data.get("channel", "sepay")).strip().lower() or "sepay"
         if channel not in ("sepay", "stars", "all"):
             return None, "channel phải là sepay/stars/all"
@@ -2993,15 +3006,16 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             "benefit_type": benefit_type, "benefit_value": benefit_value,
             "auto_apply": auto_apply, "channel": channel,
             "valid_from": valid_from, "valid_until": valid_until,
-            "max_uses": max_uses, "note": note,
+            "max_uses": max_uses, "note": note, "requires_purchase": requires_purchase,
         }, None
 
     def _api_admin_discount_create(self, data: dict):
-        """POST /api/admin/discount/create — {telegram_id, benefit_type, benefit_value,
-        auto_apply, channel?, valid_from?, valid_until?, max_uses?, note?, code?}.
-        Mã Voucher — CẦN có giao dịch thật mới có tác dụng (khác Mã Promo ở trên).
-        auto_apply=true → tự động áp dụng cho mọi purchase kênh này. auto_apply=false
-        → user phải tự nhập mã."""
+        """POST /api/admin/discount/create — {telegram_id, requires_purchase, benefit_type,
+        benefit_value, auto_apply, channel?, valid_from?, valid_until?, max_uses?, note?, code?}.
+        GOV-017: requires_purchase=true → cần giao dịch thật (giảm giá % hoặc tặng ngày
+        sau khi thanh toán). requires_purchase=false → tặng ngày Premium NGAY, không cần mua
+        (redeem qua /api/promo/redeem). auto_apply=true → tự động áp dụng mọi purchase
+        kênh này (chỉ áp dụng khi requires_purchase=true)."""
         tg_id = str(data.get("telegram_id", ""))
         if not _is_admin(tg_id):
             _json(self, {"error": "admin_only"}, 403)
@@ -3021,6 +3035,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
                 fields["benefit_type"], fields["benefit_value"], fields["auto_apply"], fields["channel"],
                 fields["valid_from"], fields["valid_until"], fields["max_uses"],
                 created_by=tg_id, note=fields["note"], code=custom_code,
+                requires_purchase=fields["requires_purchase"],
             )
         except Exception as e:
             log.error(f"[admin_discount_create] {e}")
@@ -3077,10 +3092,15 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         if _db_mod is None or not _db_mod.is_available():
             _json(self, {"error": "DB không khả dụng"}, 503)
             return
-        discount = _db_mod.update_discount_code(
-            code, fields["benefit_type"], fields["benefit_value"], fields["auto_apply"], fields["channel"],
-            fields["valid_from"], fields["valid_until"], fields["max_uses"], fields["note"], actor_id=tg_id,
-        )
+        try:
+            discount = _db_mod.update_discount_code(
+                code, fields["benefit_type"], fields["benefit_value"], fields["auto_apply"], fields["channel"],
+                fields["valid_from"], fields["valid_until"], fields["max_uses"], fields["note"], actor_id=tg_id,
+                requires_purchase=fields["requires_purchase"],
+            )
+        except Exception as e:
+            _json(self, {"error": str(e)}, 400)
+            return
         if not discount:
             _json(self, {"error": f"Không tìm thấy mã {code}"}, 404)
             return

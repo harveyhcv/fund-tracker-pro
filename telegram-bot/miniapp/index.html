@@ -555,33 +555,23 @@ canvas{width:100%!important;height:100%!important}
         <div id="admin-nav-confirm-list"><div style="font-size:12px;color:var(--txt2)">Đang tải...</div></div>
       </div>
       <div class="card" style="padding:16px">
-        <div style="font-size:11px;font-weight:700;color:#c084fc;font-family:var(--mono);margin-bottom:10px">🎟️ MÃ PROMO</div>
-        <div style="font-size:11px;color:var(--txt2);margin-bottom:10px;line-height:1.5">Tạo mã cho bạn bè dùng thử Pro. Để trống ô "Mã" để tự sinh ngẫu nhiên. Số lượt = số NGƯỜI được dùng (mỗi người chỉ dùng được 1 lần dù max_uses lớn hơn 1).</div>
-        <div style="display:flex;gap:8px;margin-bottom:4px">
-          <input type="text" id="promo-new-code" placeholder="Mã (để trống = tự sinh)" style="flex:1;text-transform:uppercase" oninput="checkPromoCodeDup()">
+        <div style="font-size:11px;font-weight:700;color:#fb923c;font-family:var(--mono);margin-bottom:10px">🎟️ MÃ ƯU ĐÃI</div>
+        <div style="font-size:11px;color:var(--txt2);margin-bottom:10px;line-height:1.5">1 loại mã duy nhất, chọn bằng 2 toggle bên dưới để biết mã hoạt động ra sao. Mã Referral (giới thiệu bạn bè) là cơ chế riêng, không nằm ở đây.</div>
+        <input type="text" id="disc-new-code" placeholder="Mã (để trống = tự sinh)" style="margin-bottom:10px;text-transform:uppercase">
+
+        <div style="font-size:10px;color:var(--txt2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Có bắt buộc mua hàng không?</div>
+        <div style="display:flex;gap:6px;margin-bottom:10px">
+          <button type="button" id="disc-req-yes-btn" onclick="_discSetRequiresPurchase(true)" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--c0);background:#001a33;color:var(--c0);font-size:12px;cursor:pointer;font-family:var(--mono)">Có, cần mua</button>
+          <button type="button" id="disc-req-no-btn" onclick="_discSetRequiresPurchase(false)" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--bdr);background:var(--bg3);color:var(--txt2);font-size:12px;cursor:pointer;font-family:var(--mono)">Không, tặng free</button>
         </div>
-        <div id="promo-code-dup-warn" style="font-size:11px;color:var(--sell);min-height:14px;margin-bottom:8px"></div>
-        <div style="display:flex;gap:8px;margin-bottom:8px">
-          <input type="number" id="promo-new-days" placeholder="Số ngày (vd 30)" value="30" style="flex:1">
-          <input type="number" id="promo-new-maxuses" placeholder="Số lượt (để trống=1)" style="flex:1">
-        </div>
-        <input type="text" id="promo-new-note" placeholder="Ghi chú (vd: tặng bạn A)" style="margin-bottom:8px">
-        <div style="display:flex;gap:8px">
-          <button id="promo-submit-btn" onclick="adminCreatePromo()" style="flex:1;padding:12px;background:#c084fc;color:#000;border:none;border-radius:8px;font-weight:700;font-size:14px;cursor:pointer;font-family:var(--mono)">+ TẠO MÃ</button>
-          <button id="promo-cancel-edit-btn" onclick="cancelEditPromo()" style="display:none;flex:0 0 90px;padding:12px;background:var(--bg3);border:1px solid var(--bdr);color:var(--txt2);border-radius:8px;cursor:pointer;font-family:var(--mono)">Huỷ sửa</button>
-        </div>
-        <div id="promo-create-status" style="font-size:12px;color:var(--txt2);margin-top:8px;min-height:16px"></div>
-        <div id="promo-list" style="margin-top:12px"></div>
-      </div>
-      <div class="card" style="padding:16px">
-        <div style="font-size:11px;font-weight:700;color:#fb923c;font-family:var(--mono);margin-bottom:10px">💸 MÃ VOUCHER (SePay/Stars)</div>
-        <div style="font-size:11px;color:var(--txt2);margin-bottom:10px;line-height:1.5">Khác Mã Promo ở trên (cấp free, không cần mua) — Voucher CHỈ có tác dụng khi có giao dịch thật. Tự động = áp dụng cho mọi người mua, không cần nhập mã. Bắt buộc giới hạn ít nhất 1: thời gian HOẶC số lượt.</div>
-        <input type="text" id="disc-new-code" placeholder="Mã (để trống = tự sinh)" style="margin-bottom:8px;text-transform:uppercase">
+        <div id="disc-req-hint" style="font-size:10px;color:var(--txt2);margin:-4px 0 10px;line-height:1.5"></div>
+
+        <div style="font-size:10px;color:var(--txt2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Loại ưu đãi</div>
         <div style="display:flex;gap:6px;margin-bottom:8px">
           <button type="button" id="disc-type-pct-btn" onclick="_discSetBenefitType('discount_pct')" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--c0);background:#001a33;color:var(--c0);font-size:12px;cursor:pointer;font-family:var(--mono)">Giảm giá %</button>
-          <button type="button" id="disc-type-days-btn" onclick="_discSetBenefitType('bonus_days')" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--bdr);background:var(--bg3);color:var(--txt2);font-size:12px;cursor:pointer;font-family:var(--mono)">Tặng thêm ngày</button>
+          <button type="button" id="disc-type-days-btn" onclick="_discSetBenefitType('bonus_days')" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--bdr);background:var(--bg3);color:var(--txt2);font-size:12px;cursor:pointer;font-family:var(--mono)">Tặng ngày Premium</button>
         </div>
-        <div style="display:flex;gap:8px;margin-bottom:8px">
+        <div id="disc-value-row" style="display:flex;gap:8px;margin-bottom:8px">
           <input type="number" id="disc-new-value" placeholder="Giảm % (vd 10)" value="10" style="flex:1">
           <select id="disc-new-channel" style="flex:1;background:var(--bg3);border:1px solid var(--bdr);color:var(--txt);border-radius:8px;padding:8px">
             <option value="sepay">SePay</option>
@@ -589,7 +579,7 @@ canvas{width:100%!important;height:100%!important}
             <option value="all">Cả 2</option>
           </select>
         </div>
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--txt2);margin-bottom:10px">
+        <label id="disc-auto-row" style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--txt2);margin-bottom:10px">
           <input type="checkbox" id="disc-new-auto" style="width:auto"> Tự động áp dụng cho mọi người (không cần nhập mã)
         </label>
         <div style="font-size:10px;color:var(--txt2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Thời gian hiệu lực</div>
@@ -605,7 +595,7 @@ canvas{width:100%!important;height:100%!important}
         <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--txt2);margin-bottom:10px">
           <input type="checkbox" id="disc-new-uses-unlimited" onchange="_discSyncUnlimited()" style="width:auto"> Không giới hạn số lượt
         </label>
-        <input type="text" id="disc-new-note" placeholder="Ghi chú (vd: khuyến mãi ra mắt)" style="margin-bottom:8px">
+        <input type="text" id="disc-new-note" placeholder="Ghi chú (vd: khuyến mãi ra mắt / tặng bạn A)" style="margin-bottom:8px">
         <div id="disc-rule-warn" style="font-size:11px;color:var(--sell);min-height:14px;margin-bottom:4px"></div>
         <div style="display:flex;gap:8px">
           <button id="disc-submit-btn" onclick="adminCreateDiscount()" style="flex:1;padding:12px;background:#fb923c;color:#000;border:none;border-radius:8px;font-weight:700;font-size:14px;cursor:pointer;font-family:var(--mono)">+ TẠO MÃ</button>
@@ -885,7 +875,7 @@ function goPage(name,btn){
   if(name==='dca') loadDCA();
   if(name==='trade'){ setupTrade(); loadUnifiedHistory(); }
   if(name==='history') loadHistory();
-  if(name==='admin'){ loadAdminSummary(); loadAdminNavPending(); loadPromoList(); loadDiscountList(); loadAdminAudit(); }
+  if(name==='admin'){ loadAdminSummary(); loadAdminNavPending(); loadDiscountList(); loadAdminAudit(); }
 }
 
 function showSubtab(page, sub, el){
@@ -1156,136 +1146,8 @@ async function loadAdminSummary(){
   }
 }
 
-let _promoCodesCache=[], _editingPromoCode=null;
-
-async function loadPromoList(){
-  const el=document.getElementById('promo-list');
-  if(!el) return;
-  el.innerHTML='<div style="font-size:12px;color:var(--txt2)">Đang tải...</div>';
-  try{
-    const d=await apiFetch('/api/admin/promo/list');
-    _promoCodesCache=d.codes||[];
-    renderPromoList(_promoCodesCache);
-    checkPromoCodeDup();
-  }catch(e){
-    el.innerHTML=`<div style="font-size:12px;color:var(--sell)">Lỗi: ${e.message}</div>`;
-  }
-}
-
-function renderPromoList(codes){
-  const el=document.getElementById('promo-list');
-  if(!codes.length){ el.innerHTML='<div style="font-size:12px;color:var(--txt2)">Chưa có mã nào.</div>'; return; }
-  el.innerHTML=codes.map(c=>{
-    const usesLabel = c.max_uses ? `${c.uses_count}/${c.max_uses}` : `${c.uses_count} (không giới hạn)`;
-    const statusColor = c.active ? 'var(--buy)' : 'var(--txt2)';
-    const statusLabel = c.active ? 'Đang hoạt động' : 'Đã vô hiệu hoá';
-    return `<div style="border:1px solid var(--bdr);border-radius:8px;padding:10px;margin-bottom:8px;background:var(--bg)">
-      <div style="display:flex;justify-content:space-between;align-items:center">
-        <span style="font-family:var(--mono);font-weight:700;color:var(--c0);font-size:13px;letter-spacing:.04em">${c.code}</span>
-        <span style="font-size:10px;color:${statusColor}">${statusLabel}</span>
-      </div>
-      <div style="font-size:11px;color:var(--txt2);margin-top:4px">${c.days} ngày · Đã dùng: ${usesLabel}${c.note?' · '+c.note:''}</div>
-      <div style="display:flex;gap:6px;margin-top:6px">
-        <button onclick="startEditPromo('${c.code}')" style="padding:5px 10px;background:var(--bg3);border:1px solid var(--c0);color:var(--c0);border-radius:6px;font-size:11px;cursor:pointer">Sửa</button>
-        ${c.active
-          ?`<button onclick="adminDeactivatePromo('${c.code}')" style="padding:5px 10px;background:var(--bg3);border:1px solid var(--sell);color:var(--sell);border-radius:6px;font-size:11px;cursor:pointer">Vô hiệu hoá</button>`
-          :`<button onclick="adminActivatePromo('${c.code}')" style="padding:5px 10px;background:var(--bg3);border:1px solid var(--buy);color:var(--buy);border-radius:6px;font-size:11px;cursor:pointer">Kích hoạt lại</button>`}
-      </div>
-    </div>`;
-  }).join('');
-}
-
-function checkPromoCodeDup(){
-  const input=document.getElementById('promo-new-code');
-  const warn=document.getElementById('promo-code-dup-warn');
-  const submitBtn=document.getElementById('promo-submit-btn');
-  const code=(input.value||'').trim().toUpperCase();
-  if(_editingPromoCode){ warn.textContent=''; submitBtn.disabled=false; return; }
-  const dup=code && _promoCodesCache.some(c=>c.code.toUpperCase()===code);
-  if(dup){
-    warn.textContent='⚠️ Mã này đã dùng trước đây';
-    submitBtn.disabled=true; submitBtn.style.opacity='0.5'; submitBtn.style.cursor='not-allowed';
-  } else {
-    warn.textContent='';
-    submitBtn.disabled=false; submitBtn.style.opacity='1'; submitBtn.style.cursor='pointer';
-  }
-}
-
-function startEditPromo(code){
-  const c=_promoCodesCache.find(x=>x.code===code);
-  if(!c) return;
-  _editingPromoCode=c.code;
-  document.getElementById('promo-new-code').value=c.code;
-  document.getElementById('promo-new-code').disabled=true;
-  document.getElementById('promo-new-days').value=c.days;
-  document.getElementById('promo-new-maxuses').value=c.max_uses||'';
-  document.getElementById('promo-new-note').value=c.note||'';
-  document.getElementById('promo-submit-btn').textContent='LƯU THAY ĐỔI';
-  document.getElementById('promo-cancel-edit-btn').style.display='block';
-  document.getElementById('promo-code-dup-warn').textContent='';
-  const btn=document.getElementById('promo-submit-btn'); btn.disabled=false; btn.style.opacity='1'; btn.style.cursor='pointer';
-  document.getElementById('promo-new-code').scrollIntoView({behavior:'smooth', block:'center'});
-}
-
-function cancelEditPromo(){
-  _editingPromoCode=null;
-  document.getElementById('promo-new-code').value='';
-  document.getElementById('promo-new-code').disabled=false;
-  document.getElementById('promo-new-days').value='30';
-  document.getElementById('promo-new-maxuses').value='';
-  document.getElementById('promo-new-note').value='';
-  document.getElementById('promo-submit-btn').textContent='+ TẠO MÃ';
-  document.getElementById('promo-cancel-edit-btn').style.display='none';
-  document.getElementById('promo-create-status').textContent='';
-  checkPromoCodeDup();
-}
-
-async function adminCreatePromo(){
-  const status=document.getElementById('promo-create-status');
-  const code=(document.getElementById('promo-new-code').value||'').trim().toUpperCase();
-  const days=parseInt(document.getElementById('promo-new-days').value||'30',10);
-  const maxUsesRaw=document.getElementById('promo-new-maxuses').value;
-  const maxUses=maxUsesRaw?parseInt(maxUsesRaw,10):1;
-  const note=(document.getElementById('promo-new-note').value||'').trim();
-  if(!days||days<=0){ status.style.color='var(--sell)'; status.textContent='Số ngày không hợp lệ'; return; }
-  status.style.color='var(--txt2)'; status.textContent=_editingPromoCode?'Đang lưu...':'Đang tạo...';
-  try{
-    if(_editingPromoCode){
-      const d=await apiPost('/api/admin/promo/edit',{telegram_id:USER_ID, code:_editingPromoCode, days, max_uses:maxUses, note});
-      status.style.color='var(--buy)';
-      status.textContent=`✓ Đã lưu mã ${d.promo.code}`;
-      cancelEditPromo();
-    } else {
-      const d=await apiPost('/api/admin/promo/create',{telegram_id:USER_ID, code:code||undefined, days, max_uses:maxUses, note});
-      status.style.color='var(--buy)';
-      status.textContent=`✓ Đã tạo mã ${d.promo.code}`;
-      document.getElementById('promo-new-code').value='';
-      document.getElementById('promo-new-note').value='';
-    }
-    await loadPromoList();
-  }catch(e){
-    status.style.color='var(--sell)'; status.textContent='⚠️ '+(e.body?.error||e.message);
-  }
-}
-
-async function adminDeactivatePromo(code){
-  if(!confirm(`Vô hiệu hoá mã ${code}? Người chưa dùng sẽ không dùng được nữa.`)) return;
-  try{
-    await apiPost('/api/admin/promo/deactivate',{telegram_id:USER_ID, code});
-    toast('✓ Đã vô hiệu hoá '+code);
-    await loadPromoList();
-  }catch(e){ toast('Lỗi: '+e.message); }
-}
-
-async function adminActivatePromo(code){
-  try{
-    await apiPost('/api/admin/promo/activate',{telegram_id:USER_ID, code});
-    toast('✓ Đã kích hoạt lại '+code);
-    await loadPromoList();
-  }catch(e){ toast('Lỗi: '+e.message); }
-}
-
-// ── Discount codes (giảm giá % SePay/Stars, khác mã trial ở trên) ──────────
+// ── Mã ưu đãi (GOV-017: gộp Mã Promo + Mã Voucher cũ thành 1 loại, phân biệt
+// bằng requires_purchase) — Mã Referral vẫn là cơ chế riêng, không đụng ở đây.
 let _discountCodesCache=[], _editingDiscountCode=null;
 
 function _discSyncUnlimited(){
@@ -1308,6 +1170,9 @@ function _discSyncUnlimited(){
 
 let _discBenefitType='discount_pct';
 function _discSetBenefitType(type){
+  // requires_purchase=false CHỈ được phép tặng ngày (giảm % vô nghĩa nếu
+  // không có giao dịch nào để giảm giá trên đó) — chặn ngay từ UI.
+  if(!_discRequiresPurchase && type==='discount_pct') return;
   _discBenefitType=type;
   const pctBtn=document.getElementById('disc-type-pct-btn'), daysBtn=document.getElementById('disc-type-days-btn');
   const valInput=document.getElementById('disc-new-value');
@@ -1319,7 +1184,31 @@ function _discSetBenefitType(type){
     valInput.placeholder='Giảm % (vd 10)';
   } else {
     apply(daysBtn,on); apply(pctBtn,off);
-    valInput.placeholder='Số ngày tặng thêm (vd 7)';
+    valInput.placeholder='Số ngày tặng thêm/tặng free (vd 7)';
+  }
+}
+
+let _discRequiresPurchase=true;
+function _discSetRequiresPurchase(val){
+  _discRequiresPurchase=val;
+  const yesBtn=document.getElementById('disc-req-yes-btn'), noBtn=document.getElementById('disc-req-no-btn');
+  const on={borderColor:'var(--c0)',background:'#001a33',color:'var(--c0)'};
+  const off={borderColor:'var(--bdr)',background:'var(--bg3)',color:'var(--txt2)'};
+  const apply=(el,st)=>{el.style.borderColor=st.borderColor;el.style.background=st.background;el.style.color=st.color;};
+  apply(val?yesBtn:noBtn, on); apply(val?noBtn:yesBtn, off);
+  const hint=document.getElementById('disc-req-hint');
+  const pctBtn=document.getElementById('disc-type-pct-btn');
+  const valueRow=document.getElementById('disc-value-row'), autoRow=document.getElementById('disc-auto-row');
+  if(val){
+    hint.textContent='User phải có 1 giao dịch thật (SePay/Stars) — giảm giá % lúc mua, hoặc tặng thêm ngày sau khi thanh toán.';
+    pctBtn.style.opacity='1'; pctBtn.style.pointerEvents='auto';
+    valueRow.style.display='flex'; autoRow.style.display='flex';
+  } else {
+    hint.textContent='Cấp ngày Premium NGAY khi user tự nhập mã ở màn "Đổi mã" — không cần mua gì. Chỉ tặng ngày, không giảm giá được (không có giao dịch để giảm giá trên đó), và không tự động áp dụng được (bắt buộc user tự nhập).';
+    if(_discBenefitType==='discount_pct') _discSetBenefitType('bonus_days');
+    pctBtn.style.opacity='0.4'; pctBtn.style.pointerEvents='none';
+    document.getElementById('disc-new-auto').checked=false;
+    autoRow.style.display='none';
   }
 }
 
@@ -1338,6 +1227,7 @@ function _toDatetimeLocal(iso){
 async function loadDiscountList(){
   const el=document.getElementById('disc-list');
   if(!el) return;
+  if(!_editingDiscountCode) _discSetRequiresPurchase(true); // khởi tạo hint + trạng thái toggle mặc định
   el.innerHTML='<div style="font-size:12px;color:var(--txt2)">Đang tải...</div>';
   try{
     const d=await apiFetch('/api/admin/discount/list');
@@ -1358,12 +1248,13 @@ function renderDiscountList(codes){
     const statusLabel = c.active ? 'Đang hoạt động' : 'Đã vô hiệu hoá';
     const applyLabel = c.auto_apply ? '🔁 Tự động' : '⌨️ Nhập tay';
     const benefitLabel = c.benefit_type==='bonus_days' ? `🎁 +${c.benefit_value} ngày` : `-${c.benefit_value}%`;
+    const purchaseLabel = c.requires_purchase===false ? '🆓 Không cần mua' : '💳 Cần mua';
     return `<div style="border:1px solid var(--bdr);border-radius:8px;padding:10px;margin-bottom:8px;background:var(--bg)">
       <div style="display:flex;justify-content:space-between;align-items:center">
         <span style="font-family:var(--mono);font-weight:700;color:#fb923c;font-size:13px;letter-spacing:.04em">${c.code}</span>
         <span style="font-size:10px;color:${statusColor}">${statusLabel}</span>
       </div>
-      <div style="font-size:11px;color:var(--txt2);margin-top:4px">${benefitLabel} · ${c.channel} · ${applyLabel} · ${usesLabel} · ${untilLabel}${c.note?' · '+c.note:''}</div>
+      <div style="font-size:11px;color:var(--txt2);margin-top:4px">${purchaseLabel} · ${benefitLabel}${c.requires_purchase===false?'':' · '+c.channel+' · '+applyLabel} · ${usesLabel} · ${untilLabel}${c.note?' · '+c.note:''}</div>
       <div style="display:flex;gap:6px;margin-top:6px">
         <button onclick="startEditDiscount('${c.code}')" style="padding:5px 10px;background:var(--bg3);border:1px solid var(--c0);color:var(--c0);border-radius:6px;font-size:11px;cursor:pointer">Sửa</button>
         ${c.active
@@ -1380,6 +1271,7 @@ function startEditDiscount(code){
   _editingDiscountCode=c.code;
   document.getElementById('disc-new-code').value=c.code;
   document.getElementById('disc-new-code').disabled=true;
+  _discSetRequiresPurchase(c.requires_purchase!==false);
   _discSetBenefitType(c.benefit_type||'discount_pct');
   document.getElementById('disc-new-value').value=c.benefit_value;
   document.getElementById('disc-new-channel').value=c.channel;
@@ -1400,6 +1292,7 @@ function cancelEditDiscount(){
   _editingDiscountCode=null;
   document.getElementById('disc-new-code').value='';
   document.getElementById('disc-new-code').disabled=false;
+  _discSetRequiresPurchase(true);
   _discSetBenefitType('discount_pct');
   document.getElementById('disc-new-value').value='10';
   document.getElementById('disc-new-channel').value='sepay';
@@ -1438,7 +1331,8 @@ async function adminCreateDiscount(){
   const maxUsesVal=usesUnlimited?'':document.getElementById('disc-new-maxuses').value;
   const note=(document.getElementById('disc-new-note').value||'').trim();
   const payload={
-    telegram_id:USER_ID, benefit_type:_discBenefitType, benefit_value, auto_apply, channel,
+    telegram_id:USER_ID, requires_purchase:_discRequiresPurchase,
+    benefit_type:_discBenefitType, benefit_value, auto_apply, channel,
     valid_from: fromVal ? new Date(fromVal).toISOString() : null,
     valid_until: untilVal ? new Date(untilVal).toISOString() : null,
     max_uses: maxUsesVal ? parseInt(maxUsesVal,10) : null,
