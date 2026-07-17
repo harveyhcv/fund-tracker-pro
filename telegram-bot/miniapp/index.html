@@ -2391,15 +2391,26 @@ function drawAccuracyChart(code, rows){
   const minV=Math.min(...allVals);const maxV=Math.max(...allVals);const range=(maxV-minV)||1;
   const pad={t:8,r:8,b:16,l:56};
   const gW=W-pad.l-pad.r;const gH=H-pad.t-pad.b;
-  const x=i=>pad.l+(pts.length<=1?0:(i/(pts.length-1))*gW);
+  // GOV-016: chỉ 1 điểm dữ liệu (n=1) thì không có gì để nối line — trước đây
+  // moveTo() 1 lần rồi không lineTo() nào tiếp theo → stroke() không vẽ được
+  // gì, canvas trống trơn dù dữ liệu không hề rỗng (Harvey báo qua screenshot
+  // thực tế). Sửa: luôn vẽ CHẤM tại mỗi điểm (kể cả n=1), line chỉ vẽ thêm
+  // khi có ≥2 điểm để nối.
+  const x=i=>pad.l+(pts.length<=1?gW/2:(i/(pts.length-1))*gW);
   const y=v=>pad.t+(1-(v-minV)/range)*gH;
-  const drawLine=(key,color)=>{
-    ctx.beginPath();
-    pts.forEach((p,i)=>{ const v=p[key]; if(v==null)return; i===0?ctx.moveTo(x(i),y(v)):ctx.lineTo(x(i),y(v)); });
-    ctx.strokeStyle=color;ctx.lineWidth=1.5;ctx.stroke();
+  const drawSeries=(key,color)=>{
+    if(pts.length>1){
+      ctx.beginPath();
+      pts.forEach((p,i)=>{ const v=p[key]; if(v==null)return; i===0?ctx.moveTo(x(i),y(v)):ctx.lineTo(x(i),y(v)); });
+      ctx.strokeStyle=color;ctx.lineWidth=1.5;ctx.stroke();
+    }
+    pts.forEach((p,i)=>{
+      const v=p[key]; if(v==null)return;
+      ctx.beginPath();ctx.arc(x(i),y(v),2.5,0,Math.PI*2);ctx.fillStyle=color;ctx.fill();
+    });
   };
-  drawLine('actual_nav','#94a3b8');
-  drawLine('predicted_nav','#00e5ff');
+  drawSeries('actual_nav','#94a3b8');
+  drawSeries('predicted_nav','#00e5ff');
   const isLarge=maxV>1e6;
   const fmtAxis=v=>isLarge?Math.round(v/1e6)+'M':fmt(Math.round(v));
   ctx.fillStyle='#94a3b8';ctx.font='10px IBM Plex Mono,monospace';ctx.textAlign='right';
