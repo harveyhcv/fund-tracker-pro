@@ -1943,21 +1943,30 @@ function _t2Html(code, navNow, compact=false){
   if(!pred||!pred.predicted_nav) return '';
   const t2=pred.predicted_nav;
   const diff=(t2-navNow)/navNow*100;
-  const up=diff>=0;
-  const color=up?'var(--buy)':'var(--sell)';
-  const arrow=up?'↑':'↓';
+  // GOV-016: trước đây up/down chỉ dựa vào diff>=0 — 1 dự báo +0.03% (nhiễu
+  // thống kê, nằm sâu trong khoảng tin cậy 80%) vẫn hiện mũi tên xanh "tăng"
+  // đầy tự tin, mâu thuẫn ngay cạnh nhãn xu hướng momentum "GIẢM" (Harvey phát
+  // hiện qua screenshot thực tế). Sửa: chỉ coi là tăng/giảm CHẮC CHẮN khi NAV
+  // hiện tại nằm HẲN ngoài khoảng tin cậy — nếu navNow vẫn trong [ci_low,
+  // ci_high] thì hướng đi chưa đủ rõ, hiện trung tính thay vì mũi tên màu.
+  const hasCi = pred.ci_low != null && pred.ci_high != null;
+  const uncertain = hasCi && navNow >= pred.ci_low && navNow <= pred.ci_high;
+  const up = diff >= 0;
+  const color = uncertain ? 'var(--txt2)' : (up ? 'var(--buy)' : 'var(--sell)');
+  const arrow = uncertain ? '≈' : (up ? '↑' : '↓');
   if(compact){
     // Chip riêng (không nhét chung dòng với số lượng/giá vốn) — tách biệt rõ
     // ràng bằng nền + viền màu, tránh chữ chen chúc khó đọc. NAV làm tròn
     // hàng đơn vị chỉ để hiển thị — dữ liệu gốc pred.predicted_nav vẫn giữ
     // nguyên 2 chữ số thập phân cho phân tích sau này.
-    return `<span class="fund-t2-chip" style="border:1px solid ${up?'#14532d':'#7f1d1d'};color:${color}">🔮 T+2 ${arrow}${Math.abs(diff).toFixed(1)}% · ${fmt(Math.round(t2))}đ</span>`;
+    const border = uncertain ? 'var(--border)' : (up ? '#14532d' : '#7f1d1d');
+    return `<span class="fund-t2-chip" style="border:1px solid ${border};color:${color}">🔮 T+2 ${arrow}${Math.abs(diff).toFixed(1)}% · ${fmt(Math.round(t2))}đ</span>`;
   }
   return `<div style="margin-top:8px;padding:8px 10px;background:var(--bg3);border-radius:8px;border-left:3px solid ${color}">
     <div style="font-size:11px;color:var(--txt2);margin-bottom:2px">⏱ Giá chốt T+2 (dự báo ${_t2ModelLabel(pred.model_version)})</div>
     <div style="display:flex;align-items:baseline;gap:8px">
       <span style="font-family:var(--mono);font-size:16px;font-weight:700;color:${color}">${fmt(t2)} đ</span>
-      <span style="font-size:13px;color:${color};font-weight:600">${arrow}${Math.abs(diff).toFixed(2)}% so với NAV hiện tại</span>
+      <span style="font-size:13px;color:${color};font-weight:600">${arrow}${Math.abs(diff).toFixed(2)}% so với NAV hiện tại${uncertain?' (chưa rõ hướng)':''}</span>
     </div>
     ${pred.ci_low&&pred.ci_high?`<div style="font-size:10px;color:var(--txt2);margin-top:2px">Khoảng tin cậy 80%: ${fmt(pred.ci_low)} – ${fmt(pred.ci_high)} đ</div>`:''}
   </div>`;
