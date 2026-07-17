@@ -704,6 +704,63 @@
      adaptive. Nên đợi vài ngày nữa (nhiều batch `job_t2_score` khác nhau) trước khi chạy
      `t2_ensemble.py --reweight` lần đầu.
 
+- [DONE] GOV-012-part2 · Tách rõ Mã Promo / Mã Voucher / Mã Referral trong Mini App — UI modal
+  Nâng cấp trước đây gộp chung 3 loại mã vào 1 ô khiến user nhầm. Tách thành 3 input riêng biệt
+  với label + tooltip giải thích rõ: Mã khuyến mãi (admin tạo, giảm giá/tặng ngày), Mã voucher
+  (auto-apply tự tìm), Mã giới thiệu (referral code cá nhân). Ô nhập mã referral tự fill sẵn
+  nếu user đã dùng trước đó | 2026-07-16 (live session, Harvey + Claude Sonnet 5, commit cf07725)
+
+- [DONE] GOV-013 · Tăng DB connection pool 5→20 — PoolError khi mở tab Admin. Phát hiện: mở
+  tab Admin trong Mini App đồng thời trigger nhiều query song song (summary + audit log + signals)
+  vượt quá pool size=5 cũ → `PoolError: connection pool exhausted`. Fix: tăng maxconn=20 trong
+  `init_pool()` (`telegram-bot/db.py`). Không cần sửa logic — pool tự cấp phát | 2026-07-16
+  (live session, Harvey + Claude Sonnet 5, commit 4bb36f4)
+
+- [DONE] GOV-013-part2 · `get_real_pnl_summary()` tự deadlock vì gọi `get_setting()` lồng trong
+  cùng 1 DB connection — `with get_conn() as conn` lấy connection từ pool, trong scope đó gọi
+  `get_setting()` cũng gọi `with get_conn()` → cả 2 đều block chờ nhau (pool size 1 ở caller).
+  Fix: pass `conn` xuống hàm con thay vì để hàm con tự lấy từ pool, tránh nested connection
+  acquisition | 2026-07-16 (live session, Harvey + Claude Sonnet 5, commit 8e30588)
+
+- [DONE] GOV-014 · Tăng tần suất backup + cảnh báo sớm dung lượng Postgres. Sự cố 2026-07-16:
+  Postgres volume đầy (479/500MB) gây crash — backup gần nhất trước đó cách 11 tiếng vì cron
+  chỉ chạy 1 lần/ngày (03:30). Fix: `job_backup_db()` chạy mỗi 2 tiếng thay vì mỗi 24h (tăng
+  điểm khôi phục tối đa từ 1 ngày → 2 tiếng). Thêm `job_check_disk_usage()` chạy hàng ngày
+  09:30: query `pg_database_size()` → cảnh báo Telegram admin khi vượt 70% `DB_VOLUME_LIMIT_MB`
+  (default 500MB). `telegram-bot/BACKUP.md` cập nhật quy trình mới | 2026-07-16 (live session,
+  Harvey + Claude Sonnet 5, commit 31a96c1)
+
+- [DONE] GOV-015 · Bản Web độc lập — bước 1: auth qua Telegram Login Widget + portfolio overview.
+  Thêm layer xác thực riêng cho Web (browser thường, không cần Telegram app): verify chữ ký
+  Telegram Login Widget (thuật toán KHÁC initData — secret_key=SHA256(bot_token), không có prefix
+  "WebAppData"), phát hành web session token riêng (HMAC, 30 ngày, format `tg_id.expiry.sig`),
+  mở rộng `_auth_write()` chấp nhận header `X-Web-Session` song song `X-Init-Data`. Trang
+  `GET /web` → `telegram-bot/miniapp/web.html`: đăng nhập bằng Telegram Login Widget, hiện tier
+  + tổng giá trị/lãi-lỗ danh mục (dùng `/api/me` có sẵn).
+  **Fix ngay sau**: thẻ `<script data-telegram-login...>` phải là con trực tiếp của div muốn
+  hiển thị nút — đặt ở cuối `<body>` khiến Telegram tự chèn iframe xuống cuối trang thay vì
+  trong container đăng nhập.
+  **Yêu cầu deploy**: set `WEB_SESSION_SECRET` trên Railway + Harvey chạy `/setdomain` trên
+  @BotFather trỏ về domain Railway để Telegram Login Widget hoạt động | 2026-07-16 (live session,
+  Harvey + Claude Sonnet 5, commits 713eb08 + b96dab3)
+
+- [DONE] GOV-015 bước 2 · Bảng tín hiệu quỹ trong web.html — sau đăng nhập, hiển thị danh sách
+  quỹ đang theo dõi với NAV, %thay đổi 1 ngày, badge tín hiệu MUA/BÁN/HOLD (màu khớp design
+  system). Gọi `/api/signals?user_id=` với `X-Web-Session` header — không cần sửa backend vì
+  `_auth_write()` đã chấp nhận X-Web-Session từ bước 1. Skeleton loading animation trong lúc
+  chờ API | 2026-07-17 (scheduled task ca sáng, commit f543bb8)
+
+- [DONE] GOV-015 bước 3 · Lịch sử giao dịch trong web.html — card "📋 Giao dịch gần đây" hiện
+  10 giao dịch CCQ mới nhất: ngày, mã quỹ + số CCQ, số tiền (âm khi mua/dương khi bán), badge
+  MUA/BÁN. Gọi `/api/trades?user_id=` với X-Web-Session. loadSignals và loadTrades chạy song
+  song (không await) ngay sau loadProfile | 2026-07-17 (scheduled task ca sáng, commit 8a6801f)
+
+- [DONE] GOV-015 bước 4 · T+2 prediction trong bảng tín hiệu (Pro only) — tận dụng predictions{}
+  đã có sẵn trong `/api/me` response (không gọi thêm API): loadProfile() lưu d.predictions vào
+  biến module `_predictions`, pass vào `loadSignals()`. Với mỗi quỹ có dự báo T+2, hiển thị hint
+  nhỏ "T+2 ↑0.5%" / "T+2 ↓0.3%" (xanh/đỏ) dưới tên quỹ. Tự ẩn với free users vì server không
+  trả predictions cho tier free | 2026-07-17 (scheduled task ca sáng, commit 51e8987)
+
 ## Session (autonomous, scheduled) — Ca chiều 2026-07-16: verify + cập nhật BACKLOG, không code thêm
 # S1-S3: đọc BACKLOG (683 dòng) + memory.md (775 dòng) + `git log` — phát hiện 6 commit MỚI
 # (10:59-12:30) chưa có trong BACKLOG, tất cả đã DONE bởi 1 live session (Harvey + Claude Sonnet
