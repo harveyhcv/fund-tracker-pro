@@ -132,7 +132,10 @@ footer{text-align:center;padding:16px 0;color:var(--muted);font-size:10px}
       <b>Bản Web đang trong giai đoạn hoàn thiện.</b> DCA, thêm giao dịch mới, admin... đang được
       chuyển dần từ Mini App sang — dùng <a href="https://t.me/FundTrackerPro_bot" style="color:var(--c0)">Telegram Mini App</a> cho trải nghiệm đầy đủ trong lúc chờ.
     </div>
-    <button class="btn" style="margin-top:14px" onclick="logout()">Đăng xuất</button>
+    <div style="display:flex;gap:10px;margin-top:14px">
+      <button class="btn" onclick="refreshData()" id="btn-refresh">⟳ Làm mới</button>
+      <button class="btn" onclick="logout()">Đăng xuất</button>
+    </div>
   </div>
 
   <footer>Fund Tracker Pro</footer>
@@ -300,6 +303,22 @@ async function loadSignals(session, tgId, predictions){
   }catch(e){
     list.innerHTML = '<p class="list-note">Lỗi tải tín hiệu: ' + e.message + '</p>';
   }
+}
+
+function refreshData(){
+  const session = localStorage.getItem(SESSION_KEY);
+  const tgId    = localStorage.getItem(TGID_KEY);
+  if(!session || !tgId) return;
+  const btn = document.getElementById('btn-refresh');
+  btn.textContent = '⟳ Đang tải...';
+  btn.disabled = true;
+  Promise.all([
+    loadSignals(session, tgId, _predictions),
+    loadTrades(session, tgId),
+  ]).finally(() => {
+    btn.textContent = '⟳ Làm mới';
+    btn.disabled = false;
+  });
 }
 
 function logout(){
