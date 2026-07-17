@@ -826,3 +826,47 @@ thật) — đúng điều kiện dừng. Việc thật của ca này: cập nh�
 
 **Không cần làm gì để T2-008 reweight sớm hơn** — tự đủ điều kiện khi có thêm vài batch
 `job_t2_score` (chạy hàng ngày 18:32), không cần can thiệp thủ công.
+
+---
+
+## ✅ Session (autonomous, scheduled) — Ca sáng 2026-07-17: GOV-015 web bước 2/3/4
+
+**Baseline đầu session**: py_compile OK, pytest 254/254 pass.
+
+**Phát hiện đầu session**: Harvey có 5 commit mới (GOV-012-part2, GOV-013, GOV-013-part2,
+GOV-014, GOV-015 bước 1) từ live session tối 16/07 chưa có trong BACKLOG. Tất cả đã DONE,
+không có P0/P1 nào mới để làm. Tiếp nối GOV-015 (bước 1 Harvey đã làm: web auth + portfolio
+overview) bằng 3 bước tiếp theo cho bản Web độc lập.
+
+**GOV-015 bước 2** — Bảng tín hiệu quỹ trong `telegram-bot/miniapp/web.html`:
+- Sau đăng nhập, gọi `/api/signals?user_id=` với `X-Web-Session` header (không cần sửa backend)
+- Mỗi quỹ hiện: code, tên, NAV, %1D, badge MUA/BÁN/HOLD (màu design system)
+- Skeleton animation trong lúc chờ | commit f543bb8
+
+**GOV-015 bước 3** — Lịch sử giao dịch trong web.html:
+- Card "📋 Giao dịch gần đây" — 10 giao dịch CCQ mới nhất từ `/api/trades`
+- Mỗi row: ngày, mã+số CCQ, số tiền (âm mua/dương bán), badge MUA/BÁN
+- loadSignals + loadTrades chạy song song (không await), không chặn nhau | commit 8a6801f
+
+**GOV-015 bước 4** — T+2 prediction trong bảng tín hiệu (Pro only):
+- Tận dụng `predictions{}` từ `/api/me` (KHÔNG gọi thêm API riêng)
+- `loadProfile()` lưu `d.predictions` vào biến module `_predictions`, pass vào `loadSignals(predictions)`
+- Hint nhỏ "T+2 ↑0.5%" / "T+2 ↓0.3%" dưới tên quỹ, xanh/đỏ theo chiều
+- Tự ẩn với free users (server không trả predictions) | commit 51e8987
+
+**Bài học kỹ thuật:**
+- `/api/me` đã trả `signals` + `predictions` trong cùng 1 response — tận dụng để tránh API call
+  thừa. `/api/signals` vẫn cần thiết vì nó trả `all_funds` (map code→tên) không có trong `/api/me`.
+- Khi `loadProfile()` không thể pass `predictions` ra ngoài `try` block (`const d` scoped inside),
+  dùng biến module `let _predictions = {}` và set bên trong try trước khi catch → pass ra ngoài được.
+- `_auth_write()` đã support `X-Web-Session` từ GOV-015 bước 1, nên tất cả endpoint dùng
+  `_auth_write` (gồm cả /api/signals, /api/trades, /api/me) đều hoạt động với Web session thật.
+
+**Không code gì mới cho Python** — chỉ sửa `web.html` (HTML/CSS/JS), không cần thay đổi backend.
+
+**Việc cần Harvey (tồn đọng):**
+1. Set `WEB_SESSION_SECRET` trên Railway (cần thiết để web.html hoạt động thật)
+2. Chạy `/setdomain` trên @BotFather trỏ về Railway domain (cần cho Telegram Login Widget)
+3. Cấp JWT tcinvest mới (hết hạn lại từ 16/07, pattern lặp nhiều lần)
+4. Xác nhận NTPPF/VMEEF có nên track (FK violation khi harvest tiếp tục)
+5. `ios/` + `Fund Tracker Pro.xcodeproj/` deleted + `dashboard/portfolio.html` + scripts/* vẫn chưa commit
