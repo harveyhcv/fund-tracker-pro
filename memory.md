@@ -870,3 +870,35 @@ overview) bằng 3 bước tiếp theo cho bản Web độc lập.
 3. Cấp JWT tcinvest mới (hết hạn lại từ 16/07, pattern lặp nhiều lần)
 4. Xác nhận NTPPF/VMEEF có nên track (FK violation khi harvest tiếp tục)
 5. `ios/` + `Fund Tracker Pro.xcodeproj/` deleted + `dashboard/portfolio.html` + scripts/* vẫn chưa commit
+
+---
+
+## ✅ Session (autonomous, scheduled) — Ca chiều 2026-07-19: tests GOV-017 + update BACKLOG
+
+**Baseline đầu session**: py_compile OK, pytest 254/254 pass.
+
+**Phát hiện**: 7 commits mới từ live session 17/07 chưa có trong BACKLOG:
+- GOV-015 bước 5 (26ac450): nút Làm mới trong web.html — song song loadSignals + loadTrades
+- fix(GOV-016) (e728855): T+2 mũi tên trung tính "≈" khi NAV trong khoảng tin cậy CI
+- feat(GOV-016) bước 3 (1516bb0): tóm tắt chấm điểm T+2 ngay cạnh box "Giá chốt T+2"
+- fix(GOV-016) (1f1e18e): drawAccuracyChart trống khi n=1 — vẽ dot đơn lẻ thay vì canvas trắng
+- GOV-017 (5f12503): gộp Mã Promo + Voucher thành 1 loại với toggle requires_purchase
+- VPS Migration Plan (62a7da6): kế hoạch dự phòng Railway → VPS + Coolify (tài liệu only)
+
+**Task thực hiện: 14 tests mới cho GOV-017** (tests/test_gov017_discount.py):
+- Phát hiện: GOV-017 không có test coverage — hàm redeem_instant_discount_code() mới hoàn toàn
+- 11 test cho redeem_instant_discount_code(): mã rỗng, user bị ban, code not found,
+  requires_purchase=True → error, expired/max_uses_exhausted, happy path, duplicate → idempotency
+  blocked, order_ref format INSTANT-<code>-<tg_id>, code normalized uppercase.
+- 3 test TestCreateDiscountCodeValidation: validation ValueError cho combination không hợp lệ.
+- Pattern: fake cursor side_effect list (SELECT→INSERT) + patch is_banned/extend_pro/log_audit.
+
+**Kết quả**: 268/268 tests (+14 mới), BACKLOG.md và memory.md cập nhật đầy đủ.
+
+**Tất cả P0/P1 DONE.** Chỉ còn PAY-006 (VNPay)/PAY-007 (Stripe) — P2, chờ merchant credentials.
+
+**Việc cần Harvey (tồn đọng):**
+1. Set WEB_SESSION_SECRET trên Railway + chạy /setdomain @BotFather
+2. Cấp JWT tcinvest mới (hết hạn từ 16/07, pattern lặp nhiều lần)
+3. Xác nhận NTPPF/VMEEF có nên track (FK violation khi harvest tiếp tục)
+4. ios/ + Fund Tracker Pro.xcodeproj/ deleted + dashboard/portfolio.html + scripts/* chưa commit

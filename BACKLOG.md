@@ -4,9 +4,9 @@
 # Priority: P0 (blocker) / P1 (important) / P2 (nice-to-have)
 # Claude đọc file này ĐẦU TIÊN mỗi session. Pick task IN_PROGRESS nếu có, nếu không pick P0 cao nhất.
 #
-# Last updated: 2026-07-17 (ca sáng — GOV-015 web bước 2/3/4/5: signals/trades/T+2/refresh
-# trong web.html; ghi nhận 5 commits Harvey 16/07: GOV-012-part2, GOV-013, GOV-013-part2,
-# GOV-014, GOV-015 bước 1; 254/254 tests pass; deploy cần Harvey push/set WEB_SESSION_SECRET)
+# Last updated: 2026-07-19 (ca chiều — ghi nhận GOV-015 bước 5, GOV-016 x3, GOV-017, VPS docs
+# từ live session 17/07; viết 14 tests mới cho GOV-017 (redeem_instant_discount_code);
+# 268/268 tests pass; tất cả P0/P1 DONE — chỉ còn PAY-006/007 P2 chờ merchant credentials)
 
 ## Session (autonomous, scheduled) — Ca sáng 2026-07-16: update BACKLOG, verify baseline
 # Tình trạng: tất cả P0/P1 đã DONE từ trước. Điều kiện dừng ca này: "Hết P0+P1".
@@ -760,6 +760,44 @@
   biến module `_predictions`, pass vào `loadSignals()`. Với mỗi quỹ có dự báo T+2, hiển thị hint
   nhỏ "T+2 ↑0.5%" / "T+2 ↓0.3%" (xanh/đỏ) dưới tên quỹ. Tự ẩn với free users vì server không
   trả predictions cho tier free | 2026-07-17 (scheduled task ca sáng, commit 51e8987)
+
+- [DONE] GOV-015 bước 5 · Nút "⟳ Làm mới" trong web.html — chạy loadSignals + loadTrades song song
+  (Promise.all), hiện "⟳ Đang tải..." + disabled trong lúc chờ, tự restore sau khi xong. Tái dùng
+  _predictions đã cache từ loadProfile để không gọi /api/me lần 2 (tiết kiệm request)
+  | 2026-07-17 (live session Harvey + Claude, commit 26ac450)
+
+- [DONE] GOV-016 · T+2 accuracy improvements — 3 cải tiến liên quan biểu đồ và chấm điểm T+2:
+  (1) fix(GOV-016): T+2 hiện mũi tên trung tính "≈" + ghi chú "(chưa rõ hướng)" khi NAV hiện tại
+  còn nằm trong khoảng tin cậy 80% [ci_low, ci_high] — trước đây hiện mũi tên xanh/đỏ dù diff nhỏ
+  hơn sai số mô hình, gây mâu thuẫn với nhãn xu hướng momentum. Chỉ tô màu khi NAV nằm HẲN ngoài
+  CI (Harvey phát hiện qua screenshot: "+0.03%" mũi tên xanh cạnh nhãn "GIẢM") | commit e728855
+  (2) feat(GOV-016) bước 3: thêm 1 dòng tóm tắt chấm điểm T+2 ngay cạnh box "Giá chốt T+2" trong
+  modal Nghiên cứu — hiện "sai số TB X% (n mẫu)", cảnh báo nếu n<5 mẫu. Bấm → cuộn + mở accordion
+  chi tiết biểu đồ (đã có sẵn từ T2-010, không xây lại). Giải quyết feedback Harvey "không thấy
+  được biểu đồ" vì accordion cuối cùng, phải cuộn qua 5 card mới thấy | commit 1516bb0
+  (3) fix(GOV-016): drawAccuracyChart trống khi chỉ có 1 điểm — moveTo() không có lineTo() theo sau
+  → canvas trắng. Fix: vẽ dot đơn lẻ khi n=1, vẫn có thể thấy điểm dữ liệu đầu tiên | commit 1f1e18e
+
+- [DONE] GOV-017 · Gộp Mã Promo + Mã Voucher thành 1 loại mã duy nhất với toggle — Harvey chốt:
+  thay vì 2 card riêng biệt (Promo/Voucher) gây nhầm cơ chế, chỉ còn 1 box "MÃ ƯU ĐÃI" với 2 toggle:
+  "Có bắt buộc mua hàng?" (Có/Không) + "Loại ưu đãi" (Giảm % / Tặng ngày Premium).
+  Ràng buộc: requires_purchase=False CHỈ cho phép benefit_type=bonus_days (giảm % vô nghĩa khi không
+  có giao dịch) và auto_apply=false (mã free phải tự nhập, không áp dụng tự động vào 1 đơn hàng).
+  DB: thêm discount_codes.requires_purchase (additive, default true — mã cũ không cần backfill).
+  redeem_instant_discount_code() mới: cấp ngày Premium NGAY khi requires_purchase=false, tái dùng
+  UNIQUE(order_ref) bằng synthetic key "INSTANT-<code>-<tg_id>" (idempotency không cần thêm cột).
+  _api_promo_redeem fallback sang hàm này khi promo_codes không tìm thấy mã. Mã Referral
+  (kind='referral') không đổi — vẫn 2 giai đoạn, tách biệt hoàn toàn. promo_codes + CRUD admin cũ
+  (kind='admin') giữ nguyên để quản lý mã TRIAL cũ đã tồn tại (GOV-006). Validate cả JS lẫn Python.
+  Test coverage: 14 tests mới (test_gov017_discount.py) — 11 test redeem_instant_discount_code, 3 test
+  create_discount_code validation. 268/268 total suite | 2026-07-17 (live session Harvey + Claude,
+  commit 5f12503) + 2026-07-19 (ca chiều autonomous, tests commit 8a58dd1)
+
+- [DONE] VPS Migration Plan · Kế hoạch dự phòng di chuyển Railway → VPS + Coolify — tài liệu tham
+  khảo (KHÔNG đổi code/hành vi app). Ghi lại ràng buộc kỹ thuật (long-polling 1 token/1 tiến trình,
+  dữ liệu dùng chung DB) khiến cutover bắt buộc có cửa sổ ngừng ngắn, quy trình 3 giai đoạn
+  (chuẩn bị song song → cutover có kiểm soát → rollback trong 2 tuần). Harvey quyết định khi nào
+  cần chuyển | 2026-07-19 (live session Harvey + Claude, telegram-bot/MIGRATION_PLAN.md, commit 62a7da6)
 
 ## Session (autonomous, scheduled) — Ca chiều 2026-07-16: verify + cập nhật BACKLOG, không code thêm
 # S1-S3: đọc BACKLOG (683 dòng) + memory.md (775 dòng) + `git log` — phát hiện 6 commit MỚI
