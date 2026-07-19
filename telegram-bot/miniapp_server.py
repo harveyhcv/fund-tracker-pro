@@ -1960,10 +1960,11 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         # không được persist vào DB (chỉ dùng nội bộ để tính score).
         stats = {}
         live  = {}
+        pts   = []
         if _BOT_IMPORTED:
             try:
                 from bot import get_nav_series as _gnv, compute_research_stats
-                pts = _gnv(code, _FUND_CATALOG.get(code, cfg.get("funds", {}).get(code, {})), cfg)
+                pts = _gnv(code, _FUND_CATALOG.get(code, cfg.get("funds", {}).get(code, {})), cfg) or []
                 if pts:
                     stats = compute_research_stats(pts)
                     live  = _calc_signal_bot(code, pts)
@@ -2104,11 +2105,18 @@ class MiniAppHandler(BaseHTTPRequestHandler):
                     }
                     break
 
+        # Trả về 90 điểm NAV gần nhất cho sparkline — pts đã có sẵn trong memory
+        try:
+            nav_series = [{"date": str(p[0])[:10], "nav": float(p[1])} for p in pts[-90:] if p[1] is not None]
+        except Exception:
+            nav_series = []
+
         _json(self, {
             "code": code, "fund_name": fund_name,
             "nav": nav, "nav_date": d.get("nav_date",""),
             "signal": sig, "score": sc, "chg_pct": d.get("chg_pct", 0),
             "position": position,
+            "nav_series": nav_series,
             "technical": {
                 "verdict": ta_v, "score": sc,
                 "rsi": rsi_note(rsi), "bb": bb_note(bb),

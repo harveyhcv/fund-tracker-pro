@@ -36,12 +36,15 @@ header{padding:20px 0 16px;text-align:center}
 .pos{color:var(--buy)}.neg{color:var(--sell)}
 .note{background:rgba(0,229,255,.06);border:1px solid rgba(0,229,255,.18);border-radius:8px;padding:12px 14px;font-size:11px;color:var(--muted);line-height:1.6;margin-top:14px}
 .note b{color:var(--text)}
-.btn{padding:9px 18px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;transition:.2s;font-family:var(--sans);border:none;background:var(--s2);border:1px solid var(--border);color:var(--text)}
+.btn{padding:9px 18px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;transition:.2s;font-family:var(--sans);border:1px solid var(--border);background:var(--s2);color:var(--text)}
 .btn:hover{border-color:var(--c0);color:var(--c0)}
 #err{display:none;color:var(--sell);font-size:11px;margin-top:10px}
 footer{text-align:center;padding:16px 0;color:var(--muted);font-size:10px}
-.fund-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)}
+
+/* Fund list */
+.fund-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);cursor:pointer;transition:.15s}
 .fund-row:last-child{border-bottom:none}
+.fund-row:hover{background:rgba(0,229,255,.04);margin:0 -10px;padding-left:10px;padding-right:10px;border-radius:6px}
 .fund-info{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0;margin-right:10px}
 .fund-code{font-family:var(--mono);font-size:11px;color:var(--c0);font-weight:600}
 .fund-name{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px}
@@ -56,6 +59,8 @@ footer{text-align:center;padding:16px 0;color:var(--muted);font-size:10px}
 .list-note{color:var(--muted);font-size:11px;text-align:center;padding:14px 0}
 .skeleton{height:10px;background:var(--s3);border-radius:4px;margin:4px 0;animation:pulse 1.4s ease-in-out infinite}
 @keyframes pulse{0%,100%{opacity:.5}50%{opacity:1}}
+
+/* Trade list */
 .trade-row{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border)}
 .trade-row:last-child{border-bottom:none}
 .trade-left{display:flex;flex-direction:column;gap:2px}
@@ -66,6 +71,61 @@ footer{text-align:center;padding:16px 0;color:var(--muted);font-size:10px}
 .type-badge{font-family:var(--mono);font-size:8px;font-weight:700;letter-spacing:.5px;padding:2px 7px;border-radius:4px}
 .type-buy{background:rgba(74,222,128,.12);color:var(--buy);border:1px solid rgba(74,222,128,.25)}
 .type-sell{background:rgba(248,113,113,.12);color:var(--sell);border:1px solid rgba(248,113,113,.25)}
+
+/* ── Detail panel ── */
+#panel-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:100;display:none;opacity:0;transition:opacity .25s}
+#panel-overlay.open{display:block;opacity:1}
+#detail-panel{position:fixed;bottom:0;left:0;right:0;max-width:520px;margin:0 auto;background:var(--s1);border-top:1px solid var(--border);border-radius:16px 16px 0 0;z-index:101;transform:translateY(100%);transition:transform .28s cubic-bezier(.32,.72,0,1);max-height:90vh;overflow-y:auto}
+#detail-panel.open{transform:translateY(0)}
+.panel-drag{width:36px;height:4px;background:var(--b2);border-radius:2px;margin:10px auto 16px}
+.panel-header{display:flex;align-items:flex-start;justify-content:space-between;padding:0 20px 16px;border-bottom:1px solid var(--border)}
+.ph-left{display:flex;flex-direction:column;gap:4px}
+.ph-code{font-family:var(--mono);font-size:13px;color:var(--c0);font-weight:600}
+.ph-name{font-size:12px;color:var(--muted);max-width:280px}
+.ph-close{background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;padding:0;line-height:1;transition:.15s}
+.ph-close:hover{color:var(--text)}
+.panel-body{padding:16px 20px 24px}
+
+/* NAV hero row */
+.p-nav-row{display:flex;align-items:baseline;gap:10px;margin-bottom:14px}
+.p-nav-val{font-family:var(--mono);font-size:24px;font-weight:700}
+.p-nav-chg{font-family:var(--mono);font-size:13px}
+.p-sig{margin-left:auto}
+
+/* Sparkline */
+#d-chart-wrap{margin:14px 0;position:relative}
+#d-chart{width:100%;height:120px;display:block;border-radius:6px}
+.chart-loading{display:flex;align-items:center;justify-content:center;height:120px;color:var(--muted);font-size:11px;background:var(--s2);border-radius:6px}
+
+/* Pro lock */
+.pro-lock{background:var(--s2);border:1px dashed var(--border);border-radius:8px;padding:18px;text-align:center;margin-top:14px}
+.pro-lock p{color:var(--muted);font-size:12px;margin-bottom:10px;line-height:1.5}
+
+/* Indicators */
+.ind-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+.ind-tile{background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:10px 12px}
+.ind-label{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+.ind-val{font-size:11px;color:var(--text);line-height:1.4}
+
+/* Verdict tiles */
+.verdict-section{margin-top:16px}
+.vsec-title{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+.verdict-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.vcard{background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:10px 12px}
+.vcard-label{font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+.vcard-val{font-size:11px;line-height:1.4}
+
+/* Position row */
+.pos-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:14px}
+.pos-tile{background:rgba(0,229,255,.05);border:1px solid rgba(0,229,255,.12);border-radius:8px;padding:8px 10px}
+.pos-label{font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:3px}
+.pos-val{font-family:var(--mono);font-size:12px}
+
+/* T+2 row */
+.t2-row{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--s2);border:1px solid var(--border);border-radius:8px;margin-bottom:12px;font-size:11px}
+.t2-label{color:var(--muted);white-space:nowrap}
+.t2-val{font-family:var(--mono);font-weight:600}
+.t2-ci{color:var(--muted);font-size:10px;margin-left:auto;font-family:var(--mono)}
 </style>
 </head>
 <body>
@@ -113,7 +173,7 @@ footer{text-align:center;padding:16px 0;color:var(--muted);font-size:10px}
     </div>
 
     <div class="card" id="signals-card" style="display:none">
-      <div class="ctitle">📊 Tín hiệu quỹ</div>
+      <div class="ctitle">📊 Tín hiệu quỹ <span style="color:var(--muted);font-weight:400;font-family:var(--sans);letter-spacing:0">(bấm để xem chi tiết)</span></div>
       <div id="signals-list">
         <div class="skeleton" style="width:100%;height:36px"></div>
         <div class="skeleton" style="width:100%;height:36px;margin-top:8px"></div>
@@ -141,16 +201,94 @@ footer{text-align:center;padding:16px 0;color:var(--muted);font-size:10px}
   <footer>Fund Tracker Pro</footer>
 </div>
 
+<!-- ─── Fund Detail Panel ─── -->
+<div id="panel-overlay" onclick="closeDetail()"></div>
+<div id="detail-panel" role="dialog" aria-modal="true">
+  <div class="panel-drag"></div>
+  <div class="panel-header">
+    <div class="ph-left">
+      <span class="ph-code" id="d-code">—</span>
+      <span class="ph-name" id="d-name">—</span>
+    </div>
+    <button class="ph-close" onclick="closeDetail()" aria-label="Đóng">×</button>
+  </div>
+  <div class="panel-body">
+    <!-- NAV + Signal -->
+    <div class="p-nav-row">
+      <span class="p-nav-val" id="d-nav">—</span>
+      <span class="p-nav-chg" id="d-chg">—</span>
+      <span class="p-sig sig-badge sig-hold" id="d-sig">—</span>
+    </div>
+
+    <!-- T+2 row (Pro) -->
+    <div class="t2-row" id="d-t2-row" style="display:none">
+      <span class="t2-label">Dự báo T+2</span>
+      <span class="t2-val" id="d-t2-val">—</span>
+      <span class="t2-ci" id="d-t2-ci"></span>
+    </div>
+
+    <!-- Sparkline -->
+    <div id="d-chart-wrap">
+      <div class="chart-loading" id="d-chart-loading">Đang tải biểu đồ…</div>
+      <canvas id="d-chart" style="display:none"></canvas>
+    </div>
+
+    <!-- Content khi Pro -->
+    <div id="d-pro-content" style="display:none">
+      <!-- Vị thế cá nhân -->
+      <div id="d-position" style="display:none">
+        <div class="ctitle" style="margin-top:14px">Vị thế của bạn</div>
+        <div class="pos-row">
+          <div class="pos-tile">
+            <div class="pos-label">Số CCQ</div>
+            <div class="pos-val" id="d-pos-units">—</div>
+          </div>
+          <div class="pos-tile">
+            <div class="pos-label">Giá vốn</div>
+            <div class="pos-val" id="d-pos-cost">—</div>
+          </div>
+          <div class="pos-tile">
+            <div class="pos-label">Lãi/Lỗ</div>
+            <div class="pos-val" id="d-pos-pnl">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Kỹ thuật -->
+      <div class="verdict-section">
+        <div class="vsec-title">Phân tích kỹ thuật</div>
+        <div class="ind-grid" id="d-indicators"></div>
+      </div>
+
+      <!-- 4 Trường phái -->
+      <div class="verdict-section">
+        <div class="vsec-title">5 Góc nhìn</div>
+        <div class="verdict-grid" id="d-verdicts"></div>
+      </div>
+    </div>
+
+    <!-- Lock khi Free -->
+    <div class="pro-lock" id="d-pro-lock" style="display:none">
+      <p>Phân tích chi tiết (RSI, MACD, BB, Bollinger, 5 trường phái) và biểu đồ NAV 90 ngày chỉ dành cho tài khoản <b style="color:var(--c0)">Pro</b>.</p>
+      <a href="https://t.me/FundTrackerPro_bot" style="color:var(--c0);font-size:12px;text-decoration:none">Nâng cấp Pro trong Telegram Mini App →</a>
+    </div>
+  </div>
+</div>
+
 <script>
 const SESSION_KEY = 'ftp_web_session';
 const TGID_KEY    = 'ftp_web_tgid';
 let _predictions  = {};
+let _isPro        = false;
+let _sigsCache    = {};  // code → signal data
 
 function showErr(msg){
   const el = document.getElementById('err');
   el.textContent = msg;
   el.style.display = 'block';
 }
+
+// ─── Auth ───────────────────────────────────────────────────────────
 
 async function onTelegramAuth(user){
   try{
@@ -175,6 +313,8 @@ async function onTelegramAuth(user){
   }
 }
 
+// ─── Data loading ────────────────────────────────────────────────────
+
 async function loadProfile(){
   const session = localStorage.getItem(SESSION_KEY);
   const tgId    = localStorage.getItem(TGID_KEY);
@@ -191,10 +331,10 @@ async function loadProfile(){
       showErr(d.error || 'Không tải được dữ liệu — Postgres có thể đang bảo trì');
       return;
     }
+    _isPro = d.tier === 'pro' || d.tier === 'admin';
     const tierEl = document.getElementById('pf-tier');
-    const isPro = d.tier === 'pro' || d.tier === 'admin';
-    tierEl.textContent = isPro ? 'PRO' : 'FREE';
-    tierEl.className = 'tier-badge ' + (isPro ? 'tier-pro' : 'tier-free');
+    tierEl.textContent = _isPro ? 'PRO' : 'FREE';
+    tierEl.className = 'tier-badge ' + (_isPro ? 'tier-pro' : 'tier-free');
     const p = d.portfolio || {};
     document.getElementById('st-value').textContent = p.total_value != null
       ? Math.round(p.total_value).toLocaleString('vi-VN') + ' đ' : '—';
@@ -264,6 +404,7 @@ async function loadSignals(session, tgId, predictions){
     const watched = d.watched || [];
     const sigs    = d.signals  || {};
     const names   = d.all_funds || {};
+    _sigsCache = sigs;
     if(!watched.length){
       list.innerHTML = '<p class="list-note">Chưa có quỹ nào được theo dõi</p>';
       return;
@@ -286,7 +427,10 @@ async function loadSignals(session, tgId, predictions){
         const t2Cls = t2Chg >= 0 ? 'pos' : 'neg';
         t2Html = `<span class="t2-hint ${t2Cls}">T+2 ${t2Chg >= 0 ? '↑' : '↓'}${Math.abs(t2Chg).toFixed(2)}%</span>`;
       }
-      return `<div class="fund-row">
+      // Lưu tên quỹ vào cache để dùng trong openDetail
+      if(!sigs[code]) sigs[code] = {};
+      sigs[code]._name = name;
+      return `<div class="fund-row" onclick="openDetail('${code}','${name.replace(/'/g,'')}')">
         <div class="fund-info">
           <span class="fund-code">${code}</span>
           <span class="fund-name">${name}</span>
@@ -328,7 +472,263 @@ function logout(){
   document.getElementById('gate').style.display = 'flex';
 }
 
-// Tự đăng nhập lại nếu đã có session còn hạn (30 ngày) từ lần trước
+// ─── Detail Panel ────────────────────────────────────────────────────
+
+function openDetail(code, name){
+  const s   = _sigsCache[code] || {};
+  const nav = s.nav;
+  const chg = s.chg_pct;
+  const sig = (s.signal || 'N/A').replace(/[🟢🔴⚪]/g,'').trim();
+
+  document.getElementById('d-code').textContent = code;
+  document.getElementById('d-name').textContent = name || code;
+
+  const navEl = document.getElementById('d-nav');
+  navEl.textContent = nav ? Math.round(nav).toLocaleString('vi-VN') + ' đ' : '—';
+
+  const chgEl = document.getElementById('d-chg');
+  if(chg != null){
+    chgEl.textContent = (chg >= 0 ? '+' : '') + chg.toFixed(2) + '%';
+    chgEl.className = 'p-nav-chg ' + (chg >= 0 ? 'pos' : 'neg');
+  } else {
+    chgEl.textContent = '—';
+    chgEl.className = 'p-nav-chg';
+  }
+
+  const sigEl = document.getElementById('d-sig');
+  sigEl.textContent = sig;
+  sigEl.className = 'p-sig sig-badge ' + (sig.includes('MUA') ? 'sig-buy' : sig.includes('BÁN') ? 'sig-sell' : 'sig-hold');
+
+  // T+2 row
+  const pred = _predictions[code];
+  const t2Row = document.getElementById('d-t2-row');
+  if(pred && pred.predicted_nav && nav){
+    const t2Nav = pred.predicted_nav;
+    const t2Chg = (t2Nav / nav - 1) * 100;
+    const hasCi = pred.ci_low != null && pred.ci_high != null;
+    const uncertain = hasCi && nav >= pred.ci_low && nav <= pred.ci_high;
+    const arrow = uncertain ? '≈' : (t2Chg >= 0 ? '↑' : '↓');
+    const cls   = uncertain ? '' : (t2Chg >= 0 ? 'pos' : 'neg');
+    const valEl = document.getElementById('d-t2-val');
+    valEl.textContent = `${arrow} ${Math.abs(t2Chg).toFixed(2)}% (${Math.round(t2Nav).toLocaleString('vi-VN')} đ)`;
+    valEl.className = 't2-val ' + cls;
+    if(hasCi){
+      document.getElementById('d-t2-ci').textContent =
+        `CI [${Math.round(pred.ci_low).toLocaleString('vi-VN')} – ${Math.round(pred.ci_high).toLocaleString('vi-VN')}]`;
+    } else {
+      document.getElementById('d-t2-ci').textContent = '';
+    }
+    t2Row.style.display = 'flex';
+  } else {
+    t2Row.style.display = 'none';
+  }
+
+  // Reset chart + detail areas
+  document.getElementById('d-chart').style.display = 'none';
+  document.getElementById('d-chart-loading').style.display = 'flex';
+  document.getElementById('d-pro-content').style.display = 'none';
+  document.getElementById('d-pro-lock').style.display = 'none';
+  document.getElementById('d-indicators').innerHTML = '';
+  document.getElementById('d-verdicts').innerHTML = '';
+  document.getElementById('d-position').style.display = 'none';
+
+  // Open panel
+  document.getElementById('panel-overlay').classList.add('open');
+  requestAnimationFrame(() => document.getElementById('detail-panel').classList.add('open'));
+
+  // Fetch research (Pro) or just show chart from nav-history (Free)
+  fetchDetail(code, nav);
+}
+
+async function fetchDetail(code, currentNav){
+  const session = localStorage.getItem(SESSION_KEY);
+  const tgId    = localStorage.getItem(TGID_KEY);
+  if(!session || !tgId) return;
+
+  if(_isPro){
+    try{
+      const resp = await fetch(`/api/research/${encodeURIComponent(code)}?user_id=${encodeURIComponent(tgId)}`, {
+        headers: {'X-Web-Session': session},
+      });
+      if(resp.status === 403){
+        showProLock();
+        return;
+      }
+      const d = await resp.json();
+      if(!resp.ok){ showProLock(); return; }
+      renderProDetail(d, currentNav);
+    }catch(e){
+      showProLock();
+    }
+  } else {
+    showProLock();
+    // Vẫn load chart cho free user từ nav-history (public endpoint)
+    try{
+      const resp = await fetch(`/api/nav/${encodeURIComponent(code)}`);
+      const d = await resp.json();
+      if(d.data && d.data.length){
+        drawSparkline(d.data.slice(-90), currentNav);
+      } else {
+        hideChartLoading();
+      }
+    }catch(e){
+      hideChartLoading();
+    }
+  }
+}
+
+function showProLock(){
+  document.getElementById('d-pro-lock').style.display = 'block';
+}
+
+function hideChartLoading(){
+  document.getElementById('d-chart-loading').style.display = 'none';
+}
+
+function renderProDetail(d, currentNav){
+  // Sparkline
+  if(d.nav_series && d.nav_series.length){
+    drawSparkline(d.nav_series, currentNav || d.nav);
+  } else {
+    hideChartLoading();
+  }
+
+  // Vị thế
+  const pos = d.position;
+  if(pos){
+    document.getElementById('d-pos-units').textContent = pos.units != null ? pos.units.toLocaleString('vi-VN', {maximumFractionDigits:4}) : '—';
+    document.getElementById('d-pos-cost').textContent  = pos.avg_cost ? Math.round(pos.avg_cost).toLocaleString('vi-VN') + ' đ' : '—';
+    const pnlEl = document.getElementById('d-pos-pnl');
+    if(pos.pnl_pct != null){
+      pnlEl.textContent = (pos.pnl_pct >= 0 ? '+' : '') + pos.pnl_pct.toFixed(1) + '%';
+      pnlEl.className = 'pos-val ' + (pos.pnl_pct >= 0 ? 'pos' : 'neg');
+    }
+    document.getElementById('d-position').style.display = 'block';
+  }
+
+  // Kỹ thuật
+  const tech = d.technical || {};
+  const indGrid = document.getElementById('d-indicators');
+  const indItems = [
+    ['RSI(14)', tech.rsi],
+    ['MACD', tech.macd],
+    ['Bollinger', tech.bb],
+    ['MA Cross', tech.golden_cross || tech.ma],
+    ['Stochastic', tech.stoch],
+    ['Momentum', tech.roc],
+  ].filter(([,v]) => v);
+  indGrid.innerHTML = indItems.map(([lbl, val]) =>
+    `<div class="ind-tile"><div class="ind-label">${lbl}</div><div class="ind-val">${val}</div></div>`
+  ).join('');
+
+  // 5 Góc nhìn
+  const val  = d.value   || {};
+  const mom  = d.momentum || {};
+  const dca  = d.dca     || {};
+  const risk = d.risk    || {};
+  const verdMap = [
+    ['Kỹ thuật', tech.verdict],
+    ['Định giá', val.verdict],
+    ['Động lực', mom.verdict],
+    ['DCA',      dca.verdict],
+    ['Rủi ro',   risk.verdict],
+  ].filter(([,v]) => v);
+  document.getElementById('d-verdicts').innerHTML = verdMap.map(([lbl, val]) =>
+    `<div class="vcard"><div class="vcard-label">${lbl}</div><div class="vcard-val">${val}</div></div>`
+  ).join('');
+
+  document.getElementById('d-pro-content').style.display = 'block';
+}
+
+// ─── Sparkline ────────────────────────────────────────────────────────
+
+function drawSparkline(series, currentNav){
+  const canvas  = document.getElementById('d-chart');
+  const loading = document.getElementById('d-chart-loading');
+
+  const dpr = window.devicePixelRatio || 1;
+  const W   = canvas.offsetWidth  || canvas.parentElement.offsetWidth;
+  const H   = 120;
+  canvas.width  = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  const navs = series.map(p => p.nav).filter(v => v != null);
+  if(!navs.length){ loading.style.display = 'none'; return; }
+
+  const mn = Math.min(...navs);
+  const mx = Math.max(...navs);
+  const pad = { top: 12, right: 10, bottom: 14, left: 10 };
+  const rng = mx - mn || 1;
+
+  const xOf = i => pad.left + i / (series.length - 1 || 1) * (W - pad.left - pad.right);
+  const yOf = v => pad.top + (1 - (v - mn) / rng) * (H - pad.top - pad.bottom);
+
+  // Area fill (gradient)
+  const grad = ctx.createLinearGradient(0, pad.top, 0, H - pad.bottom);
+  grad.addColorStop(0, 'rgba(0,229,255,.18)');
+  grad.addColorStop(1, 'rgba(0,229,255,.00)');
+
+  ctx.beginPath();
+  series.forEach((p, i) => {
+    if(p.nav == null) return;
+    const x = xOf(i), y = yOf(p.nav);
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.lineTo(xOf(series.length - 1), H - pad.bottom);
+  ctx.lineTo(xOf(0), H - pad.bottom);
+  ctx.closePath();
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // Line
+  ctx.beginPath();
+  let first = true;
+  series.forEach((p, i) => {
+    if(p.nav == null) return;
+    const x = xOf(i), y = yOf(p.nav);
+    first ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    first = false;
+  });
+  ctx.strokeStyle = 'var(--c0)';
+  ctx.lineWidth   = 1.5;
+  ctx.stroke();
+
+  // Endpoint dot
+  const last = series[series.length - 1];
+  if(last && last.nav != null){
+    ctx.beginPath();
+    ctx.arc(xOf(series.length - 1), yOf(last.nav), 3, 0, Math.PI * 2);
+    ctx.fillStyle = 'var(--c0)';
+    ctx.fill();
+  }
+
+  // Date labels
+  ctx.font = `10px ${getComputedStyle(document.body).getPropertyValue('--mono') || 'monospace'}`;
+  ctx.fillStyle = 'rgba(90,120,152,.7)';
+  ctx.textAlign = 'left';
+  ctx.fillText(series[0].date.slice(5), pad.left, H - 2);
+  ctx.textAlign = 'right';
+  ctx.fillText(series[series.length - 1].date.slice(5), W - pad.right, H - 2);
+
+  loading.style.display = 'none';
+  canvas.style.display = 'block';
+}
+
+function closeDetail(){
+  document.getElementById('detail-panel').classList.remove('open');
+  document.getElementById('panel-overlay').classList.remove('open');
+}
+
+// ESC để đóng panel
+document.addEventListener('keydown', e => { if(e.key === 'Escape') closeDetail(); });
+
+// ─── Init ─────────────────────────────────────────────────────────────
+
 if(localStorage.getItem(SESSION_KEY) && localStorage.getItem(TGID_KEY)){
   loadProfile();
 }
