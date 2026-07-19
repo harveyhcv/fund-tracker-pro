@@ -694,7 +694,7 @@ function drawSparkline(series, currentNav){
     first ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
     first = false;
   });
-  ctx.strokeStyle = 'var(--c0)';
+  ctx.strokeStyle = '#00e5ff';
   ctx.lineWidth   = 1.5;
   ctx.stroke();
 
@@ -703,7 +703,7 @@ function drawSparkline(series, currentNav){
   if(last && last.nav != null){
     ctx.beginPath();
     ctx.arc(xOf(series.length - 1), yOf(last.nav), 3, 0, Math.PI * 2);
-    ctx.fillStyle = 'var(--c0)';
+    ctx.fillStyle = '#00e5ff';
     ctx.fill();
   }
 
