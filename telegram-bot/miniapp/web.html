@@ -12,278 +12,398 @@
   --text:#dde6f0;--muted:#5a7898;
   --c0:#00e5ff;--buy:#4ade80;--sell:#f87171;--warn:#fb923c;
   --mono:'IBM Plex Mono',monospace;--sans:'DM Sans',sans-serif;
-  --hdr:48px;--nav:56px;
+  --hdr:52px;--nav:56px;
 }
 *{margin:0;padding:0;box-sizing:border-box}
-body{background:var(--bg);color:var(--text);font-family:var(--sans);overflow:hidden;height:100vh}
-body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
-  background:radial-gradient(ellipse 60% 40% at 10% 0%,rgba(0,229,255,.04),transparent 55%),
-             radial-gradient(ellipse 50% 30% at 90% 100%,rgba(192,132,252,.03),transparent 55%)}
+html,body{height:100%}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);overflow:hidden}
 
-/* ── Shared helpers ── */
+/* ── Utility ── */
 .pos{color:var(--buy)}.neg{color:var(--sell)}
+.mono{font-family:var(--mono)}
 .sig-buy{background:rgba(74,222,128,.12);color:var(--buy);border:1px solid rgba(74,222,128,.3)}
 .sig-sell{background:rgba(248,113,113,.12);color:var(--sell);border:1px solid rgba(248,113,113,.3)}
-.sig-hold{background:rgba(90,120,152,.1);color:var(--muted);border:1px solid var(--border)}
-.sig-badge{font-family:var(--mono);font-size:8px;font-weight:700;letter-spacing:.5px;padding:2px 6px;border-radius:3px;white-space:nowrap}
-.skeleton{background:var(--s3);border-radius:4px;animation:pulse 1.4s infinite}
+.sig-hold,.sig-na{background:rgba(90,120,152,.1);color:var(--muted);border:1px solid var(--border)}
+.sig-badge{font-family:var(--mono);font-size:8px;font-weight:700;letter-spacing:.5px;padding:2px 6px;border-radius:3px;white-space:nowrap;flex-shrink:0}
+.tier-pro{background:rgba(0,229,255,.12);color:var(--c0);border:1px solid rgba(0,229,255,.25);padding:2px 7px;border-radius:4px;font-size:9px;font-weight:700;letter-spacing:1px;font-family:var(--mono)}
+.tier-free{background:rgba(90,120,152,.12);color:var(--muted);border:1px solid var(--border);padding:2px 7px;border-radius:4px;font-size:9px;font-weight:700;letter-spacing:1px;font-family:var(--mono)}
+.sk{background:var(--s3);border-radius:4px;animation:pulse 1.4s infinite}
 @keyframes pulse{0%,100%{opacity:.35}50%{opacity:.8}}
-.list-note{color:var(--muted);font-size:12px;text-align:center;padding:20px 0}
+.empty-note{color:var(--muted);font-size:12px;text-align:center;padding:24px 0}
 .type-buy{background:rgba(74,222,128,.12);color:var(--buy);border:1px solid rgba(74,222,128,.25)}
 .type-sell{background:rgba(248,113,113,.12);color:var(--sell);border:1px solid rgba(248,113,113,.25)}
-.tier-pro{background:rgba(0,229,255,.12);color:var(--c0);border:1px solid rgba(0,229,255,.25)}
-.tier-free{background:rgba(90,120,152,.12);color:var(--muted);border:1px solid var(--border)}
-.tier-badge{padding:2px 8px;border-radius:4px;font-size:9px;font-weight:700;letter-spacing:1px;font-family:var(--mono)}
+.type-badge{font-family:var(--mono);font-size:8px;font-weight:700;letter-spacing:.5px;padding:2px 5px;border-radius:3px}
+input:focus{outline:2px solid rgba(0,229,255,.35);outline-offset:-1px}
 
 /* ══ GATE ══ */
-#gate{position:fixed;inset:0;z-index:300;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--bg)}
+#gate{position:fixed;inset:0;z-index:400;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--bg)}
 .gate-logo{font-family:var(--mono);font-size:18px;color:var(--c0);letter-spacing:1px;text-align:center}
 .gate-logo small{color:var(--muted);font-size:9px;display:block;margin-top:3px;letter-spacing:3px;text-transform:uppercase}
-.gate-card{background:var(--s1);border:1px solid var(--border);border-radius:12px;padding:28px 32px;margin-top:20px;width:min(360px,90vw);text-align:center}
+.gate-card{background:var(--s1);border:1px solid var(--border);border-radius:12px;padding:28px 32px;margin-top:20px;width:min(360px,92vw);text-align:center}
 .gate-card p{color:var(--muted);font-size:13px;line-height:1.65;margin-bottom:20px}
 #widget-box{display:flex;justify-content:center;min-height:44px}
 #err{color:var(--sell);font-size:11px;margin-top:10px;min-height:14px}
 
 /* ══ HEADER ══ */
-#top-bar{
-  position:fixed;top:0;left:0;right:0;height:var(--hdr);z-index:200;
-  display:none;align-items:center;justify-content:space-between;padding:0 14px;
-  background:rgba(6,11,20,.9);border-bottom:1px solid var(--border);backdrop-filter:blur(12px)
+#topbar{
+  position:fixed;top:0;left:0;right:0;height:var(--hdr);z-index:300;
+  display:none;align-items:center;gap:0;
+  background:rgba(6,11,20,.92);border-bottom:1px solid var(--border);backdrop-filter:blur(16px)
 }
-.tb-logo{font-family:var(--mono);font-size:12px;color:var(--c0);letter-spacing:.5px}
-.tb-logo small{color:var(--muted);font-size:9px;letter-spacing:2px;margin-left:6px}
-.tb-right{display:flex;align-items:center;gap:8px}
-.tb-avatar{width:26px;height:26px;border-radius:50%;background:var(--s2);border:1px solid var(--border);object-fit:cover}
-.tb-name{font-size:12px;font-weight:500}
-.tb-btn{background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:5px;padding:3px 9px;font-size:10px;cursor:pointer;font-family:var(--mono);transition:.15s;white-space:nowrap}
+.tb-brand{font-family:var(--mono);font-size:11px;color:var(--c0);letter-spacing:.5px;padding:0 14px;flex-shrink:0}
+.tb-brand small{color:var(--muted);font-size:8px;letter-spacing:2px;margin-left:5px}
+.tb-pf{display:flex;align-items:baseline;gap:12px;flex:1;padding:0 10px;min-width:0;overflow:hidden}
+.tb-pf-item{display:flex;flex-direction:column;gap:1px;flex-shrink:0}
+.tb-pk{font-size:8px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted)}
+.tb-pv{font-family:var(--mono);font-size:13px;font-weight:600}
+.tb-sep{width:1px;height:20px;background:var(--border);flex-shrink:0}
+.tb-right{display:flex;align-items:center;gap:8px;padding:0 12px;flex-shrink:0}
+.tb-avatar{width:24px;height:24px;border-radius:50%;background:var(--s2);border:1px solid var(--border);object-fit:cover;flex-shrink:0}
+.tb-name{font-size:12px;font-weight:500;white-space:nowrap}
+.tb-btn{background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:5px;padding:3px 8px;font-size:10px;cursor:pointer;font-family:var(--mono);transition:.15s;white-space:nowrap;line-height:1.6}
 .tb-btn:hover{border-color:var(--c0);color:var(--c0)}
 
 /* ══ APP ══ */
 #app{display:none;padding-top:var(--hdr)}
 
 /* ════════════════════════════════════
-   DESKTOP  ≥ 769px  — 3-column
+   DESKTOP ≥ 769px
 ════════════════════════════════════ */
 @media(min-width:769px){
   body{overflow:hidden}
   #app{height:100vh}
-  #layout{display:grid;grid-template-columns:272px 1fr 288px;height:calc(100vh - var(--hdr))}
+  #layout{
+    display:grid;
+    grid-template-columns:290px 1fr 300px;
+    height:calc(100vh - var(--hdr))
+  }
+  /* hide mobile elements */
   #mobile-app,#bottom-nav,#panel-overlay,#detail-panel{display:none!important}
 
-  .col{display:flex;flex-direction:column;overflow:hidden}
+  /* cols */
+  .col{display:flex;flex-direction:column;overflow:hidden;position:relative}
   .col+.col{border-left:1px solid var(--border)}
   .col-hdr{
-    flex-shrink:0;padding:10px 14px;border-bottom:1px solid var(--border);
-    font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);
-    display:flex;align-items:center;justify-content:space-between
+    flex-shrink:0;padding:8px 12px;border-bottom:1px solid var(--border);
+    background:rgba(13,22,37,.6)
   }
-  .col-body{flex:1;overflow-y:auto}
+  .col-body{flex:1;overflow-y:auto;overflow-x:hidden}
+  .col-body::-webkit-scrollbar{width:4px}
+  .col-body::-webkit-scrollbar-thumb{background:var(--b2);border-radius:2px}
 
-  /* LEFT watchlist */
-  #watch-list{padding:2px 0}
-  .w-row{
-    display:flex;align-items:center;padding:8px 14px;cursor:pointer;
-    border-left:3px solid transparent;transition:.12s;gap:8px
+  /* ── LEFT: Market screener ── */
+  #search-box{
+    width:100%;background:var(--s2);border:1px solid var(--border);
+    color:var(--text);border-radius:6px;padding:7px 10px 7px 30px;
+    font-family:var(--sans);font-size:12px;transition:.15s
   }
-  .w-row:hover{background:rgba(0,229,255,.035)}
-  .w-row.active{background:rgba(0,229,255,.07);border-left-color:var(--c0)}
-  .w-left{flex:1;min-width:0}
-  .w-code{font-family:var(--mono);font-size:11px;color:var(--c0);font-weight:600}
-  .w-name{font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .w-t2{font-family:var(--mono);font-size:9px;margin-top:1px}
-  .w-right{display:flex;flex-direction:column;align-items:flex-end;gap:2px;flex-shrink:0}
-  .w-nav{font-family:var(--mono);font-size:11px}
-  .w-chg{font-family:var(--mono);font-size:9px}
-  #watch-footer{flex-shrink:0;border-top:1px solid var(--border);padding:12px 14px}
-  .wf-row{display:flex;justify-content:space-between}
-  .wf-item{flex:1}
-  .wf-item+.wf-item{text-align:right}
-  .wf-k{font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
-  .wf-v{font-family:var(--mono);font-size:15px;font-weight:600}
+  #search-box::placeholder{color:var(--muted)}
+  .search-wrap{position:relative;margin-bottom:8px}
+  .search-icon{position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:13px;pointer-events:none}
+  .filter-chips{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:2px}
+  .chip{
+    font-family:var(--mono);font-size:8px;font-weight:700;letter-spacing:.5px;
+    padding:3px 7px;border-radius:3px;cursor:pointer;border:1px solid var(--border);
+    color:var(--muted);background:transparent;transition:.12s;white-space:nowrap
+  }
+  .chip.active,.chip:hover{border-color:var(--c0);color:var(--c0);background:rgba(0,229,255,.06)}
+  .chip.chip-buy.active{border-color:var(--buy);color:var(--buy);background:rgba(74,222,128,.07)}
+  .chip.chip-sell.active{border-color:var(--sell);color:var(--sell);background:rgba(248,113,113,.07)}
+  .chip.chip-watch.active{border-color:var(--warn);color:var(--warn);background:rgba(251,146,60,.07)}
 
-  /* CENTER research */
+  .market-group-hdr{
+    font-size:8px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);
+    padding:8px 12px 4px;position:sticky;top:0;background:rgba(6,11,20,.9);z-index:1
+  }
+  .f-row{
+    display:flex;align-items:center;padding:7px 12px;cursor:pointer;
+    border-left:2px solid transparent;transition:.1s;gap:6px;
+  }
+  .f-row:hover{background:rgba(0,229,255,.03)}
+  .f-row.active{background:rgba(0,229,255,.07);border-left-color:var(--c0)}
+  .f-row.watched::after{content:'★';font-size:8px;color:var(--warn);flex-shrink:0}
+  .fl{flex:1;min-width:0}
+  .fl-code{font-family:var(--mono);font-size:10px;color:var(--c0);font-weight:600}
+  .fl-name{font-size:9px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+  .fl-t2{font-family:var(--mono);font-size:8px;margin-top:1px}
+  .fr{display:flex;flex-direction:column;align-items:flex-end;gap:1px;flex-shrink:0}
+  .fr-nav{font-family:var(--mono);font-size:10px}
+  .fr-chg{font-family:var(--mono);font-size:8px}
+
+  /* ── CENTER: Research ── */
   #col-research{background:var(--bg)}
-  #research-empty{
+  #rc-empty{
     flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
-    gap:10px;color:var(--muted)
+    gap:12px;color:var(--muted);padding:40px 20px;text-align:center
   }
-  #research-content{flex:1;overflow-y:auto;display:none;flex-direction:column}
+  #rc-empty svg{opacity:.15}
+  #rc-empty p{font-size:13px;line-height:1.7;max-width:220px}
+  #rc-content{flex:1;overflow-y:auto;display:none;flex-direction:column}
+  #rc-content::-webkit-scrollbar{width:4px}
+  #rc-content::-webkit-scrollbar-thumb{background:var(--b2);border-radius:2px}
 
-  .rc-head{padding:14px 18px;border-bottom:1px solid var(--border);flex-shrink:0}
-  .rch-top{display:flex;align-items:baseline;gap:8px;margin-bottom:10px}
+  /* fund header */
+  .rch{padding:14px 16px;border-bottom:1px solid var(--border);flex-shrink:0}
+  .rch-top{display:flex;align-items:baseline;gap:8px;margin-bottom:10px;flex-wrap:wrap}
   .rch-code{font-family:var(--mono);font-size:13px;color:var(--c0);font-weight:700;letter-spacing:.5px}
-  .rch-name{font-size:12px;color:var(--muted)}
-  .rch-row{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
-  .rch-nav{font-family:var(--mono);font-size:28px;font-weight:700;line-height:1}
-  .rch-chg{font-family:var(--mono);font-size:14px}
-  .rch-sig{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.5px;padding:4px 12px;border-radius:5px}
+  .rch-name{font-size:11px;color:var(--muted)}
+  .rch-nums{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+  .rch-nav{font-family:var(--mono);font-size:26px;font-weight:700;line-height:1}
+  .rch-chg{font-family:var(--mono);font-size:13px}
+  .rch-sig{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.5px;padding:3px 10px;border-radius:4px}
 
-  #rc-t2{
-    flex-shrink:0;display:none;align-items:center;gap:8px;
-    padding:7px 18px;border-bottom:1px solid var(--border);
-    background:rgba(0,229,255,.025);font-size:12px
-  }
-  .rc-t2-label{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted)}
-  .rc-t2-val{font-family:var(--mono);font-size:13px;font-weight:600}
-  .rc-t2-ci{font-family:var(--mono);font-size:10px;color:var(--muted);margin-left:auto}
+  /* T+2 bar */
+  #rc-t2{flex-shrink:0;display:none;align-items:center;gap:8px;padding:6px 16px;border-bottom:1px solid var(--border);background:rgba(0,229,255,.02)}
+  .t2-lbl{font-size:8px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted)}
+  .t2-val{font-family:var(--mono);font-size:12px;font-weight:600}
+  .t2-ci{font-family:var(--mono);font-size:9px;color:var(--muted);margin-left:auto}
 
-  #rc-chart-wrap{padding:14px 18px 8px;border-bottom:1px solid var(--border);flex-shrink:0;position:relative}
-  .rc-chart-loading{font-size:11px;color:var(--muted);text-align:center;padding:60px 0}
+  /* chart */
+  #rc-chart-wrap{padding:12px 16px 6px;border-bottom:1px solid var(--border);flex-shrink:0;position:relative}
+  .chart-note{font-size:10px;color:var(--muted);text-align:center;padding:50px 0}
   #rc-chart{width:100%;display:none}
 
-  #rc-ind-wrap{padding:14px 18px;border-bottom:1px solid var(--border)}
-  .sec-lbl{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
-  .ind-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}
-  .ind-tile{background:var(--s2);border:1px solid var(--border);border-radius:6px;padding:8px 10px}
-  .ind-lbl{font-size:8px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:3px}
-  .ind-val{font-size:11px;line-height:1.4}
-  .pro-lock-d{padding:16px 18px;color:var(--muted);font-size:12px;line-height:1.7;text-align:center}
-
-  /* RIGHT panel */
-  .rpf-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}
-  .rpf-stat{background:var(--s2);border:1px solid var(--border);border-radius:6px;padding:10px 12px}
-  .rpf-k{font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:3px}
-  .rpf-v{font-family:var(--mono);font-size:15px;font-weight:700}
-
-  .pos-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:8px}
-  .pos-tile{background:var(--s2);border:1px solid var(--border);border-radius:6px;padding:8px 10px}
-  .pos-lbl{font-size:8px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:3px}
-  .pos-val{font-family:var(--mono);font-size:13px;font-weight:600}
-
-  .verd-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}
-  .vcard{background:var(--s2);border:1px solid var(--border);border-radius:6px;padding:8px 10px}
+  /* indicators */
+  .rc-section{padding:12px 16px;border-bottom:1px solid var(--border)}
+  .rc-section:last-child{border-bottom:none}
+  .sec-lbl{font-size:8px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+  .ind-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+  .ind-tile{background:var(--s2);border:1px solid var(--border);border-radius:6px;padding:7px 9px}
+  .ind-lbl{font-size:7px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:2px}
+  .ind-val{font-size:10px;line-height:1.4}
+  .verd-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .vcard{background:var(--s2);border:1px solid var(--border);border-radius:6px;padding:7px 9px}
   .vcard:last-child:nth-child(odd){grid-column:span 2}
-  .vcard-lbl{font-size:8px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:3px}
-  .vcard-val{font-size:11px;line-height:1.4}
+  .vcard-lbl{font-size:7px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:2px}
+  .vcard-val{font-size:10px;line-height:1.4}
+  .pro-lock{color:var(--muted);font-size:12px;line-height:1.7;text-align:center}
 
-  .right-section{padding:12px 14px;border-bottom:1px solid var(--border)}
-  .right-section:last-child{border-bottom:none}
+  /* ── RIGHT: sub-tabs ── */
+  #right-tabs{flex-shrink:0;display:flex;border-bottom:1px solid var(--border);background:rgba(13,22,37,.6)}
+  .rtab{
+    flex:1;padding:9px 8px;font-size:10px;font-weight:600;letter-spacing:.3px;
+    cursor:pointer;background:none;border:none;color:var(--muted);
+    border-bottom:2px solid transparent;transition:.15s;font-family:var(--sans)
+  }
+  .rtab.active{color:var(--c0);border-bottom-color:var(--c0)}
+  .rtab-panel{display:none;flex:1;overflow-y:auto}
+  .rtab-panel.active{display:block}
+  .rtab-panel::-webkit-scrollbar{width:4px}
+  .rtab-panel::-webkit-scrollbar-thumb{background:var(--b2);border-radius:2px}
 
-  .trade-row-d{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)}
-  .trade-row-d:last-child{border-bottom:none}
-  .trd-l{display:flex;flex-direction:column;gap:1px}
-  .trd-date{font-family:var(--mono);font-size:9px;color:var(--muted)}
-  .trd-code{font-family:var(--mono);font-size:11px;font-weight:600}
-  .trd-r{display:flex;align-items:center;gap:5px}
-  .trd-amt{font-family:var(--mono);font-size:11px;font-weight:600}
-  .type-badge{font-family:var(--mono);font-size:8px;font-weight:700;letter-spacing:.5px;padding:2px 5px;border-radius:3px}
+  .r-section{padding:10px 12px;border-bottom:1px solid var(--border)}
+  .r-section:last-child{border-bottom:none}
+  .rs-lbl{font-size:8px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:7px}
+
+  /* portfolio in right */
+  .hold-row-d{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);cursor:pointer}
+  .hold-row-d:last-child{border-bottom:none}
+  .hold-row-d:hover{opacity:.8}
+  .hd-code{font-family:var(--mono);font-size:10px;font-weight:700;color:var(--c0)}
+  .hd-sub{font-size:9px;color:var(--muted);margin-top:1px;font-family:var(--mono)}
+  .hd-r{text-align:right}
+  .hd-val{font-family:var(--mono);font-size:10px;font-weight:600}
+  .hd-pnl{font-family:var(--mono);font-size:9px;margin-top:1px}
+
+  /* position card */
+  .pos-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-top:6px}
+  .pc{background:var(--s2);border:1px solid var(--border);border-radius:5px;padding:7px 8px}
+  .pc-k{font-size:7px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:2px}
+  .pc-v{font-family:var(--mono);font-size:11px;font-weight:600}
+
+  /* trades */
+  .td-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border)}
+  .td-row:last-child{border-bottom:none}
+  .td-l{display:flex;flex-direction:column;gap:1px}
+  .td-date{font-family:var(--mono);font-size:8px;color:var(--muted)}
+  .td-code{font-family:var(--mono);font-size:10px;font-weight:600}
+  .td-r{display:flex;align-items:center;gap:4px}
+  .td-amt{font-family:var(--mono);font-size:10px;font-weight:600}
+
+  /* DCA */
+  .dca-form{background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-top:6px}
+  .dca-field{margin-bottom:8px}
+  .dca-field:last-child{margin-bottom:0}
+  .dca-lbl{font-size:9px;color:var(--muted);margin-bottom:3px;letter-spacing:.5px}
+  .dca-input{
+    width:100%;background:var(--s3);border:1px solid var(--border);
+    color:var(--text);border-radius:5px;padding:6px 8px;
+    font-family:var(--mono);font-size:11px;text-align:right
+  }
+  .dca-input:focus{outline:2px solid rgba(0,229,255,.3);outline-offset:-1px}
+  .dca-btn{
+    width:100%;background:rgba(0,229,255,.1);border:1px solid rgba(0,229,255,.3);
+    color:var(--c0);border-radius:5px;padding:7px;font-size:11px;
+    font-family:var(--mono);font-weight:700;cursor:pointer;transition:.15s;margin-top:8px
+  }
+  .dca-btn:hover{background:rgba(0,229,255,.18)}
+  .dca-result{margin-top:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:9px 10px}
+  .dca-res-row{display:flex;justify-content:space-between;align-items:center;padding:3px 0}
+  .dca-res-k{font-size:9px;color:var(--muted)}
+  .dca-res-v{font-family:var(--mono);font-size:10px;font-weight:600}
 }
 
 /* ════════════════════════════════════
-   MOBILE  < 769px  — tabs + panel
+   MOBILE < 769px
 ════════════════════════════════════ */
 @media(max-width:768px){
   body{overflow-y:auto;height:auto}
   #app{padding-bottom:calc(var(--nav) + 4px)}
   #layout{display:none!important}
 
+  /* bottom nav */
   #bottom-nav{
     position:fixed;bottom:0;left:0;right:0;height:var(--nav);z-index:200;
-    display:flex;background:rgba(13,22,37,.95);border-top:1px solid var(--border);
-    backdrop-filter:blur(10px)
+    display:flex;background:rgba(10,18,32,.96);border-top:1px solid var(--border);
+    backdrop-filter:blur(12px)
   }
   .nav-tab{
     flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
     gap:3px;color:var(--muted);cursor:pointer;background:none;border:none;
-    font-size:9px;letter-spacing:.5px;text-transform:uppercase;font-family:var(--sans);transition:color .2s
+    font-size:8px;letter-spacing:.5px;text-transform:uppercase;font-family:var(--sans);transition:.2s
   }
-  .nav-tab svg{width:18px;height:18px}
+  .nav-tab svg{width:19px;height:19px}
   .nav-tab.active{color:var(--c0)}
 
-  #mobile-app{display:block;padding:10px 12px}
+  /* tabs */
+  #mobile-app{display:block;padding:8px 10px}
   .m-page{display:none}.m-page.active{display:block}
 
-  #m-profile{background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px}
-  .mp-row{display:flex;align-items:center;gap:10px}
-  .mp-avatar{width:36px;height:36px;border-radius:50%;background:var(--s2);border:1px solid var(--border);object-fit:cover}
-  .mp-name{font-weight:600;font-size:14px}
-  .mp-user{font-family:var(--mono);font-size:10px;color:var(--muted)}
-  .m-stats{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:10px}
-  .m-stat{background:var(--s2);border:1px solid var(--border);border-radius:7px;padding:9px 10px}
-  .m-sk{font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:3px}
-  .m-sv{font-family:var(--mono);font-size:14px;font-weight:600}
+  /* header card (shown in each tab or global) */
+  #m-summary{
+    background:var(--s1);border:1px solid var(--border);border-radius:10px;
+    padding:10px 12px;margin-bottom:8px
+  }
+  .msum-row{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+  .msum-avatar{width:32px;height:32px;border-radius:50%;background:var(--s2);border:1px solid var(--border);object-fit:cover}
+  .msum-name{font-weight:600;font-size:13px}
+  .msum-user{font-family:var(--mono);font-size:9px;color:var(--muted);margin-top:1px}
+  .msum-stats{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .msum-stat{background:var(--s2);border:1px solid var(--border);border-radius:7px;padding:8px 10px}
+  .msum-k{font-size:8px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:2px}
+  .msum-v{font-family:var(--mono);font-size:13px;font-weight:700}
 
+  /* card */
   .m-card{background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px}
-  .m-card-title{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--border)}
+  .m-card-title{font-size:8px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--border)}
 
-  .fund-row{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border);cursor:pointer;transition:.12s}
+  /* mobile search */
+  #m-search{
+    width:100%;background:var(--s2);border:1px solid var(--border);color:var(--text);
+    border-radius:7px;padding:8px 10px 8px 32px;font-size:12px;font-family:var(--sans);margin-bottom:7px
+  }
+  #m-search::placeholder{color:var(--muted)}
+  .m-search-wrap{position:relative}
+  .m-search-icon{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:14px;pointer-events:none}
+  .m-chips{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px}
+  .m-chip{
+    font-family:var(--mono);font-size:8px;font-weight:700;letter-spacing:.5px;
+    padding:3px 8px;border-radius:3px;cursor:pointer;border:1px solid var(--border);
+    color:var(--muted);background:transparent
+  }
+  .m-chip.active{border-color:var(--c0);color:var(--c0);background:rgba(0,229,255,.06)}
+  .m-chip.mc-buy.active{border-color:var(--buy);color:var(--buy);background:rgba(74,222,128,.07)}
+  .m-chip.mc-sell.active{border-color:var(--sell);color:var(--sell);background:rgba(248,113,113,.07)}
+
+  /* fund rows */
+  .fund-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);cursor:pointer}
   .fund-row:last-child{border-bottom:none}
   .fund-row:active{opacity:.7}
-  .fi{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0;margin-right:8px}
-  .fi-code{font-family:var(--mono);font-size:11px;color:var(--c0);font-weight:600}
-  .fi-name{font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px}
-  .fi-t2{font-family:var(--mono);font-size:9px;margin-top:1px}
-  .fd{display:flex;align-items:center;gap:6px;flex-shrink:0}
-  .fd-nav{font-family:var(--mono);font-size:11px}
-  .fd-chg{font-family:var(--mono);font-size:10px;min-width:44px;text-align:right}
+  .fi{flex:1;min-width:0;margin-right:8px}
+  .fi-code{font-family:var(--mono);font-size:10px;color:var(--c0);font-weight:700}
+  .fi-name{font-size:9px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:170px;margin-top:1px}
+  .fi-t2{font-family:var(--mono);font-size:8px;margin-top:1px}
+  .fd{display:flex;align-items:center;gap:5px;flex-shrink:0}
+  .fd-nav{font-family:var(--mono);font-size:10px}
+  .fd-chg{font-family:var(--mono);font-size:9px;min-width:40px;text-align:right}
 
-  .hold-row{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border)}
+  /* portfolio */
+  .hold-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);cursor:pointer}
   .hold-row:last-child{border-bottom:none}
-  .hr-code{font-family:var(--mono);font-size:12px;font-weight:600;color:var(--c0)}
-  .hr-sub{font-size:10px;color:var(--muted);margin-top:1px;font-family:var(--mono)}
+  .hr-code{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--c0)}
+  .hr-sub{font-size:9px;color:var(--muted);margin-top:1px;font-family:var(--mono)}
   .hr-right{text-align:right}
-  .hr-val{font-family:var(--mono);font-size:12px;font-weight:600}
-  .hr-pnl{font-family:var(--mono);font-size:10px;margin-top:1px}
+  .hr-val{font-family:var(--mono);font-size:11px;font-weight:600}
+  .hr-pnl{font-family:var(--mono);font-size:9px;margin-top:1px}
 
-  .trade-row{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border)}
-  .trade-row:last-child{border-bottom:none}
+  /* trades */
+  .tr-row{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)}
+  .tr-row:last-child{border-bottom:none}
   .tr-l{display:flex;flex-direction:column;gap:1px}
-  .tr-date{font-family:var(--mono);font-size:9px;color:var(--muted)}
-  .tr-code{font-family:var(--mono);font-size:11px;font-weight:600}
-  .tr-r{display:flex;align-items:center;gap:6px}
-  .tr-amt{font-family:var(--mono);font-size:11px;font-weight:600}
-  .type-badge{font-family:var(--mono);font-size:8px;font-weight:700;letter-spacing:.5px;padding:2px 6px;border-radius:3px}
+  .tr-date{font-family:var(--mono);font-size:8px;color:var(--muted)}
+  .tr-code{font-family:var(--mono);font-size:10px;font-weight:600}
+  .tr-r{display:flex;align-items:center;gap:5px}
+  .tr-amt{font-family:var(--mono);font-size:10px;font-weight:600}
 
-  #panel-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:150;display:none;opacity:0;transition:opacity .25s}
+  /* DCA mobile */
+  .dca-form{background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:10px}
+  .dca-field{margin-bottom:7px}
+  .dca-lbl{font-size:9px;color:var(--muted);margin-bottom:3px}
+  .dca-input{
+    width:100%;background:var(--s3);border:1px solid var(--border);
+    color:var(--text);border-radius:5px;padding:7px 10px;
+    font-family:var(--mono);font-size:12px;text-align:right
+  }
+  .dca-btn{
+    width:100%;background:rgba(0,229,255,.1);border:1px solid rgba(0,229,255,.3);
+    color:var(--c0);border-radius:5px;padding:8px;font-size:12px;
+    font-family:var(--mono);font-weight:700;cursor:pointer;margin-top:6px
+  }
+  .dca-result{margin-top:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:9px 10px}
+  .dca-res-row{display:flex;justify-content:space-between;align-items:center;padding:3px 0}
+  .dca-res-k{font-size:10px;color:var(--muted)}
+  .dca-res-v{font-family:var(--mono);font-size:11px;font-weight:600}
+
+  /* mobile slide panel */
+  #panel-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:150;display:none;opacity:0;transition:opacity .25s}
   #panel-overlay.open{display:block;opacity:1}
   #detail-panel{
     position:fixed;bottom:0;left:0;right:0;background:var(--s1);
-    border-top:1px solid var(--border);border-radius:14px 14px 0 0;
-    z-index:151;transform:translateY(100%);
-    transition:transform .28s cubic-bezier(.32,.72,0,1);
-    max-height:88vh;overflow-y:auto
+    border-top:1px solid var(--border);border-radius:14px 14px 0 0;z-index:151;
+    transform:translateY(100%);transition:transform .28s cubic-bezier(.32,.72,0,1);
+    max-height:90vh;overflow-y:auto;padding-bottom:env(safe-area-inset-bottom,12px)
   }
   #detail-panel.open{transform:translateY(0)}
-  .panel-drag{width:34px;height:4px;background:var(--b2);border-radius:2px;margin:9px auto 12px}
+  .panel-drag{width:32px;height:4px;background:var(--b2);border-radius:2px;margin:10px auto 14px}
   .panel-hdr{display:flex;align-items:center;justify-content:space-between;padding:0 14px 10px;border-bottom:1px solid var(--border)}
   .ph-code{font-family:var(--mono);font-size:13px;color:var(--c0);font-weight:700}
-  .ph-name{font-size:11px;color:var(--muted);display:block;margin-top:1px}
-  .ph-close{background:none;border:1px solid var(--border);color:var(--muted);width:26px;height:26px;border-radius:5px;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center}
-  .panel-body{padding:12px 14px 24px}
-  .p-nav-row{display:flex;align-items:baseline;gap:10px;margin-bottom:8px;flex-wrap:wrap}
+  .ph-name{font-size:10px;color:var(--muted);display:block;margin-top:2px}
+  .ph-close{background:none;border:1px solid var(--border);color:var(--muted);width:26px;height:26px;border-radius:5px;cursor:pointer;font-size:18px;line-height:1;display:flex;align-items:center;justify-content:center}
+  .panel-body{padding:12px 14px 20px}
+  .p-num-row{display:flex;align-items:baseline;gap:10px;margin-bottom:8px;flex-wrap:wrap}
   .p-nav-val{font-family:var(--mono);font-size:22px;font-weight:700}
-  .p-t2-row{display:flex;align-items:center;gap:8px;padding:7px 10px;background:rgba(0,229,255,.04);border-radius:6px;margin-bottom:10px}
-  .p-t2-lbl{font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--muted)}
-  .p-t2-val{font-family:var(--mono);font-size:12px;font-weight:600}
-  .p-t2-ci{font-family:var(--mono);font-size:10px;color:var(--muted);margin-left:auto}
-  #d-chart-wrap{margin-bottom:10px;position:relative}
-  .p-chart-loading{font-size:11px;color:var(--muted);text-align:center;padding:28px 0}
+  .p-t2-bar{display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,229,255,.04);border-radius:6px;margin-bottom:10px}
+  .p-t2-lbl{font-size:8px;letter-spacing:1px;text-transform:uppercase;color:var(--muted)}
+  .p-t2-val{font-family:var(--mono);font-size:11px;font-weight:600}
+  .p-t2-ci{font-family:var(--mono);font-size:9px;color:var(--muted);margin-left:auto}
+  .p-sec-lbl{font-size:8px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin:12px 0 6px}
+  .p-pos-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px}
+  .p-pc{background:var(--s2);border:1px solid var(--border);border-radius:5px;padding:7px}
+  .p-pc-k{font-size:7px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:2px}
+  .p-pc-v{font-family:var(--mono);font-size:11px;font-weight:600}
+  .p-ind-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:8px}
+  .p-ind-tile{background:var(--s2);border:1px solid var(--border);border-radius:5px;padding:6px 8px}
+  .p-ind-lbl{font-size:7px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:2px}
+  .p-ind-val{font-size:10px;line-height:1.4}
+  .p-verd-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px}
+  .p-vc{background:var(--s2);border:1px solid var(--border);border-radius:5px;padding:6px 8px}
+  .p-vc:last-child:nth-child(odd){grid-column:span 2}
+  .p-vc-lbl{font-size:7px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:2px}
+  .p-vc-val{font-size:10px;line-height:1.4}
+  .pro-lock{text-align:center;padding:16px 0;color:var(--muted);font-size:12px;line-height:1.7}
+  #d-chart-wrap{margin-bottom:8px}
+  .p-chart-note{text-align:center;padding:24px 0;font-size:10px;color:var(--muted)}
   #d-chart{width:100%;display:none}
-  .p-sec-lbl{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin:12px 0 7px}
-  .p-pos-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:4px}
-  .p-pos-tile{background:var(--s2);border:1px solid var(--border);border-radius:6px;padding:8px}
-  .p-pos-lbl{font-size:8px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:3px}
-  .p-pos-val{font-family:var(--mono);font-size:12px;font-weight:600}
-  .p-ind-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px}
-  .p-ind-tile{background:var(--s2);border:1px solid var(--border);border-radius:6px;padding:7px 9px}
-  .p-ind-lbl{font-size:8px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:2px}
-  .p-ind-val{font-size:11px;line-height:1.4}
-  .p-verd-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
-  .p-vcard{background:var(--s2);border:1px solid var(--border);border-radius:6px;padding:7px 9px}
-  .p-vcard:last-child:nth-child(odd){grid-column:span 2}
-  .p-vcard-lbl{font-size:8px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:2px}
-  .p-vcard-val{font-size:11px;line-height:1.4}
-  .pro-lock{text-align:center;padding:14px;color:var(--muted);font-size:12px;line-height:1.7}
 }
 </style>
 </head>
 <body>
 
-<!-- GATE -->
+<!-- ══ GATE ══ -->
 <div id="gate">
   <div class="gate-logo">FUND TRACKER PRO<small>WEB · BETA</small></div>
   <div class="gate-card">
-    <p>Đăng nhập bằng tài khoản Telegram để xem danh mục, tín hiệu và phân tích chi tiết.</p>
+    <p>Đăng nhập bằng tài khoản Telegram để truy cập toàn bộ thị trường quỹ mở, tín hiệu và danh mục của bạn.</p>
     <div id="widget-box">
       <script async src="https://telegram.org/js/telegram-widget.js?22"
               data-telegram-login="FundTrackerPro_bot"
@@ -295,174 +415,274 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
   </div>
 </div>
 
-<!-- HEADER -->
-<header id="top-bar">
-  <div class="tb-logo">FUND TRACKER PRO<small>WEB</small></div>
+<!-- ══ HEADER ══ -->
+<header id="topbar">
+  <div class="tb-brand">FTP<small>WEB</small></div>
+  <div class="tb-sep"></div>
+  <div class="tb-pf">
+    <div class="tb-pf-item"><span class="tb-pk">Giá trị</span><span class="tb-pv" id="h-val">—</span></div>
+    <div class="tb-sep" style="margin:0 4px"></div>
+    <div class="tb-pf-item"><span class="tb-pk">Lãi / Lỗ</span><span class="tb-pv" id="h-pnl">—</span></div>
+  </div>
   <div class="tb-right">
     <img class="tb-avatar" id="pf-avatar" src="" alt="">
     <span class="tb-name" id="pf-name">—</span>
-    <span class="tier-badge" id="pf-tier">—</span>
+    <span id="pf-tier">—</span>
     <button class="tb-btn" onclick="refreshAll()" id="btn-refresh" style="display:none">⟳</button>
-    <button class="tb-btn" onclick="logout()">↩ Thoát</button>
+    <button class="tb-btn" onclick="logout()">↩</button>
   </div>
 </header>
 
-<!-- APP -->
+<!-- ══ APP ══ -->
 <div id="app">
 
-  <!-- DESKTOP 3-col -->
+  <!-- ── DESKTOP LAYOUT ── -->
   <div id="layout">
 
-    <!-- LEFT: watchlist -->
-    <div class="col" id="col-watch">
+    <!-- LEFT: Market screener -->
+    <div class="col" id="col-market">
       <div class="col-hdr">
-        <span>Tín hiệu quỹ</span>
-        <button class="tb-btn" onclick="refreshAll()" style="padding:2px 7px;font-size:10px">⟳</button>
-      </div>
-      <div class="col-body" id="watch-list">
-        <div style="padding:10px 14px">
-          <div class="skeleton" style="height:40px;margin-bottom:5px"></div>
-          <div class="skeleton" style="height:40px;margin-bottom:5px"></div>
-          <div class="skeleton" style="height:40px"></div>
+        <div class="search-wrap">
+          <span class="search-icon">⌕</span>
+          <input type="search" id="search-box" placeholder="Tìm mã quỹ hoặc tên…" oninput="filterMarket()">
+        </div>
+        <div class="filter-chips">
+          <button class="chip active" data-f="all" onclick="setFilter(this,'all')">Tất cả</button>
+          <button class="chip chip-buy" data-f="buy" onclick="setFilter(this,'buy')">MUA</button>
+          <button class="chip chip-sell" data-f="sell" onclick="setFilter(this,'sell')">BÁN</button>
+          <button class="chip chip-watch" data-f="watch" onclick="setFilter(this,'watch')">★ Theo dõi</button>
         </div>
       </div>
-      <div id="watch-footer">
-        <div class="wf-row">
-          <div class="wf-item">
-            <div class="wf-k">Giá trị danh mục</div>
-            <div class="wf-v" id="st-value">—</div>
-          </div>
-          <div class="wf-item">
-            <div class="wf-k">Lãi / Lỗ</div>
-            <div class="wf-v" id="st-pnl">—</div>
-          </div>
+      <div class="col-body" id="market-list">
+        <div style="padding:10px 12px">
+          <div class="sk" style="height:32px;margin-bottom:4px"></div>
+          <div class="sk" style="height:32px;margin-bottom:4px"></div>
+          <div class="sk" style="height:32px;margin-bottom:4px"></div>
+          <div class="sk" style="height:32px"></div>
         </div>
       </div>
     </div>
 
-    <!-- CENTER: research -->
+    <!-- CENTER: Research -->
     <div class="col" id="col-research">
-      <div id="research-empty">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" style="width:52px;height:52px;opacity:.18"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-        <p style="font-size:13px;text-align:center;line-height:1.7">Chọn một quỹ từ danh sách<br>để xem phân tích chi tiết</p>
+      <div id="rc-empty">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" style="width:48px;height:48px"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        <p>Chọn một quỹ từ danh sách thị trường để xem phân tích chi tiết</p>
       </div>
-      <div id="research-content">
-        <div class="rc-head">
+      <div id="rc-content">
+        <!-- fund header -->
+        <div class="rch">
           <div class="rch-top">
             <span class="rch-code" id="rc-code">—</span>
             <span class="rch-name" id="rc-name">—</span>
           </div>
-          <div class="rch-row">
+          <div class="rch-nums">
             <span class="rch-nav" id="rc-nav">—</span>
             <span class="rch-chg" id="rc-chg">—</span>
-            <span class="rch-sig sig-badge sig-hold" id="rc-sig">—</span>
+            <span class="rch-sig sig-badge" id="rc-sig">—</span>
           </div>
         </div>
+        <!-- T+2 -->
         <div id="rc-t2">
-          <span class="rc-t2-label">Dự báo T+2</span>
-          <span class="rc-t2-val" id="rc-t2-val">—</span>
-          <span class="rc-t2-ci" id="rc-t2-ci"></span>
+          <span class="t2-lbl">Dự báo T+2</span>
+          <span class="t2-val" id="rc-t2-val">—</span>
+          <span class="t2-ci" id="rc-t2-ci"></span>
         </div>
+        <!-- chart -->
         <div id="rc-chart-wrap">
-          <div class="rc-chart-loading" id="rc-loading">Đang tải biểu đồ…</div>
+          <div class="chart-note" id="rc-loading">Đang tải…</div>
           <canvas id="rc-chart"></canvas>
         </div>
-        <div id="rc-ind-wrap" style="display:none">
+        <!-- indicators -->
+        <div class="rc-section" id="rc-ind-wrap" style="display:none">
           <div class="sec-lbl">Phân tích kỹ thuật</div>
           <div class="ind-grid" id="rc-indicators"></div>
         </div>
-        <div class="pro-lock-d" id="rc-pro-lock" style="display:none">
-          Phân tích chi tiết chỉ dành cho tài khoản <b style="color:var(--c0)">Pro</b>.<br>
-          <a href="https://t.me/FundTrackerPro_bot" style="color:var(--c0);font-size:11px;text-decoration:none">Nâng cấp trong Telegram Mini App →</a>
-        </div>
-      </div>
-    </div>
-
-    <!-- RIGHT: portfolio + verdicts + trades -->
-    <div class="col" id="col-right">
-      <div class="col-hdr">Danh mục &amp; Phân tích</div>
-      <div class="col-body">
-
-        <div class="right-section">
-          <div class="sec-lbl">Tổng quan danh mục</div>
-          <div class="rpf-grid">
-            <div class="rpf-stat"><div class="rpf-k">Giá trị</div><div class="rpf-v" id="rpf-val">—</div></div>
-            <div class="rpf-stat"><div class="rpf-k">Lãi / Lỗ</div><div class="rpf-v" id="rpf-pnl">—</div></div>
-          </div>
-        </div>
-
-        <div class="right-section" id="rc-position" style="display:none">
-          <div class="sec-lbl">Vị thế · <span id="rc-pos-code" style="color:var(--c0);letter-spacing:0;text-transform:none">—</span></div>
-          <div class="pos-grid">
-            <div class="pos-tile"><div class="pos-lbl">Số CCQ</div><div class="pos-val" id="rc-pos-units">—</div></div>
-            <div class="pos-tile"><div class="pos-lbl">Giá vốn</div><div class="pos-val" id="rc-pos-cost">—</div></div>
-            <div class="pos-tile"><div class="pos-lbl">Lãi / Lỗ</div><div class="pos-val" id="rc-pos-pnl">—</div></div>
-          </div>
-        </div>
-
-        <div class="right-section" id="rc-verdicts" style="display:none">
+        <!-- verdicts -->
+        <div class="rc-section" id="rc-verd-wrap" style="display:none">
           <div class="sec-lbl">5 Góc nhìn</div>
-          <div class="verd-grid" id="rc-verd-grid"></div>
+          <div class="verd-grid" id="rc-verdicts"></div>
         </div>
-
-        <div class="right-section">
-          <div class="sec-lbl" style="margin-bottom:8px">Giao dịch gần đây</div>
-          <div id="d-trades-list">
-            <div class="skeleton" style="height:30px;margin-bottom:4px"></div>
-            <div class="skeleton" style="height:30px"></div>
-          </div>
+        <!-- pro lock -->
+        <div class="rc-section" id="rc-pro-lock" style="display:none">
+          <div class="pro-lock">Phân tích chi tiết chỉ dành cho <b style="color:var(--c0)">Pro</b>.<br>
+          <a href="https://t.me/FundTrackerPro_bot" style="color:var(--c0);font-size:11px;text-decoration:none">Nâng cấp trong Telegram Mini App →</a></div>
         </div>
-
       </div>
     </div>
 
+    <!-- RIGHT: sub-tabs -->
+    <div class="col" id="col-right">
+      <div id="right-tabs">
+        <button class="rtab active" onclick="showRTab(this,'r-portfolio')">💼 Danh mục</button>
+        <button class="rtab" onclick="showRTab(this,'r-activity')">📋 Giao dịch &amp; DCA</button>
+      </div>
+
+      <!-- tab: Danh mục -->
+      <div id="r-portfolio" class="rtab-panel active">
+        <!-- portfolio summary -->
+        <div class="r-section">
+          <div class="rs-lbl">Tổng quan</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px">
+            <div class="pc"><div class="pc-k">Giá trị</div><div class="pc-v" id="rp-val">—</div></div>
+            <div class="pc"><div class="pc-k">Lãi / Lỗ</div><div class="pc-v" id="rp-pnl">—</div></div>
+            <div class="pc"><div class="pc-k">Vốn đầu tư</div><div class="pc-v" id="rp-cost">—</div></div>
+            <div class="pc"><div class="pc-k">% L/L</div><div class="pc-v" id="rp-pct">—</div></div>
+          </div>
+        </div>
+        <!-- fund position (selected fund) -->
+        <div class="r-section" id="r-pos" style="display:none">
+          <div class="rs-lbl">Vị thế · <span id="r-pos-code" style="color:var(--c0);letter-spacing:0;text-transform:none;font-weight:600"></span></div>
+          <div class="pos-cards">
+            <div class="pc"><div class="pc-k">Số CCQ</div><div class="pc-v" id="rpos-units">—</div></div>
+            <div class="pc"><div class="pc-k">Giá vốn</div><div class="pc-v" id="rpos-cost">—</div></div>
+            <div class="pc"><div class="pc-k">L/L %</div><div class="pc-v" id="rpos-pnl">—</div></div>
+          </div>
+        </div>
+        <!-- holdings list -->
+        <div class="r-section">
+          <div class="rs-lbl">Tất cả vị thế</div>
+          <div id="r-holds">
+            <div class="sk" style="height:28px;margin-bottom:4px"></div>
+            <div class="sk" style="height:28px"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- tab: Giao dịch & DCA -->
+      <div id="r-activity" class="rtab-panel">
+        <!-- DCA calculator -->
+        <div class="r-section">
+          <div class="rs-lbl">DCA — Tích lũy định kỳ</div>
+          <div class="dca-form">
+            <div class="dca-field">
+              <div class="dca-lbl">Quỹ (<span id="dca-code-d">chọn từ danh sách</span>)</div>
+            </div>
+            <div class="dca-field">
+              <div class="dca-lbl">Số tiền/tháng (đ)</div>
+              <input class="dca-input" type="number" id="dca-amount-d" placeholder="5,000,000" step="500000" min="0">
+            </div>
+            <div class="dca-field">
+              <div class="dca-lbl">Số tháng</div>
+              <input class="dca-input" type="number" id="dca-months-d" placeholder="12" min="1" max="120" value="12">
+            </div>
+            <button class="dca-btn" onclick="calcDCA('d')">Tính toán →</button>
+            <div class="dca-result" id="dca-result-d" style="display:none">
+              <div class="dca-res-row"><span class="dca-res-k">Tổng đầu tư</span><span class="dca-res-v" id="dca-r-total-d">—</span></div>
+              <div class="dca-res-row"><span class="dca-res-k">Số CCQ ước tính</span><span class="dca-res-v" id="dca-r-units-d">—</span></div>
+              <div class="dca-res-row"><span class="dca-res-k">Giá trị ước tính</span><span class="dca-res-v" id="dca-r-value-d">—</span></div>
+              <div class="dca-res-row"><span class="dca-res-k">NAV tham chiếu</span><span class="dca-res-v" id="dca-r-nav-d">—</span></div>
+            </div>
+          </div>
+        </div>
+        <!-- trades -->
+        <div class="r-section">
+          <div class="rs-lbl">Lịch sử giao dịch</div>
+          <div id="r-trades">
+            <div class="sk" style="height:24px;margin-bottom:4px"></div>
+            <div class="sk" style="height:24px"></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
   </div><!-- #layout -->
 
-  <!-- MOBILE -->
+  <!-- ── MOBILE ── -->
   <div id="mobile-app">
-    <div id="m-profile">
-      <div class="mp-row">
-        <img class="mp-avatar" id="m-avatar" src="" alt="">
+
+    <!-- Summary card (shown in Tab 1) -->
+    <div id="m-summary">
+      <div class="msum-row">
+        <img class="msum-avatar" id="m-avatar" src="" alt="">
         <div style="flex:1">
-          <div class="mp-name" id="m-name">—</div>
-          <div class="mp-user" id="m-user">—</div>
+          <div class="msum-name" id="m-name">—</div>
+          <div class="msum-user" id="m-user">—</div>
         </div>
-        <span class="tier-badge" id="m-tier">—</span>
+        <span id="m-tier">—</span>
       </div>
-      <div class="m-stats">
-        <div class="m-stat"><div class="m-sk">Giá trị</div><div class="m-sv" id="m-val">—</div></div>
-        <div class="m-stat"><div class="m-sk">Lãi / Lỗ</div><div class="m-sv" id="m-pnl">—</div></div>
+      <div class="msum-stats">
+        <div class="msum-stat"><div class="msum-k">Giá trị</div><div class="msum-v" id="m-val">—</div></div>
+        <div class="msum-stat"><div class="msum-k">Lãi / Lỗ</div><div class="msum-v" id="m-pnl">—</div></div>
       </div>
     </div>
 
-    <div id="tab-signals" class="m-page active">
+    <!-- Tab 1: Thị trường -->
+    <div id="tab-market" class="m-page active">
       <div class="m-card">
-        <div class="m-card-title">Tín hiệu quỹ</div>
-        <div id="m-signals-list">
-          <div class="skeleton" style="height:38px;margin-bottom:6px"></div>
-          <div class="skeleton" style="height:38px;margin-bottom:6px"></div>
-          <div class="skeleton" style="height:38px"></div>
+        <div class="m-card-title">Thị trường quỹ</div>
+        <div class="m-search-wrap">
+          <span class="m-search-icon">⌕</span>
+          <input type="search" id="m-search" placeholder="Tìm mã hoặc tên…" oninput="filterMarketMobile()">
+        </div>
+        <div class="m-chips">
+          <button class="m-chip active" data-mf="all" onclick="setMFilter(this,'all')">Tất cả</button>
+          <button class="m-chip mc-buy" data-mf="buy" onclick="setMFilter(this,'buy')">MUA</button>
+          <button class="m-chip mc-sell" data-mf="sell" onclick="setMFilter(this,'sell')">BÁN</button>
+          <button class="m-chip" data-mf="watch" onclick="setMFilter(this,'watch')">★ Theo dõi</button>
+        </div>
+        <div id="m-market-list">
+          <div class="sk" style="height:34px;margin-bottom:5px"></div>
+          <div class="sk" style="height:34px;margin-bottom:5px"></div>
+          <div class="sk" style="height:34px"></div>
         </div>
       </div>
     </div>
 
+    <!-- Tab 2: Danh mục -->
     <div id="tab-portfolio" class="m-page">
       <div class="m-card">
-        <div class="m-card-title">Danh mục đầu tư</div>
-        <div id="m-portfolio-list"><div class="list-note">Chưa có vị thế nào</div></div>
+        <div class="m-card-title">Tổng quan</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+          <div class="msum-stat"><div class="msum-k">Giá trị</div><div class="msum-v" id="mp-val">—</div></div>
+          <div class="msum-stat"><div class="msum-k">Lãi / Lỗ</div><div class="msum-v" id="mp-pnl">—</div></div>
+          <div class="msum-stat"><div class="msum-k">Vốn đầu tư</div><div class="msum-v" id="mp-cost">—</div></div>
+          <div class="msum-stat"><div class="msum-k">% L/L</div><div class="msum-v" id="mp-pct">—</div></div>
+        </div>
+      </div>
+      <div class="m-card">
+        <div class="m-card-title">Vị thế</div>
+        <div id="m-portfolio-list"><div class="empty-note">Chưa có vị thế</div></div>
       </div>
     </div>
 
-    <div id="tab-trades" class="m-page">
+    <!-- Tab 3: Hoạt động -->
+    <div id="tab-activity" class="m-page">
+      <!-- DCA -->
       <div class="m-card">
-        <div class="m-card-title">Giao dịch gần đây</div>
+        <div class="m-card-title">DCA — Tích lũy định kỳ</div>
+        <div class="dca-form">
+          <div class="dca-field">
+            <div class="dca-lbl">Quỹ (<span id="dca-code-m">chọn từ Thị trường</span>)</div>
+          </div>
+          <div class="dca-field">
+            <div class="dca-lbl">Số tiền/tháng (đ)</div>
+            <input class="dca-input" type="number" id="dca-amount-m" placeholder="5000000" step="500000" min="0">
+          </div>
+          <div class="dca-field">
+            <div class="dca-lbl">Số tháng</div>
+            <input class="dca-input" type="number" id="dca-months-m" placeholder="12" min="1" max="120" value="12">
+          </div>
+          <button class="dca-btn" onclick="calcDCA('m')">Tính toán →</button>
+          <div class="dca-result" id="dca-result-m" style="display:none">
+            <div class="dca-res-row"><span class="dca-res-k">Tổng đầu tư</span><span class="dca-res-v" id="dca-r-total-m">—</span></div>
+            <div class="dca-res-row"><span class="dca-res-k">Số CCQ ước tính</span><span class="dca-res-v" id="dca-r-units-m">—</span></div>
+            <div class="dca-res-row"><span class="dca-res-k">Giá trị ước tính</span><span class="dca-res-v" id="dca-r-value-m">—</span></div>
+            <div class="dca-res-row"><span class="dca-res-k">NAV tham chiếu</span><span class="dca-res-v" id="dca-r-nav-m">—</span></div>
+          </div>
+        </div>
+      </div>
+      <!-- trades + history -->
+      <div class="m-card">
+        <div class="m-card-title">Lịch sử giao dịch</div>
         <div id="m-trades-list">
-          <div class="skeleton" style="height:32px;margin-bottom:4px"></div>
-          <div class="skeleton" style="height:32px"></div>
+          <div class="sk" style="height:30px;margin-bottom:4px"></div>
+          <div class="sk" style="height:30px"></div>
         </div>
       </div>
     </div>
-  </div>
+
+  </div><!-- #mobile-app -->
 
 </div><!-- #app -->
 
@@ -471,43 +691,40 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
 <div id="detail-panel">
   <div class="panel-drag"></div>
   <div class="panel-hdr">
-    <div>
-      <span class="ph-code" id="d-code">—</span>
-      <span class="ph-name" id="d-name">—</span>
-    </div>
+    <div><span class="ph-code" id="d-code">—</span><span class="ph-name" id="d-name">—</span></div>
     <button class="ph-close" onclick="closeDetail()">×</button>
   </div>
   <div class="panel-body">
-    <div class="p-nav-row">
+    <div class="p-num-row">
       <span class="p-nav-val" id="d-nav">—</span>
-      <span id="d-chg">—</span>
-      <span class="sig-badge sig-hold" id="d-sig" style="font-size:9px;font-weight:700;letter-spacing:.5px;padding:3px 8px;border-radius:4px">—</span>
+      <span id="d-chg" style="font-family:var(--mono);font-size:14px">—</span>
+      <span class="sig-badge" id="d-sig" style="font-size:9px;padding:3px 8px;border-radius:4px">—</span>
     </div>
-    <div class="p-t2-row" id="d-t2-row" style="display:none">
-      <span class="p-t2-lbl">Dự báo T+2</span>
+    <div class="p-t2-bar" id="d-t2-bar" style="display:none">
+      <span class="p-t2-lbl">T+2</span>
       <span class="p-t2-val" id="d-t2-val">—</span>
       <span class="p-t2-ci" id="d-t2-ci"></span>
     </div>
     <div id="d-chart-wrap">
-      <div class="p-chart-loading" id="d-loading">Đang tải biểu đồ…</div>
+      <div class="p-chart-note" id="d-loading">Đang tải…</div>
       <canvas id="d-chart"></canvas>
     </div>
     <div id="d-pro-content" style="display:none">
-      <div id="d-position" style="display:none">
+      <div id="d-pos-section" style="display:none">
         <div class="p-sec-lbl">Vị thế của bạn</div>
-        <div class="p-pos-row">
-          <div class="p-pos-tile"><div class="p-pos-lbl">Số CCQ</div><div class="p-pos-val" id="d-units">—</div></div>
-          <div class="p-pos-tile"><div class="p-pos-lbl">Giá vốn</div><div class="p-pos-val" id="d-cost">—</div></div>
-          <div class="p-pos-tile"><div class="p-pos-lbl">Lãi / Lỗ</div><div class="p-pos-val" id="d-pnl">—</div></div>
+        <div class="p-pos-grid">
+          <div class="p-pc"><div class="p-pc-k">Số CCQ</div><div class="p-pc-v" id="d-units">—</div></div>
+          <div class="p-pc"><div class="p-pc-k">Giá vốn</div><div class="p-pc-v" id="d-cost">—</div></div>
+          <div class="p-pc"><div class="p-pc-k">L/L %</div><div class="p-pc-v" id="d-pnl">—</div></div>
         </div>
       </div>
-      <div class="p-sec-lbl">Phân tích kỹ thuật</div>
+      <div class="p-sec-lbl">Kỹ thuật</div>
       <div class="p-ind-grid" id="d-indicators"></div>
       <div class="p-sec-lbl">5 Góc nhìn</div>
       <div class="p-verd-grid" id="d-verdicts"></div>
     </div>
     <div class="pro-lock" id="d-pro-lock" style="display:none">
-      Phân tích chi tiết chỉ dành cho tài khoản <b style="color:var(--c0)">Pro</b>.<br>
+      Phân tích chi tiết chỉ dành cho <b style="color:var(--c0)">Pro</b>.<br>
       <a href="https://t.me/FundTrackerPro_bot" style="color:var(--c0);font-size:12px;text-decoration:none">Nâng cấp trong Telegram Mini App →</a>
     </div>
   </div>
@@ -515,503 +732,433 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
 
 <!-- Mobile bottom nav -->
 <nav id="bottom-nav" style="display:none">
-  <button class="nav-tab active" id="nav-signals" onclick="switchTab('signals')">
+  <button class="nav-tab active" id="nav-market" onclick="switchTab('market')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-    Tín hiệu
+    Thị trường
   </button>
   <button class="nav-tab" id="nav-portfolio" onclick="switchTab('portfolio')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>
     Danh mục
   </button>
-  <button class="nav-tab" id="nav-trades" onclick="switchTab('trades')">
+  <button class="nav-tab" id="nav-activity" onclick="switchTab('activity')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
-    Giao dịch
+    Hoạt động
   </button>
 </nav>
 
 <script>
-const SESSION_KEY = 'ftp_web_session';
-const TGID_KEY    = 'ftp_web_tgid';
-const NAME_KEY    = 'ftp_web_name';
-const UN_KEY      = 'ftp_web_un';
+/* ══════════════════════════════════════════════════════════
+   State
+══════════════════════════════════════════════════════════ */
+const SK = 'ftp_web_session', TK = 'ftp_web_tgid', NK = 'ftp_web_name', UK = 'ftp_web_un';
+let _isPro = false, _predictions = {}, _sigsMap = {}, _allFunds = {}, _watched = [];
+let _holds = [], _trades = [], _selCode = null, _dcaNav = null;
+let _dFilter = 'all', _mFilter = 'all', _dSearch = '', _mSearch = '';
 
-let _isPro        = false;
-let _sigsCache    = {};
-let _predictions  = {};
-let _selectedCode = null;
-const IS_MOBILE   = () => window.innerWidth < 769;
+const IS_MOB = () => window.innerWidth < 769;
 
-/* helpers */
-function fmt(n){ return Math.round(n).toLocaleString('vi-VN') + ' đ'; }
-function fmtPnl(n){ return (n >= 0 ? '+' : '') + fmt(n); }
-function fmtPct(p){ return (p >= 0 ? '+' : '') + p.toFixed(2) + '%'; }
-function showErr(msg){ const e=document.getElementById('err'); if(e){e.textContent=msg;} }
+/* ── Format helpers ── */
+const fmt   = n => Math.round(n).toLocaleString('vi-VN') + ' đ';
+const fmtPnl= n => (n >= 0 ? '+' : '') + fmt(n);
+const fmtPct= p => (p >= 0 ? '+' : '') + p.toFixed(2) + '%';
+const sigCls= s => { const t=strip(s); return t.includes('MUA')?'sig-buy':t.includes('BÁN')?'sig-sell':'sig-hold'; };
+const strip = s => (s||'').replace(/[🟢🔴⚪★]/g,'').trim();
 
 /* ── Auth ── */
 async function onTelegramAuth(user){
   try{
-    const r = await fetch('/api/auth/telegram-login',{
-      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(user)
-    });
-    const d = await r.json();
-    if(!r.ok||!d.ok){ showErr(d.error||'Đăng nhập thất bại'); return; }
-    localStorage.setItem(SESSION_KEY, d.session);
-    localStorage.setItem(TGID_KEY, d.telegram_id);
-    if(d.first_name) localStorage.setItem(NAME_KEY, d.first_name);
-    if(d.username)   localStorage.setItem(UN_KEY, '@'+d.username);
-    initApp({photo_url:d.photo_url, first_name:d.first_name, username:d.username});
-  }catch(e){ showErr('Lỗi kết nối: '+e.message); }
+    const r=await fetch('/api/auth/telegram-login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(user)});
+    const d=await r.json();
+    if(!r.ok||!d.ok){setErr(d.error||'Đăng nhập thất bại');return;}
+    ls(SK,d.session); ls(TK,d.telegram_id);
+    if(d.first_name) ls(NK,d.first_name);
+    if(d.username)   ls(UK,'@'+d.username);
+    initApp({photo_url:d.photo_url,first_name:d.first_name,username:d.username});
+  }catch(e){setErr('Lỗi: '+e.message);}
 }
+function ls(k,v){localStorage.setItem(k,v);}
+function gl(k){return localStorage.getItem(k)||'';}
+function setErr(m){const e=document.getElementById('err');if(e)e.textContent=m;}
 
 function initApp(info){
   document.getElementById('gate').style.display='none';
-  document.getElementById('top-bar').style.display='flex';
+  document.getElementById('topbar').style.display='flex';
   document.getElementById('app').style.display='block';
-  if(IS_MOBILE()){
-    document.getElementById('bottom-nav').style.display='flex';
-  } else {
-    document.getElementById('btn-refresh').style.display='inline-flex';
-  }
+  if(IS_MOB()){document.getElementById('bottom-nav').style.display='flex';}
+  else{document.getElementById('btn-refresh').style.display='inline-flex';}
 
-  const nm = info?.first_name || localStorage.getItem(NAME_KEY) || '—';
-  const un = info?.username ? '@'+info.username : localStorage.getItem(UN_KEY) || '';
-  const av = info?.photo_url || '';
-  ['pf-avatar','m-avatar'].forEach(id=>{ const el=document.getElementById(id); if(el) el.src=av; });
-  document.getElementById('pf-name').textContent = nm;
-  document.getElementById('m-name').textContent  = nm;
-  document.getElementById('m-user').textContent  = un;
+  const nm=info?.first_name||gl(NK)||'—';
+  const un=info?.username?'@'+info.username:gl(UK)||'';
+  const av=info?.photo_url||'';
+  ['pf-avatar','m-avatar'].forEach(id=>{const el=document.getElementById(id);if(el)el.src=av;});
+  document.getElementById('pf-name').textContent=nm;
+  document.getElementById('m-name').textContent=nm;
+  document.getElementById('m-user').textContent=un;
 
-  loadProfile();
+  loadProfile(); loadSignals(); loadTrades();
 }
 
 /* ── Profile ── */
 async function loadProfile(){
-  const session = localStorage.getItem(SESSION_KEY);
-  const tgId    = localStorage.getItem(TGID_KEY);
-  if(!session||!tgId) return;
+  const sess=gl(SK),tid=gl(TK); if(!sess||!tid)return;
   try{
-    const r = await fetch('/api/me?user_id='+encodeURIComponent(tgId),{
-      headers:{'X-Web-Session':session}
-    });
-    const d = await r.json();
-    if(!r.ok){ if(r.status===403){ logout(); return; } return; }
+    const r=await fetch('/api/me?user_id='+encodeURIComponent(tid),{headers:{'X-Web-Session':sess}});
+    const d=await r.json();
+    if(!r.ok){if(r.status===403){logout();return;}return;}
+    _isPro=d.tier==='pro'||d.tier==='admin';
+    _predictions=d.predictions||{};
+    const tc=_isPro?'tier-pro':'tier-free', tt=_isPro?'PRO':'FREE';
+    ['pf-tier','m-tier'].forEach(id=>{const el=document.getElementById(id);if(el){el.textContent=tt;el.className=tc;}});
 
-    _isPro = d.tier==='pro'||d.tier==='admin';
-    _predictions = d.predictions||{};
+    const p=d.portfolio||{};
+    _holds=p.items||[];
+    const val=p.total_value!=null?fmt(p.total_value):'—';
+    const pnl=p.total_pnl, pct=p.total_pnl_pct;
+    const pnlStr=pnl!=null?fmtPnl(pnl):'—', pctStr=pct!=null?fmtPct(pct):'—';
+    const pnlCls=pnl==null?'':pnl>=0?'pos':'neg';
+    const cost=p.total_cost!=null?fmt(p.total_cost):'—';
 
-    const tierText = _isPro ? 'PRO' : 'FREE';
-    const tierCls  = 'tier-badge '+(_isPro?'tier-pro':'tier-free');
-    ['pf-tier','m-tier'].forEach(id=>{
-      const el=document.getElementById(id); if(!el) return;
-      el.textContent=tierText; el.className=tierCls;
-    });
+    // header
+    document.getElementById('h-val').textContent=val;
+    const hpEl=document.getElementById('h-pnl'); hpEl.textContent=pnlStr; hpEl.className='tb-pv '+pnlCls;
+    // right panel
+    document.getElementById('rp-val').textContent=val;
+    document.getElementById('rp-cost').textContent=cost;
+    const rpEl=document.getElementById('rp-pnl'); rpEl.textContent=pnlStr; rpEl.className='pc-v '+pnlCls;
+    const rpPEl=document.getElementById('rp-pct'); rpPEl.textContent=pctStr; rpPEl.className='pc-v '+pnlCls;
+    // mobile
+    ['m-val','mp-val'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=val;});
+    ['m-pnl','mp-pnl'].forEach(id=>{const el=document.getElementById(id);if(el){el.textContent=pnlStr;el.className='msum-v '+pnlCls;}});
+    document.getElementById('mp-cost').textContent=cost;
+    const mpEl=document.getElementById('mp-pct');mpEl.textContent=pctStr;mpEl.className='msum-v '+pnlCls;
 
-    const p = d.portfolio||{};
-    const val    = p.total_value!=null ? fmt(p.total_value) : '—';
-    const pnl    = p.total_pnl;
-    const pnlStr = pnl!=null ? fmtPnl(pnl) : '—';
-    const pnlCls = pnl==null ? '' : pnl>=0 ? 'pos' : 'neg';
-
-    document.getElementById('st-value').textContent = val;
-    document.getElementById('rpf-val').textContent  = val;
-    document.getElementById('m-val').textContent    = val;
-    [['st-pnl',''],['rpf-pnl','rpf-v '],['m-pnl','m-sv ']].forEach(([id,base])=>{
-      const el=document.getElementById(id); if(!el) return;
-      el.textContent=pnlStr;
-      if(base) el.className=base+pnlCls;
-      else el.className=pnlCls;
-    });
-
-    renderMobilePortfolio(p.items||[]);
-  }catch(e){ console.error('[me]',e); }
-
-  loadSignals();
-  loadTrades();
+    renderHoldings();
+  }catch(e){console.error('[me]',e);}
 }
 
-/* ── Signals ── */
+/* ── Signals / Market ── */
 async function loadSignals(){
-  const session = localStorage.getItem(SESSION_KEY);
-  const tgId    = localStorage.getItem(TGID_KEY);
-  if(!session||!tgId) return;
+  const sess=gl(SK),tid=gl(TK); if(!sess||!tid)return;
   try{
-    const r = await fetch('/api/signals?user_id='+encodeURIComponent(tgId),{
-      headers:{'X-Web-Session':session}
-    });
-    const d = await r.json();
-    if(!r.ok) return;
-    const watched=d.watched||[], sigs=d.signals||{}, names=d.all_funds||{};
-    _sigsCache = sigs;
-    watched.forEach(c=>{ if(!_sigsCache[c])_sigsCache[c]={}; _sigsCache[c]._name=names[c]||c; });
-    renderWatchlist(watched, sigs, names);
-    renderMobileSignals(watched, sigs, names);
-    if(_selectedCode && sigs[_selectedCode]) _refreshRcHeader(_selectedCode);
+    const r=await fetch('/api/signals?user_id='+encodeURIComponent(tid),{headers:{'X-Web-Session':sess}});
+    const d=await r.json(); if(!r.ok)return;
+    _watched=d.watched||[];
+    _sigsMap=d.signals||{};
+    _allFunds=d.all_funds||{};
+    // ensure watched codes have _name
+    _watched.forEach(c=>{if(!_sigsMap[c])_sigsMap[c]={};_sigsMap[c]._name=_allFunds[c]||c;});
+    Object.keys(_allFunds).forEach(c=>{if(!_sigsMap[c])_sigsMap[c]={};if(!_sigsMap[c]._name)_sigsMap[c]._name=_allFunds[c]||c;});
+    renderMarketDesktop();
+    renderMarketMobile();
+    if(_selCode&&_sigsMap[_selCode])_refreshRcHeader(_selCode);
   }catch(e){}
 }
 
 /* ── Trades ── */
 async function loadTrades(){
-  const session = localStorage.getItem(SESSION_KEY);
-  const tgId    = localStorage.getItem(TGID_KEY);
-  if(!session||!tgId) return;
+  const sess=gl(SK),tid=gl(TK); if(!sess||!tid)return;
   try{
-    const r = await fetch('/api/trades?user_id='+encodeURIComponent(tgId),{
-      headers:{'X-Web-Session':session}
-    });
-    const d = await r.json();
-    if(!r.ok) return;
-    renderTrades(d.trades||[]);
+    const r=await fetch('/api/trades?user_id='+encodeURIComponent(tid),{headers:{'X-Web-Session':sess}});
+    const d=await r.json(); if(!r.ok)return;
+    _trades=d.trades||[];
+    renderTrades();
   }catch(e){}
 }
 
-/* ── Render: desktop watchlist ── */
-function renderWatchlist(watched, sigs, names){
-  const el = document.getElementById('watch-list');
-  if(!watched.length){ el.innerHTML='<p class="list-note" style="padding:14px">Chưa có quỹ nào</p>'; return; }
-  el.innerHTML = watched.map(code=>{
-    const s=sigs[code]||{}, name=names[code]||code;
+/* ═══════════════════════════════════
+   Build market rows
+═══════════════════════════════════ */
+function _marketRows(filter,search){
+  const allCodes=Object.keys(_allFunds);
+  if(!allCodes.length)return[];
+
+  return allCodes.filter(code=>{
+    const s=_sigsMap[code]||{};
+    const name=(_allFunds[code]||'').toLowerCase();
+    const sig=strip(s.signal||'');
+    if(search){const q=search.toLowerCase();if(!code.toLowerCase().includes(q)&&!name.includes(q))return false;}
+    if(filter==='buy')return sig.includes('MUA');
+    if(filter==='sell')return sig.includes('BÁN');
+    if(filter==='watch')return _watched.includes(code);
+    return true;
+  }).sort((a,b)=>{
+    const wa=_watched.includes(a)?0:1, wb=_watched.includes(b)?0:1;
+    if(wa!==wb)return wa-wb;
+    const sa=_sigsMap[a]||{}, sb=_sigsMap[b]||{};
+    const ra=sigRank(strip(sa.signal||'')), rb=sigRank(strip(sb.signal||''));
+    return ra-rb;
+  });
+}
+function sigRank(sig){if(sig.includes('MUA'))return 0;if(sig.includes('BÁN'))return 1;return 2;}
+
+function renderMarketDesktop(){
+  const el=document.getElementById('market-list');
+  const codes=_marketRows(_dFilter,_dSearch);
+  if(!codes.length){el.innerHTML='<p class="empty-note" style="padding:14px">Không có quỹ nào</p>';return;}
+  el.innerHTML=codes.map(code=>{
+    const s=_sigsMap[code]||{}, name=_allFunds[code]||code;
+    const isW=_watched.includes(code);
     const nav=s.nav?fmt(s.nav):'—';
-    const chg=s.chg_pct, chgStr=chg!=null?fmtPct(chg):'—';
-    const chgCls=chg==null?'':chg>=0?'pos':'neg';
-    const sig=(s.signal||'N/A').replace(/[🟢🔴⚪]/g,'').trim();
-    const sigCls=sig.includes('MUA')?'sig-buy':sig.includes('BÁN')?'sig-sell':'sig-hold';
+    const chg=s.chg_pct, chgStr=chg!=null?fmtPct(chg):'—', chgCls=chg==null?'':chg>=0?'pos':'neg';
+    const sig=strip(s.signal||''), sc=sigCls(sig);
     const pred=_predictions[code];
     let t2='';
-    if(pred&&pred.predicted_nav&&s.nav){
-      const c=(pred.predicted_nav/s.nav-1)*100;
-      t2=`<div class="w-t2 ${c>=0?'pos':'neg'}">T+2 ${c>=0?'↑':'↓'}${Math.abs(c).toFixed(2)}%</div>`;
-    }
-    return `<div class="w-row" id="wr-${code}" onclick="selectFund('${code}','${name.replace(/'/g,'')}')">
-      <div class="w-left">
-        <div class="w-code">${code}</div>
-        <div class="w-name">${name}</div>${t2}
+    if(pred&&pred.predicted_nav&&s.nav){const c=(pred.predicted_nav/s.nav-1)*100;t2=`<div class="fl-t2 ${c>=0?'pos':'neg'}">T+2 ${c>=0?'↑':'↓'}${Math.abs(c).toFixed(2)}%</div>`;}
+    const sigLabel=sig?`<span class="sig-badge ${sc}">${sig}</span>`:'';
+    return `<div class="f-row${isW?' watched':''}" id="fr-${code}" onclick="selectFund('${code}','${name.replace(/'/g,'')}')">
+      <div class="fl">
+        <div class="fl-code">${code}</div>
+        <div class="fl-name">${name}</div>${t2}
       </div>
-      <div class="w-right">
-        <div class="w-nav">${nav}</div>
-        <div class="w-chg ${chgCls}">${chgStr}</div>
-        <div class="sig-badge ${sigCls}">${sig}</div>
+      <div class="fr">
+        <div class="fr-nav">${nav}</div>
+        <div class="fr-chg ${chgCls}">${chgStr}</div>
+        ${sigLabel}
       </div>
     </div>`;
   }).join('');
+  // restore active state
+  if(_selCode){const fr=document.getElementById('fr-'+_selCode);if(fr)fr.classList.add('active');}
 }
 
-/* ── Render: mobile signals ── */
-function renderMobileSignals(watched, sigs, names){
-  const el = document.getElementById('m-signals-list');
-  if(!watched.length){ el.innerHTML='<p class="list-note">Chưa có quỹ nào</p>'; return; }
-  el.innerHTML = watched.map(code=>{
-    const s=sigs[code]||{}, name=names[code]||code;
+function renderMarketMobile(){
+  const el=document.getElementById('m-market-list');
+  const codes=_marketRows(_mFilter,_mSearch);
+  if(!codes.length){el.innerHTML='<p class="empty-note">Không có quỹ nào</p>';return;}
+  el.innerHTML=codes.map(code=>{
+    const s=_sigsMap[code]||{}, name=_allFunds[code]||code;
     const nav=s.nav?fmt(s.nav):'—';
-    const chg=s.chg_pct, chgStr=chg!=null?fmtPct(chg):'—';
-    const chgCls=chg==null?'':chg>=0?'pos':'neg';
-    const sig=(s.signal||'N/A').replace(/[🟢🔴⚪]/g,'').trim();
-    const sigCls=sig.includes('MUA')?'sig-buy':sig.includes('BÁN')?'sig-sell':'sig-hold';
+    const chg=s.chg_pct, chgStr=chg!=null?fmtPct(chg):'—', chgCls=chg==null?'':chg>=0?'pos':'neg';
+    const sig=strip(s.signal||''), sc=sigCls(sig);
     const pred=_predictions[code];
     let t2='';
-    if(pred&&pred.predicted_nav&&s.nav){
-      const c=(pred.predicted_nav/s.nav-1)*100;
-      t2=`<div class="fi-t2 ${c>=0?'pos':'neg'}">T+2 ${c>=0?'↑':'↓'}${Math.abs(c).toFixed(2)}%</div>`;
-    }
+    if(pred&&pred.predicted_nav&&s.nav){const c=(pred.predicted_nav/s.nav-1)*100;t2=`<div class="fi-t2 ${c>=0?'pos':'neg'}">T+2 ${c>=0?'↑':'↓'}${Math.abs(c).toFixed(2)}%</div>`;}
+    const sigLabel=sig?`<span class="sig-badge ${sc}">${sig}</span>`:'';
     return `<div class="fund-row" onclick="openDetail('${code}','${name.replace(/'/g,'')}')">
-      <div class="fi"><span class="fi-code">${code}</span><span class="fi-name">${name}</span>${t2}</div>
-      <div class="fd">
-        <span class="fd-nav">${nav}</span>
-        <span class="fd-chg ${chgCls}">${chgStr}</span>
-        <span class="sig-badge ${sigCls}">${sig}</span>
-      </div>
+      <div class="fi"><div class="fi-code">${code}</div><div class="fi-name">${name}</div>${t2}</div>
+      <div class="fd"><span class="fd-nav">${nav}</span><span class="fd-chg ${chgCls}">${chgStr}</span>${sigLabel}</div>
     </div>`;
   }).join('');
 }
 
-/* ── Render: mobile portfolio ── */
-function renderMobilePortfolio(items){
-  const el = document.getElementById('m-portfolio-list');
-  if(!items||!items.length){ el.innerHTML='<p class="list-note">Chưa có vị thế nào</p>'; return; }
-  el.innerHTML = items.map(h=>{
+/* ── Filter / Search ── */
+function setFilter(el,f){
+  document.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));
+  el.classList.add('active'); _dFilter=f; renderMarketDesktop();
+}
+function setMFilter(el,f){
+  document.querySelectorAll('.m-chip').forEach(c=>c.classList.remove('active'));
+  el.classList.add('active'); _mFilter=f; renderMarketMobile();
+}
+function filterMarket(){_dSearch=document.getElementById('search-box').value; renderMarketDesktop();}
+function filterMarketMobile(){_mSearch=document.getElementById('m-search').value; renderMarketMobile();}
+
+/* ═══════════════════════════════════
+   Holdings & Trades
+═══════════════════════════════════ */
+function renderHoldings(){
+  // desktop right panel
+  const el=document.getElementById('r-holds');
+  if(!_holds.length){el.innerHTML='<p class="empty-note">Chưa có vị thế</p>';return;}
+  el.innerHTML=_holds.map(h=>{
     const val=h.value?fmt(h.value):'—';
-    const pnlPct=h.pnl_pct, pnlStr=pnlPct!=null?fmtPct(pnlPct):'—';
-    const pnlCls=pnlPct==null?'':pnlPct>=0?'pos':'neg';
-    const unitsStr=h.units!=null?h.units.toLocaleString('vi-VN',{maximumFractionDigits:2})+' CCQ':'';
+    const pp=h.pnl_pct, ps=pp!=null?fmtPct(pp):'—', pc=pp==null?'':pp>=0?'pos':'neg';
+    return `<div class="hold-row-d" onclick="selectFund('${h.code}','${(h.name||h.code).replace(/'/g,'')}')">
+      <div><div class="hd-code">${h.code}</div><div class="hd-sub">${(h.units||0).toLocaleString('vi-VN',{maximumFractionDigits:2})} CCQ</div></div>
+      <div class="hd-r"><div class="hd-val">${val}</div><div class="hd-pnl ${pc}">${ps}</div></div>
+    </div>`;
+  }).join('');
+
+  // mobile
+  const mel=document.getElementById('m-portfolio-list');
+  mel.innerHTML=!_holds.length?'<p class="empty-note">Chưa có vị thế</p>':_holds.map(h=>{
+    const val=h.value?fmt(h.value):'—';
+    const pp=h.pnl_pct, ps=pp!=null?fmtPct(pp):'—', pc=pp==null?'':pp>=0?'pos':'neg';
     const costStr=h.avg_cost?fmt(h.avg_cost)+'/CCQ':'';
     return `<div class="hold-row" onclick="openDetail('${h.code}','${(h.name||h.code).replace(/'/g,'')}')">
-      <div>
-        <div class="hr-code">${h.code}</div>
-        <div class="hr-sub">${[unitsStr,costStr].filter(Boolean).join(' · ')}</div>
-      </div>
-      <div class="hr-right">
-        <div class="hr-val">${val}</div>
-        <div class="hr-pnl ${pnlCls}">${pnlStr}</div>
-      </div>
+      <div><div class="hr-code">${h.code}</div><div class="hr-sub">${costStr}</div></div>
+      <div class="hr-right"><div class="hr-val">${val}</div><div class="hr-pnl ${pc}">${ps}</div></div>
     </div>`;
   }).join('');
 }
 
-/* ── Render: trades ── */
-function renderTrades(trades){
-  const all=(trades||[]).slice(0,10);
-  const dtEl=document.getElementById('d-trades-list');
-  if(dtEl){
-    dtEl.innerHTML=!all.length?'<p class="list-note">Chưa có giao dịch</p>':
-      all.map(t=>{
-        const buy=t.type==='buy', amt=t.amount?fmt(t.amount):'—';
-        return `<div class="trade-row-d">
-          <div class="trd-l">
-            <span class="trd-date">${(t.date||'').slice(0,10)}</span>
-            <span class="trd-code">${t.code||'—'}</span>
-          </div>
-          <div class="trd-r">
-            <span class="trd-amt ${buy?'neg':'pos'}">${buy?'-':'+'}${amt}</span>
-            <span class="type-badge ${buy?'type-buy':'type-sell'}">${buy?'MUA':'BÁN'}</span>
-          </div>
-        </div>`;
-      }).join('');
-  }
-  const mEl=document.getElementById('m-trades-list');
-  if(mEl){
-    mEl.innerHTML=!all.length?'<p class="list-note">Chưa có giao dịch</p>':
-      all.map(t=>{
-        const buy=t.type==='buy', amt=t.amount?fmt(t.amount):'—';
-        const units=t.units!=null?t.units.toLocaleString('vi-VN',{maximumFractionDigits:2})+' CCQ':'';
-        return `<div class="trade-row">
-          <div class="tr-l">
-            <span class="tr-date">${(t.date||'').slice(0,10)}</span>
-            <span class="tr-code">${t.code||'—'}${units?' · '+units:''}</span>
-          </div>
-          <div class="tr-r">
-            <span class="tr-amt ${buy?'neg':'pos'}">${buy?'-':'+'}${amt}</span>
-            <span class="type-badge ${buy?'type-buy':'type-sell'}">${buy?'MUA':'BÁN'}</span>
-          </div>
-        </div>`;
-      }).join('');
-  }
+function renderTrades(){
+  const all=(_trades||[]).slice(0,15);
+  const html=!all.length?'<p class="empty-note">Chưa có giao dịch</p>':
+    all.map(t=>{
+      const buy=t.type==='buy', amt=t.amount?fmt(t.amount):'—';
+      return `<div class="${IS_MOB()?'tr-row':'td-row'}">
+        <div class="${IS_MOB()?'tr-l':'td-l'}">
+          <span class="${IS_MOB()?'tr-date':'td-date'}">${(t.date||'').slice(0,10)}</span>
+          <span class="${IS_MOB()?'tr-code':'td-code'}">${t.code||'—'}</span>
+        </div>
+        <div class="${IS_MOB()?'tr-r':'td-r'}">
+          <span class="${IS_MOB()?'tr-amt':'td-amt'} ${buy?'neg':'pos'}">${buy?'-':'+'}${amt}</span>
+          <span class="type-badge ${buy?'type-buy':'type-sell'}">${buy?'MUA':'BÁN'}</span>
+        </div>
+      </div>`;
+    }).join('');
+  const del=document.getElementById('r-trades'); if(del)del.innerHTML=html;
+  const mel=document.getElementById('m-trades-list'); if(mel)mel.innerHTML=html;
 }
 
-/* ── Desktop: select fund ── */
-function selectFund(code, name){
-  if(IS_MOBILE()){ openDetail(code,name); return; }
-
-  document.querySelectorAll('.w-row').forEach(r=>r.classList.remove('active'));
-  const wr=document.getElementById('wr-'+code); if(wr) wr.classList.add('active');
-  _selectedCode=code;
+/* ═══════════════════════════════════
+   Desktop: select fund → research
+═══════════════════════════════════ */
+function selectFund(code,name){
+  if(IS_MOB()){openDetail(code,name);return;}
+  document.querySelectorAll('.f-row').forEach(r=>r.classList.remove('active'));
+  const fr=document.getElementById('fr-'+code); if(fr)fr.classList.add('active');
+  _selCode=code; _dcaNav=(_sigsMap[code]||{}).nav||null;
+  document.getElementById('dca-code-d').textContent=code;
 
   _refreshRcHeader(code,name);
 
+  // reset & show content
   document.getElementById('rc-chart').style.display='none';
   document.getElementById('rc-loading').style.display='block';
   document.getElementById('rc-indicators').innerHTML='';
   document.getElementById('rc-ind-wrap').style.display='none';
+  document.getElementById('rc-verd-wrap').style.display='none';
   document.getElementById('rc-pro-lock').style.display='none';
-  document.getElementById('rc-position').style.display='none';
-  document.getElementById('rc-verdicts').style.display='none';
-  document.getElementById('research-empty').style.display='none';
-  const rc=document.getElementById('research-content');
-  rc.style.display='flex'; rc.style.flexDirection='column';
+  document.getElementById('rc-empty').style.display='none';
+  const rc=document.getElementById('rc-content'); rc.style.display='flex'; rc.style.flexDirection='column';
 
-  fetchResearch(code, (_sigsCache[code]||{}).nav);
+  // position in right panel
+  const hold=_holds.find(h=>h.code===code);
+  const rpos=document.getElementById('r-pos');
+  if(hold){
+    document.getElementById('r-pos-code').textContent=code;
+    document.getElementById('rpos-units').textContent=hold.units!=null?hold.units.toLocaleString('vi-VN',{maximumFractionDigits:4}):'—';
+    document.getElementById('rpos-cost').textContent=hold.avg_cost?fmt(hold.avg_cost):'—';
+    const pp=document.getElementById('rpos-pnl');
+    pp.textContent=hold.pnl_pct!=null?fmtPct(hold.pnl_pct):'—';
+    pp.className='pc-v '+(hold.pnl_pct>=0?'pos':'neg');
+    rpos.style.display='block';
+  } else { rpos.style.display='none'; }
+
+  fetchResearch(code,(_sigsMap[code]||{}).nav);
 }
 
-function _refreshRcHeader(code, name){
-  const s=_sigsCache[code]||{};
-  name=name||s._name||code;
+function _refreshRcHeader(code,name){
+  const s=_sigsMap[code]||{}; name=name||s._name||code;
   const nav=s.nav, chg=s.chg_pct;
-  const sig=(s.signal||'N/A').replace(/[🟢🔴⚪]/g,'').trim();
-
+  const sig=strip(s.signal||'');
   document.getElementById('rc-code').textContent=code;
   document.getElementById('rc-name').textContent=name;
   document.getElementById('rc-nav').textContent=nav?fmt(nav):'—';
-  const chgEl=document.getElementById('rc-chg');
-  chgEl.textContent=chg!=null?fmtPct(chg):'—';
-  chgEl.className='rch-chg '+(chg==null?'':chg>=0?'pos':'neg');
-  const sigEl=document.getElementById('rc-sig');
-  sigEl.textContent=sig;
-  sigEl.className='rch-sig sig-badge '+(sig.includes('MUA')?'sig-buy':sig.includes('BÁN')?'sig-sell':'sig-hold');
-
-  const pred=_predictions[code], t2Row=document.getElementById('rc-t2');
-  if(pred&&pred.predicted_nav&&nav){
-    const t2n=pred.predicted_nav, t2c=(t2n/nav-1)*100;
-    const hasCi=pred.ci_low!=null&&pred.ci_high!=null;
-    const uncert=hasCi&&nav>=pred.ci_low&&nav<=pred.ci_high;
-    const arrow=uncert?'≈':t2c>=0?'↑':'↓';
-    const cls=uncert?'':t2c>=0?'pos':'neg';
-    const vEl=document.getElementById('rc-t2-val');
-    vEl.textContent=`${arrow} ${Math.abs(t2c).toFixed(2)}% (${fmt(t2n)})`;
-    vEl.className='rc-t2-val '+cls;
-    document.getElementById('rc-t2-ci').textContent=hasCi?`CI [${fmt(pred.ci_low)} – ${fmt(pred.ci_high)}]`:'';
-    t2Row.style.display='flex';
-  } else { t2Row.style.display='none'; }
+  const ce=document.getElementById('rc-chg'); ce.textContent=chg!=null?fmtPct(chg):'—'; ce.className='rch-chg '+(chg==null?'':chg>=0?'pos':'neg');
+  const se=document.getElementById('rc-sig'); se.textContent=sig||'—'; se.className='rch-sig sig-badge '+sigCls(sig);
+  _renderT2Bar(code,'rc-t2','rc-t2-val','rc-t2-ci',nav);
 }
 
-async function fetchResearch(code, currentNav){
-  const session=localStorage.getItem(SESSION_KEY), tgId=localStorage.getItem(TGID_KEY);
-  if(!session||!tgId) return;
+function _renderT2Bar(code,barId,valId,ciId,nav){
+  const pred=_predictions[code], bar=document.getElementById(barId);
+  if(pred&&pred.predicted_nav&&nav){
+    const t2n=pred.predicted_nav, c=(t2n/nav-1)*100;
+    const hasCi=pred.ci_low!=null&&pred.ci_high!=null;
+    const unc=hasCi&&nav>=pred.ci_low&&nav<=pred.ci_high;
+    const vEl=document.getElementById(valId);
+    vEl.textContent=`${unc?'≈':c>=0?'↑':'↓'} ${Math.abs(c).toFixed(2)}% (${fmt(t2n)})`;
+    vEl.className='t2-val '+(unc?'':c>=0?'pos':'neg');
+    document.getElementById(ciId).textContent=hasCi?`CI [${fmt(pred.ci_low)} – ${fmt(pred.ci_high)}]`:'';
+    bar.style.display='flex';
+  } else { bar.style.display='none'; }
+}
 
+async function fetchResearch(code,currentNav){
+  const sess=gl(SK),tid=gl(TK); if(!sess||!tid)return;
   if(_isPro){
     try{
-      const r=await fetch(`/api/research/${encodeURIComponent(code)}?user_id=${encodeURIComponent(tgId)}`,{
-        headers:{'X-Web-Session':session}
-      });
-      if(r.status===403){ document.getElementById('rc-pro-lock').style.display='block'; _hideRcLoad(); return; }
-      const d=await r.json();
-      if(!r.ok){ _hideRcLoad(); return; }
-      _renderDesktopResearch(d, currentNav||d.nav);
-    }catch(e){ _hideRcLoad(); }
+      const r=await fetch(`/api/research/${encodeURIComponent(code)}?user_id=${encodeURIComponent(tid)}`,{headers:{'X-Web-Session':sess}});
+      if(r.status===403){document.getElementById('rc-pro-lock').style.display='block';_hideLoad('rc-loading');return;}
+      const d=await r.json(); if(!r.ok){_hideLoad('rc-loading');return;}
+      _renderResearch(d,currentNav||d.nav);
+    }catch(e){_hideLoad('rc-loading');}
   } else {
     document.getElementById('rc-pro-lock').style.display='block';
     try{
       const r=await fetch(`/api/nav/${encodeURIComponent(code)}`);
       const d=await r.json();
-      if(d.data&&d.data.length) drawChart('rc-chart','rc-loading',d.data.slice(-90),currentNav,190);
-      else _hideRcLoad();
-    }catch(e){ _hideRcLoad(); }
+      if(d.data&&d.data.length)drawChart('rc-chart','rc-loading',d.data.slice(-90),currentNav,185);
+      else _hideLoad('rc-loading');
+    }catch(e){_hideLoad('rc-loading');}
   }
 }
 
-function _hideRcLoad(){ document.getElementById('rc-loading').style.display='none'; }
-
-function _renderDesktopResearch(d, currentNav){
-  if(d.nav_series&&d.nav_series.length) drawChart('rc-chart','rc-loading',d.nav_series,currentNav||d.nav,190);
-  else _hideRcLoad();
-
-  const pos=d.position;
-  if(pos){
-    document.getElementById('rc-pos-code').textContent=_selectedCode||d.code||'';
-    document.getElementById('rc-pos-units').textContent=pos.units!=null?pos.units.toLocaleString('vi-VN',{maximumFractionDigits:4}):'—';
-    document.getElementById('rc-pos-cost').textContent=pos.avg_cost?fmt(pos.avg_cost):'—';
-    const pEl=document.getElementById('rc-pos-pnl');
-    if(pos.pnl_pct!=null){ pEl.textContent=fmtPct(pos.pnl_pct); pEl.className='pos-val '+(pos.pnl_pct>=0?'pos':'neg'); }
-    document.getElementById('rc-position').style.display='block';
-  }
-
+function _renderResearch(d,nav){
+  if(d.nav_series&&d.nav_series.length)drawChart('rc-chart','rc-loading',d.nav_series,nav||d.nav,185);
+  else _hideLoad('rc-loading');
   const tech=d.technical||{};
-  const inds=[
-    ['RSI(14)',tech.rsi],['MACD',tech.macd],['Bollinger',tech.bb],
-    ['MA Cross',tech.golden_cross||tech.ma],['Stochastic',tech.stoch],['Momentum',tech.roc]
-  ].filter(([,v])=>v);
-  if(inds.length){
-    document.getElementById('rc-indicators').innerHTML=inds.map(([l,v])=>
-      `<div class="ind-tile"><div class="ind-lbl">${l}</div><div class="ind-val">${v}</div></div>`
-    ).join('');
-    document.getElementById('rc-ind-wrap').style.display='block';
-  }
-
-  const verds=[
-    ['Kỹ thuật',tech.verdict],['Định giá',(d.value||{}).verdict],
-    ['Động lực',(d.momentum||{}).verdict],['DCA',(d.dca||{}).verdict],
-    ['Rủi ro',(d.risk||{}).verdict]
-  ].filter(([,v])=>v);
-  if(verds.length){
-    document.getElementById('rc-verd-grid').innerHTML=verds.map(([l,v])=>
-      `<div class="vcard"><div class="vcard-lbl">${l}</div><div class="vcard-val">${v}</div></div>`
-    ).join('');
-    document.getElementById('rc-verdicts').style.display='block';
-  }
+  const inds=[['RSI(14)',tech.rsi],['MACD',tech.macd],['Bollinger',tech.bb],['MA Cross',tech.golden_cross||tech.ma],['Stochastic',tech.stoch],['Momentum',tech.roc]].filter(([,v])=>v);
+  if(inds.length){document.getElementById('rc-indicators').innerHTML=inds.map(([l,v])=>`<div class="ind-tile"><div class="ind-lbl">${l}</div><div class="ind-val">${v}</div></div>`).join('');document.getElementById('rc-ind-wrap').style.display='block';}
+  const verds=[['Kỹ thuật',tech.verdict],['Định giá',(d.value||{}).verdict],['Động lực',(d.momentum||{}).verdict],['DCA',(d.dca||{}).verdict],['Rủi ro',(d.risk||{}).verdict]].filter(([,v])=>v);
+  if(verds.length){document.getElementById('rc-verdicts').innerHTML=verds.map(([l,v])=>`<div class="vcard"><div class="vcard-lbl">${l}</div><div class="vcard-val">${v}</div></div>`).join('');document.getElementById('rc-verd-wrap').style.display='block';}
 }
 
-/* ── Mobile tabs ── */
-function switchTab(tab){
-  document.querySelectorAll('.m-page').forEach(p=>p.classList.remove('active'));
-  document.querySelectorAll('.nav-tab').forEach(b=>b.classList.remove('active'));
-  document.getElementById('tab-'+tab).classList.add('active');
-  document.getElementById('nav-'+tab).classList.add('active');
-}
+function _hideLoad(id){const el=document.getElementById(id);if(el)el.style.display='none';}
 
-/* ── Mobile detail panel ── */
-function openDetail(code, name){
-  const s=_sigsCache[code]||{};
-  name=name||s._name||code;
-  const nav=s.nav, chg=s.chg_pct;
-  const sig=(s.signal||'N/A').replace(/[🟢🔴⚪]/g,'').trim();
-
+/* ═══════════════════════════════════
+   Mobile: detail panel
+═══════════════════════════════════ */
+function openDetail(code,name){
+  const s=_sigsMap[code]||{}; name=name||s._name||code;
+  const nav=s.nav, chg=s.chg_pct, sig=strip(s.signal||'');
   document.getElementById('d-code').textContent=code;
   document.getElementById('d-name').textContent=name;
   document.getElementById('d-nav').textContent=nav?fmt(nav):'—';
-  const chgEl=document.getElementById('d-chg');
-  chgEl.textContent=chg!=null?fmtPct(chg):'—';
-  chgEl.className=chg==null?'':chg>=0?'pos':'neg';
-  const sigEl=document.getElementById('d-sig');
-  sigEl.textContent=sig;
-  sigEl.className='sig-badge '+(sig.includes('MUA')?'sig-buy':sig.includes('BÁN')?'sig-sell':'sig-hold');
-
-  const pred=_predictions[code], t2Row=document.getElementById('d-t2-row');
-  if(pred&&pred.predicted_nav&&nav){
-    const t2n=pred.predicted_nav, t2c=(t2n/nav-1)*100;
-    const hasCi=pred.ci_low!=null&&pred.ci_high!=null;
-    const uncert=hasCi&&nav>=pred.ci_low&&nav<=pred.ci_high;
-    const vEl=document.getElementById('d-t2-val');
-    vEl.textContent=`${uncert?'≈':t2c>=0?'↑':'↓'} ${Math.abs(t2c).toFixed(2)}% (${fmt(t2n)})`;
-    vEl.className='p-t2-val '+(uncert?'':t2c>=0?'pos':'neg');
-    document.getElementById('d-t2-ci').textContent=hasCi?`CI [${fmt(pred.ci_low)} – ${fmt(pred.ci_high)}]`:'';
-    t2Row.style.display='flex';
-  } else { t2Row.style.display='none'; }
-
+  const ce=document.getElementById('d-chg'); ce.textContent=chg!=null?fmtPct(chg):'—'; ce.className=chg==null?'':chg>=0?'pos':'neg';
+  const se=document.getElementById('d-sig'); se.textContent=sig||'—'; se.className='sig-badge '+sigCls(sig);
+  _renderT2Bar(code,'d-t2-bar','d-t2-val','d-t2-ci',nav);
+  // DCA context
+  _selCode=code; _dcaNav=nav||null;
+  document.getElementById('dca-code-m').textContent=code;
+  // reset
   document.getElementById('d-chart').style.display='none';
   document.getElementById('d-loading').style.display='block';
   document.getElementById('d-pro-content').style.display='none';
   document.getElementById('d-pro-lock').style.display='none';
   document.getElementById('d-indicators').innerHTML='';
   document.getElementById('d-verdicts').innerHTML='';
-  document.getElementById('d-position').style.display='none';
-
+  document.getElementById('d-pos-section').style.display='none';
   document.getElementById('panel-overlay').classList.add('open');
   requestAnimationFrame(()=>document.getElementById('detail-panel').classList.add('open'));
-
-  _fetchMobileDetail(code, nav);
+  _fetchMobileDetail(code,nav);
 }
 
-async function _fetchMobileDetail(code, currentNav){
-  const session=localStorage.getItem(SESSION_KEY), tgId=localStorage.getItem(TGID_KEY);
-  if(!session||!tgId) return;
-
+async function _fetchMobileDetail(code,nav){
+  const sess=gl(SK),tid=gl(TK); if(!sess||!tid)return;
   if(_isPro){
     try{
-      const r=await fetch(`/api/research/${encodeURIComponent(code)}?user_id=${encodeURIComponent(tgId)}`,{
-        headers:{'X-Web-Session':session}
-      });
-      if(r.status===403){ document.getElementById('d-pro-lock').style.display='block'; document.getElementById('d-loading').style.display='none'; return; }
-      const d=await r.json();
-      if(!r.ok){ document.getElementById('d-loading').style.display='none'; return; }
-      _renderPanelDetail(d, currentNav||d.nav);
-    }catch(e){ document.getElementById('d-loading').style.display='none'; }
+      const r=await fetch(`/api/research/${encodeURIComponent(code)}?user_id=${encodeURIComponent(tid)}`,{headers:{'X-Web-Session':sess}});
+      if(r.status===403){document.getElementById('d-pro-lock').style.display='block';_hideLoad('d-loading');return;}
+      const d=await r.json(); if(!r.ok){_hideLoad('d-loading');return;}
+      _renderPanel(d,nav||d.nav);
+    }catch(e){_hideLoad('d-loading');}
   } else {
     document.getElementById('d-pro-lock').style.display='block';
     try{
       const r=await fetch(`/api/nav/${encodeURIComponent(code)}`);
       const d=await r.json();
-      if(d.data&&d.data.length) drawChart('d-chart','d-loading',d.data.slice(-90),currentNav,120);
-      else document.getElementById('d-loading').style.display='none';
-    }catch(e){ document.getElementById('d-loading').style.display='none'; }
+      if(d.data&&d.data.length)drawChart('d-chart','d-loading',d.data.slice(-90),nav,120);
+      else _hideLoad('d-loading');
+    }catch(e){_hideLoad('d-loading');}
   }
 }
 
-function _renderPanelDetail(d, currentNav){
-  if(d.nav_series&&d.nav_series.length) drawChart('d-chart','d-loading',d.nav_series,currentNav||d.nav,120);
-  else document.getElementById('d-loading').style.display='none';
-
+function _renderPanel(d,nav){
+  if(d.nav_series&&d.nav_series.length)drawChart('d-chart','d-loading',d.nav_series,nav||d.nav,120);
+  else _hideLoad('d-loading');
   const pos=d.position;
   if(pos){
     document.getElementById('d-units').textContent=pos.units!=null?pos.units.toLocaleString('vi-VN',{maximumFractionDigits:4}):'—';
     document.getElementById('d-cost').textContent=pos.avg_cost?fmt(pos.avg_cost):'—';
-    const pEl=document.getElementById('d-pnl');
-    if(pos.pnl_pct!=null){ pEl.textContent=fmtPct(pos.pnl_pct); pEl.className='p-pos-val '+(pos.pnl_pct>=0?'pos':'neg'); }
-    document.getElementById('d-position').style.display='block';
+    const pe=document.getElementById('d-pnl'); pe.textContent=pos.pnl_pct!=null?fmtPct(pos.pnl_pct):'—'; if(pos.pnl_pct!=null)pe.className='p-pc-v '+(pos.pnl_pct>=0?'pos':'neg');
+    document.getElementById('d-pos-section').style.display='block';
   }
-
   const tech=d.technical||{};
-  document.getElementById('d-indicators').innerHTML=[
-    ['RSI(14)',tech.rsi],['MACD',tech.macd],['Bollinger',tech.bb],
-    ['MA Cross',tech.golden_cross||tech.ma],['Stochastic',tech.stoch],['Momentum',tech.roc]
-  ].filter(([,v])=>v).map(([l,v])=>
-    `<div class="p-ind-tile"><div class="p-ind-lbl">${l}</div><div class="p-ind-val">${v}</div></div>`
-  ).join('');
-
-  document.getElementById('d-verdicts').innerHTML=[
-    ['Kỹ thuật',tech.verdict],['Định giá',(d.value||{}).verdict],
-    ['Động lực',(d.momentum||{}).verdict],['DCA',(d.dca||{}).verdict],
-    ['Rủi ro',(d.risk||{}).verdict]
-  ].filter(([,v])=>v).map(([l,v])=>
-    `<div class="p-vcard"><div class="p-vcard-lbl">${l}</div><div class="p-vcard-val">${v}</div></div>`
-  ).join('');
-
+  document.getElementById('d-indicators').innerHTML=[['RSI(14)',tech.rsi],['MACD',tech.macd],['Bollinger',tech.bb],['MA Cross',tech.golden_cross||tech.ma],['Stochastic',tech.stoch],['Momentum',tech.roc]].filter(([,v])=>v).map(([l,v])=>`<div class="p-ind-tile"><div class="p-ind-lbl">${l}</div><div class="p-ind-val">${v}</div></div>`).join('');
+  document.getElementById('d-verdicts').innerHTML=[['Kỹ thuật',tech.verdict],['Định giá',(d.value||{}).verdict],['Động lực',(d.momentum||{}).verdict],['DCA',(d.dca||{}).verdict],['Rủi ro',(d.risk||{}).verdict]].filter(([,v])=>v).map(([l,v])=>`<div class="p-vc"><div class="p-vc-lbl">${l}</div><div class="p-vc-val">${v}</div></div>`).join('');
   document.getElementById('d-pro-content').style.display='block';
 }
 
@@ -1020,77 +1167,114 @@ function closeDetail(){
   document.getElementById('panel-overlay').classList.remove('open');
 }
 
-/* ── Chart (Canvas, hardcoded hex) ── */
-function drawChart(canvasId, loadId, series, currentNav, H){
-  const canvas=document.getElementById(canvasId);
-  const loading=document.getElementById(loadId);
+/* ═══════════════════════════════════
+   DCA Calculator
+═══════════════════════════════════ */
+function calcDCA(suffix){
+  const nav=_dcaNav;
+  const amt=parseFloat(document.getElementById('dca-amount-'+suffix).value||'0');
+  const mths=parseInt(document.getElementById('dca-months-'+suffix).value||'12');
+  const res=document.getElementById('dca-result-'+suffix);
+  if(!amt||amt<=0||!mths||mths<=0){res.style.display='none';return;}
+  const total=amt*mths;
+  if(nav&&nav>0){
+    const unitsPerMonth=amt/nav, totalUnits=unitsPerMonth*mths;
+    document.getElementById('dca-r-units-'+suffix).textContent=totalUnits.toLocaleString('vi-VN',{maximumFractionDigits:4})+' CCQ';
+    document.getElementById('dca-r-value-'+suffix).textContent=fmt(totalUnits*nav)+' (tại NAV hiện tại)';
+    document.getElementById('dca-r-nav-'+suffix).textContent=fmt(nav)+(_selCode?' ('+_selCode+')':'');
+  } else {
+    document.getElementById('dca-r-units-'+suffix).textContent='Chọn quỹ để tính CCQ';
+    document.getElementById('dca-r-value-'+suffix).textContent='—';
+    document.getElementById('dca-r-nav-'+suffix).textContent='—';
+  }
+  document.getElementById('dca-r-total-'+suffix).textContent=fmt(total);
+  res.style.display='block';
+}
+
+/* ═══════════════════════════════════
+   Right sub-tabs
+═══════════════════════════════════ */
+function showRTab(btn,panelId){
+  document.querySelectorAll('.rtab').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.rtab-panel').forEach(p=>p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById(panelId).classList.add('active');
+}
+
+/* ═══════════════════════════════════
+   Mobile tabs
+═══════════════════════════════════ */
+function switchTab(tab){
+  document.querySelectorAll('.m-page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(b=>b.classList.remove('active'));
+  document.getElementById('tab-'+tab).classList.add('active');
+  document.getElementById('nav-'+tab).classList.add('active');
+}
+
+/* ═══════════════════════════════════
+   Chart (Canvas, hex hardcoded)
+═══════════════════════════════════ */
+function drawChart(canvasId,loadId,series,currentNav,H){
+  const canvas=document.getElementById(canvasId),loading=document.getElementById(loadId);
   const dpr=window.devicePixelRatio||1;
   const W=canvas.offsetWidth||canvas.parentElement?.clientWidth||400;
   H=H||150;
   canvas.width=W*dpr; canvas.height=H*dpr;
   canvas.style.width=W+'px'; canvas.style.height=H+'px';
-  const ctx=canvas.getContext('2d');
-  ctx.scale(dpr,dpr);
+  const ctx=canvas.getContext('2d'); ctx.scale(dpr,dpr);
 
   const navs=series.map(p=>p.nav).filter(v=>v!=null);
-  if(!navs.length){ loading.style.display='none'; return; }
-
+  if(!navs.length){if(loading)loading.style.display='none';return;}
   const mn=Math.min(...navs), mx=Math.max(...navs), rng=mx-mn||1;
-  const pad={t:14,r:12,b:18,l:8};
+  const pad={t:12,r:10,b:20,l:6};
   const xOf=i=>pad.l+i/(series.length-1||1)*(W-pad.l-pad.r);
   const yOf=v=>pad.t+(1-(v-mn)/rng)*(H-pad.t-pad.b);
 
-  ctx.strokeStyle='rgba(30,48,80,.5)'; ctx.lineWidth=1;
-  [mn,(mn+mx)/2,mx].forEach(v=>{
-    const y=yOf(v); ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(W-pad.r,y); ctx.stroke();
-  });
+  // grid
+  ctx.strokeStyle='rgba(30,48,80,.45)'; ctx.lineWidth=1;
+  [mn,(mn+mx)/2,mx].forEach(v=>{const y=yOf(v);ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(W-pad.r,y);ctx.stroke();});
 
+  // area
   const grad=ctx.createLinearGradient(0,pad.t,0,H-pad.b);
-  grad.addColorStop(0,'rgba(0,229,255,.16)');
-  grad.addColorStop(1,'rgba(0,229,255,.0)');
-  ctx.beginPath();
-  let first=true;
-  series.forEach((p,i)=>{ if(p.nav==null) return; first?(ctx.moveTo(xOf(i),yOf(p.nav)),first=false):ctx.lineTo(xOf(i),yOf(p.nav)); });
-  ctx.lineTo(xOf(series.length-1),H-pad.b);
-  ctx.lineTo(xOf(0),H-pad.b);
+  grad.addColorStop(0,'rgba(0,229,255,.15)'); grad.addColorStop(1,'rgba(0,229,255,.0)');
+  ctx.beginPath(); let first=true;
+  series.forEach((p,i)=>{if(p.nav==null)return;first?(ctx.moveTo(xOf(i),yOf(p.nav)),first=false):ctx.lineTo(xOf(i),yOf(p.nav));});
+  ctx.lineTo(xOf(series.length-1),H-pad.b); ctx.lineTo(xOf(0),H-pad.b);
   ctx.closePath(); ctx.fillStyle=grad; ctx.fill();
 
+  // line
   ctx.beginPath(); first=true;
-  series.forEach((p,i)=>{ if(p.nav==null) return; first?(ctx.moveTo(xOf(i),yOf(p.nav)),first=false):ctx.lineTo(xOf(i),yOf(p.nav)); });
-  ctx.strokeStyle='#00e5ff'; ctx.lineWidth=1.5; ctx.stroke();
+  series.forEach((p,i)=>{if(p.nav==null)return;first?(ctx.moveTo(xOf(i),yOf(p.nav)),first=false):ctx.lineTo(xOf(i),yOf(p.nav));});
+  ctx.strokeStyle='#00e5ff'; ctx.lineWidth=1.6; ctx.stroke();
 
+  // dot
   const last=series.filter(p=>p.nav!=null).pop();
-  if(last){ const lx=xOf(series.length-1),ly=yOf(last.nav); ctx.beginPath(); ctx.arc(lx,ly,3,0,Math.PI*2); ctx.fillStyle='#00e5ff'; ctx.fill(); }
+  if(last){const lx=xOf(series.length-1),ly=yOf(last.nav);ctx.beginPath();ctx.arc(lx,ly,3,0,Math.PI*2);ctx.fillStyle='#00e5ff';ctx.fill();}
 
-  ctx.fillStyle='rgba(90,120,152,.8)';
-  ctx.font='9px monospace'; ctx.textBaseline='top';
+  // dates
+  ctx.fillStyle='rgba(90,120,152,.7)'; ctx.font='8px monospace'; ctx.textBaseline='top';
   const d0=(series[0]?.date||'').slice(5), d1=(series[series.length-1]?.date||'').slice(5);
-  ctx.fillText(d0,pad.l,H-pad.b+3);
-  ctx.textAlign='right'; ctx.fillText(d1,W-pad.r,H-pad.b+3); ctx.textAlign='left';
+  ctx.fillText(d0,pad.l,H-pad.b+4); ctx.textAlign='right'; ctx.fillText(d1,W-pad.r,H-pad.b+4); ctx.textAlign='left';
 
-  loading.style.display='none'; canvas.style.display='block';
+  if(loading)loading.style.display='none'; canvas.style.display='block';
 }
 
-/* ── Refresh + Logout ── */
-function refreshAll(){
-  loadSignals(); loadTrades();
-}
-
+/* ═══════════════════════════════════
+   Refresh + Logout
+═══════════════════════════════════ */
+function refreshAll(){loadProfile();loadSignals();loadTrades();}
 function logout(){
-  localStorage.removeItem(SESSION_KEY); localStorage.removeItem(TGID_KEY);
+  localStorage.removeItem(SK);localStorage.removeItem(TK);
   document.getElementById('gate').style.display='flex';
-  document.getElementById('top-bar').style.display='none';
+  document.getElementById('topbar').style.display='none';
   document.getElementById('app').style.display='none';
   document.getElementById('bottom-nav').style.display='none';
 }
 
-document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeDetail(); });
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeDetail();});
 
 /* ── Auto-login ── */
-(function(){
-  const s=localStorage.getItem(SESSION_KEY), t=localStorage.getItem(TGID_KEY);
-  if(s&&t) initApp({first_name:localStorage.getItem(NAME_KEY),username:(localStorage.getItem(UN_KEY)||'').replace('@','')});
-})();
+(()=>{const s=gl(SK),t=gl(TK);if(s&&t)initApp({first_name:gl(NK),username:gl(UK).replace('@','')});})();
 </script>
 </body>
 </html>
