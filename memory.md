@@ -902,3 +902,37 @@ overview) bằng 3 bước tiếp theo cho bản Web độc lập.
 2. Cấp JWT tcinvest mới (hết hạn từ 16/07, pattern lặp nhiều lần)
 3. Xác nhận NTPPF/VMEEF có nên track (FK violation khi harvest tiếp tục)
 4. ios/ + Fund Tracker Pro.xcodeproj/ deleted + dashboard/portfolio.html + scripts/* chưa commit
+
+---
+
+## ✅ Session (autonomous, scheduled) — Ca sáng 2026-07-20: fix 2 bugs detail panel GOV-018
+
+**Baseline**: py_compile OK, 268/268 tests pass (không đổi).
+
+**Phát hiện đầu session**: 3 commits mới từ live session 2026-07-19 (GOV-018 fund detail panel
+trong web.html + 2 fix sau đó) chưa có trong BACKLOG. BACKLOG.md có thay đổi local chưa commit
+(đã ghi GOV-018 vào). Đã commit BACKLOG update.
+
+**2 bugs phát hiện và fix trong web.html (GOV-018 detail panel)**:
+
+1. `hideChartLoading()` thiếu khi Pro API trả 403/error/catch — spinner "Đang tải biểu
+   đồ..." ở lại song song với Pro lock message, gây nhầm lẫn. Fix: gọi `hideChartLoading()`
+   cùng với `showProLock()` ở tất cả error path trong `fetchDetail()` (Pro branch). Free
+   user branch đã đúng từ đầu (có explicit `hideChartLoading()` trong catch).
+
+2. Panel không reset `scrollTop` khi mở fund mới — nếu user đã cuộn xuống trong fund trước,
+   fund mới mở ra ở giữa trang thay vì đầu. Fix: `panel.scrollTop = 0` trong `openDetail()`
+   trước khi add class `open`. Phải reset TRƯỚC khi mở animation để đảm bảo đúng vị trí.
+
+**Verify**: `_api_nav_history` trả `{"date":..., "nav":...}` (không phải `nav_date`) — khớp
+với `drawSparkline(p.date)` trong web.html. `_api_research` trả `nav_series` cùng format.
+`position` data từ backend có `units/avg_cost/pnl_pct` khớp với `renderProDetail()`.
+268/268 tests pass sau khi fix.
+
+**Tất cả P0/P1 DONE.** Chỉ còn PAY-006 (VNPay)/PAY-007 (Stripe) — P2, chờ merchant credentials.
+
+**Việc cần Harvey (tồn đọng, không thay đổi từ session trước):**
+1. Set WEB_SESSION_SECRET trên Railway + chạy /setdomain @BotFather
+2. Cấp JWT tcinvest mới (hết hạn từ 16/07, pattern lặp nhiều lần)
+3. Xác nhận NTPPF/VMEEF có nên track (FK violation khi harvest tiếp tục)
+4. ios/ + Fund Tracker Pro.xcodeproj/ deleted + dashboard/portfolio.html + scripts/* chưa commit

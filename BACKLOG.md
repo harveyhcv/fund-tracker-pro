@@ -4,9 +4,9 @@
 # Priority: P0 (blocker) / P1 (important) / P2 (nice-to-have)
 # Claude đọc file này ĐẦU TIÊN mỗi session. Pick task IN_PROGRESS nếu có, nếu không pick P0 cao nhất.
 #
-# Last updated: 2026-07-19 (ca chiều — ghi nhận GOV-015 bước 5, GOV-016 x3, GOV-017, VPS docs
-# từ live session 17/07; viết 14 tests mới cho GOV-017 (redeem_instant_discount_code);
-# 268/268 tests pass; tất cả P0/P1 DONE — chỉ còn PAY-006/007 P2 chờ merchant credentials)
+# Last updated: 2026-07-20 (ca sáng — commit BACKLOG GOV-018, fix 2 bugs detail panel web.html:
+# hideChartLoading khi Pro API loi + reset scrollTop khi mo fund moi. 268/268 tests pass.
+# Tat ca P0/P1 DONE — chi con PAY-006/007 P2 cho merchant credentials)
 
 ## Session (autonomous, scheduled) — Ca sáng 2026-07-16: update BACKLOG, verify baseline
 # Tình trạng: tất cả P0/P1 đã DONE từ trước. Điều kiện dừng ca này: "Hết P0+P1".
