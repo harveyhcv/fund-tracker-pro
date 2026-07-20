@@ -1275,6 +1275,101 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeDetail();});
 
 /* ── Auto-login ── */
 (()=>{const s=gl(SK),t=gl(TK);if(s&&t)initApp({first_name:gl(NK),username:gl(UK).replace('@','')});})();
+
+/* ══ DEV BYPASS — chỉ kích hoạt khi URL có #dev ══
+ * Mở file với: ...web.html#dev
+ * Mô phỏng account Admin Pro đầy đủ, không cần Telegram auth.
+ */
+if(location.hash==='#dev'){
+  const _NAV_SERIES = (()=>{
+    const s=[]; let v=18500, d=new Date('2025-10-01');
+    for(let i=0;i<90;i++){v+=v*(Math.random()-.45)*.006;s.push({date:d.toISOString().slice(0,10),nav:Math.round(v)});d=new Date(d.getTime()+86400000);}
+    return s;
+  })();
+  const _MOCK_ME = {
+    tier:'admin', telegram_id:'111111111',
+    portfolio:{
+      total_value:185200000,total_cost:160000000,total_pnl:25200000,total_pnl_pct:15.75,
+      items:[
+        {code:'TCFF', name:'TCBS Fixed Income Fund',units:4200.5,avg_cost:18200,nav:20100,value:84420050,pnl_pct:10.44,signal:'🟢 MUA'},
+        {code:'VMEEF',name:'VinaCapital MEF',        units:3100,  avg_cost:22500,nav:25800,value:79980000,pnl_pct:14.67,signal:'🟢 MUA'},
+        {code:'SSIBF',name:'SSI Bonds Fund',         units:800,   avg_cost:26000,nav:25990,value:20792000,pnl_pct:-0.04,signal:'⚪ GIỮ'},
+      ]
+    },
+    predictions:{
+      TCFF: {predicted_nav:20380,ci_low:19800,ci_high:20900},
+      VMEEF:{predicted_nav:26200,ci_low:25400,ci_high:27000},
+    },
+    watched_funds:['TCFF','VMEEF','SSIBF']
+  };
+  const _MOCK_SIGNALS = {
+    watched:['TCFF','VMEEF','SSIBF'],
+    signals:{
+      TCFF: {nav:20100,chg_pct:0.48,signal:'🟢 MUA'},
+      VMEEF:{nav:25800,chg_pct:1.12,signal:'🟢 MUA'},
+      SSIBF:{nav:25990,chg_pct:-0.04,signal:'⚪ GIỮ'},
+      DCDS: {nav:32400,chg_pct:0.21,signal:'🟢 MUA'},
+      BVBF: {nav:11200,chg_pct:-0.31,signal:'🔴 BÁN'},
+      MBBF: {nav:14750,chg_pct:0.09,signal:'⚪ GIỮ'},
+      VCBF: {nav:18900,chg_pct:0.55,signal:'🟢 MUA'},
+      FVPF: {nav:22100,chg_pct:-0.18,signal:'⚪ GIỮ'},
+    },
+    all_funds:{
+      TCFF:'TCBS Fixed Income Fund',VMEEF:'VinaCapital MEF',SSIBF:'SSI Bonds Fund',
+      DCDS:'Dragon Capital Dividend',BVBF:'Bảo Việt Bond Fund',MBBF:'MB Bond Fund',
+      VCBF:'Vietcombank Bond Fund',FVPF:'Fidelity VP Fund',
+    }
+  };
+  const _MOCK_TRADES = {trades:[
+    {date:'2026-07-01',code:'TCFF', type:'buy', amount:20000000,units:1004.5},
+    {date:'2026-06-15',code:'VMEEF',type:'buy', amount:25000000,units:980.4},
+    {date:'2026-05-20',code:'SSIBF',type:'buy', amount:10000000,units:388.3},
+    {date:'2026-04-10',code:'TCFF', type:'buy', amount:15000000,units:750.2},
+    {date:'2026-03-05',code:'VMEEF',type:'sell',amount:5000000, units:196.1},
+  ]};
+  const _MOCK_RESEARCH = (code)=>({
+    nav:(_MOCK_SIGNALS.signals[code]||{}).nav||20000,
+    nav_series:_NAV_SERIES,
+    position: _MOCK_ME.portfolio.items.find(h=>h.code===code)
+              ? {units:_MOCK_ME.portfolio.items.find(h=>h.code===code).units,
+                 avg_cost:_MOCK_ME.portfolio.items.find(h=>h.code===code).avg_cost,
+                 pnl_pct:_MOCK_ME.portfolio.items.find(h=>h.code===code).pnl_pct}
+              : null,
+    technical:{
+      rsi:'RSI 58.4 — Trung tính ⚪',macd:'MACD +0.023 — Tăng 🟢',
+      bb:'Bollinger: trong dải, xu hướng tích lũy',golden_cross:'MA20 > MA50 — Vàng 🟢',
+      stoch:'Stoch 62/54 — Trung tính ⚪',roc:'ROC +1.2% — Đà tăng nhẹ',
+      verdict:'Kỹ thuật trung tính, xu hướng tăng nhẹ',
+    },
+    value:   {verdict:'Định giá hợp lý, P/NAV ~1.02'},
+    momentum:{verdict:'Đà tăng duy trì 3 tuần liên tiếp'},
+    dca:     {verdict:'DCA phù hợp — tích lũy đều hàng tháng'},
+    risk:    {verdict:'Rủi ro thấp — biến động 30 ngày: 0.8%'},
+  });
+
+  // Intercept fetch
+  const _origFetch = window.fetch;
+  window.fetch = (url='', opts) => {
+    const u = String(url);
+    if(u.includes('/api/auth')) return Promise.resolve({ok:true,json:()=>Promise.resolve({ok:true,session:'dev-session',telegram_id:'111111111',first_name:'Harvey',username:'harveynguyen'})});
+    if(u.includes('/api/me'))      return Promise.resolve({ok:true,json:()=>Promise.resolve(_MOCK_ME)});
+    if(u.includes('/api/signals')) return Promise.resolve({ok:true,json:()=>Promise.resolve(_MOCK_SIGNALS)});
+    if(u.includes('/api/trades'))  return Promise.resolve({ok:true,json:()=>Promise.resolve(_MOCK_TRADES)});
+    if(u.includes('/api/research/')){const c=u.split('/api/research/')[1].split('?')[0];return Promise.resolve({ok:true,json:()=>Promise.resolve(_MOCK_RESEARCH(decodeURIComponent(c)))});}
+    if(u.includes('/api/nav/')){return Promise.resolve({ok:true,json:()=>Promise.resolve({data:_NAV_SERIES})});}
+    return _origFetch(url, opts);
+  };
+
+  // Show DEV badge in header after app loads
+  document.addEventListener('DOMContentLoaded', ()=>{
+    const brand=document.querySelector('.tb-brand');
+    if(brand) brand.insertAdjacentHTML('afterend','<span style="font-size:9px;color:#facc15;font-family:var(--mono);background:rgba(250,204,21,.1);border:1px solid rgba(250,204,21,.3);padding:2px 7px;border-radius:3px;margin-left:6px">DEV</span>');
+  });
+
+  // Boot
+  ls(SK,'dev-session'); ls(TK,'111111111'); ls(NK,'Harvey'); ls(UK,'@harveynguyen');
+  initApp({first_name:'Harvey',username:'harveynguyen',photo_url:''});
+}
 </script>
 </body>
 </html>

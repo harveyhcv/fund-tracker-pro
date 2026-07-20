@@ -54,6 +54,7 @@ footer{margin-top:36px;font-size:11.5px;color:var(--txt2);text-align:center}
   <h1>🔒 P&amp;L Admin</h1>
   <p class="sub">Nhập token quản trị để xem số liệu thật</p>
   <input type="password" id="gate-token" placeholder="Admin token">
+  <input type="text" id="gate-tgid" placeholder="Telegram ID (để quản lý mã &amp; cập nhật token)" style="margin-top:6px">
   <button onclick="tryToken()">Mở</button>
   <div class="err" id="gate-err"></div>
 </div>
@@ -116,22 +117,68 @@ footer{margin-top:36px;font-size:11.5px;color:var(--txt2);text-align:center}
     <div class="note-box" id="stage-note"></div>
   </section>
 
-  <section id="sec-portfolio" style="display:none">
-    <h2>Danh mục quỹ của Admin</h2>
-    <div class="out-grid" id="pf-summary" style="margin-bottom:16px"></div>
-    <table>
-      <thead><tr>
-        <th>Mã quỹ</th>
-        <th>Số CCQ</th>
-        <th>Giá vốn (đ/CCQ)</th>
-        <th>NAV hiện tại</th>
-        <th>Giá trị</th>
-        <th>Lãi / Lỗ %</th>
-        <th>Tín hiệu</th>
-      </tr></thead>
-      <tbody id="pf-tbody"></tbody>
-      <tfoot id="pf-tfoot"></tfoot>
-    </table>
+  <section id="sec-token">
+    <h2>Cập nhật TCBS Token</h2>
+    <div class="cost-input-row" style="flex-direction:column;align-items:stretch;gap:10px">
+      <div class="lbl">JWT Token mới từ TCBS
+        <span class="hint">Paste token đăng nhập TCBS để hệ thống fetch NAV tự động</span>
+      </div>
+      <textarea id="i_tcbs_token" rows="3" style="background:var(--bg3);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:8px 10px;font-family:var(--mono);font-size:12px;resize:vertical;width:100%"></textarea>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button onclick="updateTcbsToken()">Cập nhật &amp; Fetch NAV ngay</button>
+      </div>
+    </div>
+    <div id="token-status" style="font-size:12px;color:var(--txt2);min-height:16px;margin-top:4px"></div>
+  </section>
+
+  <section id="sec-discount">
+    <h2>Quản lý mã giảm giá</h2>
+
+    <!-- Tạo mã mới -->
+    <div style="background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:14px">
+      <div style="font-size:12px;color:var(--txt2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px">Tạo mã mới</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:10px">
+        <div>
+          <div style="font-size:11px;color:var(--txt2);margin-bottom:4px">Mã (để trống = tự sinh)</div>
+          <input id="dc_code" type="text" placeholder="VD: SUMMER2026" style="width:100%;background:var(--bg3);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:7px 10px;font-family:var(--mono);font-size:13px">
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--txt2);margin-bottom:4px">Loại</div>
+          <select id="dc_benefit_type" style="width:100%;background:var(--bg3);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:7px 10px;font-family:var(--mono);font-size:13px">
+            <option value="discount_pct">Giảm % giá</option>
+            <option value="bonus_days">Tặng ngày Pro</option>
+          </select>
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--txt2);margin-bottom:4px">Giá trị (% hoặc ngày)</div>
+          <input id="dc_benefit_value" type="number" min="1" max="100" value="20" style="width:100%;background:var(--bg3);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:7px 10px;font-family:var(--mono);font-size:13px">
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--txt2);margin-bottom:4px">Số lần dùng tối đa</div>
+          <input id="dc_max_uses" type="number" min="1" value="100" style="width:100%;background:var(--bg3);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:7px 10px;font-family:var(--mono);font-size:13px">
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--txt2);margin-bottom:4px">Cần mua thật?</div>
+          <select id="dc_requires_purchase" style="width:100%;background:var(--bg3);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:7px 10px;font-family:var(--mono);font-size:13px">
+            <option value="true">Có (giảm giá khi mua)</option>
+            <option value="false">Không (tặng ngay khi redeem)</option>
+          </select>
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--txt2);margin-bottom:4px">Ghi chú</div>
+          <input id="dc_note" type="text" placeholder="VD: Chiến dịch tháng 7" style="width:100%;background:var(--bg3);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:7px 10px;font-family:var(--mono);font-size:13px">
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;justify-content:flex-end">
+        <div id="dc-create-status" style="font-size:12px;color:var(--txt2);flex:1"></div>
+        <button onclick="createDiscount()">Tạo mã</button>
+      </div>
+    </div>
+
+    <!-- Danh sách mã hiện có -->
+    <div id="dc-list-wrap">
+      <div style="font-size:12px;color:var(--txt2);margin-bottom:8px">Đang tải danh sách...</div>
+    </div>
   </section>
 
   <footer>Fund Tracker Pro — /admin/pnl, chỉ admin. Số liệu truy vấn sống từ production DB mỗi lần tải trang.</footer>
@@ -140,12 +187,16 @@ footer{margin-top:36px;font-size:11.5px;color:var(--txt2);text-align:center}
 <script>
 function fmtVND(n){ return Math.round(n).toLocaleString('vi-VN')+' đ'; }
 let _token = new URLSearchParams(location.search).get('token') || sessionStorage.getItem('pnl_token') || '';
+let _tgid  = sessionStorage.getItem('pnl_tgid') || '';
 
 function tryToken(){
   const t = document.getElementById('gate-token').value.trim();
   if(!t){ document.getElementById('gate-err').textContent = 'Nhập token'; return; }
+  const tg = document.getElementById('gate-tgid').value.trim();
   _token = t;
+  _tgid  = tg;
   sessionStorage.setItem('pnl_token', t);
+  if(tg) sessionStorage.setItem('pnl_tgid', tg);
   loadData();
 }
 
@@ -190,48 +241,7 @@ async function loadData(){
       note.innerHTML = `Đã có ${d.sepay_paid_orders + d.stars_paid_count} giao dịch thật (${d.sepay_paid_orders} SePay, ${d.stars_paid_count} Stars).`;
     }
 
-    const pf = d.admin_portfolio;
-    if(pf){
-      document.getElementById('sec-portfolio').style.display = 'block';
-
-      const pnlCls = v => v >= 0 ? 'buy' : 'sell';
-      const fmtPct = p => (p >= 0 ? '+' : '') + p.toFixed(2) + '%';
-
-      document.getElementById('pf-summary').innerHTML = `
-        <div class="stat c0"><div class="k">Giá trị danh mục</div><div class="n">${fmtVND(pf.total_value)}</div></div>
-        <div class="stat"><div class="k">Vốn đầu tư</div><div class="n">${fmtVND(pf.total_cost)}</div></div>
-        <div class="stat ${pnlCls(pf.total_pnl)}"><div class="k">Lãi / Lỗ</div><div class="n">${(pf.total_pnl>=0?'+':'') + fmtVND(pf.total_pnl)}</div><div class="sub2">${fmtPct(pf.total_pnl_pct)}</div></div>
-      `;
-
-      const sigLabel = s => {
-        if(!s) return '—';
-        const t = s.replace(/[🟢🔴⚪]/g,'').trim();
-        const col = t.includes('MUA') ? 'var(--buy)' : t.includes('BÁN') ? 'var(--sell)' : 'var(--txt2)';
-        return `<span style="color:${col};font-weight:700">${t}</span>`;
-      };
-
-      document.getElementById('pf-tbody').innerHTML = (pf.items||[]).map(h => `
-        <tr>
-          <td style="font-weight:700;color:var(--c0)">${h.code}</td>
-          <td>${(h.units||0).toLocaleString('vi-VN',{maximumFractionDigits:4})}</td>
-          <td>${fmtVND(h.avg_cost||0)}</td>
-          <td>${fmtVND(h.nav||0)}</td>
-          <td>${fmtVND(h.value||0)}</td>
-          <td style="color:var(--${pnlCls(h.pnl_pct||0)})">${fmtPct(h.pnl_pct||0)}</td>
-          <td style="text-align:left">${sigLabel(h.signal)}</td>
-        </tr>
-      `).join('');
-
-      document.getElementById('pf-tfoot').innerHTML = `
-        <tr class="total">
-          <td>Tổng</td><td></td><td></td>
-          <td></td>
-          <td>${fmtVND(pf.total_value)}</td>
-          <td style="color:var(--${pnlCls(pf.total_pnl)})">${(pf.total_pnl>=0?'+':'') + fmtVND(pf.total_pnl)} (${fmtPct(pf.total_pnl_pct)})</td>
-          <td></td>
-        </tr>
-      `;
-    }
+    if(_tgid) loadDiscounts();
   }catch(e){
     document.getElementById('gate').style.display='block';
     document.getElementById('app').style.display='none';
@@ -256,33 +266,113 @@ async function saveCost(){
   }
 }
 
+async function updateTcbsToken(){
+  const st = document.getElementById('token-status');
+  const tok = document.getElementById('i_tcbs_token').value.trim();
+  if(!tok){ st.style.color='var(--sell)'; st.textContent='Nhập token mới'; return; }
+  if(!_tgid){ st.style.color='var(--sell)'; st.textContent='Cần Telegram ID (nhập lại từ cổng đăng nhập)'; return; }
+  st.style.color='var(--txt2)'; st.textContent='Đang cập nhật...';
+  try{
+    await api('/api/admin/settoken',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({admin_id:_tgid,token:tok})});
+    st.style.color='var(--buy)'; st.textContent='✓ Đã cập nhật — hệ thống đang fetch NAV mới trong nền';
+    document.getElementById('i_tcbs_token').value='';
+  }catch(e){ st.style.color='var(--sell)'; st.textContent='Lỗi: '+e.message; }
+}
+
+async function loadDiscounts(){
+  if(!_tgid) return;
+  try{
+    const d = await api('/api/admin/discount/list?user_id='+encodeURIComponent(_tgid));
+    renderDiscounts(d.discounts||[]);
+  }catch(e){
+    document.getElementById('dc-list-wrap').innerHTML='<div style="font-size:12px;color:var(--sell)">Lỗi tải mã: '+e.message+'</div>';
+  }
+}
+
+function renderDiscounts(list){
+  const wrap = document.getElementById('dc-list-wrap');
+  if(!list.length){ wrap.innerHTML='<div style="font-size:12px;color:var(--txt2)">Chưa có mã giảm giá nào.</div>'; return; }
+  const fmtActive = a => a ? '<span style="color:var(--buy)">✓ Active</span>' : '<span style="color:var(--txt2)">✗ Tắt</span>';
+  const fmtBenefit = r => r.benefit_type==='discount_pct' ? `Giảm ${r.benefit_value}%` : `+${r.benefit_value} ngày`;
+  wrap.innerHTML = `<div style="overflow-x:auto"><table>
+    <thead><tr>
+      <th style="text-align:left">Mã</th>
+      <th>Loại</th><th>Cần mua?</th><th>Đã dùng</th><th>Tối đa</th><th>Trạng thái</th><th>Ghi chú</th><th></th>
+    </tr></thead>
+    <tbody>${list.map(r=>`<tr>
+      <td style="text-align:left;font-weight:700;color:var(--c0)">${r.code}</td>
+      <td>${fmtBenefit(r)}</td>
+      <td>${r.requires_purchase?'Có':'Không'}</td>
+      <td>${r.uses_count??0}</td>
+      <td>${r.max_uses??'∞'}</td>
+      <td>${fmtActive(r.is_active)}</td>
+      <td style="font-size:11px;color:var(--txt2);text-align:left">${r.note||'—'}</td>
+      <td><button onclick="toggleDiscount('${r.code}',${r.is_active})" style="font-size:11px;padding:4px 10px">${r.is_active?'Tắt':'Bật'}</button></td>
+    </tr>`).join('')}</tbody>
+  </table></div>`;
+}
+
+async function createDiscount(){
+  const st = document.getElementById('dc-create-status');
+  if(!_tgid){ st.style.color='var(--sell)'; st.textContent='Cần Telegram ID'; return; }
+  const body = {
+    telegram_id: _tgid,
+    code: document.getElementById('dc_code').value.trim()||undefined,
+    benefit_type: document.getElementById('dc_benefit_type').value,
+    benefit_value: parseFloat(document.getElementById('dc_benefit_value').value)||20,
+    max_uses: parseInt(document.getElementById('dc_max_uses').value)||100,
+    requires_purchase: document.getElementById('dc_requires_purchase').value==='true',
+    note: document.getElementById('dc_note').value.trim()||undefined,
+    auto_apply: false,
+  };
+  st.style.color='var(--txt2)'; st.textContent='Đang tạo...';
+  try{
+    const d = await api('/api/admin/discount/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    st.style.color='var(--buy)'; st.textContent=`✓ Đã tạo mã: ${d.discount?.code||''}`;
+    document.getElementById('dc_code').value='';
+    document.getElementById('dc_note').value='';
+    loadDiscounts();
+  }catch(e){ st.style.color='var(--sell)'; st.textContent='Lỗi: '+e.message; }
+}
+
+async function toggleDiscount(code, isActive){
+  if(!_tgid) return;
+  const path = isActive ? '/api/admin/discount/deactivate' : '/api/admin/discount/activate';
+  try{
+    await api(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({telegram_id:_tgid,code})});
+    loadDiscounts();
+  }catch(e){ alert('Lỗi: '+e.message); }
+}
+
 if(_token) loadData();
 
-/* ── DEV BYPASS: ?dev=1 — mock data, không cần token, không gọi API ── */
-if(new URLSearchParams(location.search).get('dev')==='1'){
-  const MOCK = {
+/* ── DEV BYPASS: #dev — mock data, không cần token ── */
+if(location.hash==='#dev'||new URLSearchParams(location.search).get('dev')==='1'){
+  const MOCK_PNL = {
     total_users:142, active_pro:18, trial_redemptions:34,
     referral_signups:27, referral_conversions:9, discount_code_uses:5,
     sepay_paid_orders:12, sepay_revenue_vnd:3600000,
     stars_paid_count:4, hosting_cost_vnd:500000,
-    admin_portfolio:{
-      total_value:185200000, total_cost:160000000,
-      total_pnl:25200000, total_pnl_pct:15.75,
-      items:[
-        {code:'TCFF',units:4200.5,avg_cost:18200,nav:20100,value:84420050,pnl_pct:10.44,signal:'🟢 MUA'},
-        {code:'VMEEF',units:3100,avg_cost:22500,nav:25800,value:79980000,pnl_pct:14.67,signal:'🟢 MUA'},
-        {code:'SSIBF',units:800,avg_cost:26000,nav:25990,value:20792000,pnl_pct:-0.04,signal:'⚪ GIỮ'},
-      ]
-    }
   };
+  const MOCK_DISCOUNTS = {discounts:[
+    {code:'SUMMER26',benefit_type:'discount_pct',benefit_value:20,requires_purchase:true,uses_count:8,max_uses:100,is_active:true,note:'Chiến dịch hè 2026'},
+    {code:'WELCOME10',benefit_type:'bonus_days',benefit_value:10,requires_purchase:false,uses_count:34,max_uses:200,is_active:true,note:'Mã chào mừng'},
+    {code:'BETA2025',benefit_type:'discount_pct',benefit_value:50,requires_purchase:true,uses_count:5,max_uses:5,is_active:false,note:'Beta testers'},
+  ]};
+  _tgid = '111111111';
   document.getElementById('gate').style.display='none';
   document.getElementById('app').style.display='block';
   document.title += ' [DEV]';
   document.querySelector('h1').insertAdjacentHTML('beforeend',' <span style="font-size:11px;color:var(--hold);font-family:var(--mono);background:rgba(250,204,21,.1);border:1px solid rgba(250,204,21,.3);padding:2px 8px;border-radius:4px">DEV MODE</span>');
-  // reuse loadData render path via fake fetch
   const _origFetch = window.fetch;
-  window.fetch = () => Promise.resolve({ok:true,json:()=>Promise.resolve(MOCK)});
-  loadData().then(() => { window.fetch = _origFetch; });
+  window.fetch = (url='', opts) => {
+    const u = String(url);
+    if(u.includes('/discount/list')) return Promise.resolve({ok:true,json:()=>Promise.resolve(MOCK_DISCOUNTS)});
+    if(u.includes('/discount/')) return Promise.resolve({ok:true,json:()=>Promise.resolve({ok:true})});
+    if(u.includes('/settoken'))  return Promise.resolve({ok:true,json:()=>Promise.resolve({ok:true,msg:'dev mock'})});
+    return Promise.resolve({ok:true,json:()=>Promise.resolve(MOCK_PNL)});
+  };
+  loadData();
 }
 </script>
 </html>
