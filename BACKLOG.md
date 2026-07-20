@@ -793,6 +793,15 @@
   create_discount_code validation. 268/268 total suite | 2026-07-17 (live session Harvey + Claude,
   commit 5f12503) + 2026-07-19 (ca chiều autonomous, tests commit 8a58dd1)
 
+- [DONE] GOV-018 · Fund detail panel trong web.html — bấm vào fund row → slide-up panel hiện NAV
+  hero, T+2 dự báo (với CI range), sparkline Canvas 90 điểm (gradient fill + endpoint dot + date
+  labels), vị thế cá nhân (CCQ/giá vốn/lãi-lỗ%), 5 Góc nhìn (kỹ thuật/định giá/động lực/DCA/rủi
+  ro) và lưới indicator (RSI, MACD, BB, MA cross, Stochastic, ROC) — tất cả Pro-gated qua
+  /api/research/<code>. Free user vẫn thấy sparkline cơ bản từ /api/nav/<code> + Pro lock thay
+  phần indicator. Panel đóng bằng ×/click overlay/ESC. miniapp_server.py bổ sung nav_series (90
+  điểm cuối pts) vào _api_research response; init pts=[] trước if _BOT_IMPORTED | 2026-07-19
+  (live session Harvey + Claude, commit 583553a)
+
 - [DONE] VPS Migration Plan · Kế hoạch dự phòng di chuyển Railway → VPS + Coolify — tài liệu tham
   khảo (KHÔNG đổi code/hành vi app). Ghi lại ràng buộc kỹ thuật (long-polling 1 token/1 tiến trình,
   dữ liệu dùng chung DB) khiến cutover bắt buộc có cửa sổ ngừng ngắn, quy trình 3 giai đoạn
