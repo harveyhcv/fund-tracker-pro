@@ -533,9 +533,11 @@ function openDetail(code, name){
   document.getElementById('d-verdicts').innerHTML = '';
   document.getElementById('d-position').style.display = 'none';
 
-  // Open panel
+  // Open panel (reset scroll so new fund starts at top)
+  const panel = document.getElementById('detail-panel');
+  panel.scrollTop = 0;
   document.getElementById('panel-overlay').classList.add('open');
-  requestAnimationFrame(() => document.getElementById('detail-panel').classList.add('open'));
+  requestAnimationFrame(() => panel.classList.add('open'));
 
   // Fetch research (Pro) or just show chart from nav-history (Free)
   fetchDetail(code, nav);
@@ -552,14 +554,13 @@ async function fetchDetail(code, currentNav){
         headers: {'X-Web-Session': session},
       });
       if(resp.status === 403){
-        showProLock();
-        return;
+        showProLock(); hideChartLoading(); return;
       }
       const d = await resp.json();
-      if(!resp.ok){ showProLock(); return; }
+      if(!resp.ok){ showProLock(); hideChartLoading(); return; }
       renderProDetail(d, currentNav);
     }catch(e){
-      showProLock();
+      showProLock(); hideChartLoading();
     }
   } else {
     showProLock();
