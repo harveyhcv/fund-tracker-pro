@@ -936,3 +936,52 @@ với `drawSparkline(p.date)` trong web.html. `_api_research` trả `nav_series`
 2. Cấp JWT tcinvest mới (hết hạn từ 16/07, pattern lặp nhiều lần)
 3. Xác nhận NTPPF/VMEEF có nên track (FK violation khi harvest tiếp tục)
 4. ios/ + Fund Tracker Pro.xcodeproj/ deleted + dashboard/portfolio.html + scripts/* chưa commit
+
+---
+
+## Session — Ca chiều 2026-07-20 (autonomous, scheduled, tiếp nối từ ca sáng)
+
+**Tình trạng đầu session**: tất cả P0/P1 DONE. Không có task IN_PROGRESS.
+
+**Công việc**: Tăng độ bao phủ test cho 3 hàm security-critical chưa có test nào.
+
+### 1. tests/test_gov015_web_auth.py — 22 tests (commit e360d81)
+- `_verify_telegram_login_widget()`: xác thực Telegram Login Widget payload.
+  - **Điểm quan trọng**: secret_key = `SHA256(bot_token)` — KHÁC với initData verification dùng
+    `HMAC(bot_token, "WebAppData")`. Hai flow khác nhau hoàn toàn.
+  - Test: empty/None payload, missing hash, wrong hash, wrong bot token, replay (>24h),
+    clock skew (>5min future), tampered field, valid payload, auth_date invalid type.
+- `_issue_web_session()` + `_verify_web_session()`: session token 30 ngày.
+  - Format: `{tg_id}.{expiry_unix}.{hmac_sha256_hex}` — 3 segment phân cách bằng dấu chấm.
+  - Test: roundtrip, empty token, no secret, tampered tg_id, tampered expiry, expired, wrong
+    segment count, different secret, uniqueness, format validation.
+
+### 2. tests/test_gov008_reverify.py — 21 tests (commit d40c156)
+- `reverify_nav_tier()`: NAV 3-layer re-verification, chỉ áp dụng với `source='tcinvest'`.
+- Trả về: `'skip'` / `'corrected'` / `'upgraded'` / `'unchanged'`.
+- `NAV_VERIFY_TIERS = (1, 8, 31)` ngày; `NAV_VERIFY_TOLERANCE_PCT = 0.05` (0.05%).
+- **Gotcha phát hiện**: `SELECT ... FOR UPDATE OF r` chứa chuỗi "UPDATE" → filter
+  `"UPDATE" in str(call.args[0])` sẽ khớp SAI SELECT queries. Phải dùng `"SET" in ...`
+  để chỉ match UPDATE thật (có `SET col=...`).
+- Patches cần: `D.is_available`, `D.get_conn`, `D.log_audit`, `D._update_nav_row_hash`,
+  `D._log_nav_verification`, `db.date` (patch module-level `date` để kiểm soát today).
+
+### 3. tests/test_gov010_referral.py — 10 tests (commit 98c1313)
+- `grant_referral_purchase_bonus()`: giai đoạn 2 referral, cấp 30 ngày Pro cho CẢ 2 bên.
+- Test: no referral row, referrer_id=None, referee banned, referrer banned, happy path
+  (trả dict đúng, extend_pro 2 lần, đúng bonus days, audit log), mark DB, actor_id forward.
+- **Gotcha**: `_REDEMPTION_ID` là int, phải `str()` khi dùng `assert str(_REDEMPTION_ID) in
+  str(call)` để so sánh với SQL string.
+
+### Kết quả
+- Suite: **268 → 321 tests** (+53). Tất cả 321 pass.
+- Branch: `staging` (commits push lên `origin/staging`, KHÔNG phải main).
+- GOV-006: web.html (~890 insertions uncommitted của Harvey) KHÔNG được commit — đúng quy tắc.
+
+**Tất cả P0/P1 DONE.** PAY-006/007 P2 chờ merchant credentials.
+
+**Việc cần Harvey (tồn đọng):**
+1. Set `WEB_SESSION_SECRET` trên Railway + `/setdomain` @BotFather (để GOV-015 web auth live)
+2. JWT tcinvest mới (hết hạn nhiều lần, pattern lặp)
+3. Xác nhận NTPPF/VMEEF có nên track
+4. Commit `ios/` + `dashboard/portfolio.html` + `scripts/*`

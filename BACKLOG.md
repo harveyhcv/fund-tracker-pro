@@ -4,8 +4,8 @@
 # Priority: P0 (blocker) / P1 (important) / P2 (nice-to-have)
 # Claude đọc file này ĐẦU TIÊN mỗi session. Pick task IN_PROGRESS nếu có, nếu không pick P0 cao nhất.
 #
-# Last updated: 2026-07-20 (ca sáng — commit BACKLOG GOV-018, fix 2 bugs detail panel web.html:
-# hideChartLoading khi Pro API loi + reset scrollTop khi mo fund moi. 268/268 tests pass.
+# Last updated: 2026-07-20 (ca chiều — +53 tests bao phủ 3 hàm security-critical chưa có test:
+# GOV-015 web auth (22), GOV-008 NAV reverify (21), GOV-010 referral bonus (10). Suite: 268→321.
 # Tat ca P0/P1 DONE — chi con PAY-006/007 P2 cho merchant credentials)
 
 ## Session (autonomous, scheduled) — Ca sáng 2026-07-16: update BACKLOG, verify baseline
@@ -807,6 +807,25 @@
   dữ liệu dùng chung DB) khiến cutover bắt buộc có cửa sổ ngừng ngắn, quy trình 3 giai đoạn
   (chuẩn bị song song → cutover có kiểm soát → rollback trong 2 tuần). Harvey quyết định khi nào
   cần chuyển | 2026-07-19 (live session Harvey + Claude, telegram-bot/MIGRATION_PLAN.md, commit 62a7da6)
+
+## Session (autonomous, scheduled) — Ca chiều 2026-07-20: test coverage security-critical
+# Tình trạng: tất cả P0/P1 đã DONE (giống các ca chiều trước). Không có code mới, không có
+# regression — nhiệm vụ: tăng độ bao phủ test cho các hàm security-critical chưa có test.
+# Công việc:
+# 1. Viết tests/test_gov015_web_auth.py (22 tests) — GOV-015 Telegram Login Widget +
+#    web session token (_verify_telegram_login_widget, _issue_web_session, _verify_web_session).
+#    Phát hiện: secret_key cho widget = SHA256(bot_token) — KHÁC với initData (HMAC key "WebAppData").
+#    Bao phủ: replay attack, tampered hash, clock skew, wrong-secret, expired, malformed segments.
+# 2. Viết tests/test_gov008_reverify.py (21 tests) — GOV-008 NAV 3-layer re-verification.
+#    Bao phủ tất cả 4 nhánh trả về: skip/corrected/upgraded/unchanged.
+#    Phát hiện: "FOR UPDATE OF r" trong SELECT chứa chuỗi "UPDATE" — phải filter bằng "SET"
+#    để phân biệt UPDATE thật.
+# 3. Viết tests/test_gov010_referral.py (10 tests) — GOV-010 grant_referral_purchase_bonus().
+#    Bao phủ: no referral, referrer=None, ban check, happy path (2 bên), idempotent mark.
+# Tổng: +53 tests, suite 268 → 321. Tất cả 321 pass.
+# Commits: e360d81 (GOV-015), d40c156 (GOV-008), 98c1313 (GOV-010) — đã push origin/staging.
+# ⚠️ Việc cần Harvey: (1) Set WEB_SESSION_SECRET Railway + /setdomain @BotFather (GOV-015 live),
+# (2) JWT tcinvest mới, (3) NTPPF/VMEEF confirm, (4) commit ios/+portfolio.html+scripts/.
 
 ## Session (autonomous, scheduled) — Ca chiều 2026-07-16: verify + cập nhật BACKLOG, không code thêm
 # S1-S3: đọc BACKLOG (683 dòng) + memory.md (775 dòng) + `git log` — phát hiện 6 commit MỚI
