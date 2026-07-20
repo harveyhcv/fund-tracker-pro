@@ -257,5 +257,32 @@ async function saveCost(){
 }
 
 if(_token) loadData();
+
+/* ── DEV BYPASS: ?dev=1 — mock data, không cần token, không gọi API ── */
+if(new URLSearchParams(location.search).get('dev')==='1'){
+  const MOCK = {
+    total_users:142, active_pro:18, trial_redemptions:34,
+    referral_signups:27, referral_conversions:9, discount_code_uses:5,
+    sepay_paid_orders:12, sepay_revenue_vnd:3600000,
+    stars_paid_count:4, hosting_cost_vnd:500000,
+    admin_portfolio:{
+      total_value:185200000, total_cost:160000000,
+      total_pnl:25200000, total_pnl_pct:15.75,
+      items:[
+        {code:'TCFF',units:4200.5,avg_cost:18200,nav:20100,value:84420050,pnl_pct:10.44,signal:'🟢 MUA'},
+        {code:'VMEEF',units:3100,avg_cost:22500,nav:25800,value:79980000,pnl_pct:14.67,signal:'🟢 MUA'},
+        {code:'SSIBF',units:800,avg_cost:26000,nav:25990,value:20792000,pnl_pct:-0.04,signal:'⚪ GIỮ'},
+      ]
+    }
+  };
+  document.getElementById('gate').style.display='none';
+  document.getElementById('app').style.display='block';
+  document.title += ' [DEV]';
+  document.querySelector('h1').insertAdjacentHTML('beforeend',' <span style="font-size:11px;color:var(--hold);font-family:var(--mono);background:rgba(250,204,21,.1);border:1px solid rgba(250,204,21,.3);padding:2px 8px;border-radius:4px">DEV MODE</span>');
+  // reuse loadData render path via fake fetch
+  const _origFetch = window.fetch;
+  window.fetch = () => Promise.resolve({ok:true,json:()=>Promise.resolve(MOCK)});
+  loadData().then(() => { window.fetch = _origFetch; });
+}
 </script>
 </html>
