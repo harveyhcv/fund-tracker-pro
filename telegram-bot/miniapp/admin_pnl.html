@@ -116,6 +116,24 @@ footer{margin-top:36px;font-size:11.5px;color:var(--txt2);text-align:center}
     <div class="note-box" id="stage-note"></div>
   </section>
 
+  <section id="sec-portfolio" style="display:none">
+    <h2>Danh mục quỹ của Admin</h2>
+    <div class="out-grid" id="pf-summary" style="margin-bottom:16px"></div>
+    <table>
+      <thead><tr>
+        <th>Mã quỹ</th>
+        <th>Số CCQ</th>
+        <th>Giá vốn (đ/CCQ)</th>
+        <th>NAV hiện tại</th>
+        <th>Giá trị</th>
+        <th>Lãi / Lỗ %</th>
+        <th>Tín hiệu</th>
+      </tr></thead>
+      <tbody id="pf-tbody"></tbody>
+      <tfoot id="pf-tfoot"></tfoot>
+    </table>
+  </section>
+
   <footer>Fund Tracker Pro — /admin/pnl, chỉ admin. Số liệu truy vấn sống từ production DB mỗi lần tải trang.</footer>
 </div>
 
@@ -170,6 +188,49 @@ async function loadData(){
       note.innerHTML = '<b>Chưa có giao dịch thật nào.</b> Toàn bộ Pro hiện tại (nếu có) đến từ mã trial/referral miễn phí, không phải doanh thu.';
     } else {
       note.innerHTML = `Đã có ${d.sepay_paid_orders + d.stars_paid_count} giao dịch thật (${d.sepay_paid_orders} SePay, ${d.stars_paid_count} Stars).`;
+    }
+
+    const pf = d.admin_portfolio;
+    if(pf){
+      document.getElementById('sec-portfolio').style.display = 'block';
+
+      const pnlCls = v => v >= 0 ? 'buy' : 'sell';
+      const fmtPct = p => (p >= 0 ? '+' : '') + p.toFixed(2) + '%';
+
+      document.getElementById('pf-summary').innerHTML = `
+        <div class="stat c0"><div class="k">Giá trị danh mục</div><div class="n">${fmtVND(pf.total_value)}</div></div>
+        <div class="stat"><div class="k">Vốn đầu tư</div><div class="n">${fmtVND(pf.total_cost)}</div></div>
+        <div class="stat ${pnlCls(pf.total_pnl)}"><div class="k">Lãi / Lỗ</div><div class="n">${(pf.total_pnl>=0?'+':'') + fmtVND(pf.total_pnl)}</div><div class="sub2">${fmtPct(pf.total_pnl_pct)}</div></div>
+      `;
+
+      const sigLabel = s => {
+        if(!s) return '—';
+        const t = s.replace(/[🟢🔴⚪]/g,'').trim();
+        const col = t.includes('MUA') ? 'var(--buy)' : t.includes('BÁN') ? 'var(--sell)' : 'var(--txt2)';
+        return `<span style="color:${col};font-weight:700">${t}</span>`;
+      };
+
+      document.getElementById('pf-tbody').innerHTML = (pf.items||[]).map(h => `
+        <tr>
+          <td style="font-weight:700;color:var(--c0)">${h.code}</td>
+          <td>${(h.units||0).toLocaleString('vi-VN',{maximumFractionDigits:4})}</td>
+          <td>${fmtVND(h.avg_cost||0)}</td>
+          <td>${fmtVND(h.nav||0)}</td>
+          <td>${fmtVND(h.value||0)}</td>
+          <td style="color:var(--${pnlCls(h.pnl_pct||0)})">${fmtPct(h.pnl_pct||0)}</td>
+          <td style="text-align:left">${sigLabel(h.signal)}</td>
+        </tr>
+      `).join('');
+
+      document.getElementById('pf-tfoot').innerHTML = `
+        <tr class="total">
+          <td>Tổng</td><td></td><td></td>
+          <td></td>
+          <td>${fmtVND(pf.total_value)}</td>
+          <td style="color:var(--${pnlCls(pf.total_pnl)})">${(pf.total_pnl>=0?'+':'') + fmtVND(pf.total_pnl)} (${fmtPct(pf.total_pnl_pct)})</td>
+          <td></td>
+        </tr>
+      `;
     }
   }catch(e){
     document.getElementById('gate').style.display='block';

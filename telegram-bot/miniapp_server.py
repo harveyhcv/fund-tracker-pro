@@ -1680,7 +1680,16 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         if _db_mod is None or not _db_mod.is_available():
             _json(self, {"error": "DB không khả dụng"}, 503)
             return
-        _json(self, _db_mod.get_real_pnl_summary())
+        data = _db_mod.get_real_pnl_summary()
+        cfg = _load_cfg()
+        admin_tg_id = str(cfg.get("admin_telegram_id", "")).strip()
+        if admin_tg_id:
+            holdings = _db_get_ccq_holdings(admin_tg_id)
+            if holdings:
+                signals = _get_signals_for_codes([h["code"] for h in holdings], cfg)
+                portfolio = _calc_portfolio_core(holdings, signals)
+                data["admin_portfolio"] = portfolio
+        _json(self, data)
 
     def _api_admin_pnl_set_cost(self, data: dict):
         token = str(data.get("token", ""))

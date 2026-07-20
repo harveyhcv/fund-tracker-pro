@@ -4,721 +4,1015 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Fund Tracker Pro — Web</title>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#060b14;--s1:#0d1625;--s2:#121e30;--s3:#1a2840;--border:#1e3050;--b2:#2d4a70;
---text:#dde6f0;--muted:#5a7898;--c0:#00e5ff;--buy:#4ade80;--sell:#f87171;--warn:#fb923c;
---mono:'IBM Plex Mono',monospace;--sans:'DM Sans',sans-serif;--r:10px}
+:root{
+  --bg:#060b14;--s1:#0d1625;--s2:#121e30;--s3:#1a2840;
+  --border:#1e3050;--b2:#2d4a70;
+  --text:#dde6f0;--muted:#5a7898;
+  --c0:#00e5ff;--buy:#4ade80;--sell:#f87171;--warn:#fb923c;
+  --mono:'IBM Plex Mono',monospace;--sans:'DM Sans',sans-serif;
+  --hdr:48px;--nav:56px;
+}
 *{margin:0;padding:0;box-sizing:border-box}
-body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100vh}
-body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellipse 80% 50% at 15% 0%,rgba(0,229,255,.05),transparent 55%),radial-gradient(ellipse 60% 40% at 85% 100%,rgba(192,132,252,.04),transparent 55%);pointer-events:none}
-.wrap{max-width:520px;margin:0 auto;padding:16px;min-height:100vh;display:flex;flex-direction:column}
-header{padding:20px 0 16px;text-align:center}
-.logo{font-family:var(--mono);font-size:16px;color:var(--c0);letter-spacing:1px}
-.logo small{color:var(--muted);font-size:10px;display:block;margin-top:4px;letter-spacing:2px;text-transform:uppercase}
-.card{background:var(--s1);border:1px solid var(--border);border-radius:var(--r);padding:20px;margin-bottom:14px}
-.ctitle{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:12px}
-#gate{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;text-align:center;padding:24px 0}
-#gate p{color:var(--muted);font-size:13px;max-width:340px;line-height:1.6}
-#widget-box{display:flex;justify-content:center;min-height:44px}
-#app{display:none}
-.profile-row{display:flex;align-items:center;gap:12px;margin-bottom:6px}
-.avatar{width:44px;height:44px;border-radius:50%;background:var(--s2);border:1px solid var(--border);object-fit:cover}
-.pname{font-weight:600;font-size:15px}
-.puser{color:var(--muted);font-size:11px;font-family:var(--mono)}
-.tier-badge{display:inline-block;padding:3px 10px;border-radius:5px;font-size:9px;font-weight:700;letter-spacing:1px;font-family:var(--mono);margin-top:6px}
-.tier-pro{background:rgba(0,229,255,.12);color:var(--c0);border:1px solid rgba(0,229,255,.25)}
-.tier-free{background:rgba(148,163,184,.1);color:var(--muted);border:1px solid var(--border)}
-.g2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
-.stat{background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:12px}
-.stat-l{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
-.stat-v{font-family:var(--mono);font-size:18px;font-weight:600}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);overflow:hidden;height:100vh}
+body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:radial-gradient(ellipse 60% 40% at 10% 0%,rgba(0,229,255,.04),transparent 55%),
+             radial-gradient(ellipse 50% 30% at 90% 100%,rgba(192,132,252,.03),transparent 55%)}
+
+/* ── Shared helpers ── */
 .pos{color:var(--buy)}.neg{color:var(--sell)}
-.note{background:rgba(0,229,255,.06);border:1px solid rgba(0,229,255,.18);border-radius:8px;padding:12px 14px;font-size:11px;color:var(--muted);line-height:1.6;margin-top:14px}
-.note b{color:var(--text)}
-.btn{padding:9px 18px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;transition:.2s;font-family:var(--sans);border:1px solid var(--border);background:var(--s2);color:var(--text)}
-.btn:hover{border-color:var(--c0);color:var(--c0)}
-#err{display:none;color:var(--sell);font-size:11px;margin-top:10px}
-footer{text-align:center;padding:16px 0;color:var(--muted);font-size:10px}
-
-/* Fund list */
-.fund-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);cursor:pointer;transition:.15s}
-.fund-row:last-child{border-bottom:none}
-.fund-row:hover{background:rgba(0,229,255,.04);margin:0 -10px;padding-left:10px;padding-right:10px;border-radius:6px}
-.fund-info{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0;margin-right:10px}
-.fund-code{font-family:var(--mono);font-size:11px;color:var(--c0);font-weight:600}
-.fund-name{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px}
-.fund-data{display:flex;align-items:center;gap:8px;flex-shrink:0}
-.fund-nav{font-family:var(--mono);font-size:11px;color:var(--text)}
-.fund-chg{font-family:var(--mono);font-size:10px;min-width:48px;text-align:right}
-.sig-badge{font-family:var(--mono);font-size:8px;font-weight:700;letter-spacing:.5px;padding:3px 7px;border-radius:4px;white-space:nowrap}
-.sig-buy{background:rgba(74,222,128,.12);color:var(--buy);border:1px solid rgba(74,222,128,.25)}
-.sig-sell{background:rgba(248,113,113,.12);color:var(--sell);border:1px solid rgba(248,113,113,.25)}
-.sig-hold{background:rgba(148,163,184,.08);color:var(--muted);border:1px solid var(--border)}
-.t2-hint{font-family:var(--mono);font-size:10px;color:var(--muted)}.t2-hint.pos{color:var(--buy)}.t2-hint.neg{color:var(--sell)}
-.list-note{color:var(--muted);font-size:11px;text-align:center;padding:14px 0}
-.skeleton{height:10px;background:var(--s3);border-radius:4px;margin:4px 0;animation:pulse 1.4s ease-in-out infinite}
-@keyframes pulse{0%,100%{opacity:.5}50%{opacity:1}}
-
-/* Trade list */
-.trade-row{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border)}
-.trade-row:last-child{border-bottom:none}
-.trade-left{display:flex;flex-direction:column;gap:2px}
-.trade-date{font-family:var(--mono);font-size:10px;color:var(--muted)}
-.trade-code{font-family:var(--mono);font-size:11px;color:var(--text);font-weight:600}
-.trade-right{display:flex;align-items:center;gap:8px}
-.trade-amount{font-family:var(--mono);font-size:12px;font-weight:600}
-.type-badge{font-family:var(--mono);font-size:8px;font-weight:700;letter-spacing:.5px;padding:2px 7px;border-radius:4px}
+.sig-buy{background:rgba(74,222,128,.12);color:var(--buy);border:1px solid rgba(74,222,128,.3)}
+.sig-sell{background:rgba(248,113,113,.12);color:var(--sell);border:1px solid rgba(248,113,113,.3)}
+.sig-hold{background:rgba(90,120,152,.1);color:var(--muted);border:1px solid var(--border)}
+.sig-badge{font-family:var(--mono);font-size:8px;font-weight:700;letter-spacing:.5px;padding:2px 6px;border-radius:3px;white-space:nowrap}
+.skeleton{background:var(--s3);border-radius:4px;animation:pulse 1.4s infinite}
+@keyframes pulse{0%,100%{opacity:.35}50%{opacity:.8}}
+.list-note{color:var(--muted);font-size:12px;text-align:center;padding:20px 0}
 .type-buy{background:rgba(74,222,128,.12);color:var(--buy);border:1px solid rgba(74,222,128,.25)}
 .type-sell{background:rgba(248,113,113,.12);color:var(--sell);border:1px solid rgba(248,113,113,.25)}
+.tier-pro{background:rgba(0,229,255,.12);color:var(--c0);border:1px solid rgba(0,229,255,.25)}
+.tier-free{background:rgba(90,120,152,.12);color:var(--muted);border:1px solid var(--border)}
+.tier-badge{padding:2px 8px;border-radius:4px;font-size:9px;font-weight:700;letter-spacing:1px;font-family:var(--mono)}
 
-/* ── Detail panel ── */
-#panel-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:100;display:none;opacity:0;transition:opacity .25s}
-#panel-overlay.open{display:block;opacity:1}
-#detail-panel{position:fixed;bottom:0;left:0;right:0;max-width:520px;margin:0 auto;background:var(--s1);border-top:1px solid var(--border);border-radius:16px 16px 0 0;z-index:101;transform:translateY(100%);transition:transform .28s cubic-bezier(.32,.72,0,1);max-height:90vh;overflow-y:auto}
-#detail-panel.open{transform:translateY(0)}
-.panel-drag{width:36px;height:4px;background:var(--b2);border-radius:2px;margin:10px auto 16px}
-.panel-header{display:flex;align-items:flex-start;justify-content:space-between;padding:0 20px 16px;border-bottom:1px solid var(--border)}
-.ph-left{display:flex;flex-direction:column;gap:4px}
-.ph-code{font-family:var(--mono);font-size:13px;color:var(--c0);font-weight:600}
-.ph-name{font-size:12px;color:var(--muted);max-width:280px}
-.ph-close{background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;padding:0;line-height:1;transition:.15s}
-.ph-close:hover{color:var(--text)}
-.panel-body{padding:16px 20px 24px}
+/* ══ GATE ══ */
+#gate{position:fixed;inset:0;z-index:300;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--bg)}
+.gate-logo{font-family:var(--mono);font-size:18px;color:var(--c0);letter-spacing:1px;text-align:center}
+.gate-logo small{color:var(--muted);font-size:9px;display:block;margin-top:3px;letter-spacing:3px;text-transform:uppercase}
+.gate-card{background:var(--s1);border:1px solid var(--border);border-radius:12px;padding:28px 32px;margin-top:20px;width:min(360px,90vw);text-align:center}
+.gate-card p{color:var(--muted);font-size:13px;line-height:1.65;margin-bottom:20px}
+#widget-box{display:flex;justify-content:center;min-height:44px}
+#err{color:var(--sell);font-size:11px;margin-top:10px;min-height:14px}
 
-/* NAV hero row */
-.p-nav-row{display:flex;align-items:baseline;gap:10px;margin-bottom:14px}
-.p-nav-val{font-family:var(--mono);font-size:24px;font-weight:700}
-.p-nav-chg{font-family:var(--mono);font-size:13px}
-.p-sig{margin-left:auto}
+/* ══ HEADER ══ */
+#top-bar{
+  position:fixed;top:0;left:0;right:0;height:var(--hdr);z-index:200;
+  display:none;align-items:center;justify-content:space-between;padding:0 14px;
+  background:rgba(6,11,20,.9);border-bottom:1px solid var(--border);backdrop-filter:blur(12px)
+}
+.tb-logo{font-family:var(--mono);font-size:12px;color:var(--c0);letter-spacing:.5px}
+.tb-logo small{color:var(--muted);font-size:9px;letter-spacing:2px;margin-left:6px}
+.tb-right{display:flex;align-items:center;gap:8px}
+.tb-avatar{width:26px;height:26px;border-radius:50%;background:var(--s2);border:1px solid var(--border);object-fit:cover}
+.tb-name{font-size:12px;font-weight:500}
+.tb-btn{background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:5px;padding:3px 9px;font-size:10px;cursor:pointer;font-family:var(--mono);transition:.15s;white-space:nowrap}
+.tb-btn:hover{border-color:var(--c0);color:var(--c0)}
 
-/* Sparkline */
-#d-chart-wrap{margin:14px 0;position:relative}
-#d-chart{width:100%;height:120px;display:block;border-radius:6px}
-.chart-loading{display:flex;align-items:center;justify-content:center;height:120px;color:var(--muted);font-size:11px;background:var(--s2);border-radius:6px}
+/* ══ APP ══ */
+#app{display:none;padding-top:var(--hdr)}
 
-/* Pro lock */
-.pro-lock{background:var(--s2);border:1px dashed var(--border);border-radius:8px;padding:18px;text-align:center;margin-top:14px}
-.pro-lock p{color:var(--muted);font-size:12px;margin-bottom:10px;line-height:1.5}
+/* ════════════════════════════════════
+   DESKTOP  ≥ 769px  — 3-column
+════════════════════════════════════ */
+@media(min-width:769px){
+  body{overflow:hidden}
+  #app{height:100vh}
+  #layout{display:grid;grid-template-columns:272px 1fr 288px;height:calc(100vh - var(--hdr))}
+  #mobile-app,#bottom-nav,#panel-overlay,#detail-panel{display:none!important}
 
-/* Indicators */
-.ind-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
-.ind-tile{background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:10px 12px}
-.ind-label{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
-.ind-val{font-size:11px;color:var(--text);line-height:1.4}
+  .col{display:flex;flex-direction:column;overflow:hidden}
+  .col+.col{border-left:1px solid var(--border)}
+  .col-hdr{
+    flex-shrink:0;padding:10px 14px;border-bottom:1px solid var(--border);
+    font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);
+    display:flex;align-items:center;justify-content:space-between
+  }
+  .col-body{flex:1;overflow-y:auto}
 
-/* Verdict tiles */
-.verdict-section{margin-top:16px}
-.vsec-title{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
-.verdict-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.vcard{background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:10px 12px}
-.vcard:last-child:nth-child(odd){grid-column:span 2}
-.vcard-label{font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
-.vcard-val{font-size:11px;line-height:1.4}
+  /* LEFT watchlist */
+  #watch-list{padding:2px 0}
+  .w-row{
+    display:flex;align-items:center;padding:8px 14px;cursor:pointer;
+    border-left:3px solid transparent;transition:.12s;gap:8px
+  }
+  .w-row:hover{background:rgba(0,229,255,.035)}
+  .w-row.active{background:rgba(0,229,255,.07);border-left-color:var(--c0)}
+  .w-left{flex:1;min-width:0}
+  .w-code{font-family:var(--mono);font-size:11px;color:var(--c0);font-weight:600}
+  .w-name{font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .w-t2{font-family:var(--mono);font-size:9px;margin-top:1px}
+  .w-right{display:flex;flex-direction:column;align-items:flex-end;gap:2px;flex-shrink:0}
+  .w-nav{font-family:var(--mono);font-size:11px}
+  .w-chg{font-family:var(--mono);font-size:9px}
+  #watch-footer{flex-shrink:0;border-top:1px solid var(--border);padding:12px 14px}
+  .wf-row{display:flex;justify-content:space-between}
+  .wf-item{flex:1}
+  .wf-item+.wf-item{text-align:right}
+  .wf-k{font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+  .wf-v{font-family:var(--mono);font-size:15px;font-weight:600}
 
-/* Position row */
-.pos-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:14px}
-.pos-tile{background:rgba(0,229,255,.05);border:1px solid rgba(0,229,255,.12);border-radius:8px;padding:8px 10px}
-.pos-label{font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:3px}
-.pos-val{font-family:var(--mono);font-size:12px}
+  /* CENTER research */
+  #col-research{background:var(--bg)}
+  #research-empty{
+    flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:10px;color:var(--muted)
+  }
+  #research-content{flex:1;overflow-y:auto;display:none;flex-direction:column}
 
-/* T+2 row */
-.t2-row{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--s2);border:1px solid var(--border);border-radius:8px;margin-bottom:12px;font-size:11px}
-.t2-label{color:var(--muted);white-space:nowrap}
-.t2-val{font-family:var(--mono);font-weight:600}
-.t2-ci{color:var(--muted);font-size:10px;margin-left:auto;font-family:var(--mono)}
+  .rc-head{padding:14px 18px;border-bottom:1px solid var(--border);flex-shrink:0}
+  .rch-top{display:flex;align-items:baseline;gap:8px;margin-bottom:10px}
+  .rch-code{font-family:var(--mono);font-size:13px;color:var(--c0);font-weight:700;letter-spacing:.5px}
+  .rch-name{font-size:12px;color:var(--muted)}
+  .rch-row{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+  .rch-nav{font-family:var(--mono);font-size:28px;font-weight:700;line-height:1}
+  .rch-chg{font-family:var(--mono);font-size:14px}
+  .rch-sig{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.5px;padding:4px 12px;border-radius:5px}
+
+  #rc-t2{
+    flex-shrink:0;display:none;align-items:center;gap:8px;
+    padding:7px 18px;border-bottom:1px solid var(--border);
+    background:rgba(0,229,255,.025);font-size:12px
+  }
+  .rc-t2-label{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted)}
+  .rc-t2-val{font-family:var(--mono);font-size:13px;font-weight:600}
+  .rc-t2-ci{font-family:var(--mono);font-size:10px;color:var(--muted);margin-left:auto}
+
+  #rc-chart-wrap{padding:14px 18px 8px;border-bottom:1px solid var(--border);flex-shrink:0;position:relative}
+  .rc-chart-loading{font-size:11px;color:var(--muted);text-align:center;padding:60px 0}
+  #rc-chart{width:100%;display:none}
+
+  #rc-ind-wrap{padding:14px 18px;border-bottom:1px solid var(--border)}
+  .sec-lbl{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
+  .ind-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}
+  .ind-tile{background:var(--s2);border:1px solid var(--border);border-radius:6px;padding:8px 10px}
+  .ind-lbl{font-size:8px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:3px}
+  .ind-val{font-size:11px;line-height:1.4}
+  .pro-lock-d{padding:16px 18px;color:var(--muted);font-size:12px;line-height:1.7;text-align:center}
+
+  /* RIGHT panel */
+  .rpf-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}
+  .rpf-stat{background:var(--s2);border:1px solid var(--border);border-radius:6px;padding:10px 12px}
+  .rpf-k{font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:3px}
+  .rpf-v{font-family:var(--mono);font-size:15px;font-weight:700}
+
+  .pos-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:8px}
+  .pos-tile{background:var(--s2);border:1px solid var(--border);border-radius:6px;padding:8px 10px}
+  .pos-lbl{font-size:8px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:3px}
+  .pos-val{font-family:var(--mono);font-size:13px;font-weight:600}
+
+  .verd-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}
+  .vcard{background:var(--s2);border:1px solid var(--border);border-radius:6px;padding:8px 10px}
+  .vcard:last-child:nth-child(odd){grid-column:span 2}
+  .vcard-lbl{font-size:8px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:3px}
+  .vcard-val{font-size:11px;line-height:1.4}
+
+  .right-section{padding:12px 14px;border-bottom:1px solid var(--border)}
+  .right-section:last-child{border-bottom:none}
+
+  .trade-row-d{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)}
+  .trade-row-d:last-child{border-bottom:none}
+  .trd-l{display:flex;flex-direction:column;gap:1px}
+  .trd-date{font-family:var(--mono);font-size:9px;color:var(--muted)}
+  .trd-code{font-family:var(--mono);font-size:11px;font-weight:600}
+  .trd-r{display:flex;align-items:center;gap:5px}
+  .trd-amt{font-family:var(--mono);font-size:11px;font-weight:600}
+  .type-badge{font-family:var(--mono);font-size:8px;font-weight:700;letter-spacing:.5px;padding:2px 5px;border-radius:3px}
+}
+
+/* ════════════════════════════════════
+   MOBILE  < 769px  — tabs + panel
+════════════════════════════════════ */
+@media(max-width:768px){
+  body{overflow-y:auto;height:auto}
+  #app{padding-bottom:calc(var(--nav) + 4px)}
+  #layout{display:none!important}
+
+  #bottom-nav{
+    position:fixed;bottom:0;left:0;right:0;height:var(--nav);z-index:200;
+    display:flex;background:rgba(13,22,37,.95);border-top:1px solid var(--border);
+    backdrop-filter:blur(10px)
+  }
+  .nav-tab{
+    flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:3px;color:var(--muted);cursor:pointer;background:none;border:none;
+    font-size:9px;letter-spacing:.5px;text-transform:uppercase;font-family:var(--sans);transition:color .2s
+  }
+  .nav-tab svg{width:18px;height:18px}
+  .nav-tab.active{color:var(--c0)}
+
+  #mobile-app{display:block;padding:10px 12px}
+  .m-page{display:none}.m-page.active{display:block}
+
+  #m-profile{background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px}
+  .mp-row{display:flex;align-items:center;gap:10px}
+  .mp-avatar{width:36px;height:36px;border-radius:50%;background:var(--s2);border:1px solid var(--border);object-fit:cover}
+  .mp-name{font-weight:600;font-size:14px}
+  .mp-user{font-family:var(--mono);font-size:10px;color:var(--muted)}
+  .m-stats{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:10px}
+  .m-stat{background:var(--s2);border:1px solid var(--border);border-radius:7px;padding:9px 10px}
+  .m-sk{font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:3px}
+  .m-sv{font-family:var(--mono);font-size:14px;font-weight:600}
+
+  .m-card{background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px}
+  .m-card-title{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--border)}
+
+  .fund-row{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border);cursor:pointer;transition:.12s}
+  .fund-row:last-child{border-bottom:none}
+  .fund-row:active{opacity:.7}
+  .fi{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0;margin-right:8px}
+  .fi-code{font-family:var(--mono);font-size:11px;color:var(--c0);font-weight:600}
+  .fi-name{font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px}
+  .fi-t2{font-family:var(--mono);font-size:9px;margin-top:1px}
+  .fd{display:flex;align-items:center;gap:6px;flex-shrink:0}
+  .fd-nav{font-family:var(--mono);font-size:11px}
+  .fd-chg{font-family:var(--mono);font-size:10px;min-width:44px;text-align:right}
+
+  .hold-row{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border)}
+  .hold-row:last-child{border-bottom:none}
+  .hr-code{font-family:var(--mono);font-size:12px;font-weight:600;color:var(--c0)}
+  .hr-sub{font-size:10px;color:var(--muted);margin-top:1px;font-family:var(--mono)}
+  .hr-right{text-align:right}
+  .hr-val{font-family:var(--mono);font-size:12px;font-weight:600}
+  .hr-pnl{font-family:var(--mono);font-size:10px;margin-top:1px}
+
+  .trade-row{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border)}
+  .trade-row:last-child{border-bottom:none}
+  .tr-l{display:flex;flex-direction:column;gap:1px}
+  .tr-date{font-family:var(--mono);font-size:9px;color:var(--muted)}
+  .tr-code{font-family:var(--mono);font-size:11px;font-weight:600}
+  .tr-r{display:flex;align-items:center;gap:6px}
+  .tr-amt{font-family:var(--mono);font-size:11px;font-weight:600}
+  .type-badge{font-family:var(--mono);font-size:8px;font-weight:700;letter-spacing:.5px;padding:2px 6px;border-radius:3px}
+
+  #panel-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:150;display:none;opacity:0;transition:opacity .25s}
+  #panel-overlay.open{display:block;opacity:1}
+  #detail-panel{
+    position:fixed;bottom:0;left:0;right:0;background:var(--s1);
+    border-top:1px solid var(--border);border-radius:14px 14px 0 0;
+    z-index:151;transform:translateY(100%);
+    transition:transform .28s cubic-bezier(.32,.72,0,1);
+    max-height:88vh;overflow-y:auto
+  }
+  #detail-panel.open{transform:translateY(0)}
+  .panel-drag{width:34px;height:4px;background:var(--b2);border-radius:2px;margin:9px auto 12px}
+  .panel-hdr{display:flex;align-items:center;justify-content:space-between;padding:0 14px 10px;border-bottom:1px solid var(--border)}
+  .ph-code{font-family:var(--mono);font-size:13px;color:var(--c0);font-weight:700}
+  .ph-name{font-size:11px;color:var(--muted);display:block;margin-top:1px}
+  .ph-close{background:none;border:1px solid var(--border);color:var(--muted);width:26px;height:26px;border-radius:5px;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center}
+  .panel-body{padding:12px 14px 24px}
+  .p-nav-row{display:flex;align-items:baseline;gap:10px;margin-bottom:8px;flex-wrap:wrap}
+  .p-nav-val{font-family:var(--mono);font-size:22px;font-weight:700}
+  .p-t2-row{display:flex;align-items:center;gap:8px;padding:7px 10px;background:rgba(0,229,255,.04);border-radius:6px;margin-bottom:10px}
+  .p-t2-lbl{font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--muted)}
+  .p-t2-val{font-family:var(--mono);font-size:12px;font-weight:600}
+  .p-t2-ci{font-family:var(--mono);font-size:10px;color:var(--muted);margin-left:auto}
+  #d-chart-wrap{margin-bottom:10px;position:relative}
+  .p-chart-loading{font-size:11px;color:var(--muted);text-align:center;padding:28px 0}
+  #d-chart{width:100%;display:none}
+  .p-sec-lbl{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin:12px 0 7px}
+  .p-pos-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:4px}
+  .p-pos-tile{background:var(--s2);border:1px solid var(--border);border-radius:6px;padding:8px}
+  .p-pos-lbl{font-size:8px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:3px}
+  .p-pos-val{font-family:var(--mono);font-size:12px;font-weight:600}
+  .p-ind-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px}
+  .p-ind-tile{background:var(--s2);border:1px solid var(--border);border-radius:6px;padding:7px 9px}
+  .p-ind-lbl{font-size:8px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:2px}
+  .p-ind-val{font-size:11px;line-height:1.4}
+  .p-verd-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .p-vcard{background:var(--s2);border:1px solid var(--border);border-radius:6px;padding:7px 9px}
+  .p-vcard:last-child:nth-child(odd){grid-column:span 2}
+  .p-vcard-lbl{font-size:8px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:2px}
+  .p-vcard-val{font-size:11px;line-height:1.4}
+  .pro-lock{text-align:center;padding:14px;color:var(--muted);font-size:12px;line-height:1.7}
+}
 </style>
 </head>
 <body>
-<div class="wrap">
-  <header>
-    <div class="logo">FUND TRACKER PRO<small>Web · beta</small></div>
-  </header>
 
-  <div id="gate">
-    <div class="card" style="width:100%">
-      <div class="ctitle">Đăng nhập</div>
-      <p>Đăng nhập bằng tài khoản Telegram của bạn để xem danh mục, tín hiệu và dự báo — không cần mở qua app Telegram.</p>
-      <div id="widget-box">
-        <script async src="https://telegram.org/js/telegram-widget.js?22"
-                data-telegram-login="FundTrackerPro_bot"
-                data-size="large"
-                data-radius="8"
-                data-onauth="onTelegramAuth(user)"
-                data-request-access="write"></script>
-      </div>
-      <div id="err"></div>
+<!-- GATE -->
+<div id="gate">
+  <div class="gate-logo">FUND TRACKER PRO<small>WEB · BETA</small></div>
+  <div class="gate-card">
+    <p>Đăng nhập bằng tài khoản Telegram để xem danh mục, tín hiệu và phân tích chi tiết.</p>
+    <div id="widget-box">
+      <script async src="https://telegram.org/js/telegram-widget.js?22"
+              data-telegram-login="FundTrackerPro_bot"
+              data-size="large" data-radius="8"
+              data-onauth="onTelegramAuth(user)"
+              data-request-access="write"></script>
     </div>
+    <div id="err"></div>
   </div>
-
-  <div id="app">
-    <div class="card">
-      <div class="profile-row">
-        <img class="avatar" id="pf-avatar" src="" alt="">
-        <div>
-          <div class="pname" id="pf-name">—</div>
-          <div class="puser" id="pf-user">—</div>
-        </div>
-      </div>
-      <span class="tier-badge" id="pf-tier">—</span>
-      <div class="g2">
-        <div class="stat">
-          <div class="stat-l">Giá trị hiện tại</div>
-          <div class="stat-v" id="st-value">—</div>
-        </div>
-        <div class="stat">
-          <div class="stat-l">Lãi/Lỗ</div>
-          <div class="stat-v" id="st-pnl">—</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="card" id="signals-card" style="display:none">
-      <div class="ctitle">📊 Tín hiệu quỹ <span style="color:var(--muted);font-weight:400;font-family:var(--sans);letter-spacing:0">(bấm để xem chi tiết)</span></div>
-      <div id="signals-list">
-        <div class="skeleton" style="width:100%;height:36px"></div>
-        <div class="skeleton" style="width:100%;height:36px;margin-top:8px"></div>
-      </div>
-    </div>
-
-    <div class="card" id="trades-card" style="display:none">
-      <div class="ctitle">📋 Giao dịch gần đây</div>
-      <div id="trades-list">
-        <div class="skeleton" style="width:100%;height:32px"></div>
-        <div class="skeleton" style="width:100%;height:32px;margin-top:8px"></div>
-      </div>
-    </div>
-
-    <div class="note">
-      <b>Bản Web đang trong giai đoạn hoàn thiện.</b> DCA, thêm giao dịch mới, admin... đang được
-      chuyển dần từ Mini App sang — dùng <a href="https://t.me/FundTrackerPro_bot" style="color:var(--c0)">Telegram Mini App</a> cho trải nghiệm đầy đủ trong lúc chờ.
-    </div>
-    <div style="display:flex;gap:10px;margin-top:14px">
-      <button class="btn" onclick="refreshData()" id="btn-refresh">⟳ Làm mới</button>
-      <button class="btn" onclick="logout()">Đăng xuất</button>
-    </div>
-  </div>
-
-  <footer>Fund Tracker Pro</footer>
 </div>
 
-<!-- ─── Fund Detail Panel ─── -->
+<!-- HEADER -->
+<header id="top-bar">
+  <div class="tb-logo">FUND TRACKER PRO<small>WEB</small></div>
+  <div class="tb-right">
+    <img class="tb-avatar" id="pf-avatar" src="" alt="">
+    <span class="tb-name" id="pf-name">—</span>
+    <span class="tier-badge" id="pf-tier">—</span>
+    <button class="tb-btn" onclick="refreshAll()" id="btn-refresh" style="display:none">⟳</button>
+    <button class="tb-btn" onclick="logout()">↩ Thoát</button>
+  </div>
+</header>
+
+<!-- APP -->
+<div id="app">
+
+  <!-- DESKTOP 3-col -->
+  <div id="layout">
+
+    <!-- LEFT: watchlist -->
+    <div class="col" id="col-watch">
+      <div class="col-hdr">
+        <span>Tín hiệu quỹ</span>
+        <button class="tb-btn" onclick="refreshAll()" style="padding:2px 7px;font-size:10px">⟳</button>
+      </div>
+      <div class="col-body" id="watch-list">
+        <div style="padding:10px 14px">
+          <div class="skeleton" style="height:40px;margin-bottom:5px"></div>
+          <div class="skeleton" style="height:40px;margin-bottom:5px"></div>
+          <div class="skeleton" style="height:40px"></div>
+        </div>
+      </div>
+      <div id="watch-footer">
+        <div class="wf-row">
+          <div class="wf-item">
+            <div class="wf-k">Giá trị danh mục</div>
+            <div class="wf-v" id="st-value">—</div>
+          </div>
+          <div class="wf-item">
+            <div class="wf-k">Lãi / Lỗ</div>
+            <div class="wf-v" id="st-pnl">—</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CENTER: research -->
+    <div class="col" id="col-research">
+      <div id="research-empty">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" style="width:52px;height:52px;opacity:.18"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        <p style="font-size:13px;text-align:center;line-height:1.7">Chọn một quỹ từ danh sách<br>để xem phân tích chi tiết</p>
+      </div>
+      <div id="research-content">
+        <div class="rc-head">
+          <div class="rch-top">
+            <span class="rch-code" id="rc-code">—</span>
+            <span class="rch-name" id="rc-name">—</span>
+          </div>
+          <div class="rch-row">
+            <span class="rch-nav" id="rc-nav">—</span>
+            <span class="rch-chg" id="rc-chg">—</span>
+            <span class="rch-sig sig-badge sig-hold" id="rc-sig">—</span>
+          </div>
+        </div>
+        <div id="rc-t2">
+          <span class="rc-t2-label">Dự báo T+2</span>
+          <span class="rc-t2-val" id="rc-t2-val">—</span>
+          <span class="rc-t2-ci" id="rc-t2-ci"></span>
+        </div>
+        <div id="rc-chart-wrap">
+          <div class="rc-chart-loading" id="rc-loading">Đang tải biểu đồ…</div>
+          <canvas id="rc-chart"></canvas>
+        </div>
+        <div id="rc-ind-wrap" style="display:none">
+          <div class="sec-lbl">Phân tích kỹ thuật</div>
+          <div class="ind-grid" id="rc-indicators"></div>
+        </div>
+        <div class="pro-lock-d" id="rc-pro-lock" style="display:none">
+          Phân tích chi tiết chỉ dành cho tài khoản <b style="color:var(--c0)">Pro</b>.<br>
+          <a href="https://t.me/FundTrackerPro_bot" style="color:var(--c0);font-size:11px;text-decoration:none">Nâng cấp trong Telegram Mini App →</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: portfolio + verdicts + trades -->
+    <div class="col" id="col-right">
+      <div class="col-hdr">Danh mục &amp; Phân tích</div>
+      <div class="col-body">
+
+        <div class="right-section">
+          <div class="sec-lbl">Tổng quan danh mục</div>
+          <div class="rpf-grid">
+            <div class="rpf-stat"><div class="rpf-k">Giá trị</div><div class="rpf-v" id="rpf-val">—</div></div>
+            <div class="rpf-stat"><div class="rpf-k">Lãi / Lỗ</div><div class="rpf-v" id="rpf-pnl">—</div></div>
+          </div>
+        </div>
+
+        <div class="right-section" id="rc-position" style="display:none">
+          <div class="sec-lbl">Vị thế · <span id="rc-pos-code" style="color:var(--c0);letter-spacing:0;text-transform:none">—</span></div>
+          <div class="pos-grid">
+            <div class="pos-tile"><div class="pos-lbl">Số CCQ</div><div class="pos-val" id="rc-pos-units">—</div></div>
+            <div class="pos-tile"><div class="pos-lbl">Giá vốn</div><div class="pos-val" id="rc-pos-cost">—</div></div>
+            <div class="pos-tile"><div class="pos-lbl">Lãi / Lỗ</div><div class="pos-val" id="rc-pos-pnl">—</div></div>
+          </div>
+        </div>
+
+        <div class="right-section" id="rc-verdicts" style="display:none">
+          <div class="sec-lbl">5 Góc nhìn</div>
+          <div class="verd-grid" id="rc-verd-grid"></div>
+        </div>
+
+        <div class="right-section">
+          <div class="sec-lbl" style="margin-bottom:8px">Giao dịch gần đây</div>
+          <div id="d-trades-list">
+            <div class="skeleton" style="height:30px;margin-bottom:4px"></div>
+            <div class="skeleton" style="height:30px"></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div><!-- #layout -->
+
+  <!-- MOBILE -->
+  <div id="mobile-app">
+    <div id="m-profile">
+      <div class="mp-row">
+        <img class="mp-avatar" id="m-avatar" src="" alt="">
+        <div style="flex:1">
+          <div class="mp-name" id="m-name">—</div>
+          <div class="mp-user" id="m-user">—</div>
+        </div>
+        <span class="tier-badge" id="m-tier">—</span>
+      </div>
+      <div class="m-stats">
+        <div class="m-stat"><div class="m-sk">Giá trị</div><div class="m-sv" id="m-val">—</div></div>
+        <div class="m-stat"><div class="m-sk">Lãi / Lỗ</div><div class="m-sv" id="m-pnl">—</div></div>
+      </div>
+    </div>
+
+    <div id="tab-signals" class="m-page active">
+      <div class="m-card">
+        <div class="m-card-title">Tín hiệu quỹ</div>
+        <div id="m-signals-list">
+          <div class="skeleton" style="height:38px;margin-bottom:6px"></div>
+          <div class="skeleton" style="height:38px;margin-bottom:6px"></div>
+          <div class="skeleton" style="height:38px"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="tab-portfolio" class="m-page">
+      <div class="m-card">
+        <div class="m-card-title">Danh mục đầu tư</div>
+        <div id="m-portfolio-list"><div class="list-note">Chưa có vị thế nào</div></div>
+      </div>
+    </div>
+
+    <div id="tab-trades" class="m-page">
+      <div class="m-card">
+        <div class="m-card-title">Giao dịch gần đây</div>
+        <div id="m-trades-list">
+          <div class="skeleton" style="height:32px;margin-bottom:4px"></div>
+          <div class="skeleton" style="height:32px"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- #app -->
+
+<!-- Mobile slide-up panel -->
 <div id="panel-overlay" onclick="closeDetail()"></div>
-<div id="detail-panel" role="dialog" aria-modal="true">
+<div id="detail-panel">
   <div class="panel-drag"></div>
-  <div class="panel-header">
-    <div class="ph-left">
+  <div class="panel-hdr">
+    <div>
       <span class="ph-code" id="d-code">—</span>
       <span class="ph-name" id="d-name">—</span>
     </div>
-    <button class="ph-close" onclick="closeDetail()" aria-label="Đóng">×</button>
+    <button class="ph-close" onclick="closeDetail()">×</button>
   </div>
   <div class="panel-body">
-    <!-- NAV + Signal -->
     <div class="p-nav-row">
       <span class="p-nav-val" id="d-nav">—</span>
-      <span class="p-nav-chg" id="d-chg">—</span>
-      <span class="p-sig sig-badge sig-hold" id="d-sig">—</span>
+      <span id="d-chg">—</span>
+      <span class="sig-badge sig-hold" id="d-sig" style="font-size:9px;font-weight:700;letter-spacing:.5px;padding:3px 8px;border-radius:4px">—</span>
     </div>
-
-    <!-- T+2 row (Pro) -->
-    <div class="t2-row" id="d-t2-row" style="display:none">
-      <span class="t2-label">Dự báo T+2</span>
-      <span class="t2-val" id="d-t2-val">—</span>
-      <span class="t2-ci" id="d-t2-ci"></span>
+    <div class="p-t2-row" id="d-t2-row" style="display:none">
+      <span class="p-t2-lbl">Dự báo T+2</span>
+      <span class="p-t2-val" id="d-t2-val">—</span>
+      <span class="p-t2-ci" id="d-t2-ci"></span>
     </div>
-
-    <!-- Sparkline -->
     <div id="d-chart-wrap">
-      <div class="chart-loading" id="d-chart-loading">Đang tải biểu đồ…</div>
-      <canvas id="d-chart" style="display:none"></canvas>
+      <div class="p-chart-loading" id="d-loading">Đang tải biểu đồ…</div>
+      <canvas id="d-chart"></canvas>
     </div>
-
-    <!-- Content khi Pro -->
     <div id="d-pro-content" style="display:none">
-      <!-- Vị thế cá nhân -->
       <div id="d-position" style="display:none">
-        <div class="ctitle" style="margin-top:14px">Vị thế của bạn</div>
-        <div class="pos-row">
-          <div class="pos-tile">
-            <div class="pos-label">Số CCQ</div>
-            <div class="pos-val" id="d-pos-units">—</div>
-          </div>
-          <div class="pos-tile">
-            <div class="pos-label">Giá vốn</div>
-            <div class="pos-val" id="d-pos-cost">—</div>
-          </div>
-          <div class="pos-tile">
-            <div class="pos-label">Lãi/Lỗ</div>
-            <div class="pos-val" id="d-pos-pnl">—</div>
-          </div>
+        <div class="p-sec-lbl">Vị thế của bạn</div>
+        <div class="p-pos-row">
+          <div class="p-pos-tile"><div class="p-pos-lbl">Số CCQ</div><div class="p-pos-val" id="d-units">—</div></div>
+          <div class="p-pos-tile"><div class="p-pos-lbl">Giá vốn</div><div class="p-pos-val" id="d-cost">—</div></div>
+          <div class="p-pos-tile"><div class="p-pos-lbl">Lãi / Lỗ</div><div class="p-pos-val" id="d-pnl">—</div></div>
         </div>
       </div>
-
-      <!-- Kỹ thuật -->
-      <div class="verdict-section">
-        <div class="vsec-title">Phân tích kỹ thuật</div>
-        <div class="ind-grid" id="d-indicators"></div>
-      </div>
-
-      <!-- 4 Trường phái -->
-      <div class="verdict-section">
-        <div class="vsec-title">5 Góc nhìn</div>
-        <div class="verdict-grid" id="d-verdicts"></div>
-      </div>
+      <div class="p-sec-lbl">Phân tích kỹ thuật</div>
+      <div class="p-ind-grid" id="d-indicators"></div>
+      <div class="p-sec-lbl">5 Góc nhìn</div>
+      <div class="p-verd-grid" id="d-verdicts"></div>
     </div>
-
-    <!-- Lock khi Free -->
     <div class="pro-lock" id="d-pro-lock" style="display:none">
-      <p>Phân tích chi tiết (RSI, MACD, BB, Bollinger, 5 trường phái) và biểu đồ NAV 90 ngày chỉ dành cho tài khoản <b style="color:var(--c0)">Pro</b>.</p>
-      <a href="https://t.me/FundTrackerPro_bot" style="color:var(--c0);font-size:12px;text-decoration:none">Nâng cấp Pro trong Telegram Mini App →</a>
+      Phân tích chi tiết chỉ dành cho tài khoản <b style="color:var(--c0)">Pro</b>.<br>
+      <a href="https://t.me/FundTrackerPro_bot" style="color:var(--c0);font-size:12px;text-decoration:none">Nâng cấp trong Telegram Mini App →</a>
     </div>
   </div>
 </div>
+
+<!-- Mobile bottom nav -->
+<nav id="bottom-nav" style="display:none">
+  <button class="nav-tab active" id="nav-signals" onclick="switchTab('signals')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+    Tín hiệu
+  </button>
+  <button class="nav-tab" id="nav-portfolio" onclick="switchTab('portfolio')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>
+    Danh mục
+  </button>
+  <button class="nav-tab" id="nav-trades" onclick="switchTab('trades')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
+    Giao dịch
+  </button>
+</nav>
 
 <script>
 const SESSION_KEY = 'ftp_web_session';
 const TGID_KEY    = 'ftp_web_tgid';
-let _predictions  = {};
+const NAME_KEY    = 'ftp_web_name';
+const UN_KEY      = 'ftp_web_un';
+
 let _isPro        = false;
-let _sigsCache    = {};  // code → signal data
+let _sigsCache    = {};
+let _predictions  = {};
+let _selectedCode = null;
+const IS_MOBILE   = () => window.innerWidth < 769;
 
-function showErr(msg){
-  const el = document.getElementById('err');
-  el.textContent = msg;
-  el.style.display = 'block';
-}
+/* helpers */
+function fmt(n){ return Math.round(n).toLocaleString('vi-VN') + ' đ'; }
+function fmtPnl(n){ return (n >= 0 ? '+' : '') + fmt(n); }
+function fmtPct(p){ return (p >= 0 ? '+' : '') + p.toFixed(2) + '%'; }
+function showErr(msg){ const e=document.getElementById('err'); if(e){e.textContent=msg;} }
 
-// ─── Auth ───────────────────────────────────────────────────────────
-
+/* ── Auth ── */
 async function onTelegramAuth(user){
   try{
-    const resp = await fetch('/api/auth/telegram-login', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(user),
+    const r = await fetch('/api/auth/telegram-login',{
+      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(user)
     });
-    const d = await resp.json();
-    if(!resp.ok || !d.ok){
-      showErr(d.error || 'Đăng nhập thất bại');
-      return;
-    }
+    const d = await r.json();
+    if(!r.ok||!d.ok){ showErr(d.error||'Đăng nhập thất bại'); return; }
     localStorage.setItem(SESSION_KEY, d.session);
     localStorage.setItem(TGID_KEY, d.telegram_id);
-    document.getElementById('pf-avatar').src = d.photo_url || '';
-    document.getElementById('pf-name').textContent = d.first_name || 'User';
-    document.getElementById('pf-user').textContent = d.username ? '@'+d.username : d.telegram_id;
-    loadProfile();
-  }catch(e){
-    showErr('Lỗi kết nối: ' + e.message);
-  }
+    if(d.first_name) localStorage.setItem(NAME_KEY, d.first_name);
+    if(d.username)   localStorage.setItem(UN_KEY, '@'+d.username);
+    initApp({photo_url:d.photo_url, first_name:d.first_name, username:d.username});
+  }catch(e){ showErr('Lỗi kết nối: '+e.message); }
 }
 
-// ─── Data loading ────────────────────────────────────────────────────
+function initApp(info){
+  document.getElementById('gate').style.display='none';
+  document.getElementById('top-bar').style.display='flex';
+  document.getElementById('app').style.display='block';
+  if(IS_MOBILE()){
+    document.getElementById('bottom-nav').style.display='flex';
+  } else {
+    document.getElementById('btn-refresh').style.display='inline-flex';
+  }
 
+  const nm = info?.first_name || localStorage.getItem(NAME_KEY) || '—';
+  const un = info?.username ? '@'+info.username : localStorage.getItem(UN_KEY) || '';
+  const av = info?.photo_url || '';
+  ['pf-avatar','m-avatar'].forEach(id=>{ const el=document.getElementById(id); if(el) el.src=av; });
+  document.getElementById('pf-name').textContent = nm;
+  document.getElementById('m-name').textContent  = nm;
+  document.getElementById('m-user').textContent  = un;
+
+  loadProfile();
+}
+
+/* ── Profile ── */
 async function loadProfile(){
   const session = localStorage.getItem(SESSION_KEY);
   const tgId    = localStorage.getItem(TGID_KEY);
-  if(!session || !tgId) return;
-  document.getElementById('gate').style.display = 'none';
-  document.getElementById('app').style.display = 'block';
+  if(!session||!tgId) return;
   try{
-    const resp = await fetch('/api/me?user_id=' + encodeURIComponent(tgId), {
-      headers: {'X-Web-Session': session},
+    const r = await fetch('/api/me?user_id='+encodeURIComponent(tgId),{
+      headers:{'X-Web-Session':session}
     });
-    const d = await resp.json();
-    if(!resp.ok){
-      if(resp.status === 403){ logout(); return; }
-      showErr(d.error || 'Không tải được dữ liệu — Postgres có thể đang bảo trì');
-      return;
-    }
-    _isPro = d.tier === 'pro' || d.tier === 'admin';
-    const tierEl = document.getElementById('pf-tier');
-    tierEl.textContent = _isPro ? 'PRO' : 'FREE';
-    tierEl.className = 'tier-badge ' + (_isPro ? 'tier-pro' : 'tier-free');
-    const p = d.portfolio || {};
-    document.getElementById('st-value').textContent = p.total_value != null
-      ? Math.round(p.total_value).toLocaleString('vi-VN') + ' đ' : '—';
-    const pnl = p.total_pnl;
-    const pnlEl = document.getElementById('st-pnl');
-    if(pnl != null){
-      pnlEl.textContent = (pnl >= 0 ? '+' : '') + Math.round(pnl).toLocaleString('vi-VN') + ' đ';
-      pnlEl.className = 'stat-v ' + (pnl >= 0 ? 'pos' : 'neg');
-    }
-    _predictions = d.predictions || {};
-  }catch(e){
-    showErr('Lỗi tải dữ liệu: ' + e.message);
-  }
-  loadSignals(session, tgId, _predictions);
-  loadTrades(session, tgId);
+    const d = await r.json();
+    if(!r.ok){ if(r.status===403){ logout(); return; } return; }
+
+    _isPro = d.tier==='pro'||d.tier==='admin';
+    _predictions = d.predictions||{};
+
+    const tierText = _isPro ? 'PRO' : 'FREE';
+    const tierCls  = 'tier-badge '+(_isPro?'tier-pro':'tier-free');
+    ['pf-tier','m-tier'].forEach(id=>{
+      const el=document.getElementById(id); if(!el) return;
+      el.textContent=tierText; el.className=tierCls;
+    });
+
+    const p = d.portfolio||{};
+    const val    = p.total_value!=null ? fmt(p.total_value) : '—';
+    const pnl    = p.total_pnl;
+    const pnlStr = pnl!=null ? fmtPnl(pnl) : '—';
+    const pnlCls = pnl==null ? '' : pnl>=0 ? 'pos' : 'neg';
+
+    document.getElementById('st-value').textContent = val;
+    document.getElementById('rpf-val').textContent  = val;
+    document.getElementById('m-val').textContent    = val;
+    [['st-pnl',''],['rpf-pnl','rpf-v '],['m-pnl','m-sv ']].forEach(([id,base])=>{
+      const el=document.getElementById(id); if(!el) return;
+      el.textContent=pnlStr;
+      if(base) el.className=base+pnlCls;
+      else el.className=pnlCls;
+    });
+
+    renderMobilePortfolio(p.items||[]);
+  }catch(e){ console.error('[me]',e); }
+
+  loadSignals();
+  loadTrades();
 }
 
-async function loadTrades(session, tgId){
-  const card = document.getElementById('trades-card');
-  const list = document.getElementById('trades-list');
-  card.style.display = 'block';
+/* ── Signals ── */
+async function loadSignals(){
+  const session = localStorage.getItem(SESSION_KEY);
+  const tgId    = localStorage.getItem(TGID_KEY);
+  if(!session||!tgId) return;
   try{
-    const resp = await fetch('/api/trades?user_id=' + encodeURIComponent(tgId), {
-      headers: {'X-Web-Session': session},
+    const r = await fetch('/api/signals?user_id='+encodeURIComponent(tgId),{
+      headers:{'X-Web-Session':session}
     });
-    const d = await resp.json();
-    if(!resp.ok){ list.innerHTML = '<p class="list-note">Không tải được giao dịch</p>'; return; }
-    const trades = (d.trades || []).slice(0, 10);
-    if(!trades.length){
-      list.innerHTML = '<p class="list-note">Chưa có giao dịch nào</p>';
-      return;
-    }
-    const rows = trades.map(t => {
-      const isBuy   = t.type === 'buy';
-      const typeStr = isBuy ? 'MUA' : 'BÁN';
-      const typeCls = isBuy ? 'type-buy' : 'type-sell';
-      const amt     = t.amount ? Math.round(t.amount).toLocaleString('vi-VN') + ' đ' : '—';
-      const units   = t.units != null ? t.units.toLocaleString('vi-VN', {maximumFractionDigits:4}) + ' CCQ' : '';
-      const date    = (t.date || '').slice(0, 10);
-      return `<div class="trade-row">
-        <div class="trade-left">
-          <span class="trade-date">${date}</span>
-          <span class="trade-code">${t.code || '—'}${units ? ' · ' + units : ''}</span>
-        </div>
-        <div class="trade-right">
-          <span class="trade-amount ${isBuy ? 'neg' : 'pos'}">${isBuy ? '-' : '+'}${amt}</span>
-          <span class="type-badge ${typeCls}">${typeStr}</span>
-        </div>
-      </div>`;
-    });
-    list.innerHTML = rows.join('');
-  }catch(e){
-    list.innerHTML = '<p class="list-note">Lỗi tải giao dịch: ' + e.message + '</p>';
-  }
-}
-
-async function loadSignals(session, tgId, predictions){
-  const card = document.getElementById('signals-card');
-  const list = document.getElementById('signals-list');
-  card.style.display = 'block';
-  try{
-    const resp = await fetch('/api/signals?user_id=' + encodeURIComponent(tgId), {
-      headers: {'X-Web-Session': session},
-    });
-    const d = await resp.json();
-    if(!resp.ok){ list.innerHTML = '<p class="list-note">Không tải được tín hiệu</p>'; return; }
-    const watched = d.watched || [];
-    const sigs    = d.signals  || {};
-    const names   = d.all_funds || {};
+    const d = await r.json();
+    if(!r.ok) return;
+    const watched=d.watched||[], sigs=d.signals||{}, names=d.all_funds||{};
     _sigsCache = sigs;
-    if(!watched.length){
-      list.innerHTML = '<p class="list-note">Chưa có quỹ nào được theo dõi</p>';
-      return;
-    }
-    const preds = predictions || {};
-    const rows = watched.map(code => {
-      const s    = sigs[code] || {};
-      const name = names[code] || code;
-      const nav  = s.nav ? Math.round(s.nav).toLocaleString('vi-VN') + ' đ' : '—';
-      const chg  = s.chg_pct;
-      const chgStr = chg != null ? (chg >= 0 ? '+' : '') + chg.toFixed(2) + '%' : '—';
-      const chgCls = chg == null ? '' : chg >= 0 ? 'pos' : 'neg';
-      const sig    = s.signal || 'N/A';
-      const sigCls = sig.includes('MUA') ? 'sig-buy' : sig.includes('BÁN') ? 'sig-sell' : 'sig-hold';
-      const sigLabel = sig.replace(/[🟢🔴⚪]/g,'').trim();
-      const pred = preds[code];
-      let t2Html = '';
-      if(pred && pred.predicted_nav && s.nav){
-        const t2Chg = (pred.predicted_nav / s.nav - 1) * 100;
-        const t2Cls = t2Chg >= 0 ? 'pos' : 'neg';
-        t2Html = `<span class="t2-hint ${t2Cls}">T+2 ${t2Chg >= 0 ? '↑' : '↓'}${Math.abs(t2Chg).toFixed(2)}%</span>`;
-      }
-      // Lưu tên quỹ vào cache để dùng trong openDetail
-      if(!sigs[code]) sigs[code] = {};
-      sigs[code]._name = name;
-      return `<div class="fund-row" onclick="openDetail('${code}','${name.replace(/'/g,'')}')">
-        <div class="fund-info">
-          <span class="fund-code">${code}</span>
-          <span class="fund-name">${name}</span>
-          ${t2Html}
-        </div>
-        <div class="fund-data">
-          <span class="fund-nav">${nav}</span>
-          <span class="fund-chg ${chgCls}">${chgStr}</span>
-          <span class="sig-badge ${sigCls}">${sigLabel}</span>
-        </div>
-      </div>`;
+    watched.forEach(c=>{ if(!_sigsCache[c])_sigsCache[c]={}; _sigsCache[c]._name=names[c]||c; });
+    renderWatchlist(watched, sigs, names);
+    renderMobileSignals(watched, sigs, names);
+    if(_selectedCode && sigs[_selectedCode]) _refreshRcHeader(_selectedCode);
+  }catch(e){}
+}
+
+/* ── Trades ── */
+async function loadTrades(){
+  const session = localStorage.getItem(SESSION_KEY);
+  const tgId    = localStorage.getItem(TGID_KEY);
+  if(!session||!tgId) return;
+  try{
+    const r = await fetch('/api/trades?user_id='+encodeURIComponent(tgId),{
+      headers:{'X-Web-Session':session}
     });
-    list.innerHTML = rows.join('');
-  }catch(e){
-    list.innerHTML = '<p class="list-note">Lỗi tải tín hiệu: ' + e.message + '</p>';
-  }
+    const d = await r.json();
+    if(!r.ok) return;
+    renderTrades(d.trades||[]);
+  }catch(e){}
 }
 
-function refreshData(){
-  const session = localStorage.getItem(SESSION_KEY);
-  const tgId    = localStorage.getItem(TGID_KEY);
-  if(!session || !tgId) return;
-  const btn = document.getElementById('btn-refresh');
-  btn.textContent = '⟳ Đang tải...';
-  btn.disabled = true;
-  Promise.all([
-    loadSignals(session, tgId, _predictions),
-    loadTrades(session, tgId),
-  ]).finally(() => {
-    btn.textContent = '⟳ Làm mới';
-    btn.disabled = false;
-  });
-}
-
-function logout(){
-  localStorage.removeItem(SESSION_KEY);
-  localStorage.removeItem(TGID_KEY);
-  document.getElementById('app').style.display = 'none';
-  document.getElementById('gate').style.display = 'flex';
-}
-
-// ─── Detail Panel ────────────────────────────────────────────────────
-
-function openDetail(code, name){
-  const s   = _sigsCache[code] || {};
-  const nav = s.nav;
-  const chg = s.chg_pct;
-  const sig = (s.signal || 'N/A').replace(/[🟢🔴⚪]/g,'').trim();
-
-  document.getElementById('d-code').textContent = code;
-  document.getElementById('d-name').textContent = name || code;
-
-  const navEl = document.getElementById('d-nav');
-  navEl.textContent = nav ? Math.round(nav).toLocaleString('vi-VN') + ' đ' : '—';
-
-  const chgEl = document.getElementById('d-chg');
-  if(chg != null){
-    chgEl.textContent = (chg >= 0 ? '+' : '') + chg.toFixed(2) + '%';
-    chgEl.className = 'p-nav-chg ' + (chg >= 0 ? 'pos' : 'neg');
-  } else {
-    chgEl.textContent = '—';
-    chgEl.className = 'p-nav-chg';
-  }
-
-  const sigEl = document.getElementById('d-sig');
-  sigEl.textContent = sig;
-  sigEl.className = 'p-sig sig-badge ' + (sig.includes('MUA') ? 'sig-buy' : sig.includes('BÁN') ? 'sig-sell' : 'sig-hold');
-
-  // T+2 row
-  const pred = _predictions[code];
-  const t2Row = document.getElementById('d-t2-row');
-  if(pred && pred.predicted_nav && nav){
-    const t2Nav = pred.predicted_nav;
-    const t2Chg = (t2Nav / nav - 1) * 100;
-    const hasCi = pred.ci_low != null && pred.ci_high != null;
-    const uncertain = hasCi && nav >= pred.ci_low && nav <= pred.ci_high;
-    const arrow = uncertain ? '≈' : (t2Chg >= 0 ? '↑' : '↓');
-    const cls   = uncertain ? '' : (t2Chg >= 0 ? 'pos' : 'neg');
-    const valEl = document.getElementById('d-t2-val');
-    valEl.textContent = `${arrow} ${Math.abs(t2Chg).toFixed(2)}% (${Math.round(t2Nav).toLocaleString('vi-VN')} đ)`;
-    valEl.className = 't2-val ' + cls;
-    if(hasCi){
-      document.getElementById('d-t2-ci').textContent =
-        `CI [${Math.round(pred.ci_low).toLocaleString('vi-VN')} – ${Math.round(pred.ci_high).toLocaleString('vi-VN')}]`;
-    } else {
-      document.getElementById('d-t2-ci').textContent = '';
+/* ── Render: desktop watchlist ── */
+function renderWatchlist(watched, sigs, names){
+  const el = document.getElementById('watch-list');
+  if(!watched.length){ el.innerHTML='<p class="list-note" style="padding:14px">Chưa có quỹ nào</p>'; return; }
+  el.innerHTML = watched.map(code=>{
+    const s=sigs[code]||{}, name=names[code]||code;
+    const nav=s.nav?fmt(s.nav):'—';
+    const chg=s.chg_pct, chgStr=chg!=null?fmtPct(chg):'—';
+    const chgCls=chg==null?'':chg>=0?'pos':'neg';
+    const sig=(s.signal||'N/A').replace(/[🟢🔴⚪]/g,'').trim();
+    const sigCls=sig.includes('MUA')?'sig-buy':sig.includes('BÁN')?'sig-sell':'sig-hold';
+    const pred=_predictions[code];
+    let t2='';
+    if(pred&&pred.predicted_nav&&s.nav){
+      const c=(pred.predicted_nav/s.nav-1)*100;
+      t2=`<div class="w-t2 ${c>=0?'pos':'neg'}">T+2 ${c>=0?'↑':'↓'}${Math.abs(c).toFixed(2)}%</div>`;
     }
-    t2Row.style.display = 'flex';
-  } else {
-    t2Row.style.display = 'none';
-  }
-
-  // Reset chart + detail areas
-  document.getElementById('d-chart').style.display = 'none';
-  document.getElementById('d-chart-loading').style.display = 'flex';
-  document.getElementById('d-pro-content').style.display = 'none';
-  document.getElementById('d-pro-lock').style.display = 'none';
-  document.getElementById('d-indicators').innerHTML = '';
-  document.getElementById('d-verdicts').innerHTML = '';
-  document.getElementById('d-position').style.display = 'none';
-
-  // Open panel (reset scroll so new fund starts at top)
-  const panel = document.getElementById('detail-panel');
-  panel.scrollTop = 0;
-  document.getElementById('panel-overlay').classList.add('open');
-  requestAnimationFrame(() => panel.classList.add('open'));
-
-  // Fetch research (Pro) or just show chart from nav-history (Free)
-  fetchDetail(code, nav);
+    return `<div class="w-row" id="wr-${code}" onclick="selectFund('${code}','${name.replace(/'/g,'')}')">
+      <div class="w-left">
+        <div class="w-code">${code}</div>
+        <div class="w-name">${name}</div>${t2}
+      </div>
+      <div class="w-right">
+        <div class="w-nav">${nav}</div>
+        <div class="w-chg ${chgCls}">${chgStr}</div>
+        <div class="sig-badge ${sigCls}">${sig}</div>
+      </div>
+    </div>`;
+  }).join('');
 }
 
-async function fetchDetail(code, currentNav){
-  const session = localStorage.getItem(SESSION_KEY);
-  const tgId    = localStorage.getItem(TGID_KEY);
-  if(!session || !tgId) return;
+/* ── Render: mobile signals ── */
+function renderMobileSignals(watched, sigs, names){
+  const el = document.getElementById('m-signals-list');
+  if(!watched.length){ el.innerHTML='<p class="list-note">Chưa có quỹ nào</p>'; return; }
+  el.innerHTML = watched.map(code=>{
+    const s=sigs[code]||{}, name=names[code]||code;
+    const nav=s.nav?fmt(s.nav):'—';
+    const chg=s.chg_pct, chgStr=chg!=null?fmtPct(chg):'—';
+    const chgCls=chg==null?'':chg>=0?'pos':'neg';
+    const sig=(s.signal||'N/A').replace(/[🟢🔴⚪]/g,'').trim();
+    const sigCls=sig.includes('MUA')?'sig-buy':sig.includes('BÁN')?'sig-sell':'sig-hold';
+    const pred=_predictions[code];
+    let t2='';
+    if(pred&&pred.predicted_nav&&s.nav){
+      const c=(pred.predicted_nav/s.nav-1)*100;
+      t2=`<div class="fi-t2 ${c>=0?'pos':'neg'}">T+2 ${c>=0?'↑':'↓'}${Math.abs(c).toFixed(2)}%</div>`;
+    }
+    return `<div class="fund-row" onclick="openDetail('${code}','${name.replace(/'/g,'')}')">
+      <div class="fi"><span class="fi-code">${code}</span><span class="fi-name">${name}</span>${t2}</div>
+      <div class="fd">
+        <span class="fd-nav">${nav}</span>
+        <span class="fd-chg ${chgCls}">${chgStr}</span>
+        <span class="sig-badge ${sigCls}">${sig}</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* ── Render: mobile portfolio ── */
+function renderMobilePortfolio(items){
+  const el = document.getElementById('m-portfolio-list');
+  if(!items||!items.length){ el.innerHTML='<p class="list-note">Chưa có vị thế nào</p>'; return; }
+  el.innerHTML = items.map(h=>{
+    const val=h.value?fmt(h.value):'—';
+    const pnlPct=h.pnl_pct, pnlStr=pnlPct!=null?fmtPct(pnlPct):'—';
+    const pnlCls=pnlPct==null?'':pnlPct>=0?'pos':'neg';
+    const unitsStr=h.units!=null?h.units.toLocaleString('vi-VN',{maximumFractionDigits:2})+' CCQ':'';
+    const costStr=h.avg_cost?fmt(h.avg_cost)+'/CCQ':'';
+    return `<div class="hold-row" onclick="openDetail('${h.code}','${(h.name||h.code).replace(/'/g,'')}')">
+      <div>
+        <div class="hr-code">${h.code}</div>
+        <div class="hr-sub">${[unitsStr,costStr].filter(Boolean).join(' · ')}</div>
+      </div>
+      <div class="hr-right">
+        <div class="hr-val">${val}</div>
+        <div class="hr-pnl ${pnlCls}">${pnlStr}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* ── Render: trades ── */
+function renderTrades(trades){
+  const all=(trades||[]).slice(0,10);
+  const dtEl=document.getElementById('d-trades-list');
+  if(dtEl){
+    dtEl.innerHTML=!all.length?'<p class="list-note">Chưa có giao dịch</p>':
+      all.map(t=>{
+        const buy=t.type==='buy', amt=t.amount?fmt(t.amount):'—';
+        return `<div class="trade-row-d">
+          <div class="trd-l">
+            <span class="trd-date">${(t.date||'').slice(0,10)}</span>
+            <span class="trd-code">${t.code||'—'}</span>
+          </div>
+          <div class="trd-r">
+            <span class="trd-amt ${buy?'neg':'pos'}">${buy?'-':'+'}${amt}</span>
+            <span class="type-badge ${buy?'type-buy':'type-sell'}">${buy?'MUA':'BÁN'}</span>
+          </div>
+        </div>`;
+      }).join('');
+  }
+  const mEl=document.getElementById('m-trades-list');
+  if(mEl){
+    mEl.innerHTML=!all.length?'<p class="list-note">Chưa có giao dịch</p>':
+      all.map(t=>{
+        const buy=t.type==='buy', amt=t.amount?fmt(t.amount):'—';
+        const units=t.units!=null?t.units.toLocaleString('vi-VN',{maximumFractionDigits:2})+' CCQ':'';
+        return `<div class="trade-row">
+          <div class="tr-l">
+            <span class="tr-date">${(t.date||'').slice(0,10)}</span>
+            <span class="tr-code">${t.code||'—'}${units?' · '+units:''}</span>
+          </div>
+          <div class="tr-r">
+            <span class="tr-amt ${buy?'neg':'pos'}">${buy?'-':'+'}${amt}</span>
+            <span class="type-badge ${buy?'type-buy':'type-sell'}">${buy?'MUA':'BÁN'}</span>
+          </div>
+        </div>`;
+      }).join('');
+  }
+}
+
+/* ── Desktop: select fund ── */
+function selectFund(code, name){
+  if(IS_MOBILE()){ openDetail(code,name); return; }
+
+  document.querySelectorAll('.w-row').forEach(r=>r.classList.remove('active'));
+  const wr=document.getElementById('wr-'+code); if(wr) wr.classList.add('active');
+  _selectedCode=code;
+
+  _refreshRcHeader(code,name);
+
+  document.getElementById('rc-chart').style.display='none';
+  document.getElementById('rc-loading').style.display='block';
+  document.getElementById('rc-indicators').innerHTML='';
+  document.getElementById('rc-ind-wrap').style.display='none';
+  document.getElementById('rc-pro-lock').style.display='none';
+  document.getElementById('rc-position').style.display='none';
+  document.getElementById('rc-verdicts').style.display='none';
+  document.getElementById('research-empty').style.display='none';
+  const rc=document.getElementById('research-content');
+  rc.style.display='flex'; rc.style.flexDirection='column';
+
+  fetchResearch(code, (_sigsCache[code]||{}).nav);
+}
+
+function _refreshRcHeader(code, name){
+  const s=_sigsCache[code]||{};
+  name=name||s._name||code;
+  const nav=s.nav, chg=s.chg_pct;
+  const sig=(s.signal||'N/A').replace(/[🟢🔴⚪]/g,'').trim();
+
+  document.getElementById('rc-code').textContent=code;
+  document.getElementById('rc-name').textContent=name;
+  document.getElementById('rc-nav').textContent=nav?fmt(nav):'—';
+  const chgEl=document.getElementById('rc-chg');
+  chgEl.textContent=chg!=null?fmtPct(chg):'—';
+  chgEl.className='rch-chg '+(chg==null?'':chg>=0?'pos':'neg');
+  const sigEl=document.getElementById('rc-sig');
+  sigEl.textContent=sig;
+  sigEl.className='rch-sig sig-badge '+(sig.includes('MUA')?'sig-buy':sig.includes('BÁN')?'sig-sell':'sig-hold');
+
+  const pred=_predictions[code], t2Row=document.getElementById('rc-t2');
+  if(pred&&pred.predicted_nav&&nav){
+    const t2n=pred.predicted_nav, t2c=(t2n/nav-1)*100;
+    const hasCi=pred.ci_low!=null&&pred.ci_high!=null;
+    const uncert=hasCi&&nav>=pred.ci_low&&nav<=pred.ci_high;
+    const arrow=uncert?'≈':t2c>=0?'↑':'↓';
+    const cls=uncert?'':t2c>=0?'pos':'neg';
+    const vEl=document.getElementById('rc-t2-val');
+    vEl.textContent=`${arrow} ${Math.abs(t2c).toFixed(2)}% (${fmt(t2n)})`;
+    vEl.className='rc-t2-val '+cls;
+    document.getElementById('rc-t2-ci').textContent=hasCi?`CI [${fmt(pred.ci_low)} – ${fmt(pred.ci_high)}]`:'';
+    t2Row.style.display='flex';
+  } else { t2Row.style.display='none'; }
+}
+
+async function fetchResearch(code, currentNav){
+  const session=localStorage.getItem(SESSION_KEY), tgId=localStorage.getItem(TGID_KEY);
+  if(!session||!tgId) return;
 
   if(_isPro){
     try{
-      const resp = await fetch(`/api/research/${encodeURIComponent(code)}?user_id=${encodeURIComponent(tgId)}`, {
-        headers: {'X-Web-Session': session},
+      const r=await fetch(`/api/research/${encodeURIComponent(code)}?user_id=${encodeURIComponent(tgId)}`,{
+        headers:{'X-Web-Session':session}
       });
-      if(resp.status === 403){
-        showProLock(); hideChartLoading(); return;
-      }
-      const d = await resp.json();
-      if(!resp.ok){ showProLock(); hideChartLoading(); return; }
-      renderProDetail(d, currentNav);
-    }catch(e){
-      showProLock(); hideChartLoading();
-    }
+      if(r.status===403){ document.getElementById('rc-pro-lock').style.display='block'; _hideRcLoad(); return; }
+      const d=await r.json();
+      if(!r.ok){ _hideRcLoad(); return; }
+      _renderDesktopResearch(d, currentNav||d.nav);
+    }catch(e){ _hideRcLoad(); }
   } else {
-    showProLock();
-    // Vẫn load chart cho free user từ nav-history (public endpoint)
+    document.getElementById('rc-pro-lock').style.display='block';
     try{
-      const resp = await fetch(`/api/nav/${encodeURIComponent(code)}`);
-      const d = await resp.json();
-      if(d.data && d.data.length){
-        drawSparkline(d.data.slice(-90), currentNav);
-      } else {
-        hideChartLoading();
-      }
-    }catch(e){
-      hideChartLoading();
-    }
+      const r=await fetch(`/api/nav/${encodeURIComponent(code)}`);
+      const d=await r.json();
+      if(d.data&&d.data.length) drawChart('rc-chart','rc-loading',d.data.slice(-90),currentNav,190);
+      else _hideRcLoad();
+    }catch(e){ _hideRcLoad(); }
   }
 }
 
-function showProLock(){
-  document.getElementById('d-pro-lock').style.display = 'block';
-}
+function _hideRcLoad(){ document.getElementById('rc-loading').style.display='none'; }
 
-function hideChartLoading(){
-  document.getElementById('d-chart-loading').style.display = 'none';
-}
+function _renderDesktopResearch(d, currentNav){
+  if(d.nav_series&&d.nav_series.length) drawChart('rc-chart','rc-loading',d.nav_series,currentNav||d.nav,190);
+  else _hideRcLoad();
 
-function renderProDetail(d, currentNav){
-  // Sparkline
-  if(d.nav_series && d.nav_series.length){
-    drawSparkline(d.nav_series, currentNav || d.nav);
-  } else {
-    hideChartLoading();
-  }
-
-  // Vị thế
-  const pos = d.position;
+  const pos=d.position;
   if(pos){
-    document.getElementById('d-pos-units').textContent = pos.units != null ? pos.units.toLocaleString('vi-VN', {maximumFractionDigits:4}) : '—';
-    document.getElementById('d-pos-cost').textContent  = pos.avg_cost ? Math.round(pos.avg_cost).toLocaleString('vi-VN') + ' đ' : '—';
-    const pnlEl = document.getElementById('d-pos-pnl');
-    if(pos.pnl_pct != null){
-      pnlEl.textContent = (pos.pnl_pct >= 0 ? '+' : '') + pos.pnl_pct.toFixed(1) + '%';
-      pnlEl.className = 'pos-val ' + (pos.pnl_pct >= 0 ? 'pos' : 'neg');
-    }
-    document.getElementById('d-position').style.display = 'block';
+    document.getElementById('rc-pos-code').textContent=_selectedCode||d.code||'';
+    document.getElementById('rc-pos-units').textContent=pos.units!=null?pos.units.toLocaleString('vi-VN',{maximumFractionDigits:4}):'—';
+    document.getElementById('rc-pos-cost').textContent=pos.avg_cost?fmt(pos.avg_cost):'—';
+    const pEl=document.getElementById('rc-pos-pnl');
+    if(pos.pnl_pct!=null){ pEl.textContent=fmtPct(pos.pnl_pct); pEl.className='pos-val '+(pos.pnl_pct>=0?'pos':'neg'); }
+    document.getElementById('rc-position').style.display='block';
   }
 
-  // Kỹ thuật
-  const tech = d.technical || {};
-  const indGrid = document.getElementById('d-indicators');
-  const indItems = [
-    ['RSI(14)', tech.rsi],
-    ['MACD', tech.macd],
-    ['Bollinger', tech.bb],
-    ['MA Cross', tech.golden_cross || tech.ma],
-    ['Stochastic', tech.stoch],
-    ['Momentum', tech.roc],
-  ].filter(([,v]) => v);
-  indGrid.innerHTML = indItems.map(([lbl, val]) =>
-    `<div class="ind-tile"><div class="ind-label">${lbl}</div><div class="ind-val">${val}</div></div>`
-  ).join('');
+  const tech=d.technical||{};
+  const inds=[
+    ['RSI(14)',tech.rsi],['MACD',tech.macd],['Bollinger',tech.bb],
+    ['MA Cross',tech.golden_cross||tech.ma],['Stochastic',tech.stoch],['Momentum',tech.roc]
+  ].filter(([,v])=>v);
+  if(inds.length){
+    document.getElementById('rc-indicators').innerHTML=inds.map(([l,v])=>
+      `<div class="ind-tile"><div class="ind-lbl">${l}</div><div class="ind-val">${v}</div></div>`
+    ).join('');
+    document.getElementById('rc-ind-wrap').style.display='block';
+  }
 
-  // 5 Góc nhìn
-  const val  = d.value   || {};
-  const mom  = d.momentum || {};
-  const dca  = d.dca     || {};
-  const risk = d.risk    || {};
-  const verdMap = [
-    ['Kỹ thuật', tech.verdict],
-    ['Định giá', val.verdict],
-    ['Động lực', mom.verdict],
-    ['DCA',      dca.verdict],
-    ['Rủi ro',   risk.verdict],
-  ].filter(([,v]) => v);
-  document.getElementById('d-verdicts').innerHTML = verdMap.map(([lbl, val]) =>
-    `<div class="vcard"><div class="vcard-label">${lbl}</div><div class="vcard-val">${val}</div></div>`
-  ).join('');
-
-  document.getElementById('d-pro-content').style.display = 'block';
+  const verds=[
+    ['Kỹ thuật',tech.verdict],['Định giá',(d.value||{}).verdict],
+    ['Động lực',(d.momentum||{}).verdict],['DCA',(d.dca||{}).verdict],
+    ['Rủi ro',(d.risk||{}).verdict]
+  ].filter(([,v])=>v);
+  if(verds.length){
+    document.getElementById('rc-verd-grid').innerHTML=verds.map(([l,v])=>
+      `<div class="vcard"><div class="vcard-lbl">${l}</div><div class="vcard-val">${v}</div></div>`
+    ).join('');
+    document.getElementById('rc-verdicts').style.display='block';
+  }
 }
 
-// ─── Sparkline ────────────────────────────────────────────────────────
+/* ── Mobile tabs ── */
+function switchTab(tab){
+  document.querySelectorAll('.m-page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(b=>b.classList.remove('active'));
+  document.getElementById('tab-'+tab).classList.add('active');
+  document.getElementById('nav-'+tab).classList.add('active');
+}
 
-function drawSparkline(series, currentNav){
-  const canvas  = document.getElementById('d-chart');
-  const loading = document.getElementById('d-chart-loading');
+/* ── Mobile detail panel ── */
+function openDetail(code, name){
+  const s=_sigsCache[code]||{};
+  name=name||s._name||code;
+  const nav=s.nav, chg=s.chg_pct;
+  const sig=(s.signal||'N/A').replace(/[🟢🔴⚪]/g,'').trim();
 
-  const dpr = window.devicePixelRatio || 1;
-  const W   = canvas.offsetWidth  || canvas.parentElement.offsetWidth;
-  const H   = 120;
-  canvas.width  = W * dpr;
-  canvas.height = H * dpr;
-  canvas.style.width  = W + 'px';
-  canvas.style.height = H + 'px';
+  document.getElementById('d-code').textContent=code;
+  document.getElementById('d-name').textContent=name;
+  document.getElementById('d-nav').textContent=nav?fmt(nav):'—';
+  const chgEl=document.getElementById('d-chg');
+  chgEl.textContent=chg!=null?fmtPct(chg):'—';
+  chgEl.className=chg==null?'':chg>=0?'pos':'neg';
+  const sigEl=document.getElementById('d-sig');
+  sigEl.textContent=sig;
+  sigEl.className='sig-badge '+(sig.includes('MUA')?'sig-buy':sig.includes('BÁN')?'sig-sell':'sig-hold');
 
-  const ctx = canvas.getContext('2d');
-  ctx.scale(dpr, dpr);
+  const pred=_predictions[code], t2Row=document.getElementById('d-t2-row');
+  if(pred&&pred.predicted_nav&&nav){
+    const t2n=pred.predicted_nav, t2c=(t2n/nav-1)*100;
+    const hasCi=pred.ci_low!=null&&pred.ci_high!=null;
+    const uncert=hasCi&&nav>=pred.ci_low&&nav<=pred.ci_high;
+    const vEl=document.getElementById('d-t2-val');
+    vEl.textContent=`${uncert?'≈':t2c>=0?'↑':'↓'} ${Math.abs(t2c).toFixed(2)}% (${fmt(t2n)})`;
+    vEl.className='p-t2-val '+(uncert?'':t2c>=0?'pos':'neg');
+    document.getElementById('d-t2-ci').textContent=hasCi?`CI [${fmt(pred.ci_low)} – ${fmt(pred.ci_high)}]`:'';
+    t2Row.style.display='flex';
+  } else { t2Row.style.display='none'; }
 
-  const navs = series.map(p => p.nav).filter(v => v != null);
-  if(!navs.length){ loading.style.display = 'none'; return; }
+  document.getElementById('d-chart').style.display='none';
+  document.getElementById('d-loading').style.display='block';
+  document.getElementById('d-pro-content').style.display='none';
+  document.getElementById('d-pro-lock').style.display='none';
+  document.getElementById('d-indicators').innerHTML='';
+  document.getElementById('d-verdicts').innerHTML='';
+  document.getElementById('d-position').style.display='none';
 
-  const mn = Math.min(...navs);
-  const mx = Math.max(...navs);
-  const pad = { top: 12, right: 10, bottom: 14, left: 10 };
-  const rng = mx - mn || 1;
+  document.getElementById('panel-overlay').classList.add('open');
+  requestAnimationFrame(()=>document.getElementById('detail-panel').classList.add('open'));
 
-  const xOf = i => pad.left + i / (series.length - 1 || 1) * (W - pad.left - pad.right);
-  const yOf = v => pad.top + (1 - (v - mn) / rng) * (H - pad.top - pad.bottom);
+  _fetchMobileDetail(code, nav);
+}
 
-  // Area fill (gradient)
-  const grad = ctx.createLinearGradient(0, pad.top, 0, H - pad.bottom);
-  grad.addColorStop(0, 'rgba(0,229,255,.18)');
-  grad.addColorStop(1, 'rgba(0,229,255,.00)');
+async function _fetchMobileDetail(code, currentNav){
+  const session=localStorage.getItem(SESSION_KEY), tgId=localStorage.getItem(TGID_KEY);
+  if(!session||!tgId) return;
 
-  ctx.beginPath();
-  series.forEach((p, i) => {
-    if(p.nav == null) return;
-    const x = xOf(i), y = yOf(p.nav);
-    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-  });
-  ctx.lineTo(xOf(series.length - 1), H - pad.bottom);
-  ctx.lineTo(xOf(0), H - pad.bottom);
-  ctx.closePath();
-  ctx.fillStyle = grad;
-  ctx.fill();
+  if(_isPro){
+    try{
+      const r=await fetch(`/api/research/${encodeURIComponent(code)}?user_id=${encodeURIComponent(tgId)}`,{
+        headers:{'X-Web-Session':session}
+      });
+      if(r.status===403){ document.getElementById('d-pro-lock').style.display='block'; document.getElementById('d-loading').style.display='none'; return; }
+      const d=await r.json();
+      if(!r.ok){ document.getElementById('d-loading').style.display='none'; return; }
+      _renderPanelDetail(d, currentNav||d.nav);
+    }catch(e){ document.getElementById('d-loading').style.display='none'; }
+  } else {
+    document.getElementById('d-pro-lock').style.display='block';
+    try{
+      const r=await fetch(`/api/nav/${encodeURIComponent(code)}`);
+      const d=await r.json();
+      if(d.data&&d.data.length) drawChart('d-chart','d-loading',d.data.slice(-90),currentNav,120);
+      else document.getElementById('d-loading').style.display='none';
+    }catch(e){ document.getElementById('d-loading').style.display='none'; }
+  }
+}
 
-  // Line
-  ctx.beginPath();
-  let first = true;
-  series.forEach((p, i) => {
-    if(p.nav == null) return;
-    const x = xOf(i), y = yOf(p.nav);
-    first ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-    first = false;
-  });
-  ctx.strokeStyle = '#00e5ff';
-  ctx.lineWidth   = 1.5;
-  ctx.stroke();
+function _renderPanelDetail(d, currentNav){
+  if(d.nav_series&&d.nav_series.length) drawChart('d-chart','d-loading',d.nav_series,currentNav||d.nav,120);
+  else document.getElementById('d-loading').style.display='none';
 
-  // Endpoint dot
-  const last = series[series.length - 1];
-  if(last && last.nav != null){
-    ctx.beginPath();
-    ctx.arc(xOf(series.length - 1), yOf(last.nav), 3, 0, Math.PI * 2);
-    ctx.fillStyle = '#00e5ff';
-    ctx.fill();
+  const pos=d.position;
+  if(pos){
+    document.getElementById('d-units').textContent=pos.units!=null?pos.units.toLocaleString('vi-VN',{maximumFractionDigits:4}):'—';
+    document.getElementById('d-cost').textContent=pos.avg_cost?fmt(pos.avg_cost):'—';
+    const pEl=document.getElementById('d-pnl');
+    if(pos.pnl_pct!=null){ pEl.textContent=fmtPct(pos.pnl_pct); pEl.className='p-pos-val '+(pos.pnl_pct>=0?'pos':'neg'); }
+    document.getElementById('d-position').style.display='block';
   }
 
-  // Date labels
-  ctx.font = `10px ${getComputedStyle(document.body).getPropertyValue('--mono') || 'monospace'}`;
-  ctx.fillStyle = 'rgba(90,120,152,.7)';
-  ctx.textAlign = 'left';
-  ctx.fillText(series[0].date.slice(5), pad.left, H - 2);
-  ctx.textAlign = 'right';
-  ctx.fillText(series[series.length - 1].date.slice(5), W - pad.right, H - 2);
+  const tech=d.technical||{};
+  document.getElementById('d-indicators').innerHTML=[
+    ['RSI(14)',tech.rsi],['MACD',tech.macd],['Bollinger',tech.bb],
+    ['MA Cross',tech.golden_cross||tech.ma],['Stochastic',tech.stoch],['Momentum',tech.roc]
+  ].filter(([,v])=>v).map(([l,v])=>
+    `<div class="p-ind-tile"><div class="p-ind-lbl">${l}</div><div class="p-ind-val">${v}</div></div>`
+  ).join('');
 
-  loading.style.display = 'none';
-  canvas.style.display = 'block';
+  document.getElementById('d-verdicts').innerHTML=[
+    ['Kỹ thuật',tech.verdict],['Định giá',(d.value||{}).verdict],
+    ['Động lực',(d.momentum||{}).verdict],['DCA',(d.dca||{}).verdict],
+    ['Rủi ro',(d.risk||{}).verdict]
+  ].filter(([,v])=>v).map(([l,v])=>
+    `<div class="p-vcard"><div class="p-vcard-lbl">${l}</div><div class="p-vcard-val">${v}</div></div>`
+  ).join('');
+
+  document.getElementById('d-pro-content').style.display='block';
 }
 
 function closeDetail(){
@@ -726,14 +1020,77 @@ function closeDetail(){
   document.getElementById('panel-overlay').classList.remove('open');
 }
 
-// ESC để đóng panel
-document.addEventListener('keydown', e => { if(e.key === 'Escape') closeDetail(); });
+/* ── Chart (Canvas, hardcoded hex) ── */
+function drawChart(canvasId, loadId, series, currentNav, H){
+  const canvas=document.getElementById(canvasId);
+  const loading=document.getElementById(loadId);
+  const dpr=window.devicePixelRatio||1;
+  const W=canvas.offsetWidth||canvas.parentElement?.clientWidth||400;
+  H=H||150;
+  canvas.width=W*dpr; canvas.height=H*dpr;
+  canvas.style.width=W+'px'; canvas.style.height=H+'px';
+  const ctx=canvas.getContext('2d');
+  ctx.scale(dpr,dpr);
 
-// ─── Init ─────────────────────────────────────────────────────────────
+  const navs=series.map(p=>p.nav).filter(v=>v!=null);
+  if(!navs.length){ loading.style.display='none'; return; }
 
-if(localStorage.getItem(SESSION_KEY) && localStorage.getItem(TGID_KEY)){
-  loadProfile();
+  const mn=Math.min(...navs), mx=Math.max(...navs), rng=mx-mn||1;
+  const pad={t:14,r:12,b:18,l:8};
+  const xOf=i=>pad.l+i/(series.length-1||1)*(W-pad.l-pad.r);
+  const yOf=v=>pad.t+(1-(v-mn)/rng)*(H-pad.t-pad.b);
+
+  ctx.strokeStyle='rgba(30,48,80,.5)'; ctx.lineWidth=1;
+  [mn,(mn+mx)/2,mx].forEach(v=>{
+    const y=yOf(v); ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(W-pad.r,y); ctx.stroke();
+  });
+
+  const grad=ctx.createLinearGradient(0,pad.t,0,H-pad.b);
+  grad.addColorStop(0,'rgba(0,229,255,.16)');
+  grad.addColorStop(1,'rgba(0,229,255,.0)');
+  ctx.beginPath();
+  let first=true;
+  series.forEach((p,i)=>{ if(p.nav==null) return; first?(ctx.moveTo(xOf(i),yOf(p.nav)),first=false):ctx.lineTo(xOf(i),yOf(p.nav)); });
+  ctx.lineTo(xOf(series.length-1),H-pad.b);
+  ctx.lineTo(xOf(0),H-pad.b);
+  ctx.closePath(); ctx.fillStyle=grad; ctx.fill();
+
+  ctx.beginPath(); first=true;
+  series.forEach((p,i)=>{ if(p.nav==null) return; first?(ctx.moveTo(xOf(i),yOf(p.nav)),first=false):ctx.lineTo(xOf(i),yOf(p.nav)); });
+  ctx.strokeStyle='#00e5ff'; ctx.lineWidth=1.5; ctx.stroke();
+
+  const last=series.filter(p=>p.nav!=null).pop();
+  if(last){ const lx=xOf(series.length-1),ly=yOf(last.nav); ctx.beginPath(); ctx.arc(lx,ly,3,0,Math.PI*2); ctx.fillStyle='#00e5ff'; ctx.fill(); }
+
+  ctx.fillStyle='rgba(90,120,152,.8)';
+  ctx.font='9px monospace'; ctx.textBaseline='top';
+  const d0=(series[0]?.date||'').slice(5), d1=(series[series.length-1]?.date||'').slice(5);
+  ctx.fillText(d0,pad.l,H-pad.b+3);
+  ctx.textAlign='right'; ctx.fillText(d1,W-pad.r,H-pad.b+3); ctx.textAlign='left';
+
+  loading.style.display='none'; canvas.style.display='block';
 }
+
+/* ── Refresh + Logout ── */
+function refreshAll(){
+  loadSignals(); loadTrades();
+}
+
+function logout(){
+  localStorage.removeItem(SESSION_KEY); localStorage.removeItem(TGID_KEY);
+  document.getElementById('gate').style.display='flex';
+  document.getElementById('top-bar').style.display='none';
+  document.getElementById('app').style.display='none';
+  document.getElementById('bottom-nav').style.display='none';
+}
+
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeDetail(); });
+
+/* ── Auto-login ── */
+(function(){
+  const s=localStorage.getItem(SESSION_KEY), t=localStorage.getItem(TGID_KEY);
+  if(s&&t) initApp({first_name:localStorage.getItem(NAME_KEY),username:(localStorage.getItem(UN_KEY)||'').replace('@','')});
+})();
 </script>
 </body>
 </html>
