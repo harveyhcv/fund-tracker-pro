@@ -30,8 +30,20 @@ body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14p
 .nav-btn svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 #app{padding:0;padding-bottom:72px;max-width:none}
 .page{display:none}.page.active{display:block}
-#page-trade{padding:12px;max-width:660px;margin:0 auto}
-.home-grid{display:grid;grid-template-columns:380px 1fr;gap:0;height:calc(100vh - 56px - 72px)}
+#page-trade{padding:0;max-width:none;margin:0}
+.home-grid{display:grid;grid-template-columns:380px 1fr;gap:0;height:calc(100vh - 72px)}
+.trade-grid{display:grid;grid-template-columns:260px 1fr 272px;gap:0;height:calc(100vh - 72px)}
+.trade-col{border-right:1px solid var(--bdr);overflow:hidden;display:flex;flex-direction:column;height:100%}
+.trade-col:last-child{border-right:none}
+.trade-col-left{background:var(--bg);overflow-y:auto}
+.trade-col-mid{background:var(--bg4)}
+.trade-col-right{background:var(--bg);overflow-y:auto}
+.col-head{padding:10px 12px;border-bottom:1px solid var(--bdr);flex-shrink:0}
+.trade-form-area{flex:0 0 auto;overflow-y:auto;max-height:60%}
+.trade-history-area{flex:1;display:flex;flex-direction:column;overflow:hidden;border-top:2px solid var(--bdr)}
+.trade-history-head{padding:8px 12px;border-bottom:1px solid var(--bdr);display:flex;justify-content:space-between;align-items:center;flex-shrink:0;background:var(--bg4)}
+.trade-history-scroll{flex:1;overflow-y:auto}
+@media(max-width:900px){.trade-grid{grid-template-columns:1fr;height:auto}.trade-col{border-right:none;border-bottom:1px solid var(--bdr);height:auto;max-height:none}.trade-form-area{max-height:none}.trade-history-area{min-height:200px}}
 .home-col-left{overflow-y:auto;padding:12px;border-right:1px solid var(--bdr);height:100%}
 .home-col-right{overflow-y:auto;padding:12px;height:100%}
 .col-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}

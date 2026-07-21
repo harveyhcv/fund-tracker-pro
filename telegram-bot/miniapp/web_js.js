@@ -155,7 +155,7 @@ function goTab(name, btn) {
   document.getElementById('page-'+name).classList.add('active');
   btn.classList.add('active');
   if (name === 'home')  { if (!_me) loadMe(); if (!_marketData) loadMarket(); }
-  if (name === 'trade'  && !_signals) loadSignals();
+  if (name === 'trade') { if (!_signals) loadSignals(); loadUnifiedHistory(); setDcaStyle(_dcaStyle); }
   if (name === 'user')  loadAccountTab();
   if (name === 'admin') loadAdminTab();
 }
