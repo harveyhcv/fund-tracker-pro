@@ -4,9 +4,28 @@
 # Priority: P0 (blocker) / P1 (important) / P2 (nice-to-have)
 # Claude đọc file này ĐẦU TIÊN mỗi session. Pick task IN_PROGRESS nếu có, nếu không pick P0 cao nhất.
 #
-# Last updated: 2026-07-20 (ca chiều — +53 tests bao phủ 3 hàm security-critical chưa có test:
-# GOV-015 web auth (22), GOV-008 NAV reverify (21), GOV-010 referral bonus (10). Suite: 268→321.
-# Tat ca P0/P1 DONE — chi con PAY-006/007 P2 cho merchant credentials)
+# Last updated: 2026-07-21 (ca chiều — phát hiện 5 commits mới từ Harvey sau ca chiều 20/07
+# (GOV-019 web redesign v3, GOV-020 admin panel improvements). Suite: 321/321 OK.
+# Tất cả P0/P1 DONE — chỉ còn PAY-006/007 P2 chờ merchant credentials)
+
+## Session (autonomous, scheduled) — Ca chiều 2026-07-21: update BACKLOG cho 5 commits Harvey
+# Tình trạng: tất cả P0/P1 đã DONE từ trước. Điều kiện dừng: "Hết P0+P1".
+# Đầu session: đọc BACKLOG + memory.md + git log → phát hiện 5 commits mới từ Harvey
+# sau ca chiều 20/07 (sau commit da4deed của session hôm qua):
+# - 9eb5bba (20/07 14:26): feat(web): redesign v3 — merged tabs, full fundmart, DCA+History
+# - e590193 (20/07 14:29): dev(admin): add ?dev=1 bypass cho admin_pnl.html
+# - 1af01c7 (20/07 14:44): feat(admin): xoa portfolio section, them discount mgmt + TCBS token
+# - 55be95f (21/07 13:48): feat(admin): doi thu tu + them cross-login TCInvest bookmarklet
+# - aad9797 (21/07 13:53): refactor(web): xoa desktop 3-col, dung tab UI Mini App moi man hinh
+# Verify baseline:
+# 1. py_compile telegram-bot/{bot,miniapp_server,db}.py → All OK
+# 2. pytest tests/ → 321/321 passed
+# 3. Verify web.html: GOV-015 features (T+2 hints, loadSignals/loadTrades, _predictions) còn đầy đủ
+# 4. Verify API calls trong web.html: tất cả 6 endpoints đều đã có backend, không cần thêm
+# 5. DCA calculator logic: amt/nav * months = CCQ, display value tại NAV hiện tại — đúng thiết kế
+# 6. Không kết nối được Railway proxy để verify prediction_actuals (SSL error từ máy local)
+# Không code thêm — tất cả P0/P1 đã DONE, 5 commits Harvey là UI-only không có regression.
+# Update BACKLOG (entries GOV-019/GOV-020 bên dưới) + memory.md.
 
 ## Session (autonomous, scheduled) — Ca sáng 2026-07-16: update BACKLOG, verify baseline
 # Tình trạng: tất cả P0/P1 đã DONE từ trước. Điều kiện dừng ca này: "Hết P0+P1".
@@ -865,6 +884,32 @@
 ---
 
 ## XONG (DONE)
+
+- [DONE] GOV-019 · Web redesign v3 — merged tabs, full fundmart, DCA+History (commit 9eb5bba) +
+  refactor xóa desktop 3-col, áp dụng tab UI Mini App cho mọi màn hình kể cả desktop (commit
+  aad9797). Changes: (1) Header hiện portfolio totals (Giá trị/Lãi Lỗ) inline; (2) Tab Thị trường:
+  full market screener — TẤT CẢ quỹ từ all_funds (không chỉ watched), search input + filter chips
+  (Tất cả/MUA/BÁN/★Theo dõi), watched funds sort lên đầu với ★ marker; (3) Tab Danh mục:
+  portfolio + per-fund holdings; (4) Tab Giao dịch & DCA: DCA calculator (amt/month × months →
+  tổng đầu tư + ước tính CCQ + giá trị tại NAV hiện tại, auto-fill khi chọn quỹ) + lịch sử giao
+  dịch; (5) Slide-up detail panel giữ nguyên; (6) Xóa @media(min-width:769px) 3-col block —
+  web.html giờ dùng đúng UX Mini App Telegram, không còn empty space trên desktop.
+  Verify: tất cả 6 API endpoints web.html gọi đều đã có backend; GOV-015 features (T+2 hints,
+  loadSignals/loadTrades, _predictions) còn đầy đủ; DCA logic đúng | 2026-07-20-21 (Harvey commits)
+
+- [DONE] GOV-020 · Admin panel improvements — 3 commits liên tiếp ngày 20-21/07:
+  (1) e590193: ?dev=1 bypass trong admin_pnl.html để review UI không cần token/DB thật (mock 142
+  users, 18 Pro, 12 SePay orders, 3 fund holdings). Client-side only, không có server change.
+  (2) 1af01c7: admin_pnl.html — xóa section "Danh mục quy của Admin" (đã chuyển sang web.html);
+  thêm section "Cập nhật TCBS Token" (POST /api/admin/settoken) và section "Quản lý mã giảm giá"
+  (list/create/toggle qua /api/admin/discount/* endpoints đã có); gate thêm field Telegram ID
+  lưu sessionStorage. web.html: thêm ?dev bypass đầy đủ cho Admin Pro account (mock fetch + initApp).
+  (3) 55be95f: admin_pnl.html — đổi thứ tự section (TCBS Token + Quản lý mã giảm giá lên đầu,
+  P&L/doanh thu xuống cuối); thêm nút "Mở TCInvest" + drag-and-drop bookmarklet cross-login:
+  kéo vào Bookmarks bar → click trên tcinvest.tcbs.com.vn → scan localStorage tìm JWT (eyJ prefix)
+  → gửi qua window.opener.postMessage → token tự điền vào textarea, không cần copy/paste thủ công.
+  postMessage listener nhận token, hiện confirm. Giải quyết pain point JWT tcinvest hết hạn định kỳ
+  (đã ghi nhận nhiều lần trong sessions trước) | 2026-07-20-21 (Harvey commits)
 
 - [DONE] DB-002 · NAV confidence workflow: `provisional`/`pending_confirm`/`confirmed`/`fixed` state machine cho `nav_history.source` — `harvest_nav.py cmd_daily` so fetch mới với NAV hôm qua (provisional nếu trùng = API TCinvest chưa publish) và với NAV `manual` hiện có (tự confirm nếu khớp, `pending_confirm` nếu lệch); `db.py upsert_nav_with_confidence/get_pending_confirms/resolve_nav_confirm`; admin nhận nút xác nhận qua Telegram (`bot.py _notify_pending_nav_confirms`, sửa bug gọi nhầm `tg_send(...,buttons=)` → `tg_send_keyboard`); API `GET /api/admin/nav/pending` + `POST /api/admin/nav/confirm` trong `miniapp_server.py`, `_api_signals` trả kèm `nav_source`/`pending_nav` cho UI badge | 2026-07-10 (audit + hoàn thiện phần API còn thiếu từ commit `aad06a0`)
 - [DONE] GATE-004 · Mini App upgrade-to-Pro modal khi 403 pro_required | 2026-07-09

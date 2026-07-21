@@ -985,3 +985,48 @@ với `drawSparkline(p.date)` trong web.html. `_api_research` trả `nav_series`
 2. JWT tcinvest mới (hết hạn nhiều lần, pattern lặp)
 3. Xác nhận NTPPF/VMEEF có nên track
 4. Commit `ios/` + `dashboard/portfolio.html` + `scripts/*`
+
+---
+
+## ✅ Session (autonomous, scheduled) — Ca chiều 2026-07-21: update BACKLOG cho GOV-019/GOV-020
+
+**Baseline**: py_compile OK, 321/321 tests pass (không đổi).
+
+**Phát hiện đầu session**: 5 commits mới từ Harvey sau ca chiều 20/07 (sau commit da4deed):
+
+**GOV-019 · Web redesign v3** (commits 9eb5bba + aad9797):
+- web.html redesign toàn diện — full fund market screener (TẤT CẢ quỹ, không chỉ watched),
+  search + filter chips (Tất cả/MUA/BÁN/★Theo dõi), watched funds sort lên đầu với ★.
+- DCA calculator tích hợp: amt/month × months → tổng đầu tư + ước tính CCQ + giá trị tại NAV
+  hiện tại. `_dcaNav` được set khi chọn quỹ từ danh sách hoặc mở detail panel.
+- Xóa toàn bộ desktop 3-col layout (@media min-width:769px) — web.html giờ dùng đúng UX
+  Mini App Telegram cho MỌI màn hình (max-width:680px centered trên desktop).
+
+**GOV-020 · Admin panel improvements** (commits e590193 + 1af01c7 + 55be95f):
+- `?dev=1` bypass trong admin_pnl.html cho UI review không cần token/DB — client-side only.
+- Section "Cập nhật TCBS Token" (POST /api/admin/settoken) + "Quản lý mã giảm giá" (dùng
+  /api/admin/discount/* endpoints đã có từ GOV-012).
+- **TCInvest cross-login bookmarklet** (giải quyết pain point JWT hết hạn định kỳ): Harvey
+  kéo đoạn script vào Bookmarks bar → click khi đang ở tcinvest.tcbs.com.vn → scan
+  localStorage tìm JWT (eyJ prefix) → postMessage tới admin panel → token tự điền textarea.
+
+**Verify**:
+- Tất cả 6 API endpoints trong web.html đều có backend (không cần endpoint mới).
+- GOV-015 features còn đầy đủ sau redesign (T+2 hints, loadSignals/loadTrades/loadProfile,
+  _predictions variable, X-Web-Session headers).
+- DCA calculator logic đúng: `(amt/nav) × months` CCQ tại constant NAV — đúng thiết kế,
+  "Giá trị ước tính" = "Tổng đầu tư" khi NAV không đổi, label "(tại NAV hiện tại)" rõ ràng.
+- Không kết nối được Railway proxy từ máy local (SSL error "received invalid response:
+  I") — không verify được prediction_actuals hay T2-008 reweight eligibility.
+  Kết quả cũ: 48 records tất cả cùng timestamp (batch đầu tiên 16/07). Cần Harvey verify
+  trực tiếp hoặc đợi session có database access.
+
+**Không code gì mới** — chỉ update BACKLOG (GOV-019/GOV-020) + memory.md.
+
+**Việc cần Harvey (tồn đọng, không thay đổi):**
+1. Set `WEB_SESSION_SECRET` trên Railway + `/setdomain` @BotFather (GOV-015 live)
+2. JWT tcinvest mới (hết hạn từ 16/07, pattern lặp nhiều lần)
+3. Xác nhận NTPPF/VMEEF có nên track
+4. Commit `ios/` + `dashboard/portfolio.html` + `scripts/*`
+5. Xác nhận `prediction_actuals` đã có đủ ngày để chạy T2-008 `--reweight` lần đầu
+   (điều kiện: ≥10 samples/model từ ≥2 ngày khác nhau trong 30d qua)
