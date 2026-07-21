@@ -154,28 +154,21 @@ function goTab(name, btn) {
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('page-'+name).classList.add('active');
   btn.classList.add('active');
-  if (name === 'home'    && !_me)      loadMe();
-  if (name === 'trade'   && !_signals) loadSignals();
-  if (name === 'account')              loadAccountTab();
+  if (name === 'home')  { if (!_me) loadMe(); if (!_marketData) loadMarket(); }
+  if (name === 'trade'  && !_signals) loadSignals();
+  if (name === 'user')  loadAccountTab();
+  if (name === 'admin') loadAdminTab();
 }
 
 function showSubtab(page, sub, el) {
-  const prefix = {home:'home-sub-', trade:'trade-sub-', account:'account-sub-'}[page];
+  const prefix = {trade:'trade-sub-'}[page];
+  if (!prefix) return;
   document.querySelectorAll(`[id^="${prefix}"]`).forEach(d => d.style.display = 'none');
   document.getElementById(prefix+sub).style.display = 'block';
   el.closest('.subtab-bar').querySelectorAll('.subtab').forEach(t => t.classList.remove('active'));
   el.classList.add('active');
-  if (page==='home' && sub==='market' && !_marketData) loadMarket();
   if (page==='trade' && sub==='signals' && !_signals) loadSignals();
   if (page==='trade' && sub==='dca') { setDcaStyle(_dcaStyle); }
-  if (page==='account' && sub==='admin') loadAdminTab();
-}
-
-function showPfSub(sub, el) {
-  ['ccq','gold'].forEach(s => document.getElementById('pf-sub-'+s).style.display = s===sub?'block':'none');
-  el.closest('.subtab-bar').querySelectorAll('.subtab').forEach(t => t.classList.remove('active'));
-  el.classList.add('active');
-  if (sub==='gold') renderPfGoldSub();
 }
 
 function showOrderSub(sub, el) {
@@ -190,9 +183,9 @@ function showOrderSub(sub, el) {
 // ── Tier bar ──────────────────────────────────────────────────────────────────
 function renderTierBar(me) {
   if (!me) return;
-  const bar = document.getElementById('tier-bar');
   const tier = me.tier||'free', isAdmin = me.is_admin||false;
-  document.getElementById('tier-name').textContent = me.name||'';
+  const nameEl = document.getElementById('tier-name');
+  if (nameEl) nameEl.textContent = me.name||'';
   let chip='', right='';
   if (isAdmin) {
     chip = `<span class="tier-chip admin">&#x1F527; ADMIN</span>`;
@@ -204,9 +197,11 @@ function renderTierBar(me) {
     chip = `<span class="tier-chip free">MIEN PHI</span>`;
     right = `<span class="tier-upgrade-hint" onclick="showUpgradeModal({})">Nang cap &rarr;</span>`;
   }
-  document.getElementById('tier-right').innerHTML = `<span style="display:flex;align-items:center;gap:6px">${chip}${right}</span>`;
-  bar.classList.add('visible');
-  if (isAdmin) { document.getElementById('acc-tab-admin').style.display=''; }
+  const rightEl = document.getElementById('tier-right');
+  if (rightEl) rightEl.innerHTML = `<span style="display:flex;align-items:center;gap:6px">${chip}${right}</span>`;
+  const bar = document.getElementById('tier-bar');
+  if (bar) bar.classList.add('visible');
+  if (isAdmin) { document.getElementById('nav-admin').style.display=''; }
 }
 
 // ── Portfolio ─────────────────────────────────────────────────────────────────
@@ -216,7 +211,7 @@ async function loadMe() {
   try {
     _me = await apiFetch('/api/me');
     renderTierBar(_me);
-    apiFetch(`/api/gold?user_id=${USER_ID}`).then(d=>{_goldData=d;renderPfBanner();renderPfAlloc();}).catch(()=>{});
+    apiFetch(`/api/gold?user_id=${USER_ID}`).then(d=>{_goldData=d;renderPfBanner();renderPfAlloc();renderPfGoldSub();}).catch(()=>{});
     renderPortfolio(_me);
   } catch(e) { document.getElementById('pf-sub-ccq').innerHTML=renderErr('Loi tai: '+e.message); }
 }

@@ -28,8 +28,20 @@ body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14p
 .nav-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:10px 4px 8px;background:none;border:none;color:var(--txt2);font-size:10px;font-family:var(--sans);cursor:pointer;transition:color .2s}
 .nav-btn.active{color:var(--c0)}
 .nav-btn svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
-#app{padding:12px 12px 72px;max-width:720px;margin:0 auto}
+#app{padding:0;padding-bottom:72px;max-width:none}
 .page{display:none}.page.active{display:block}
+#page-trade{padding:12px;max-width:660px;margin:0 auto}
+.home-grid{display:grid;grid-template-columns:380px 1fr;gap:0;height:calc(100vh - 56px - 72px)}
+.home-col-left{overflow-y:auto;padding:12px;border-right:1px solid var(--bdr);height:100%}
+.home-col-right{overflow-y:auto;padding:12px;height:100%}
+.col-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.section-label{font-family:var(--mono);font-size:10px;color:var(--txt2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--bdr)}
+.refresh-btn{background:none;border:none;color:var(--c0);font-size:12px;font-family:var(--mono);cursor:pointer;padding:0}
+.search-icon{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--txt2);pointer-events:none}
+.admin-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.page-content-narrow{max-width:620px;margin:0 auto;padding:12px}
+.page-content-wide{padding:12px 16px}
+@media(max-width:768px){.home-grid{grid-template-columns:1fr;height:auto}.home-col-left{border-right:none;border-bottom:1px solid var(--bdr);height:auto;max-height:60vh}.home-col-right{height:auto}.admin-grid{grid-template-columns:1fr}}
 .hdr{font-family:var(--mono);font-size:12px;color:var(--c0);letter-spacing:.08em;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center}
 .hdr-sub{color:var(--txt2);font-size:11px}
 .card{background:var(--bg2);border:1px solid var(--bdr);border-radius:10px;padding:12px;margin-bottom:8px}

@@ -1,12 +1,5 @@
 <body>
 <div id="toast"></div>
-<div id="tier-bar">
-  <span class="tier-name" id="tier-name"></span>
-  <span style="display:flex;align-items:center;gap:8px">
-    <span id="app-version" style="font-size:9px;color:var(--txt2);opacity:.55;font-family:var(--mono)"></span>
-    <span id="tier-right"></span>
-  </span>
-</div>
 
 <!-- Fund Analysis Modal -->
 <div class="modal-overlay" id="modal" onclick="closeModal(event)">
@@ -53,46 +46,57 @@
 
 <div id="app">
 
-<!-- TAB 1: TRANG CHU -->
+<!-- ══════════════════════════════════════════════════════════
+     TAB 1: TRANG CHU — 2 cột desktop, không subtab
+     ══════════════════════════════════════════════════════════ -->
 <div id="page-home" class="page active">
-  <div class="subtab-bar">
-    <button class="subtab active" onclick="showSubtab('home','portfolio',this)">Danh muc</button>
-    <button class="subtab" onclick="showSubtab('home','market',this)">Thi truong</button>
-  </div>
-  <div id="home-sub-portfolio">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-      <span class="hdr" style="margin:0">DANH MUC</span>
-      <span id="pf-date" class="hdr-sub"></span>
+  <div class="home-grid">
+
+    <!-- CỘT TRÁI: DANH MỤC -->
+    <div class="home-col-left">
+      <div class="col-header">
+        <span class="hdr" style="margin:0">DANH MUC</span>
+        <span id="pf-date" class="hdr-sub"></span>
+      </div>
+
+      <!-- Tổng tài sản -->
+      <div id="pf-banner"></div>
+
+      <!-- CCQ Holdings -->
+      <div class="section-label">QUY MO</div>
+      <div id="pf-sub-ccq"><div class="loading"><div class="spinner"></div>Dang tai...</div></div>
+
+      <!-- Vàng Holdings -->
+      <div class="section-label" style="margin-top:16px">VANG</div>
+      <div id="pf-sub-gold"></div>
     </div>
-    <div id="pf-banner"></div>
-    <div id="pf-alloc"></div>
-    <div class="subtab-bar" style="margin-bottom:8px">
-      <button class="subtab active" onclick="showPfSub('ccq',this)">CCQ</button>
-      <button class="subtab" onclick="showPfSub('gold',this)">Vang</button>
+
+    <!-- CỘT PHẢI: THỊ TRƯỜNG -->
+    <div class="home-col-right">
+      <div class="col-header">
+        <span class="hdr" style="margin:0">THI TRUONG</span>
+        <button onclick="loadMarket()" class="refresh-btn">&#x21BB; Cap nhat</button>
+      </div>
+      <div style="position:relative;margin-bottom:10px">
+        <span class="search-icon">&#128269;</span>
+        <input type="text" id="market-search" placeholder="Tim quy..." style="padding-left:32px" oninput="filterMarket()">
+      </div>
+      <div class="filter-bar">
+        <button class="filter-btn active" onclick="setMarketFilter('all',this)">Tat ca</button>
+        <button class="filter-btn" onclick="setMarketFilter('buy',this)">MUA</button>
+        <button class="filter-btn" onclick="setMarketFilter('sell',this)">BAN</button>
+        <button class="filter-btn" onclick="setMarketFilter('hold',this)">TRUNG LAP</button>
+        <button class="filter-btn" onclick="setMarketFilter('held',this)">Dang nam</button>
+      </div>
+      <div id="market-content"><div class="loading"><div class="spinner"></div>Dang tai thi truong...</div></div>
     </div>
-    <div id="pf-sub-ccq"><div class="loading"><div class="spinner"></div>Dang tai danh muc...</div></div>
-    <div id="pf-sub-gold" style="display:none"></div>
-  </div>
-  <div id="home-sub-market" style="display:none">
-    <div class="hdr">THI TRUONG
-      <button onclick="loadMarket()" style="background:none;border:none;color:var(--c0);font-size:12px;font-family:var(--mono);cursor:pointer">&#x21BB; Cap nhat</button>
-    </div>
-    <div style="position:relative;margin-bottom:10px">
-      <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--txt2);pointer-events:none">&#128269;</span>
-      <input type="text" id="market-search" placeholder="Tim quy..." style="padding-left:32px" oninput="filterMarket()">
-    </div>
-    <div class="filter-bar">
-      <button class="filter-btn active" onclick="setMarketFilter('all',this)">Tat ca</button>
-      <button class="filter-btn" onclick="setMarketFilter('buy',this)">MUA</button>
-      <button class="filter-btn" onclick="setMarketFilter('sell',this)">BAN</button>
-      <button class="filter-btn" onclick="setMarketFilter('hold',this)">TRUNG LAP</button>
-      <button class="filter-btn" onclick="setMarketFilter('held',this)">Dang nam</button>
-    </div>
-    <div id="market-content"><div class="loading"><div class="spinner"></div>Dang tai thi truong...</div></div>
-  </div>
+
+  </div><!-- /.home-grid -->
 </div>
 
-<!-- TAB 2: GIAO DICH -->
+<!-- ══════════════════════════════════════════════════════════
+     TAB 2: GIAO DICH
+     ══════════════════════════════════════════════════════════ -->
 <div id="page-trade" class="page">
   <div class="subtab-bar">
     <button class="subtab active" onclick="showSubtab('trade','signals',this)">Tin hieu</button>
@@ -148,7 +152,7 @@
     </div>
     <div id="order-sub-history" style="display:none">
       <div class="hdr">LICH SU GIAO DICH
-        <button onclick="loadUnifiedHistory()" style="background:none;border:none;color:var(--c0);font-size:12px;font-family:var(--mono);cursor:pointer">&#x21BB;</button>
+        <button onclick="loadUnifiedHistory()" class="refresh-btn">&#x21BB;</button>
       </div>
       <div id="history-content"><div class="loading"><div class="spinner"></div></div></div>
     </div>
@@ -184,20 +188,19 @@
   </div>
 </div>
 
-<!-- TAB 3: TAI KHOAN -->
-<div id="page-account" class="page">
-  <div class="subtab-bar">
-    <button class="subtab active" onclick="showSubtab('account','user',this)">Ca nhan</button>
-    <button class="subtab" id="acc-tab-admin" style="display:none" onclick="showSubtab('account','admin',this)">Admin</button>
-  </div>
-  <div id="account-sub-user">
+<!-- ══════════════════════════════════════════════════════════
+     TAB 3: CA NHAN — chỉ user profile
+     ══════════════════════════════════════════════════════════ -->
+<div id="page-user" class="page">
+  <div class="page-content-narrow">
+    <div class="hdr">CA NHAN</div>
     <div class="card" id="user-profile-card">
       <div class="loading"><div class="spinner"></div>Dang tai...</div>
     </div>
     <div class="card">
       <div class="card-title">MA GIOI THIEU</div>
       <div class="ref-box" id="referral-code-box"><div style="font-size:12px;color:var(--txt2)">Dang tai...</div></div>
-      <div id="referral-stats" style="font-size:11px;color:var(--txt2)"></div>
+      <div id="referral-stats" style="font-size:11px;color:var(--txt2);margin-top:6px"></div>
     </div>
     <div class="card">
       <div class="card-title">MA UU DAI</div>
@@ -209,72 +212,96 @@
     </div>
     <div id="acc-upgrade-section"></div>
   </div>
-  <div id="account-sub-admin" style="display:none">
-    <div class="card">
-      <div class="card-title">CAP NHAT TCBS TOKEN</div>
-      <input type="text" id="admin-token-input" placeholder="Dan TCBS JWT token...">
-      <button class="btn btn-primary" onclick="adminUpdateToken()">Luu Token</button>
-      <div id="admin-token-status" style="font-size:12px;margin-top:6px"></div>
-      <div style="margin-top:10px">
-        <button onclick="openTCInvest()" style="background:#001a33;border:1px solid var(--c0);color:var(--c0);border-radius:8px;padding:8px 14px;font-size:12px;font-family:var(--mono);cursor:pointer;width:100%">Mo TCInvest lay token tu dong</button>
-        <div id="bm-slot" style="margin-top:8px;font-size:11px;color:var(--txt2)"></div>
-      </div>
-    </div>
-    <div class="card">
-      <div class="card-title">FETCH NAV</div>
-      <div style="display:flex;gap:8px">
-        <button onclick="adminFetchAll()" class="btn btn-primary" style="width:auto;padding:10px 14px;margin:0;font-size:13px">Fetch tat ca</button>
-        <button onclick="adminFetchFmarket()" style="width:auto;padding:10px 14px;margin:0;font-size:13px;background:var(--bg3);border:1px solid var(--bdr);color:var(--txt);border-radius:8px;cursor:pointer;font-family:var(--sans)">Fmarket only</button>
-      </div>
-      <div id="admin-fetch-status" style="font-size:12px;margin-top:8px"></div>
-    </div>
-    <div class="card">
-      <div class="card-title">MA GIAM GIA</div>
-      <div id="admin-discount-list"><div style="font-size:12px;color:var(--txt2)">Dang tai...</div></div>
-      <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--bdr)">
-        <div style="font-size:11px;color:var(--c0);font-family:var(--mono);margin-bottom:8px">TAO MA MOI</div>
-        <label>Ma (viet hoa)</label>
-        <input type="text" id="disc-new-code" placeholder="VD: WELCOME50" style="text-transform:uppercase">
-        <label>Loai loi ich</label>
-        <div style="display:flex;gap:8px;margin-bottom:8px">
-          <button id="disc-type-pct-btn" onclick="_discSetBenefitType('discount_pct')" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--c0);background:#001a33;color:var(--c0);font-family:var(--mono);font-size:12px;cursor:pointer">% Giam gia</button>
-          <button id="disc-type-days-btn" onclick="_discSetBenefitType('free_days')" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--bdr);background:var(--bg3);color:var(--txt2);font-family:var(--mono);font-size:12px;cursor:pointer">Tang ngay</button>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     TAB 4: ADMIN — chỉ hiện với is_admin=true
+     ══════════════════════════════════════════════════════════ -->
+<div id="page-admin" class="page">
+  <div class="page-content-wide">
+    <div class="hdr">QUAN TRI</div>
+
+    <div class="admin-grid">
+
+      <!-- CỘT TRÁI -->
+      <div>
+        <div class="card">
+          <div class="card-title">CAP NHAT TCBS TOKEN</div>
+          <input type="text" id="admin-token-input" placeholder="Dan TCBS JWT token...">
+          <button class="btn btn-primary" onclick="adminUpdateToken()">Luu Token</button>
+          <div id="admin-token-status" style="font-size:12px;margin-top:6px"></div>
+          <div style="margin-top:10px">
+            <button onclick="openTCInvest()" style="background:#001a33;border:1px solid var(--c0);color:var(--c0);border-radius:8px;padding:8px 14px;font-size:12px;font-family:var(--mono);cursor:pointer;width:100%">Mo TCInvest lay token tu dong</button>
+            <div id="bm-slot" style="margin-top:8px;font-size:11px;color:var(--txt2)"></div>
+          </div>
         </div>
-        <label>Gia tri</label>
-        <input type="text" id="disc-new-value" placeholder="Vd: 30">
-        <label>Can thanh toan?</label>
-        <div style="display:flex;gap:8px;margin-bottom:8px">
-          <button id="disc-req-yes" onclick="_discSetRequiresPurchase(true)" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--bdr);background:var(--bg3);color:var(--txt2);font-family:var(--mono);font-size:12px;cursor:pointer">Co (voucher)</button>
-          <button id="disc-req-no" onclick="_discSetRequiresPurchase(false)" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--bdr);background:var(--bg3);color:var(--txt2);font-family:var(--mono);font-size:12px;cursor:pointer">Khong (promo)</button>
+
+        <div class="card">
+          <div class="card-title">FETCH NAV</div>
+          <div style="display:flex;gap:8px">
+            <button onclick="adminFetchAll()" class="btn btn-primary" style="width:auto;padding:10px 14px;margin:0;font-size:13px">Fetch tat ca</button>
+            <button onclick="adminFetchFmarket()" style="width:auto;padding:10px 14px;margin:0;font-size:13px;background:var(--bg3);border:1px solid var(--bdr);color:var(--txt);border-radius:8px;cursor:pointer;font-family:var(--sans)">Fmarket only</button>
+          </div>
+          <div id="admin-fetch-status" style="font-size:12px;margin-top:8px"></div>
         </div>
-        <label>Het han (trong = khong gioi han)</label>
-        <input type="datetime-local" id="disc-new-until">
-        <label>So luot toi da (trong = khong gioi han)</label>
-        <input type="number" id="disc-new-maxuses" placeholder="">
-        <label>Ghi chu</label>
-        <input type="text" id="disc-new-note" placeholder="(tuy chon)">
-        <div id="disc-rule-warn" style="font-size:11px;color:var(--sell);margin-top:6px"></div>
-        <button id="disc-submit-btn" class="btn btn-primary" onclick="createDiscount()">Tao ma</button>
-        <div id="disc-create-status" style="font-size:12px;margin-top:6px"></div>
+
+        <div class="card">
+          <div class="card-title">NAV CHO XAC NHAN</div>
+          <div id="admin-nav-confirm-list"><div style="font-size:12px;color:var(--txt2)">Dang tai...</div></div>
+        </div>
       </div>
-    </div>
-    <div class="card">
-      <div class="card-title">NAV CHO XAC NHAN</div>
-      <div id="admin-nav-confirm-list"><div style="font-size:12px;color:var(--txt2)">Dang tai...</div></div>
-    </div>
-    <div class="card">
-      <div class="card-title">THONG KE HE THONG</div>
-      <div id="admin-summary-box"><div style="font-size:12px;color:var(--txt2)">Dang tai...</div></div>
-    </div>
-    <div class="card">
-      <div class="card-title">AUDIT LOG (50 gan nhat)</div>
-      <div id="admin-audit-list" style="font-size:11px;font-family:var(--mono)">Dang tai...</div>
-    </div>
+
+      <!-- CỘT PHẢI -->
+      <div>
+        <div class="card">
+          <div class="card-title">THONG KE HE THONG</div>
+          <div id="admin-summary-box"><div style="font-size:12px;color:var(--txt2)">Dang tai...</div></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">MA GIAM GIA</div>
+          <div id="admin-discount-list"><div style="font-size:12px;color:var(--txt2)">Dang tai...</div></div>
+          <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--bdr)">
+            <div style="font-size:11px;color:var(--c0);font-family:var(--mono);margin-bottom:8px">TAO MA MOI</div>
+            <label>Ma (viet hoa)</label>
+            <input type="text" id="disc-new-code" placeholder="VD: WELCOME50" style="text-transform:uppercase">
+            <label>Loai loi ich</label>
+            <div style="display:flex;gap:8px;margin-bottom:8px">
+              <button id="disc-type-pct-btn" onclick="_discSetBenefitType('discount_pct')" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--c0);background:#001a33;color:var(--c0);font-family:var(--mono);font-size:12px;cursor:pointer">% Giam gia</button>
+              <button id="disc-type-days-btn" onclick="_discSetBenefitType('free_days')" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--bdr);background:var(--bg3);color:var(--txt2);font-family:var(--mono);font-size:12px;cursor:pointer">Tang ngay</button>
+            </div>
+            <label>Gia tri</label>
+            <input type="text" id="disc-new-value" placeholder="Vd: 30">
+            <label>Can thanh toan?</label>
+            <div style="display:flex;gap:8px;margin-bottom:8px">
+              <button id="disc-req-yes" onclick="_discSetRequiresPurchase(true)" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--bdr);background:var(--bg3);color:var(--txt2);font-family:var(--mono);font-size:12px;cursor:pointer">Co (voucher)</button>
+              <button id="disc-req-no" onclick="_discSetRequiresPurchase(false)" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--bdr);background:var(--bg3);color:var(--txt2);font-family:var(--mono);font-size:12px;cursor:pointer">Khong (promo)</button>
+            </div>
+            <label>Het han (trong = khong gioi han)</label>
+            <input type="datetime-local" id="disc-new-until">
+            <label>So luot toi da (trong = khong gioi han)</label>
+            <input type="number" id="disc-new-maxuses" placeholder="">
+            <label>Ghi chu</label>
+            <input type="text" id="disc-new-note" placeholder="(tuy chon)">
+            <div id="disc-rule-warn" style="font-size:11px;color:var(--sell);margin-top:6px"></div>
+            <button id="disc-submit-btn" class="btn btn-primary" onclick="createDiscount()">Tao ma</button>
+            <div id="disc-create-status" style="font-size:12px;margin-top:6px"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">AUDIT LOG (50 gan nhat)</div>
+          <div id="admin-audit-list" style="font-size:11px;font-family:var(--mono)">Dang tai...</div>
+        </div>
+      </div>
+
+    </div><!-- /.admin-grid -->
   </div>
 </div>
 
 </div><!-- /#app -->
 
+<!-- BOTTOM NAV -->
 <div id="nav">
   <button class="nav-btn active" onclick="goTab('home',this)">
     <svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
@@ -284,9 +311,13 @@
     <svg viewBox="0 0 24 24"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
     Giao Dich
   </button>
-  <button class="nav-btn" onclick="goTab('account',this)">
+  <button class="nav-btn" onclick="goTab('user',this)">
     <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-    Tai Khoan
+    Ca Nhan
+  </button>
+  <button class="nav-btn" id="nav-admin" style="display:none" onclick="goTab('admin',this)">
+    <svg viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+    Admin
   </button>
 </div>
 
