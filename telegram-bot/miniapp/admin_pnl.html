@@ -60,70 +60,24 @@ footer{margin-top:36px;font-size:11.5px;color:var(--txt2);text-align:center}
 </div>
 
 <div class="wrap" id="app">
-  <h1>P&amp;L Thực Tế <span class="badge-live">● LIVE — DB THẬT</span></h1>
-  <p class="sub">Fund Tracker Pro — số liệu truy vấn trực tiếp từ production mỗi lần mở trang, không mô phỏng.</p>
+  <h1>Admin <span class="badge-live">● LIVE</span></h1>
+  <p class="sub">Fund Tracker Pro — quản lý hệ thống.</p>
   <p class="asof">Cập nhật lúc: <span id="asof"></span> <button class="refresh-btn" onclick="loadData()" style="margin-left:8px">⟳ Làm mới</button></p>
-
-  <section>
-    <h2>Người dùng</h2>
-    <div class="out-grid">
-      <div class="stat"><div class="k">Tài khoản đăng ký</div><div class="n" id="v_users">—</div></div>
-      <div class="stat hold"><div class="k">Đang Pro (còn hạn)</div><div class="n" id="v_pro">—</div></div>
-      <div class="stat"><div class="k">Trial đã redeem</div><div class="n" id="v_trial">—</div></div>
-    </div>
-  </section>
-
-  <section>
-    <h2>Referral</h2>
-    <div class="out-grid">
-      <div class="stat"><div class="k">Đã redeem mã giới thiệu</div><div class="n" id="v_ref_signup">—</div></div>
-      <div class="stat buy"><div class="k">Đã chuyển đổi (mua thật)</div><div class="n" id="v_ref_conv">—</div></div>
-      <div class="stat"><div class="k">Mã giảm giá đã dùng</div><div class="n" id="v_disc_uses">—</div></div>
-    </div>
-  </section>
-
-  <section>
-    <h2>Doanh thu thật</h2>
-    <table>
-      <thead><tr><th>Kênh</th><th>Số giao dịch</th><th>Doanh thu (VNĐ)</th></tr></thead>
-      <tbody>
-        <tr><td>SePay (chuyển khoản)</td><td id="v_sepay_n">—</td><td id="v_sepay_vnd">—</td></tr>
-        <tr><td>Telegram Stars</td><td id="v_stars_n">—</td><td style="color:var(--txt2)">chưa lưu VND chi tiết*</td></tr>
-        <tr class="total"><td>Tổng doanh thu có số liệu VNĐ</td><td></td><td id="v_total_rev">—</td></tr>
-      </tbody>
-    </table>
-    <div class="note-box">* Stars được xử lý qua Telegram trực tiếp — hệ thống hiện chỉ ghi số giao dịch để chống trùng lặp (processed_payments), chưa lưu quy đổi VNĐ có cấu trúc. Số này KHÔNG bị bỏ sót, chỉ chưa monetize được tự động trong trang này.</div>
-  </section>
-
-  <section>
-    <h2>Chi phí thật</h2>
-    <div class="cost-input-row">
-      <div class="lbl">Hosting Railway (worker + Postgres)/tháng
-        <span class="hint">Tự lưu lại — không cần nhập lại mỗi lần mở trang</span>
-      </div>
-      <input type="number" id="i_hosting" step="1000">
-      <button onclick="saveCost()">Lưu</button>
-    </div>
-    <div id="cost-save-status" style="font-size:12px;color:var(--txt2);min-height:16px"></div>
-  </section>
-
-  <section>
-    <h2>Lợi nhuận ròng (dựa trên doanh thu có số liệu VNĐ)</h2>
-    <div class="out-grid">
-      <div class="stat buy"><div class="k">Doanh thu (SePay)</div><div class="n" id="o_rev">—</div></div>
-      <div class="stat sell"><div class="k">Chi phí hosting</div><div class="n" id="o_cost">—</div></div>
-      <div class="stat" id="o_profit_card"><div class="k">Lợi nhuận ròng</div><div class="n" id="o_profit">—</div></div>
-    </div>
-    <div class="note-box" id="stage-note"></div>
-  </section>
 
   <section id="sec-token">
     <h2>Cập nhật TCBS Token</h2>
+    <div class="note-box" style="margin-bottom:14px">
+      <b>Cách nhanh nhất:</b> Kéo bookmarklet bên dưới vào Bookmarks bar. Khi đang ở trang TCInvest đã đăng nhập, bấm vào bookmarklet đó → token tự động điền vào đây.
+      <div id="bm-slot" style="margin-top:10px"></div>
+    </div>
     <div class="cost-input-row" style="flex-direction:column;align-items:stretch;gap:10px">
-      <div class="lbl">JWT Token mới từ TCBS
-        <span class="hint">Paste token đăng nhập TCBS để hệ thống fetch NAV tự động</span>
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <div class="lbl">JWT Token từ TCInvest
+          <span class="hint">Tự động điền qua bookmarklet, hoặc paste thủ công</span>
+        </div>
+        <button onclick="openTCInvest()" style="flex-shrink:0">🔗 Mở TCInvest</button>
       </div>
-      <textarea id="i_tcbs_token" rows="3" style="background:var(--bg3);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:8px 10px;font-family:var(--mono);font-size:12px;resize:vertical;width:100%"></textarea>
+      <textarea id="i_tcbs_token" rows="3" placeholder="Bấm 'Mở TCInvest' → đăng nhập → click bookmarklet để tự điền vào đây…" style="background:var(--bg3);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:8px 10px;font-family:var(--mono);font-size:12px;resize:vertical;width:100%"></textarea>
       <div style="display:flex;gap:10px;justify-content:flex-end">
         <button onclick="updateTcbsToken()">Cập nhật &amp; Fetch NAV ngay</button>
       </div>
@@ -179,6 +133,61 @@ footer{margin-top:36px;font-size:11.5px;color:var(--txt2);text-align:center}
     <div id="dc-list-wrap">
       <div style="font-size:12px;color:var(--txt2);margin-bottom:8px">Đang tải danh sách...</div>
     </div>
+  </section>
+
+  <div style="border-top:1px solid var(--line);margin:8px 0 24px;opacity:.4"></div>
+
+  <section>
+    <h2>Người dùng</h2>
+    <div class="out-grid">
+      <div class="stat"><div class="k">Tài khoản đăng ký</div><div class="n" id="v_users">—</div></div>
+      <div class="stat hold"><div class="k">Đang Pro (còn hạn)</div><div class="n" id="v_pro">—</div></div>
+      <div class="stat"><div class="k">Trial đã redeem</div><div class="n" id="v_trial">—</div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Referral</h2>
+    <div class="out-grid">
+      <div class="stat"><div class="k">Đã redeem mã giới thiệu</div><div class="n" id="v_ref_signup">—</div></div>
+      <div class="stat buy"><div class="k">Đã chuyển đổi (mua thật)</div><div class="n" id="v_ref_conv">—</div></div>
+      <div class="stat"><div class="k">Mã giảm giá đã dùng</div><div class="n" id="v_disc_uses">—</div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Doanh thu thật</h2>
+    <table>
+      <thead><tr><th>Kênh</th><th>Số giao dịch</th><th>Doanh thu (VNĐ)</th></tr></thead>
+      <tbody>
+        <tr><td>SePay (chuyển khoản)</td><td id="v_sepay_n">—</td><td id="v_sepay_vnd">—</td></tr>
+        <tr><td>Telegram Stars</td><td id="v_stars_n">—</td><td style="color:var(--txt2)">chưa lưu VND chi tiết*</td></tr>
+        <tr class="total"><td>Tổng doanh thu có số liệu VNĐ</td><td></td><td id="v_total_rev">—</td></tr>
+      </tbody>
+    </table>
+    <div class="note-box">* Stars được xử lý qua Telegram trực tiếp — hệ thống hiện chỉ ghi số giao dịch để chống trùng lặp (processed_payments), chưa lưu quy đổi VNĐ có cấu trúc. Số này KHÔNG bị bỏ sót, chỉ chưa monetize được tự động trong trang này.</div>
+  </section>
+
+  <section>
+    <h2>Chi phí thật</h2>
+    <div class="cost-input-row">
+      <div class="lbl">Hosting Railway (worker + Postgres)/tháng
+        <span class="hint">Tự lưu lại — không cần nhập lại mỗi lần mở trang</span>
+      </div>
+      <input type="number" id="i_hosting" step="1000">
+      <button onclick="saveCost()">Lưu</button>
+    </div>
+    <div id="cost-save-status" style="font-size:12px;color:var(--txt2);min-height:16px"></div>
+  </section>
+
+  <section>
+    <h2>Lợi nhuận ròng (dựa trên doanh thu có số liệu VNĐ)</h2>
+    <div class="out-grid">
+      <div class="stat buy"><div class="k">Doanh thu (SePay)</div><div class="n" id="o_rev">—</div></div>
+      <div class="stat sell"><div class="k">Chi phí hosting</div><div class="n" id="o_cost">—</div></div>
+      <div class="stat" id="o_profit_card"><div class="k">Lợi nhuận ròng</div><div class="n" id="o_profit">—</div></div>
+    </div>
+    <div class="note-box" id="stage-note"></div>
   </section>
 
   <footer>Fund Tracker Pro — /admin/pnl, chỉ admin. Số liệu truy vấn sống từ production DB mỗi lần tải trang.</footer>
@@ -265,6 +274,51 @@ async function saveCost(){
     status.style.color = 'var(--sell)'; status.textContent = 'Lỗi: ' + e.message;
   }
 }
+
+function openTCInvest(){
+  const st = document.getElementById('token-status');
+  st.style.color = 'var(--txt2)';
+  st.textContent = '⏳ Đã mở TCInvest — đăng nhập xong thì click bookmarklet để gửi token về đây…';
+  window.open('https://tcinvest.tcbs.com.vn', 'tcbs_win', 'width=1100,height=700');
+}
+
+window.addEventListener('message', function(e){
+  if(e.data && e.data.type === 'tcbs_token'){
+    document.getElementById('i_tcbs_token').value = e.data.token;
+    const st = document.getElementById('token-status');
+    st.style.color = 'var(--buy)';
+    st.textContent = '✓ Token nhận từ TCInvest (key: ' + (e.data.key||'?') + ') — nhấn "Cập nhật" để lưu vào server';
+  }
+});
+
+/* Tạo bookmarklet drag-link bằng JS để tránh HTML-escape vấn đề */
+(function(){
+  var code = '(function(){' +
+    'var t=null,k=null,n=localStorage.length;' +
+    'for(var i=0;i<n;i++){' +
+      'var _k=localStorage.key(i);' +
+      'var _v=localStorage.getItem(_k);' +
+      'if(_v&&_v.length>100&&/^eyJ/.test(_v)){t=_v;k=_k;break;}' +
+    '}' +
+    'if(t){' +
+      'if(window.opener){' +
+        'window.opener.postMessage({type:"tcbs_token",token:t,key:k},"*");' +
+        'window.close();' +
+      '}else{' +
+        'navigator.clipboard.writeText(t).then(function(){alert("Copied! Key: "+k);});' +
+      '}' +
+    '}else{alert("Không tìm thấy JWT. Hãy đăng nhập TCInvest trước.");}' +
+  '})();';
+  var slot = document.getElementById('bm-slot');
+  if(!slot) return;
+  var a = document.createElement('a');
+  a.href = 'javascript:' + code;
+  a.textContent = '📎 Lấy token từ TCInvest  ← kéo vào Bookmarks bar';
+  a.draggable = true;
+  a.title = 'Kéo vào Bookmarks bar, rồi click khi đang ở trang TCInvest';
+  a.style.cssText = 'display:inline-block;font-size:12px;color:var(--c0);border:1px dashed rgba(0,229,255,.5);border-radius:6px;padding:6px 14px;text-decoration:none;cursor:grab;font-family:var(--mono);background:rgba(0,229,255,.05)';
+  slot.appendChild(a);
+})();
 
 async function updateTcbsToken(){
   const st = document.getElementById('token-status');
