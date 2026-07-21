@@ -228,24 +228,48 @@ def verify_nav_integrity(fund_code: str = None, limit: int = 20000) -> list[dict
     return mismatches
 
 
-def init_pool(min_conn: int = 1, max_conn: int = 20) -> None:
+def init_pool(min_conn: int = 1, max_conn: int = 20,
+              max_wait: int = 120, retry_interval: int = 3) -> None:
     # GOV-013 (2026-07-16): max_conn=5 quá thấp — tab Admin của Mini App tự bắn
     # 5+ request song song lúc mở (summary/nav_pending/promo/discount/audit), cộng
     # thêm request thường (signals/portfolio) và job nền (schedule) tranh nhau
     # cùng lúc → "connection pool exhausted" (PoolError), phát hiện khi thêm
     # loadDiscountList() làm request song song thứ 5 đúng chạm giới hạn cũ. Railway
     # Postgres managed dư sức chịu 20 kết nối cho 1 app nhỏ này, tăng lên cho an toàn.
+    import time as _time
     global _pool
     db_url = os.environ.get("DATABASE_URL")
     if not db_url:
         logger.warning("DATABASE_URL not set — PostgreSQL disabled")
         return
-    _migrate_data_src_enum()      # Chạy trước khi mở pool
+    # Retry kết nối nếu DB chưa sẵn sàng (xảy ra khi Railway Postgres đang khởi động
+    # cùng lúc với bot — "Consistent recovery state has not been yet reached")
+    deadline = _time.monotonic() + max_wait
+    attempt = 0
+    while True:
+        attempt += 1
+        try:
+            pool = ThreadedConnectionPool(min_conn, max_conn, db_url)
+            # Kiểm tra pool thực sự hoạt động
+            conn = pool.getconn()
+            conn.cursor().execute("SELECT 1")
+            pool.putconn(conn)
+            break
+        except Exception as e:
+            elapsed = int(_time.monotonic() - (deadline - max_wait))
+            remaining = deadline - _time.monotonic()
+            if remaining <= 0:
+                logger.error("init_pool: DB vẫn không sẵn sàng sau %ds — dừng lại.", max_wait)
+                raise
+            logger.warning("init_pool attempt %d [%ds]: %s — thử lại sau %ds…",
+                           attempt, elapsed, str(e)[:120], retry_interval)
+            _time.sleep(retry_interval)
+    _migrate_data_src_enum()
     _migrate_nav_confidence_cols()
     _migrate_nav_verify_cols()
     _migrate_nav_integrity()
-    _pool = ThreadedConnectionPool(min_conn, max_conn, db_url)
-    logger.info("PostgreSQL pool initialised (min=%d max=%d)", min_conn, max_conn)
+    _pool = pool
+    logger.info("PostgreSQL pool initialised (min=%d max=%d, attempt=%d)", min_conn, max_conn, attempt)
 
 
 def is_available() -> bool:
