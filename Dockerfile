@@ -42,4 +42,4 @@ ENV DATA_DIR=/data \
     EVENING_TIME="17:30" \
     SIGNAL_INTERVAL="60"
 
-CMD ["python", "-u", "bot.py"]
+CMD ["sh", "-c", "python scripts/emergency_cleanup.py; exec python -u bot.py"]

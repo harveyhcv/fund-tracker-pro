@@ -20,7 +20,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-RETENTION_DAYS = 14  # giữ 14 bản backup gần nhất (chạy 1 lần/ngày = ~2 tuần)
+RETENTION_DAYS = 2   # giữ 2 ngày backup (= 24 bản @ mỗi 2h) — đủ rollback, không ăn volume
 
 
 def _backup_dir() -> Path:
@@ -64,9 +64,12 @@ def cmd_backup() -> None:
     _prune(out_dir)
 
 
+MAX_BACKUP_FILES = 24  # tối đa 24 file (~2 ngày @ mỗi 2h), phòng volume nhỏ
+
+
 def _prune(out_dir: Path) -> None:
-    """Xoá backup cũ hơn RETENTION_DAYS. Không bao giờ xoá nếu chỉ còn <=1 file
-    (tránh mất backup duy nhất do lỗi cấu hình)."""
+    """Xoá backup cũ hơn RETENTION_DAYS VÀ giữ tối đa MAX_BACKUP_FILES.
+    Không bao giờ xoá nếu chỉ còn <=1 file (tránh mất backup duy nhất)."""
     files = sorted(out_dir.glob("ftp_backup_*.dump"), key=lambda p: p.stat().st_mtime)
     if len(files) <= 1:
         return
@@ -78,6 +81,12 @@ def _prune(out_dir: Path) -> None:
             removed += 1
     if removed:
         print(f"Đã xoá {removed} backup cũ hơn {RETENTION_DAYS} ngày")
+    # Hard cap: nếu vẫn còn quá nhiều file, xoá cũ nhất cho đến khi <= MAX
+    files = sorted(out_dir.glob("ftp_backup_*.dump"), key=lambda p: p.stat().st_mtime)
+    while len(files) > MAX_BACKUP_FILES:
+        files[0].unlink()
+        print(f"Đã xoá backup thừa (hard cap {MAX_BACKUP_FILES}): {files[0].name}")
+        files = files[1:]
 
 
 def cmd_list() -> None:
