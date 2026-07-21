@@ -10,50 +10,93 @@ HEAD = """<!DOCTYPE html>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <style>
-:root{--bg:#060b14;--bg2:#0c1626;--bg3:#111e30;--c0:#00e5ff;--buy:#4ade80;--sell:#f87171;--hold:#facc15;--txt:#e2e8f0;--txt2:#94a3b8;--bdr:#1e3050;--mono:'IBM Plex Mono',monospace;--sans:'DM Sans',sans-serif;}
+:root{--bg:#060b14;--bg2:#0c1626;--bg3:#111e30;--bg4:#0a1020;--c0:#00e5ff;--buy:#4ade80;--sell:#f87171;--hold:#facc15;--txt:#e2e8f0;--txt2:#94a3b8;--txt3:#4a6080;--bdr:#1e3050;--mono:'IBM Plex Mono',monospace;--sans:'DM Sans',sans-serif;}
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-html,body{min-height:100%}
-body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14px;overflow-x:hidden}
-#toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);background:#1a2e4a;border:1px solid var(--c0);color:var(--txt);padding:10px 18px;border-radius:8px;font-size:13px;z-index:999;display:none;max-width:90vw;text-align:center}
-#tier-bar{display:none;align-items:center;justify-content:space-between;padding:6px 14px 5px;background:var(--bg2);border-bottom:1px solid var(--bdr);font-size:12px;position:sticky;top:0;z-index:50}
-#tier-bar.visible{display:flex}
-.tier-name{color:var(--txt);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:45vw}
+html,body{height:100%;overflow:hidden}
+body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14px;display:flex}
+#toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);background:#1a2e4a;border:1px solid var(--c0);color:var(--txt);padding:10px 18px;border-radius:8px;font-size:13px;z-index:999;display:none;max-width:80vw;text-align:center}
+#tier-bar{display:none}
 .tier-chip{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:20px;font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.03em;white-space:nowrap}
 .tier-chip.free{background:#1a1a2e;color:#8888aa;border:1px solid #333355}
 .tier-chip.pro{background:#001a2e;color:var(--c0);border:1px solid var(--c0)}
 .tier-chip.admin{background:#1a0a2e;color:#c084fc;border:1px solid #9333ea}
 .tier-exp{font-size:10px;color:var(--txt2);margin-left:4px}
 .tier-upgrade-hint{font-size:10px;color:var(--txt2);cursor:pointer;text-decoration:underline;text-underline-offset:2px}
-#nav{position:fixed;bottom:0;left:0;right:0;background:var(--bg2);border-top:1px solid var(--bdr);display:flex;z-index:100;padding-bottom:env(safe-area-inset-bottom)}
-.nav-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:10px 4px 8px;background:none;border:none;color:var(--txt2);font-size:10px;font-family:var(--sans);cursor:pointer;transition:color .2s}
-.nav-btn.active{color:var(--c0)}
-.nav-btn svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
-#app{padding:0;padding-bottom:72px;max-width:none}
-.page{display:none}.page.active{display:block}
-#page-trade{padding:0;max-width:none;margin:0}
-.home-grid{display:grid;grid-template-columns:380px 1fr;gap:0;height:calc(100vh - 72px)}
-.trade-grid{display:grid;grid-template-columns:260px 1fr 272px;gap:0;height:calc(100vh - 72px)}
-.trade-col{border-right:1px solid var(--bdr);overflow:hidden;display:flex;flex-direction:column;height:100%}
+/* ── Sidebar ───────────────────────────────── */
+.sidebar{width:200px;min-width:200px;background:var(--bg2);border-right:1px solid var(--bdr);display:flex;flex-direction:column;height:100vh;flex-shrink:0}
+.sidebar-logo{padding:16px 16px 12px;border-bottom:1px solid var(--bdr)}
+.logo-mark{font-family:var(--mono);font-size:14px;font-weight:700;color:var(--c0);letter-spacing:.05em}
+.logo-sub{font-family:var(--mono);font-size:8px;color:var(--txt3);letter-spacing:.12em;margin-top:2px;text-transform:uppercase}
+.sidebar-nav{flex:1;padding:10px 8px;overflow-y:auto}
+.nav-section-lbl{font-family:var(--mono);font-size:9px;color:var(--txt3);text-transform:uppercase;letter-spacing:.1em;padding:4px 8px 6px}
+#nav{display:contents}
+.nav-btn{width:100%;display:flex;align-items:center;gap:10px;padding:9px 10px;background:none;border:none;border-left:2px solid transparent;border-radius:0 6px 6px 0;color:var(--txt2);font-size:12px;font-family:var(--sans);cursor:pointer;transition:all .15s;text-align:left;position:relative}
+.nav-btn:hover{color:var(--txt);background:rgba(255,255,255,.04)}
+.nav-btn.active{color:var(--c0);background:rgba(0,229,255,.07);border-left-color:var(--c0)}
+.nav-btn svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+.nav-badge{position:absolute;right:8px;top:50%;transform:translateY(-50%);background:var(--bg3);border:1px solid var(--bdr);color:var(--txt2);font-size:9px;font-family:var(--mono);padding:1px 5px;border-radius:10px}
+.sidebar-footer{padding:10px 12px;border-top:1px solid var(--bdr);flex-shrink:0}
+.sidebar-user{display:flex;align-items:center;gap:8px}
+.user-avatar{width:28px;height:28px;border-radius:50%;background:var(--bg3);border:1px solid var(--bdr);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:12px;font-weight:700;color:var(--c0);flex-shrink:0}
+.user-meta{flex:1;min-width:0}
+.user-name-text{font-size:12px;font-weight:600;color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* ── Main ─────────────────────────────────── */
+.main{flex:1;display:flex;flex-direction:column;height:100vh;overflow:hidden;min-width:0}
+#app{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.header{height:52px;background:var(--bg2);border-bottom:1px solid var(--bdr);display:flex;align-items:center;padding:0 16px;gap:14px;flex-shrink:0;z-index:10}
+.header-title{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--c0);letter-spacing:.1em;text-transform:uppercase;white-space:nowrap;min-width:100px}
+.header-search{flex:1;max-width:320px;position:relative}
+.header-search input{background:var(--bg3);border:1px solid var(--bdr);border-radius:8px;padding:7px 10px 7px 32px;color:var(--txt);font-family:var(--mono);font-size:12px;outline:none;width:100%}
+.header-search input:focus{border-color:var(--c0)}
+.si{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--txt3);font-size:14px;pointer-events:none}
+.header-right{display:flex;align-items:center;gap:8px;margin-left:auto}
+.header-chip{font-family:var(--mono);font-size:10px;color:var(--txt2);background:var(--bg3);border:1px solid var(--bdr);border-radius:6px;padding:3px 8px;white-space:nowrap}
+.header-chip.live{color:var(--buy);border-color:#166534}
+.content{flex:1;overflow:hidden;position:relative}
+/* ── Pages ────────────────────────────────── */
+.page{display:none;height:100%}
+.page.active{display:flex;height:100%}
+/* ── 3-col home ───────────────────────────── */
+.three-col{display:flex;width:100%;height:100%;overflow:hidden}
+.col{border-right:1px solid var(--bdr);display:flex;flex-direction:column;height:100%;overflow:hidden}
+.col:last-child{border-right:none}
+.col-portfolio{width:280px;min-width:240px;overflow-y:auto}
+.col-market{flex:1;min-width:260px;display:flex;flex-direction:column;overflow:hidden}
+.col-chart{width:400px;min-width:320px;overflow-y:auto}
+#market-content{flex:1;overflow-y:auto}
+.market-toolbar{padding:8px 12px 0;flex-shrink:0;border-bottom:1px solid var(--bdr)}
+.col-head{padding:10px 14px 8px;border-bottom:1px solid var(--bdr);flex-shrink:0;background:var(--bg2)}
+.col-head-row{display:flex;justify-content:space-between;align-items:center}
+.col-title{font-family:var(--mono);font-size:10px;font-weight:700;color:var(--c0);letter-spacing:.08em;text-transform:uppercase}
+.col-sub{font-size:10px;color:var(--txt2);margin-top:2px}
+.col-action{background:none;border:none;color:var(--txt2);font-size:12px;cursor:pointer;padding:2px 6px;border-radius:4px;font-family:var(--mono)}
+.col-action:hover{color:var(--c0);background:rgba(0,229,255,.08)}
+.chart-empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;height:60%;color:var(--txt2);font-size:12px;text-align:center;padding:20px;gap:10px;line-height:1.6}
+.chart-empty-icon{font-size:36px;opacity:.4}
+/* ── Trade grid ───────────────────────────── */
+.trade-grid{display:flex;width:100%;height:100%;overflow:hidden}
+.trade-col{border-right:1px solid var(--bdr);overflow:hidden;display:flex;flex-direction:column;height:100%;flex:1}
 .trade-col:last-child{border-right:none}
-.trade-col-left{background:var(--bg);overflow-y:auto}
-.trade-col-mid{background:var(--bg4)}
-.trade-col-right{background:var(--bg);overflow-y:auto}
-.col-head{padding:10px 12px;border-bottom:1px solid var(--bdr);flex-shrink:0}
-.trade-form-area{flex:0 0 auto;overflow-y:auto;max-height:60%}
+.trade-col-left{background:var(--bg);overflow-y:auto;flex:1}
+.trade-col-mid{background:var(--bg4);flex:1}
+.trade-col-right{background:var(--bg);overflow-y:auto;flex:1}
+.trade-form-area{flex:0 0 auto;overflow-y:auto;max-height:62%}
 .trade-history-area{flex:1;display:flex;flex-direction:column;overflow:hidden;border-top:2px solid var(--bdr)}
 .trade-history-head{padding:8px 12px;border-bottom:1px solid var(--bdr);display:flex;justify-content:space-between;align-items:center;flex-shrink:0;background:var(--bg4)}
 .trade-history-scroll{flex:1;overflow-y:auto}
-@media(max-width:900px){.trade-grid{grid-template-columns:1fr;height:auto}.trade-col{border-right:none;border-bottom:1px solid var(--bdr);height:auto;max-height:none}.trade-form-area{max-height:none}.trade-history-area{min-height:200px}}
-.home-col-left{overflow-y:auto;padding:12px;border-right:1px solid var(--bdr);height:100%}
-.home-col-right{overflow-y:auto;padding:12px;height:100%}
+/* ── User page ────────────────────────────── */
+.user-page-scroll{overflow-y:auto;width:100%;height:100%;padding:20px}
+.user-page-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:1100px}
+.acct-card{background:var(--bg2);border:1px solid var(--bdr);border-radius:10px;padding:16px}
+.acct-card-title{font-family:var(--mono);font-size:10px;color:var(--txt3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px;display:flex;align-items:center;gap:6px}
+.acct-card-title svg{stroke:var(--txt3)}
+.full-col{grid-column:1/-1}
+/* ── Admin page ───────────────────────────── */
+.admin-page-scroll{overflow-y:auto;width:100%;height:100%;padding:20px}
+.admin-page-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:1200px}
+.section-label{font-family:var(--mono);font-size:10px;color:var(--txt2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;border-bottom:1px solid var(--bdr);padding-bottom:4px}
 .col-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
-.section-label{font-family:var(--mono);font-size:10px;color:var(--txt2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--bdr)}
 .refresh-btn{background:none;border:none;color:var(--c0);font-size:12px;font-family:var(--mono);cursor:pointer;padding:0}
-.search-icon{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--txt2);pointer-events:none}
-.admin-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-.page-content-narrow{max-width:620px;margin:0 auto;padding:12px}
-.page-content-wide{padding:12px 16px}
-@media(max-width:768px){.home-grid{grid-template-columns:1fr;height:auto}.home-col-left{border-right:none;border-bottom:1px solid var(--bdr);height:auto;max-height:60vh}.home-col-right{height:auto}.admin-grid{grid-template-columns:1fr}}
 .hdr{font-family:var(--mono);font-size:12px;color:var(--c0);letter-spacing:.08em;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center}
 .hdr-sub{color:var(--txt2);font-size:11px}
 .card{background:var(--bg2);border:1px solid var(--bdr);border-radius:10px;padding:12px;margin-bottom:8px}
@@ -200,6 +243,10 @@ canvas{width:100%!important;height:100%!important}
 </head>"""
 
 BODY = open(r"P:\NGCG\Vibe Coding\Fund Tracker Pro\telegram-bot\miniapp\web_body.html", encoding='utf-8').read()
+JS   = open(r"P:\NGCG\Vibe Coding\Fund Tracker Pro\telegram-bot\miniapp\web_js.js",   encoding='utf-8').read()
+
+# Inline JS so the server doesn't need to serve web_js.js as a static file
+BODY = BODY.replace('<script src="web_js.js"></script>', f'<script>\n{JS}\n</script>')
 
 with open(OUT, 'w', encoding='utf-8') as f:
     f.write(HEAD + BODY)

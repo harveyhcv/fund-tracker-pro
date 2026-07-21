@@ -1,42 +1,42 @@
 <body>
 <div id="toast"></div>
 
-<!-- Fund Analysis Modal -->
+<!-- ── Fund Analysis Modal ── -->
 <div class="modal-overlay" id="modal" onclick="closeModal(event)">
   <div class="modal-sheet">
     <div class="modal-handle"></div>
     <div class="modal-header">
       <div class="modal-title">
-        <span class="modal-title-code" id="modal-title-code">Phan tich</span>
+        <span class="modal-title-code" id="modal-title-code">Phân tích</span>
         <span class="modal-title-name-wrap" id="modal-title-name-wrap"><span class="modal-title-name" id="modal-title-name"></span></span>
       </div>
       <button class="modal-close" onclick="closeModalBtn()">&#x2715;</button>
     </div>
-    <div class="modal-body" id="modal-body"><div class="loading"><div class="spinner"></div>Dang phan tich...</div></div>
+    <div class="modal-body" id="modal-body"><div class="loading"><div class="spinner"></div>Đang phân tích...</div></div>
   </div>
 </div>
 
-<!-- Upgrade Modal -->
+<!-- ── Upgrade Modal ── -->
 <div class="modal-overlay" id="upgrade-modal" style="z-index:300" onclick="closeUpgradeModal(event)">
   <div class="modal-sheet">
     <div class="modal-handle"></div>
     <div class="modal-header">
-      <div class="modal-title">&#x2B50; Nang cap Pro</div>
+      <div class="modal-title">&#x2B50; Nâng cấp Pro</div>
       <button class="modal-close" onclick="closeUpgradeModalBtn()">&#x2715;</button>
     </div>
     <div class="modal-body">
       <p id="upgrade-reason" style="font-size:13px;color:var(--txt2);margin-bottom:14px"></p>
-      <div class="upgrade-feature"><span class="chk">&#x2713;</span> Theo doi khong gioi han so quy</div>
-      <div class="upgrade-feature"><span class="chk">&#x2713;</span> Tin hieu 5 truong phai dau tu</div>
-      <div class="upgrade-feature"><span class="chk">&#x2713;</span> DCA thong minh &amp; du bao T+2</div>
-      <div class="upgrade-feature"><span class="chk">&#x2713;</span> Thong bao realtime qua Telegram</div>
+      <div class="upgrade-feature"><span class="chk">&#x2713;</span> Theo dõi không giới hạn số quỹ</div>
+      <div class="upgrade-feature"><span class="chk">&#x2713;</span> Tín hiệu 5 trường phái đầu tư</div>
+      <div class="upgrade-feature"><span class="chk">&#x2713;</span> DCA thông minh &amp; dự báo T+2</div>
+      <div class="upgrade-feature"><span class="chk">&#x2713;</span> Thông báo realtime qua Telegram</div>
       <div id="plan-cards" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:14px 0"></div>
-      <button id="upgrade-cta-btn" class="btn btn-primary" onclick="startUpgrade()">&#x2B50; NANG CAP PRO NGAY</button>
+      <button id="upgrade-cta-btn" class="btn btn-primary" onclick="startUpgrade()">&#x2B50; NÂNG CẤP PRO NGAY</button>
       <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--bdr)">
-        <label>Ma giam gia / gioi thieu</label>
+        <label>Mã giảm giá / giới thiệu</label>
         <div style="display:flex;gap:8px;margin-top:4px">
-          <input type="text" id="promo-code-input" placeholder="Nhap ma..." style="text-transform:uppercase">
-          <button class="btn btn-primary" style="width:auto;margin:0;padding:0 14px" onclick="redeemPromoCode('modal')">Ap dung</button>
+          <input type="text" id="promo-code-input" placeholder="Nhập mã..." style="text-transform:uppercase">
+          <button class="btn btn-primary" style="width:auto;margin:0;padding:0 14px" onclick="redeemPromoCode('modal')">Áp dụng</button>
         </div>
         <div id="promo-code-status" style="font-size:12px;margin-top:6px"></div>
       </div>
@@ -44,77 +44,155 @@
   </div>
 </div>
 
-<div id="app">
+<!-- ══════════════════════════════════════════════════════════════════
+     APP SHELL: Sidebar + Main
+══════════════════════════════════════════════════════════════════ -->
+<nav class="sidebar">
+  <div class="sidebar-logo">
+    <div class="logo-mark">&#x25C8; FTP</div>
+    <div class="logo-sub">FUND TRACKER PRO</div>
+  </div>
+
+  <div id="nav" class="sidebar-nav">
+    <div class="nav-section-lbl">Điều hướng</div>
+    <button class="nav-btn active" data-tab="home" onclick="goTab('home',this)">
+      <svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+      Trang Chủ
+      <span class="nav-badge" id="nav-fund-count"></span>
+    </button>
+    <button class="nav-btn" data-tab="trade" onclick="goTab('trade',this)">
+      <svg viewBox="0 0 24 24"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+      Giao Dịch
+    </button>
+    <button class="nav-btn" data-tab="user" onclick="goTab('user',this)">
+      <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      Tài Khoản
+    </button>
+    <button class="nav-btn" id="nav-admin" style="display:none" data-tab="admin" onclick="goTab('admin',this)">
+      <svg viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+      Quản Trị
+    </button>
+  </div>
+
+  <div class="sidebar-footer">
+    <div class="sidebar-user">
+      <div class="user-avatar" id="user-avatar-letter">H</div>
+      <div class="user-meta">
+        <div class="user-name-text" id="tier-name"></div>
+        <div id="tier-right" style="margin-top:2px"></div>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<!-- ── Main area ── -->
+<div class="main" id="app">
+
+  <!-- Header -->
+  <header class="header">
+    <div class="header-title" id="header-title">TRANG CHỦ</div>
+    <div class="header-search">
+      <span class="si">&#128269;</span>
+      <input type="text" id="market-search" placeholder="Tìm quỹ, mã..." oninput="filterMarket()">
+    </div>
+    <div class="header-right">
+      <div class="header-chip live" id="header-date-chip">Dữ liệu thực &middot; <span id="pf-date"></span></div>
+      <div class="header-chip" id="header-nav-chip">&#128194; Đang tải...</div>
+    </div>
+  </header>
+
+  <!-- Content pages -->
+  <div class="content">
 
 <!-- ══════════════════════════════════════════════════════════
-     TAB 1: TRANG CHU — 2 cột desktop, không subtab
-     ══════════════════════════════════════════════════════════ -->
+     TAB 1: TRANG CHỦ — 3 cột: Danh mục | Thị trường | Biểu đồ
+══════════════════════════════════════════════════════════════ -->
 <div id="page-home" class="page active">
-  <div class="home-grid">
+  <div class="three-col">
 
-    <!-- CỘT TRÁI: DANH MỤC -->
-    <div class="home-col-left">
-      <div class="col-header">
-        <span class="hdr" style="margin:0">DANH MỤC</span>
-        <span id="pf-date" class="hdr-sub"></span>
+    <!-- CỘT TRÁI: DANH MỤC (290px) -->
+    <div class="col col-portfolio">
+      <div class="col-head">
+        <div class="col-head-row">
+          <div class="col-title">DANH MỤC</div>
+          <button class="col-action" onclick="loadMe()">&#x21BB;</button>
+        </div>
       </div>
 
-      <!-- Tổng tài sản -->
       <div id="pf-banner"></div>
+      <div id="pf-alloc"></div>
 
-      <!-- CCQ Holdings -->
-      <div class="section-label">QUỸ MỞ</div>
+      <div class="section-label" style="padding:8px 14px 4px">QUỸ MỞ</div>
       <div id="pf-sub-ccq"><div class="loading"><div class="spinner"></div>Đang tải...</div></div>
 
-      <!-- Vàng Holdings -->
-      <div class="section-label" style="margin-top:16px">VÀNG</div>
-      <div id="pf-sub-gold"></div>
+      <div class="section-label" style="padding:8px 14px 4px;margin-top:4px">VÀNG</div>
+      <div id="pf-sub-gold"><div style="font-size:12px;color:var(--txt3);padding:8px 14px">Chưa có vàng.</div></div>
     </div>
 
-    <!-- CỘT PHẢI: THỊ TRƯỜNG -->
-    <div class="home-col-right">
-      <div class="col-header">
-        <span class="hdr" style="margin:0">THỊ TRƯỜNG</span>
-        <button onclick="loadMarket()" class="refresh-btn">&#x21BB; Cập nhật</button>
+    <!-- CỘT GIỮA: THỊ TRƯỜNG (flex:1) -->
+    <div class="col col-market">
+      <div class="col-head" style="position:sticky;top:0;z-index:10">
+        <div class="col-head-row">
+          <div>
+            <div class="col-title">BẢNG GIÁ THỊ TRƯỜNG</div>
+            <div class="col-sub" id="market-count-sub">— quỹ · Tín hiệu real-time</div>
+          </div>
+          <button class="col-action" onclick="loadMarket()">&#x21BB; Cập nhật</button>
+        </div>
       </div>
-      <div style="position:relative;margin-bottom:10px">
-        <span class="search-icon">&#128269;</span>
-        <input type="text" id="market-search" placeholder="Tìm quỹ..." style="padding-left:32px" oninput="filterMarket()">
-      </div>
-      <div class="filter-bar">
-        <button class="filter-btn active" onclick="setMarketFilter('all',this)">Tất cả</button>
-        <button class="filter-btn" onclick="setMarketFilter('buy',this)">MUA</button>
-        <button class="filter-btn" onclick="setMarketFilter('sell',this)">BÁN</button>
-        <button class="filter-btn" onclick="setMarketFilter('hold',this)">TRUNG LẬP</button>
-        <button class="filter-btn" onclick="setMarketFilter('held',this)">Đang nắm</button>
+      <div class="market-toolbar">
+        <div class="filter-bar">
+          <button class="filter-btn active" onclick="setMarketFilter('all',this)">Tất cả</button>
+          <button class="filter-btn" onclick="setMarketFilter('buy',this)">MUA</button>
+          <button class="filter-btn" onclick="setMarketFilter('sell',this)">BÁN</button>
+          <button class="filter-btn" onclick="setMarketFilter('hold',this)">TRUNG LẬP</button>
+          <button class="filter-btn" onclick="setMarketFilter('held',this)">Đang nắm</button>
+        </div>
       </div>
       <div id="market-content"><div class="loading"><div class="spinner"></div>Đang tải thị trường...</div></div>
     </div>
 
-  </div><!-- /.home-grid -->
-</div>
+    <!-- CỘT PHẢI: BIỂU ĐỒ & PHÂN TÍCH (420px) -->
+    <div class="col col-chart" id="chart-col">
+      <div class="col-head">
+        <div class="col-head-row">
+          <div>
+            <div class="col-title" id="chart-col-title">BIỂU ĐỒ NAV</div>
+            <div class="col-sub" id="chart-col-sub">Chọn một quỹ để xem</div>
+          </div>
+        </div>
+      </div>
+      <div id="chart-col-content">
+        <div class="chart-empty-state">
+          <div class="chart-empty-icon">&#128202;</div>
+          <div>Nhấn vào một quỹ trong bảng giá<br>để xem biểu đồ NAV và tín hiệu kỹ thuật</div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /.three-col -->
+</div><!-- /#page-home -->
 
 <!-- ══════════════════════════════════════════════════════════
-     TAB 2: GIAO DỊCH — 3 cột: Tín hiệu | Form+Lịch sử | DCA
-     ══════════════════════════════════════════════════════════ -->
+     TAB 2: GIAO DỊCH — 3 cột bằng nhau
+══════════════════════════════════════════════════════════════ -->
 <div id="page-trade" class="page">
   <div class="trade-grid">
 
-    <!-- CỘT TRÁI: Tín hiệu quỹ đang theo dõi -->
+    <!-- CỘT TRÁI: Tín hiệu -->
     <div class="trade-col trade-col-left">
       <div class="col-head">
-        <div class="hdr" style="margin:0">TÍN HIỆU QUỸ THEO DÕI</div>
+        <div class="col-title">TÍN HIỆU QUỸ THEO DÕI</div>
+        <div class="col-sub" id="sig-count-sub">— quỹ đang nắm</div>
       </div>
       <div id="sig-content"><div class="loading"><div class="spinner"></div></div></div>
     </div>
 
-    <!-- CỘT GIỮA: Form giao dịch (trên) + Lịch sử (dưới) -->
+    <!-- CỘT GIỮA: Form giao dịch + Lịch sử -->
     <div class="trade-col trade-col-mid">
       <div class="trade-form-area">
-        <div class="col-head">
-          <div class="hdr" style="margin:0">GIAO DỊCH</div>
-        </div>
-        <div style="padding:0 12px">
+        <div class="col-head"><div class="col-title">GIAO DỊCH</div></div>
+        <div style="padding:0 14px">
           <div class="tab-bar" style="margin-top:10px">
             <button class="tab active" onclick="showOrderSub('ccq',this)">Quỹ mở (CCQ)</button>
             <button class="tab" onclick="showOrderSub('gold',this)">Vàng</button>
@@ -156,15 +234,14 @@
             <button class="btn btn-buy" id="gold-trade-btn" onclick="submitGoldTrade()">XÁC NHẬN MUA</button>
             <div id="gold-trade-status" style="font-size:12px;margin-top:8px;text-align:center"></div>
           </div>
-          <!-- Giữ cho JS showOrderSub không crash -->
           <div id="order-sub-history" style="display:none"></div>
         </div>
       </div>
-      <!-- Lịch sử — luôn hiện ở nửa dưới -->
+      <!-- Lịch sử giao dịch (nửa dưới) -->
       <div class="trade-history-area">
         <div class="trade-history-head">
-          <span class="hdr" style="margin:0;font-size:11px">LỊCH SỬ GIAO DỊCH</span>
-          <button onclick="loadUnifiedHistory()" class="refresh-btn">&#x21BB;</button>
+          <span class="col-title" style="font-size:10px">LỊCH SỬ GIAO DỊCH</span>
+          <button onclick="loadUnifiedHistory()" class="col-action">&#x21BB;</button>
         </div>
         <div class="trade-history-scroll">
           <div id="history-content"><div class="loading"><div class="spinner"></div></div></div>
@@ -174,16 +251,15 @@
 
     <!-- CỘT PHẢI: DCA + Dự báo vàng -->
     <div class="trade-col trade-col-right">
-      <div class="col-head">
-        <div class="hdr" style="margin:0">KẾ HOẠCH ĐẦU TƯ</div>
-      </div>
-      <div style="padding:0 12px 12px">
+      <div class="col-head"><div class="col-title">KẾ HOẠCH ĐẦU TƯ</div></div>
+      <div style="padding:0 12px 16px">
+        <div style="font-family:var(--mono);font-size:9px;color:var(--txt3);text-transform:uppercase;letter-spacing:.08em;padding:10px 0 6px">Chiến lược DCA</div>
         <div class="style-grid">
           <button class="style-btn active" onclick="setDcaStyle('dca',this)">DCA<span>Cố định</span></button>
           <button class="style-btn" onclick="setDcaStyle('vca',this)">VCA<span>Linh hoạt</span></button>
           <button class="style-btn" onclick="setDcaStyle('ca',this)">CA<span>Trung bình</span></button>
           <button class="style-btn" onclick="setDcaStyle('lump',this)">LUMP<span>1 lần</span></button>
-          <button class="style-btn" onclick="setDcaStyle('smart',this)">SMART<span>AI mix</span></button>
+          <button class="style-btn" style="grid-column:1/-1" onclick="setDcaStyle('smart',this)">SMART<span>AI mix</span></button>
         </div>
         <div id="dca-style-desc" class="style-desc"></div>
         <div class="budget-row">
@@ -191,13 +267,12 @@
           <button class="btn btn-primary" onclick="calcDCA()" style="margin:0;width:auto;padding:10px 16px">Tính</button>
         </div>
         <div id="dca-content"><div style="font-size:12px;color:var(--txt2);text-align:center;padding:16px">Nhập ngân sách và nhấn Tính</div></div>
+
         <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--bdr)">
-          <div class="hdr">DỰ BÁO VÀNG</div>
-          <div style="display:flex;gap:6px;margin-bottom:10px">
+          <div class="col-title" style="font-size:10px;margin-bottom:8px">DỰ BÁO VÀNG</div>
+          <div style="display:flex;gap:6px;margin-bottom:8px">
             <button class="gp-btn gp-active" id="gold-pred-buy" onclick="setGoldPredType('buy',this)">Giá mua</button>
             <button class="gp-btn" id="gold-pred-sell" onclick="setGoldPredType('sell',this)">Giá bán</button>
-          </div>
-          <div style="display:flex;gap:6px;margin-bottom:10px">
             <button class="gp-btn gp-active" id="gold-pred-chi" onclick="setGoldUnit('chi',this)">Chỉ</button>
             <button class="gp-btn" id="gold-pred-luong" onclick="setGoldUnit('luong',this)">Lượng</button>
           </div>
@@ -208,82 +283,100 @@
     </div>
 
   </div><!-- /.trade-grid -->
-</div>
+</div><!-- /#page-trade -->
 
 <!-- ══════════════════════════════════════════════════════════
-     TAB 3: CA NHAN — chỉ user profile
-     ══════════════════════════════════════════════════════════ -->
+     TAB 3: TÀI KHOẢN — 2-col grid + admin section
+══════════════════════════════════════════════════════════════ -->
 <div id="page-user" class="page">
-  <div class="page-content-narrow">
-    <div class="hdr">CÁ NHÂN</div>
-    <div class="card" id="user-profile-card">
-      <div class="loading"><div class="spinner"></div>Đang tải...</div>
-    </div>
-    <div class="card">
-      <div class="card-title">MÃ GIỚI THIỆU</div>
-      <div class="ref-box" id="referral-code-box"><div style="font-size:12px;color:var(--txt2)">Đang tải...</div></div>
-      <div id="referral-stats" style="font-size:11px;color:var(--txt2);margin-top:6px"></div>
-    </div>
-    <div class="card">
-      <div class="card-title">MÃ ƯU ĐÃI</div>
-      <div style="display:flex;gap:8px;margin-top:4px">
-        <input type="text" id="acc-promo-input" placeholder="Nhập mã..." style="text-transform:uppercase">
-        <button class="btn btn-primary" style="width:auto;margin:0;padding:0 14px" onclick="redeemPromoCode('acc')">Áp dụng</button>
+  <div class="user-page-scroll">
+    <div class="user-page-grid">
+
+      <!-- Profile card -->
+      <div class="acct-card" id="user-profile-card">
+        <div class="loading"><div class="spinner"></div>Đang tải...</div>
       </div>
-      <div id="acc-promo-status" style="font-size:12px;margin-top:6px"></div>
-    </div>
-    <div id="acc-upgrade-section"></div>
+
+      <!-- Gói dịch vụ / upgrade -->
+      <div class="acct-card">
+        <div class="acct-card-title">
+          <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+          Gói dịch vụ
+        </div>
+        <div id="acc-upgrade-section"><div class="loading"><div class="spinner"></div></div></div>
+      </div>
+
+      <!-- Referral + Promo (full width) -->
+      <div class="acct-card full-col">
+        <div class="acct-card-title">
+          <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+          Mã giới thiệu &amp; Ưu đãi
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+          <div>
+            <div class="card-title" style="margin-bottom:8px">MÃ GIỚI THIỆU CỦA BẠN</div>
+            <div class="ref-box" id="referral-code-box"><div style="font-size:12px;color:var(--txt2)">Đang tải...</div></div>
+            <div id="referral-stats" style="font-size:11px;color:var(--txt2);margin-top:8px"></div>
+          </div>
+          <div>
+            <div class="card-title" style="margin-bottom:8px">MÃ ƯU ĐÃI</div>
+            <div style="display:flex;gap:8px">
+              <input type="text" id="acc-promo-input" placeholder="Nhập mã..." style="text-transform:uppercase">
+              <button class="btn btn-primary" style="width:auto;margin:0;padding:0 14px" onclick="redeemPromoCode('acc')">Áp dụng</button>
+            </div>
+            <div id="acc-promo-status" style="font-size:12px;margin-top:6px"></div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /.user-page-grid -->
   </div>
-</div>
+</div><!-- /#page-user -->
 
 <!-- ══════════════════════════════════════════════════════════
-     TAB 4: ADMIN — chỉ hiện với is_admin=true
-     ══════════════════════════════════════════════════════════ -->
+     TAB 4: QUẢN TRỊ — chỉ hiện với is_admin=true
+══════════════════════════════════════════════════════════════ -->
 <div id="page-admin" class="page">
-  <div class="page-content-wide">
-    <div class="hdr">QUẢN TRỊ</div>
+  <div class="admin-page-scroll">
+    <div class="admin-page-grid">
 
-    <div class="admin-grid">
-
-      <!-- CỘT TRÁI -->
-      <div>
-        <div class="card">
-          <div class="card-title">CẬP NHẬT TCBS TOKEN</div>
-          <input type="text" id="admin-token-input" placeholder="Dán TCBS JWT token...">
-          <button class="btn btn-primary" onclick="adminUpdateToken()">Lưu Token</button>
-          <div id="admin-token-status" style="font-size:12px;margin-top:6px"></div>
-          <div style="margin-top:10px">
-            <button onclick="openTCInvest()" style="background:#001a33;border:1px solid var(--c0);color:var(--c0);border-radius:8px;padding:8px 14px;font-size:12px;font-family:var(--mono);cursor:pointer;width:100%">Mở TCInvest lấy token tự động</button>
-            <div id="bm-slot" style="margin-top:8px;font-size:11px;color:var(--txt2)"></div>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="card-title">FETCH NAV</div>
-          <div style="display:flex;gap:8px">
-            <button onclick="adminFetchAll()" class="btn btn-primary" style="width:auto;padding:10px 14px;margin:0;font-size:13px">Fetch tất cả</button>
-            <button onclick="adminFetchFmarket()" style="width:auto;padding:10px 14px;margin:0;font-size:13px;background:var(--bg3);border:1px solid var(--bdr);color:var(--txt);border-radius:8px;cursor:pointer;font-family:var(--sans)">Fmarket only</button>
-          </div>
-          <div id="admin-fetch-status" style="font-size:12px;margin-top:8px"></div>
-        </div>
-
-        <div class="card">
-          <div class="card-title">NAV CHỜ XÁC NHẬN</div>
-          <div id="admin-nav-confirm-list"><div style="font-size:12px;color:var(--txt2)">Đang tải...</div></div>
+      <div class="card">
+        <div class="card-title">CẬP NHẬT TCBS TOKEN</div>
+        <input type="text" id="admin-token-input" placeholder="Dán TCBS JWT token...">
+        <button class="btn btn-primary" onclick="adminUpdateToken()">Lưu Token</button>
+        <div id="admin-token-status" style="font-size:12px;margin-top:6px"></div>
+        <div style="margin-top:10px">
+          <button onclick="openTCInvest()" style="background:#001a33;border:1px solid var(--c0);color:var(--c0);border-radius:8px;padding:8px 14px;font-size:12px;font-family:var(--mono);cursor:pointer;width:100%">Mở TCInvest lấy token tự động</button>
+          <div id="bm-slot" style="margin-top:8px;font-size:11px;color:var(--txt2)"></div>
         </div>
       </div>
 
-      <!-- CỘT PHẢI -->
-      <div>
-        <div class="card">
-          <div class="card-title">THỐNG KÊ HỆ THỐNG</div>
-          <div id="admin-summary-box"><div style="font-size:12px;color:var(--txt2)">Đang tải...</div></div>
+      <div class="card">
+        <div class="card-title">FETCH NAV</div>
+        <div style="display:flex;gap:8px">
+          <button onclick="adminFetchAll()" class="btn btn-primary" style="width:auto;padding:10px 14px;margin:0">Fetch tất cả</button>
+          <button onclick="adminFetchFmarket()" style="width:auto;padding:10px 14px;margin:0;background:var(--bg3);border:1px solid var(--bdr);color:var(--txt);border-radius:8px;cursor:pointer;font-family:var(--sans);font-size:13px">Fmarket only</button>
         </div>
+        <div id="admin-fetch-status" style="font-size:12px;margin-top:8px"></div>
+      </div>
 
-        <div class="card">
-          <div class="card-title">MÃ GIẢM GIÁ</div>
-          <div id="admin-discount-list"><div style="font-size:12px;color:var(--txt2)">Đang tải...</div></div>
-          <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--bdr)">
+      <div class="card">
+        <div class="card-title">NAV CHỜ XÁC NHẬN</div>
+        <div id="admin-nav-confirm-list"><div style="font-size:12px;color:var(--txt2)">Đang tải...</div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">THỐNG KÊ HỆ THỐNG</div>
+        <div id="admin-summary-box"><div style="font-size:12px;color:var(--txt2)">Đang tải...</div></div>
+      </div>
+
+      <div class="card full-col">
+        <div class="card-title">MÃ GIẢM GIÁ</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <div>
+            <div id="admin-discount-list"><div style="font-size:12px;color:var(--txt2)">Đang tải...</div></div>
+          </div>
+          <div>
             <div style="font-size:11px;color:var(--c0);font-family:var(--mono);margin-bottom:8px">TẠO MÃ MỚI</div>
             <label>Mã (viết hoa)</label>
             <input type="text" id="disc-new-code" placeholder="VD: WELCOME50" style="text-transform:uppercase">
@@ -301,7 +394,7 @@
             </div>
             <label>Hết hạn (trống = không giới hạn)</label>
             <input type="datetime-local" id="disc-new-until">
-            <label>Số lượt tối đa (trống = không giới hạn)</label>
+            <label>Số lượt tối đa</label>
             <input type="number" id="disc-new-maxuses" placeholder="">
             <label>Ghi chú</label>
             <input type="text" id="disc-new-note" placeholder="(tuỳ chọn)">
@@ -310,38 +403,19 @@
             <div id="disc-create-status" style="font-size:12px;margin-top:6px"></div>
           </div>
         </div>
-
-        <div class="card">
-          <div class="card-title">AUDIT LOG (50 gan nhat)</div>
-          <div id="admin-audit-list" style="font-size:11px;font-family:var(--mono)">Dang tai...</div>
-        </div>
       </div>
 
-    </div><!-- /.admin-grid -->
+      <div class="card full-col">
+        <div class="card-title">AUDIT LOG (50 gần nhất)</div>
+        <div id="admin-audit-list" style="font-size:11px;font-family:var(--mono);max-height:200px;overflow-y:auto">Đang tải...</div>
+      </div>
+
+    </div><!-- /.admin-page-grid -->
   </div>
-</div>
+</div><!-- /#page-admin -->
 
-</div><!-- /#app -->
-
-<!-- BOTTOM NAV -->
-<div id="nav">
-  <button class="nav-btn active" onclick="goTab('home',this)">
-    <svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-    Trang Chu
-  </button>
-  <button class="nav-btn" onclick="goTab('trade',this)">
-    <svg viewBox="0 0 24 24"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
-    Giao Dich
-  </button>
-  <button class="nav-btn" onclick="goTab('user',this)">
-    <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-    Ca Nhan
-  </button>
-  <button class="nav-btn" id="nav-admin" style="display:none" onclick="goTab('admin',this)">
-    <svg viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-    Admin
-  </button>
-</div>
+  </div><!-- /.content -->
+</div><!-- /.main#app -->
 
 <script src="web_js.js"></script>
 </body>

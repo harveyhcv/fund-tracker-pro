@@ -9,7 +9,7 @@ const IS_DEV    = qs.get('dev') === '1' || location.hash === '#dev';
 let _me = null, _signals = null, _goldData = null, _allFunds = {}, _watchedSet = new Set();
 let _tradeType = 'buy', _goldType = 'buy', _goldUnit = 'chi', _goldPredType = 'buy';
 let _dcaStyle = 'dca', _tradeLog = [], _marketFilter = 'all', _marketData = null;
-let _navChart = null, _discBenefitType = 'discount_pct', _discRequiresPurchase = true;
+let _navChart = null, _homeChart = null, _discBenefitType = 'discount_pct', _discRequiresPurchase = true;
 let _selectedPlan = 'm1', _toastTimer;
 
 // ── Dev mock data ─────────────────────────────────────────────────────────────
@@ -149,11 +149,14 @@ function toast(msg, dur=2500) {
 }
 
 // ── Navigation ────────────────────────────────────────────────────────────────
+const TAB_TITLES = {home:'TRANG CHỦ', trade:'GIAO DỊCH', user:'TÀI KHOẢN', admin:'QUẢN TRỊ'};
 function goTab(name, btn) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('page-'+name).classList.add('active');
   btn.classList.add('active');
+  const titleEl = document.getElementById('header-title');
+  if (titleEl) titleEl.textContent = TAB_TITLES[name] || name.toUpperCase();
   if (name === 'home')  { if (!_me) loadMe(); if (!_marketData) loadMarket(); }
   if (name === 'trade') { if (!_signals) loadSignals(); loadUnifiedHistory(); setDcaStyle(_dcaStyle); }
   if (name === 'user')  loadAccountTab();
@@ -186,6 +189,8 @@ function renderTierBar(me) {
   const tier = me.tier||'free', isAdmin = me.is_admin||false;
   const nameEl = document.getElementById('tier-name');
   if (nameEl) nameEl.textContent = me.name||'';
+  const avatarEl = document.getElementById('user-avatar-letter');
+  if (avatarEl && me.name) avatarEl.textContent = me.name.charAt(0).toUpperCase();
   let chip='', right='';
   if (isAdmin) {
     chip = `<span class="tier-chip admin">&#x1F527; ADMIN</span>`;
@@ -201,7 +206,7 @@ function renderTierBar(me) {
   if (rightEl) rightEl.innerHTML = `<span style="display:flex;align-items:center;gap:6px">${chip}${right}</span>`;
   const bar = document.getElementById('tier-bar');
   if (bar) bar.classList.add('visible');
-  if (isAdmin) { document.getElementById('nav-admin').style.display=''; }
+  if (isAdmin) { const na=document.getElementById('nav-admin'); if(na) na.style.display=''; }
 }
 
 // ── Portfolio ─────────────────────────────────────────────────────────────────
@@ -353,7 +358,7 @@ function renderMarket() {
     const rsi=s.rsi??50, bb=s.bb_pct??50, chg=s.chg_pct||0;
     const rsiC=rsi<35?'var(--buy)':rsi>65?'var(--sell)':'var(--hold)';
     const bbC=bb<20?'var(--buy)':bb>80?'var(--sell)':'var(--hold)';
-    html+=`<div class="sig-row" onclick="openResearch('${code}')">
+    html+=`<div class="sig-row" onclick="selectFundChart('${code}')" data-code="${code}">
       <div>
         <div style="display:flex;align-items:baseline;gap:6px">
           <span class="sig-code">${code}</span>
@@ -380,6 +385,98 @@ function setMarketFilter(f, el) {
   document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
   el.classList.add('active');
   renderMarket();
+}
+
+// ── Fund Chart Column (home right col) ───────────────────────────────────────
+async function selectFundChart(code) {
+  // highlight selected row
+  document.querySelectorAll('#market-content .sig-row').forEach(r =>
+    r.style.background = r.dataset.code === code ? 'rgba(0,229,255,.06)' : '');
+  const el = document.getElementById('chart-col-content');
+  el.innerHTML = '<div class="loading"><div class="spinner"></div>Đang tải...</div>';
+  const titleEl = document.getElementById('chart-col-title');
+  const subEl = document.getElementById('chart-col-sub');
+  if (titleEl) titleEl.textContent = 'BIỂU ĐỒ — ' + code;
+  if (subEl) subEl.textContent = 'Đang phân tích...';
+  if (IS_DEV) {
+    const s = MOCK_SIGNALS[code] || {nav:0,rsi:50,bb_pct:50,score:0,signal:'N/A',chg_pct:0,macd:0};
+    renderFundChart({code, name:code+' (dev)', signal:s.signal, nav:s.nav, chg_pct:s.chg_pct,
+      rsi:s.rsi, bb:s.bb_pct, macd:s.macd||0, score:s.score,
+      schools:[], conclusion:'Dev mode — không có dữ liệu thật.', nav_history:[]});
+    return;
+  }
+  try {
+    const d = await apiFetch(`/api/research/${code}`);
+    renderFundChart(d);
+  } catch(e) { el.innerHTML = renderErr('Lỗi: ' + e.message); }
+}
+
+function renderFundChart(d) {
+  const el = document.getElementById('chart-col-content');
+  if (!el) return;
+  const sc = sigC(d.signal);
+  const navHist = d.nav_history || [];
+  const labels = navHist.map(p => p.date || p[0] || '');
+  const vals   = navHist.map(p => p.nav  || p[1] || 0);
+  const titleEl = document.getElementById('chart-col-title');
+  const subEl   = document.getElementById('chart-col-sub');
+  if (titleEl) titleEl.textContent = d.code + (d.name ? ' — ' + d.name.slice(0,22) : '');
+  if (subEl)   subEl.textContent   = `NAV: ${fmt(d.nav)} đ  ·  ${fmtP(d.chg_pct||0)}`;
+  const rsi=d.rsi||50, bb=d.bb||50;
+  const rsiC=rsi<35?'var(--buy)':rsi>65?'var(--sell)':'var(--hold)';
+  const bbC =bb<20 ?'var(--buy)':bb >80?'var(--sell)':'var(--hold)';
+  const scrC=(d.score||0)>=3?'var(--buy)':(d.score||0)<=-3?'var(--sell)':'var(--txt)';
+  let schoolsHtml='';
+  for (const s of (d.schools||[])) {
+    const ssc=sigC(s.signal);
+    schoolsHtml+=`<div class="school-card ${ssc}" onclick="this.classList.toggle('open')">
+      <div class="school-hdr"><div style="flex:1"><div class="school-title">${s.name||''}</div>
+      <div class="school-summary">${s.summary||''}</div></div>
+      <span class="badge ${ssc}" style="flex-shrink:0;margin:0 6px">${sigLabel(s.signal)}</span>
+      <span class="school-chevron">&#9660;</span></div>
+      <div class="school-detail"><div class="school-body">${s.analysis||''}</div>
+      <div class="school-action ${ssc}">${s.action||''}</div></div></div>`;
+  }
+  el.innerHTML=`<div style="padding:12px 14px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
+      <div>
+        <div style="font-family:var(--mono);font-size:20px;font-weight:700">${fmt(d.nav)} đ</div>
+        <div class="pnl ${pnlC(d.chg_pct||0)}" style="font-size:12px;margin-top:2px">${fmtP(d.chg_pct||0)}</div>
+      </div>
+      <div class="badge ${sc}" style="font-size:13px;padding:5px 12px">${sigLabel(d.signal)}</div>
+    </div>
+    <div style="display:flex;gap:10px;margin-bottom:10px">
+      <div style="flex:1;background:var(--bg3);border-radius:6px;padding:6px 8px">
+        <div class="meter-lbl" style="margin-bottom:4px">RSI</div>
+        <div class="meter-bar" style="width:100%;margin-bottom:4px"><div class="meter-fill" style="width:${rsi}%;background:${rsiC}"></div></div>
+        <div style="font-family:var(--mono);font-size:11px;color:${rsiC}">${rsi.toFixed?rsi.toFixed(1):rsi}</div>
+      </div>
+      <div style="flex:1;background:var(--bg3);border-radius:6px;padding:6px 8px">
+        <div class="meter-lbl" style="margin-bottom:4px">BB%</div>
+        <div class="meter-bar" style="width:100%;margin-bottom:4px"><div class="meter-fill" style="width:${bb}%;background:${bbC}"></div></div>
+        <div style="font-family:var(--mono);font-size:11px;color:${bbC}">${bb.toFixed?bb.toFixed(1):bb}</div>
+      </div>
+      <div style="flex:1;background:var(--bg3);border-radius:6px;padding:6px 8px;text-align:center">
+        <div class="meter-lbl" style="margin-bottom:4px">SCORE</div>
+        <div style="font-family:var(--mono);font-size:18px;font-weight:700;color:${scrC}">${(d.score||0)>=0?'+':''}${d.score||0}</div>
+      </div>
+    </div>
+    ${navHist.length?`<div style="height:160px;margin-bottom:10px;position:relative"><canvas id="home-nav-chart"></canvas></div>`:'<div style="height:60px;display:flex;align-items:center;justify-content:center;color:var(--txt2);font-size:11px">Chưa có lịch sử NAV</div>'}
+    ${d.conclusion?`<div class="conclusion" style="margin-bottom:10px;font-size:12px">${d.conclusion}</div>`:''}
+    ${schoolsHtml}
+  </div>`;
+  if (navHist.length) {
+    if (_homeChart) { _homeChart.destroy(); _homeChart=null; }
+    const ctx=document.getElementById('home-nav-chart').getContext('2d');
+    const lineColor=sc==='buy'?'#4ade80':sc==='sell'?'#f87171':'#facc15';
+    _homeChart=new Chart(ctx,{type:'line',data:{labels,datasets:[{data:vals,borderColor:lineColor,borderWidth:2,
+      fill:true,backgroundColor:lineColor+'22',tension:0.3,pointRadius:0}]},
+      options:{responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>fmt(c.parsed.y)+' đ'}}},
+        scales:{x:{display:false},y:{display:true,grid:{color:'#1e3050'},
+          ticks:{color:'#94a3b8',font:{family:'IBM Plex Mono',size:10},
+                 callback:v=>v>=1e6?(v/1e6).toFixed(1)+'M':(v/1000).toFixed(0)+'K'}}}}});
+  }
 }
 
 // ── Signals (watched) ─────────────────────────────────────────────────────────
@@ -892,7 +989,8 @@ async function loadAdminAudit() {
 document.addEventListener('DOMContentLoaded', () => {
   setDcaStyle('dca');
   _refreshGoldProductSelect();
-  document.getElementById('trade-date').value = _todayISO();
-  document.getElementById('gold-date').value  = _todayISO();
+  const td = document.getElementById('trade-date'); if (td) td.value = _todayISO();
+  const gd = document.getElementById('gold-date');  if (gd) gd.value  = _todayISO();
   loadMe();
+  loadMarket();
 });
