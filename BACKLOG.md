@@ -4,9 +4,27 @@
 # Priority: P0 (blocker) / P1 (important) / P2 (nice-to-have)
 # Claude đọc file này ĐẦU TIÊN mỗi session. Pick task IN_PROGRESS nếu có, nếu không pick P0 cao nhất.
 #
-# Last updated: 2026-07-21 (ca chiều — phát hiện 5 commits mới từ Harvey sau ca chiều 20/07
-# (GOV-019 web redesign v3, GOV-020 admin panel improvements). Suite: 321/321 OK.
+# Last updated: 2026-07-22 (ca sáng — phát hiện 7 commits mới từ Harvey tối 21/07
+# (GOV-021..024, web rebuild v1→v4+desktop). Suite: 321/321 OK.
 # Tất cả P0/P1 DONE — chỉ còn PAY-006/007 P2 chờ merchant credentials)
+
+## Session (autonomous, scheduled) — Ca sáng 2026-07-22: update BACKLOG cho 7 commits Harvey
+# Tình trạng: tất cả P0/P1 đã DONE từ trước. Điều kiện dừng: "Hết P0+P1".
+# Đầu session: đọc BACKLOG + memory.md + git log → phát hiện 7 commits mới từ Harvey
+# sau ca chiều 21/07 (sau commit aa67e86 BACKLOG update):
+# - 6bd47b7 (21/07 15:38): feat(web): new web.html v1 — 3-tab layout + build_web.py split
+# - 962c17e (21/07 15:50): fix(infra): backup retention 14→2 ngày + emergency_cleanup.py
+# - 07e92d1 (21/07 16:26): fix(local-dev): signals UnboundLocalError + local_dev_server.py
+# - a7dda92 (21/07 18:40): feat(web): redesign v4 — 2-col home, separate Ca Nhan + Admin
+# - e3a36e4 (21/07 19:01): feat(web): fix diacritics + Giao Dịch 3-column layout
+# - b8a2f74 (21/07 20:41): feat(web): desktop layout v1 — sidebar + 3-col home + inlined JS
+# - bd0677c (21/07 20:42): fix(db): init_pool retry khi Railway DB chưa sẵn sàng
+# Verify baseline:
+# 1. py_compile telegram-bot/{bot,miniapp_server,db}.py + scripts/emergency_cleanup.py
+#    + telegram-bot/miniapp/{local_dev_server,build_web}.py → All OK
+# 2. pytest tests/ → 321/321 passed
+# Ghi BACKLOG: GOV-021/022/023/024 (xem bên dưới).
+# Không code thêm — tất cả P0/P1 đã DONE, 7 commits Harvey không có regression.
 
 ## Session (autonomous, scheduled) — Ca chiều 2026-07-21: update BACKLOG cho 5 commits Harvey
 # Tình trạng: tất cả P0/P1 đã DONE từ trước. Điều kiện dừng: "Hết P0+P1".
@@ -896,6 +914,53 @@
   web.html giờ dùng đúng UX Mini App Telegram, không còn empty space trên desktop.
   Verify: tất cả 6 API endpoints web.html gọi đều đã có backend; GOV-015 features (T+2 hints,
   loadSignals/loadTrades, _predictions) còn đầy đủ; DCA logic đúng | 2026-07-20-21 (Harvey commits)
+
+- [DONE] GOV-024 · Local dev server — `telegram-bot/miniapp/local_dev_server.py` (MỚI, 569 dòng):
+  server HTTP đơn giản phục vụ web.html khi dev local (không cần Railway/Railway proxy). Fix đồng
+  thời: thêm `global _signals_cache _signals_ts` trong miniapp_server.py để tránh UnboundLocalError,
+  filter `AND nav IS NOT NULL` trong `get_nav_series` bỏ qua rows NULL, pre-warm signals cache
+  synchronously trước request đầu tiên, thêm try/except trong do_GET để log lỗi rõ hơn.
+  Verify: 43 quỹ có tín hiệu sau fix, BVPF TRUNG LẬP RSI=56.75, DCBF BÁN MẠNH RSI=95 | 2026-07-21
+  (Harvey commit 07e92d1)
+
+- [DONE] GOV-023 · Backup retention giảm + emergency cleanup khi boot — sự cố Railway volume đầy
+  lần 2 (2026-07-17, sau lần 1 ngày 2026-07-16 đã sửa bằng GOV-014). Root cause lặp lại: GOV-014
+  giảm interval backup 24h→2h nhưng không giới hạn số file → 14 ngày × 12 lần/ngày = 168 file tích
+  lũy, lấp đầy lại volume. Fix triệt để:
+  - `scripts/backup_db.py`: RETENTION_DAYS 14→2 ngày, thêm hard cap `MAX_BACKUP_FILES=24`
+    (~2 ngày @ mỗi 2h) — đủ rollback, không ngốn volume.
+  - `scripts/emergency_cleanup.py` (MỚI): xóa backup cũ giữ 3 bản mới nhất, KHÔNG cần DB,
+    chạy an toàn khi Postgres chưa available.
+  - `Dockerfile CMD`: chạy `emergency_cleanup.py` trước `bot.py` mỗi khi worker restart →
+    tự dọn /data/backups ngay lập tức, không đợi cron 03:30.
+  Verify: py_compile OK | 2026-07-21 (Harvey commit 962c17e)
+
+- [DONE] GOV-021 · init_pool retry khi Railway DB chưa sẵn sàng — bot crash-loop với error
+  "Consistent recovery state has not been yet reached" khi Railway Postgres vẫn đang phục hồi
+  sau restart. Trước đây `init_pool()` connect ngay lập tức, fail → bot crash → Railway restart
+  bot → loop vô tận. Fix: thêm retry loop trong `init_pool()` (telegram-bot/db.py): thử lại mỗi
+  3s, tối đa 120s trước khi raise. `_migrate_*` migrations chạy SAU KHI pool đã kết nối thành
+  công (không chạy trong retry loop). Additive change, không ảnh hưởng khi DB sẵn sàng ngay lần
+  đầu. Verify: py_compile OK | 2026-07-21 (Harvey commit bd0677c)
+
+- [DONE] GOV-022 · Web dashboard hoàn thiện — 4 commits liên tiếp ngày 21/07 xây dựng lại
+  `telegram-bot/miniapp/web.html` theo kiến trúc mới và layout desktop hoàn chỉnh:
+  **Build system mới** (6bd47b7): split thành `build_web.py` + `web_body.html` + `web_js.js`
+  → build ra `web.html` cuối cùng (build_web.py inline web_js.js vào output để tránh 404 static
+  — miniapp_server không serve .js). Dev mock mode `?dev=1` load MOCK_ME/MOCK_GOLD/MOCK_SIGNALS
+  instant, bỏ qua API (dùng cho review UI không cần token/DB). 3-tab: Trang Chủ / Giao dịch /
+  Tài khoản.
+  **Redesign v4** (a7dda92): 2-col Trang Chủ (CCQ+Vàng trái / Thị trường phải), Cá Nhân trang
+  riêng (page-content-narrow, profile + referral), Admin trang riêng (page-content-wide +
+  admin-grid 2 cột). Nav bar 4 nút, Admin ẩn mặc định → hiện khi is_admin=true.
+  **Fix diacritics + 3-col Giao Dịch** (e3a36e4): layout trade-grid 3 cột (260px signals |
+  1fr form+history | 272px DCA+gold), sửa toàn bộ dấu tiếng Việt, fix renderTierBar() null
+  guards, auto-load signals + history + DCA khi goTab('trade').
+  **Desktop layout** (b8a2f74): sidebar nav (200px) + header (52px) thay bottom nav trên desktop;
+  3-col Trang Chủ (danh mục 280 | thị trường flex | biểu đồ 400px); `selectFundChart()` +
+  `renderFundChart()` (Chart.js) cho cột phải. loadMarket() chạy lúc init. JS inlined.
+  Verify: py_compile build_web.py OK, web.html cuối cùng đã được build và commit | 2026-07-21
+  (Harvey commits 6bd47b7 + a7dda92 + e3a36e4 + b8a2f74)
 
 - [DONE] GOV-020 · Admin panel improvements — 3 commits liên tiếp ngày 20-21/07:
   (1) e590193: ?dev=1 bypass trong admin_pnl.html để review UI không cần token/DB thật (mock 142

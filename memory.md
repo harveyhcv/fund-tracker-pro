@@ -1030,3 +1030,40 @@ với `drawSparkline(p.date)` trong web.html. `_api_research` trả `nav_series`
 4. Commit `ios/` + `dashboard/portfolio.html` + `scripts/*`
 5. Xác nhận `prediction_actuals` đã có đủ ngày để chạy T2-008 `--reweight` lần đầu
    (điều kiện: ≥10 samples/model từ ≥2 ngày khác nhau trong 30d qua)
+
+---
+
+## ✅ Session (autonomous, scheduled) — Ca sáng 2026-07-22: update BACKLOG cho 7 commits Harvey
+
+**Baseline**: py_compile 3 file chính + 3 file mới (emergency_cleanup.py, local_dev_server.py,
+build_web.py) → All OK. 321/321 tests pass.
+
+**7 Harvey commits tối 21/07 (sau aa67e86, BACKLOG update ca chiều):**
+
+**GOV-021** (bd0677c) — `init_pool` retry loop: Railway crash-loop khi bot khởi động trùng với
+Postgres recovery ("Consistent recovery state has not been yet reached") → retry mỗi 3s tối đa
+120s, migrations chạy sau khi pool thành công. Sửa crash-loop tái diễn.
+
+**GOV-022** (6bd47b7 + a7dda92 + e3a36e4 + b8a2f74) — Web dashboard rebuild toàn diện:
+- **Build system**: `build_web.py` + `web_body.html` + `web_js.js` → `web.html` (JS inlined vì
+  miniapp_server không serve .js file riêng). Dev mock mode `?dev=1` skip API.
+- **Layout**: 4-tab nav (Trang Chủ/Giao Dịch/Cá Nhân/Admin), 2-col Trang Chủ, trade-grid 3 cột,
+  sidebar desktop (200px) + header (52px) thay bottom-nav.
+- **Chart.js**: `selectFundChart()` + `renderFundChart()` cột phải desktop.
+- **Fix diacritics** toàn bộ file, Admin tab ẩn mặc định hiện khi is_admin=true.
+
+**GOV-023** (962c17e) — Backup retention triệt để: RETENTION_DAYS 14→2 ngày + MAX_BACKUP_FILES=24
+(cap cứng). `scripts/emergency_cleanup.py` mới chạy khi Dockerfile CMD khởi động → tự dọn
+/data/backups trước bot.py. Ngăn tái diễn Postgres volume đầy (lần 2 sau GOV-014).
+
+**GOV-024** (07e92d1) — `local_dev_server.py` (569 dòng, mới hoàn toàn) cho local dev; kèm
+fix UnboundLocalError signals + nav IS NOT NULL filter + pre-warm cache.
+
+**Không code gì mới** — tất cả P0/P1 đã DONE từ trước. Chỉ còn PAY-006/PAY-007 P2.
+
+**Việc cần Harvey (tồn đọng):**
+1. Set `WEB_SESSION_SECRET` trên Railway + `/setdomain` @BotFather (GOV-015 live)
+2. JWT tcinvest mới (hết hạn từ 16/07)
+3. Xác nhận NTPPF/VMEEF
+4. Commit `ios/` + `dashboard/portfolio.html` + `scripts/*`
+5. Xác nhận `prediction_actuals` đủ ngày cho T2-008 `--reweight` lần đầu
