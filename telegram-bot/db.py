@@ -2932,6 +2932,62 @@ def get_nav_source_audit(days: int = 30) -> "list[dict]":
             return [dict(r) for r in cur.fetchall()]
 
 
+# ─── ADMIN USER SEARCH (GOV-025) ─────────────────────────────────────────────
+
+def get_admin_users(q: "str | None" = None, limit: int = 100) -> "list[dict]":
+    """GET /api/admin/users — danh sách users với tier, is_admin, số GD.
+    q: tìm theo tên (ILIKE) hoặc telegram_id (exact match nếu q là số).
+    Trả list [{telegram_id, name, tier, is_admin, trade_count, created_at}]."""
+    if not is_available():
+        return []
+    with get_conn() as conn:
+        _ensure_bot_profiles_table(conn)
+        _ensure_user_tiers_table(conn)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            if q:
+                q = q.strip()
+                if q.lstrip("-").isdigit():
+                    where = "WHERE p.telegram_id = %s"
+                    params: list = [int(q), limit]
+                else:
+                    where = "WHERE p.name ILIKE %s"
+                    params = [f"%{q}%", limit]
+            else:
+                where = ""
+                params = [limit]
+
+            cur.execute(f"""
+                SELECT p.telegram_id,
+                       p.name,
+                       p.is_admin,
+                       p.created_at::text AS created_at,
+                       COALESCE(t.tier, 'free') AS tier,
+                       COALESCE(tc.cnt, 0)      AS trade_count
+                FROM bot_profiles p
+                LEFT JOIN user_tiers t ON t.telegram_id = p.telegram_id
+                LEFT JOIN (
+                    SELECT telegram_id, COUNT(*) AS cnt
+                    FROM user_ccq_trades
+                    GROUP BY telegram_id
+                ) tc ON tc.telegram_id = p.telegram_id
+                {where}
+                ORDER BY p.created_at DESC
+                LIMIT %s
+            """, params)
+            rows = cur.fetchall()
+            return [
+                {
+                    "telegram_id": r["telegram_id"],
+                    "name": r["name"],
+                    "tier": r["tier"],
+                    "is_admin": bool(r["is_admin"]),
+                    "trade_count": int(r["trade_count"]),
+                    "created_at": r["created_at"],
+                }
+                for r in rows
+            ]
+
+
 # ─── POOL ────────────────────────────────────────────────────────────────────
 
 def close_pool() -> None:

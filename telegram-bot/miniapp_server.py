@@ -1483,6 +1483,8 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             self._api_admin_summary(qs)
         elif path == "/api/admin/user/banned-list":
             self._api_admin_banned_list(qs)
+        elif path == "/api/admin/users":
+            self._api_admin_users(qs)
         elif path == "/api/admin/discount/list":
             self._api_admin_discount_list(qs)
         elif path == "/health":
@@ -2922,6 +2924,21 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             _json(self, {"error": str(e)}, 400)
             return
         _json(self, {"ok": True, "user": result})
+
+    def _api_admin_users(self, qs: dict):
+        """GET /api/admin/users?user_id=...&q=<search> — danh sách users với tier + trade count.
+        q tìm theo telegram_id (nếu là số) hoặc tên (ILIKE). Giới hạn 100 users."""
+        tg_id = (qs.get("user_id") or [""])[0]
+        if not _is_admin(tg_id):
+            _json(self, {"error": "admin_only"}, 403)
+            return
+        if not _auth_write(self, tg_id):
+            return
+        if _db_mod is None or not _db_mod.is_available():
+            _json(self, {"users": []})
+            return
+        q = (qs.get("q") or [""])[0].strip() or None
+        _json(self, {"users": _db_mod.get_admin_users(q=q)})
 
     def _api_admin_banned_list(self, qs: dict):
         """GET /api/admin/user/banned-list?user_id=... — danh sách tài khoản đang bị khoá."""
