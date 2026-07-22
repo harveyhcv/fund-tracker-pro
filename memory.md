@@ -1067,3 +1067,41 @@ fix UnboundLocalError signals + nav IS NOT NULL filter + pre-warm cache.
 3. Xác nhận NTPPF/VMEEF
 4. Commit `ios/` + `dashboard/portfolio.html` + `scripts/*`
 5. Xác nhận `prediction_actuals` đủ ngày cho T2-008 `--reweight` lần đầu
+
+---
+
+## ✅ Session (autonomous, scheduled) — Ca chiều 2026-07-22: GOV-025 admin user search
+
+**Phát hiện**: Harvey's uncommitted `telegram-bot/miniapp/web_js.js` (+548 dòng, chưa commit)
+có hàm `loadAdminUsers(q)` gọi `GET /api/admin/users?q=<search>` — nhưng endpoint này chưa
+tồn tại trong `miniapp_server.py`. Phát hiện bằng cách review `git diff` của Harvey's changes.
+
+**GOV-025** (407cbde) — `GET /api/admin/users` endpoint mới:
+- `db.get_admin_users(q=None, limit=100)`: JOIN `bot_profiles` + `user_tiers` + `user_ccq_trades`
+  (LEFT JOIN subquery cho trade_count — dùng bảng này thay vì `transactions` vì `transactions`
+  dùng RLS theo user_uuid không theo telegram_id). Numeric q → exact `telegram_id = %s` match
+  (hỗ trợ negative BETA IDs); string q → `ILIKE %q%` name search; whitespace stripped.
+  Returns: `[{telegram_id: int, name: str, tier: str, is_admin: bool, trade_count: int, created_at: str}]`
+- `_api_admin_users(qs)` handler: `_is_admin()` check + `_auth_write()` HMAC + `get_admin_users(q)`.
+  Routing `elif path == "/api/admin/users":` inserted between banned-list and discount/list.
+- 13 tests `tests/test_gov025_admin_users.py`: DB unavailable (2), no-search (5), search by
+  numeric id (3), search by name (3). Suite: 321 → 334/334 passed.
+- Pushed: `origin/staging`
+
+**Về Harvey's uncommitted web changes** (web_js.js +548, web_body.html +235):
+- Khi Harvey commit, `loadAdminUsers(q)` sẽ hoạt động ngay với endpoint mới.
+- Các API khác Harvey gọi đều đã tồn tại: `/api/payment/sepay/create`, `/api/payment/sepay/status`,
+  `/api/research/${code}`.
+- Frontend dùng `d.rsi`/`d.bb` flat (not nested), `d.nav_history` (not `d.nav_series`) — sẽ
+  fallback gracefully (d.rsi??50, hasHistory false). Harvey có thể cần điều chỉnh sau khi test.
+- **KHÔNG commit** Harvey's changes (GOV-006: không commit uncommitted work của người khác).
+
+**Test suite hiện tại**: 334/334 (từ 321 trước session này).
+
+**Việc cần Harvey (tồn đọng):**
+1. Set `WEB_SESSION_SECRET` trên Railway + `/setdomain` @BotFather (GOV-015 live)
+2. JWT tcinvest mới (hết hạn từ 16/07, recurring — job_check_jwt tự báo qua Telegram)
+3. Xác nhận NTPPF/VMEEF (FK violation ongoing trong harvest_nav)
+4. Commit `web_js.js` + `web_body.html` + `build_web.py` uncommitted để frontend dùng GOV-025
+5. Commit `ios/` + `dashboard/portfolio.html` + `scripts/*`
+6. Xác nhận `prediction_actuals` đủ ngày cho T2-008 `--reweight` lần đầu

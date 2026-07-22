@@ -4,9 +4,21 @@
 # Priority: P0 (blocker) / P1 (important) / P2 (nice-to-have)
 # Claude đọc file này ĐẦU TIÊN mỗi session. Pick task IN_PROGRESS nếu có, nếu không pick P0 cao nhất.
 #
-# Last updated: 2026-07-22 (ca sáng — phát hiện 7 commits mới từ Harvey tối 21/07
-# (GOV-021..024, web rebuild v1→v4+desktop). Suite: 321/321 OK.
-# Tất cả P0/P1 DONE — chỉ còn PAY-006/007 P2 chờ merchant credentials)
+# Last updated: 2026-07-22 (ca chiều — GOV-025: GET /api/admin/users endpoint mới.
+# Suite: 334/334 OK. Tất cả P0/P1 DONE — chỉ còn PAY-006/007 P2 chờ merchant credentials)
+
+## Session (autonomous, scheduled) — Ca chiều 2026-07-22: GOV-025 admin user search
+# Tình trạng: tất cả P0/P1 đã DONE từ trước. Điều kiện dừng: "Hết P0+P1".
+# Phát hiện: Harvey's uncommitted web_js.js (+548 dòng) có `loadAdminUsers(q)` gọi
+# `GET /api/admin/users` — endpoint này chưa tồn tại trong miniapp_server.py.
+# Implement GOV-025: db.get_admin_users() + _api_admin_users() + routing + 13 tests.
+# Commit: 407cbde feat(GOV-025): GET /api/admin/users — admin user search endpoint
+# Suite: 321 → 334/334 passed. Pushed to origin/staging.
+# Việc cần Harvey (không tự làm được):
+#   (1) Commit web_js.js/web_body.html/build_web.py (Harvey uncommitted) để frontend dùng endpoint mới
+#   (2) Cấp JWT tcinvest mới (hết hạn từ 2026-07-16, recurring pattern)
+#   (3) Xác nhận NTPPF/VMEEF có nên track (FK violation ongoing)
+#   (4) Set WEB_SESSION_SECRET trên Railway + /setdomain trên @BotFather (cho GOV-015 web auth live)
 
 ## Session (autonomous, scheduled) — Ca sáng 2026-07-22: update BACKLOG cho 7 commits Harvey
 # Tình trạng: tất cả P0/P1 đã DONE từ trước. Điều kiện dừng: "Hết P0+P1".
@@ -902,6 +914,21 @@
 ---
 
 ## XONG (DONE)
+
+- [DONE] GOV-025 · GET /api/admin/users — admin user search endpoint. Harvey's uncommitted
+  `web_js.js` (ca chiều 21/07, +548 dòng) có hàm `loadAdminUsers(q)` gọi endpoint này nhưng
+  backend chưa có. Ca chiều 22/07 phát hiện và implement:
+  - `db.get_admin_users(q=None, limit=100)`: JOIN bot_profiles + user_tiers + user_ccq_trades
+    (LEFT JOIN subquery trade_count); numeric q → exact telegram_id match (hỗ trợ negative BETA
+    IDs); string q → ILIKE name search với %q% wrapping; whitespace stripped.
+  - `_api_admin_users(qs)` + routing `elif path == "/api/admin/users":` trong miniapp_server.py
+    (giữa /api/admin/user/banned-list và /api/admin/discount/list). Pattern chuẩn: _is_admin()
+    check + _auth_write() HMAC + DB call + _json() response.
+  - 13 tests trong `tests/test_gov025_admin_users.py`: DB unavailable (2), no-search (5),
+    search by numeric id (3), search by name (3). Verify: numeric q dùng telegram_id=, ILIKE
+    cho name, params đúng, negative ids xử lý đúng.
+  Commit: `407cbde feat(GOV-025): GET /api/admin/users — admin user search endpoint`
+  Verify: pytest 334/334 passed (tăng từ 321) | 2026-07-22 (ca chiều, autonomous session)
 
 - [DONE] GOV-019 · Web redesign v3 — merged tabs, full fundmart, DCA+History (commit 9eb5bba) +
   refactor xóa desktop 3-col, áp dụng tab UI Mini App cho mọi màn hình kể cả desktop (commit
