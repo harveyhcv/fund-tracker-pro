@@ -83,8 +83,10 @@ class TestUnifiedHistory:
         gold = next(t for t in trades if t["asset_type"] == "gold")
         assert ccq["fund_code"] == "TCBF"
         assert ccq["code"] == "TCBF"
+        assert ccq["id"] == 1, "id field required for frontend edit/delete URLs"
         assert gold["product"] == "SJC_1L"
         assert gold["name"] == "SJC 1 Lượng"
+        assert gold["id"] == 2, "id field required for frontend edit/delete URLs"
 
     def test_sorted_newest_first(self):
         handler, ms = _make_handler()
