@@ -84,9 +84,11 @@ class TestUnifiedHistory:
         assert ccq["fund_code"] == "TCBF"
         assert ccq["code"] == "TCBF"
         assert ccq["id"] == 1, "id field required for frontend edit/delete URLs"
+        assert ccq["trade_type"] == "buy", "trade_type alias required for frontend type labels"
         assert gold["product"] == "SJC_1L"
         assert gold["name"] == "SJC 1 Lượng"
         assert gold["id"] == 2, "id field required for frontend edit/delete URLs"
+        assert gold["trade_type"] == "buy", "trade_type alias required for frontend type labels"
 
     def test_sorted_newest_first(self):
         handler, ms = _make_handler()

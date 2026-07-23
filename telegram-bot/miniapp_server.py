@@ -3166,7 +3166,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         for r in ccq_rows:
             trades.append({
                 "id": r[0], "index": r[0], "telegram_id": tg_id,
-                "code": r[1], "fund_code": r[1], "type": r[2],
+                "code": r[1], "fund_code": r[1], "type": r[2], "trade_type": r[2],
                 "date": r[3], "trade_date": r[3],
                 "units": r[4], "nav": r[5], "price_per_unit": r[5],
                 "amount": r[6], "note": r[7], "nav_mismatch": r[8],
@@ -3175,7 +3175,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         for r in gold_rows:
             trades.append({
                 "id": r[0], "index": r[0], "telegram_id": tg_id,
-                "product": r[1], "type": r[2],
+                "product": r[1], "type": r[2], "trade_type": r[2],
                 "date": r[3], "trade_date": r[3],
                 "unit": r[4], "qty": r[5], "qty_luong": r[6],
                 "price_per_luong": r[7], "total_vnd": r[8], "note": r[9],
