@@ -2586,7 +2586,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         try:
             conn = _get_db_conn()
             with conn.cursor() as cur:
-                cur.execute("SELECT telegram_id, unit, qty, price_per_luong, total_vnd, trade_date::text, type, note FROM user_gold_trades WHERE id=%s", [trade_id])
+                cur.execute("SELECT telegram_id, unit, qty, price_per_luong, total_vnd, trade_date::text, type, note, name FROM user_gold_trades WHERE id=%s", [trade_id])
                 row = cur.fetchone()
             conn.close()
         except Exception as e:
@@ -2602,23 +2602,24 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         tx_date = str(data.get("date", row[5]))
         tx_type = str(data.get("type", row[6])).lower()
         note    = str(data.get("note", row[7] or ""))
+        gold_name = str(data.get("name", row[8] or ""))[:100]
         try:
             conn = _get_db_conn()
             with conn.cursor() as cur:
                 cur.execute("""
                     UPDATE user_gold_trades
                     SET unit=%s, qty=%s, qty_luong=%s, price_per_luong=%s,
-                        total_vnd=%s, trade_date=%s, type=%s, note=%s
+                        total_vnd=%s, trade_date=%s, type=%s, note=%s, name=%s
                     WHERE id=%s
                 """, [unit, round(qty,4), round(qty*_unit_to_luong(unit),4),
-                      round(price), round(total), tx_date, tx_type, note, trade_id])
+                      round(price), round(total), tx_date, tx_type, note, gold_name, trade_id])
             conn.commit(); conn.close()
         except Exception as e:
             _json(self, {"error": str(e)}, 500); return
         if _db_mod is not None:
             _db_mod.log_audit(tg_id, "trade.gold.edit", "user_gold_trades", str(trade_id),
-                               before={"qty": row[2], "price_per_luong": row[3], "total_vnd": row[4], "type": row[6]},
-                               after={"qty": qty, "price_per_luong": price, "total_vnd": total, "type": tx_type})
+                               before={"qty": row[2], "price_per_luong": row[3], "total_vnd": row[4], "type": row[6], "name": row[8]},
+                               after={"qty": qty, "price_per_luong": price, "total_vnd": total, "type": tx_type, "name": gold_name})
         _json(self, {"ok": True, "id": trade_id})
 
     def _api_delete_gold_trade(self, raw_idx: str, data: dict):
