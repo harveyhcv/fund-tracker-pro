@@ -64,7 +64,7 @@ class TestUnifiedHistory:
     def test_merges_ccq_and_gold(self):
         handler, ms = _make_handler()
         ccq_row = (1, "TCBF", "buy", "2026-07-01", 10.5, 15000.0, 150000, "", False)
-        gold_row = (2, "SJC_1L", "buy", "2026-07-02", "luong", 1.0, 1.0, 110000000.0, 110000000, "")
+        gold_row = (2, "SJC_1L", "buy", "2026-07-02", "luong", 1.0, 1.0, 110000000.0, 110000000, "", "SJC 1 Lượng")
         mock_conn = MagicMock()
         mock_cur = MagicMock()
         mock_cur.fetchall.side_effect = [[ccq_row], [gold_row]]
@@ -84,12 +84,13 @@ class TestUnifiedHistory:
         assert ccq["fund_code"] == "TCBF"
         assert ccq["code"] == "TCBF"
         assert gold["product"] == "SJC_1L"
+        assert gold["name"] == "SJC 1 Lượng"
 
     def test_sorted_newest_first(self):
         handler, ms = _make_handler()
         # CCQ older, Gold newer
         ccq_row = (1, "TCBF", "buy", "2026-06-01", 10.0, 15000.0, 150000, "", False)
-        gold_row = (2, "SJC_1L", "buy", "2026-07-15", "luong", 1.0, 1.0, 100000000.0, 100000000, "")
+        gold_row = (2, "SJC_1L", "buy", "2026-07-15", "luong", 1.0, 1.0, 100000000.0, 100000000, "", "")
         mock_conn = MagicMock()
         mock_cur = MagicMock()
         mock_cur.fetchall.side_effect = [[ccq_row], [gold_row]]

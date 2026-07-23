@@ -1396,9 +1396,11 @@ def _init_trade_tables():
                     price_per_luong BIGINT NOT NULL,
                     total_vnd       BIGINT NOT NULL,
                     note            TEXT DEFAULT '',
+                    name            TEXT DEFAULT '',
                     created_at      TIMESTAMPTZ DEFAULT NOW()
                 );
                 CREATE INDEX IF NOT EXISTS idx_gold_tg ON user_gold_trades(telegram_id);
+                ALTER TABLE user_gold_trades ADD COLUMN IF NOT EXISTS name TEXT DEFAULT '';
             """)
         conn.commit()
         conn.close()
@@ -2210,13 +2212,15 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         _json(self, result)
 
     def _api_add_trade(self, data: dict):
-        """POST /api/trade — thêm CCQ trade vào PostgreSQL."""
+        """POST /api/trade — thêm CCQ trade vào PostgreSQL.
+        Accept cả field names cũ (code/type/date) lẫn mới (fund_code/trade_type/trade_date).
+        """
         tg_id    = str(data.get("telegram_id", ""))
-        code     = str(data.get("code", "")).upper()
-        tx_type  = str(data.get("type", "")).lower()
+        code     = str(data.get("fund_code") or data.get("code", "")).upper()
+        tx_type  = str(data.get("trade_type") or data.get("type", "")).lower()
         units    = float(data.get("units", 0))
         amount   = float(data.get("amount", 0))
-        tx_date  = str(data.get("date", date.today().isoformat()))
+        tx_date  = str(data.get("trade_date") or data.get("date") or date.today().isoformat())
         nav_mm   = bool(data.get("nav_mismatch", False))
         note     = str(data.get("note", ""))
         is_dividend = tx_type == "dividend"
@@ -2513,7 +2517,8 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             with conn.cursor() as cur:
                 cur.execute("""
                     SELECT id, product, type, trade_date::text, unit, qty, qty_luong,
-                           price_per_luong, total_vnd, note
+                           price_per_luong, total_vnd, note,
+                           COALESCE(name, '') AS name
                     FROM user_gold_trades
                     WHERE telegram_id = %s
                     ORDER BY trade_date DESC, id DESC
@@ -2525,21 +2530,24 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         trades = [
             {"index": r[0], "telegram_id": tg_id, "product": r[1], "type": r[2],
              "date": r[3], "unit": r[4], "qty": r[5], "qty_luong": r[6],
-             "price_per_luong": r[7], "total_vnd": r[8], "note": r[9]}
+             "price_per_luong": r[7], "total_vnd": r[8], "note": r[9], "name": r[10]}
             for r in rows
         ]
         _json(self, {"trades": trades})
 
     def _api_add_gold_trade(self, data: dict):
-        """POST /api/gold/trade — thêm giao dịch vàng vào PostgreSQL."""
+        """POST /api/gold/trade — thêm giao dịch vàng vào PostgreSQL.
+        Accept cả field names cũ (type/qty/price_per_luong/date) lẫn mới
+        (trade_type/units/price/trade_date/name) từ web_js.js mới.
+        """
         tg_id   = str(data.get("telegram_id", ""))
-        tx_type = str(data.get("type", "")).lower()
+        tx_type = str(data.get("trade_type") or data.get("type", "")).lower()
         unit    = str(data.get("unit", "luong")).lower()
         product = str(data.get("product", "SJC_1L"))
-        qty     = float(data.get("qty", 0))
-        price   = float(data.get("price_per_luong", 0))
+        qty     = float(data.get("qty") or data.get("units") or 0)
+        price   = float(data.get("price_per_luong") or data.get("price") or 0)
         total   = float(data.get("total_vnd", 0)) or round(qty * price * _unit_to_luong(unit))
-        tx_date = str(data.get("date", date.today().isoformat()))
+        tx_date = str(data.get("trade_date") or data.get("date") or date.today().isoformat())
         note    = str(data.get("note", ""))
         if not all([tg_id, tx_type in ("buy", "sell"), qty > 0, price > 0]):
             _json(self, {"error": "Thiếu hoặc sai thông tin"}, 400); return
@@ -2549,14 +2557,15 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         try:
             conn = _get_db_conn()
             with conn.cursor() as cur:
+                gold_name = str(data.get("name", ""))[:100]
                 cur.execute("""
                     INSERT INTO user_gold_trades
                       (telegram_id, product, type, trade_date, unit, qty, qty_luong,
-                       price_per_luong, total_vnd, note)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id
+                       price_per_luong, total_vnd, note, name)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id
                 """, [tg_id, product, tx_type, tx_date, unit,
                       round(qty,4), round(qty * _unit_to_luong(unit),4),
-                      round(price), round(total), note])
+                      round(price), round(total), note, gold_name])
                 new_id = cur.fetchone()[0]
             conn.commit(); conn.close()
         except Exception as e:
@@ -3097,9 +3106,10 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         if not _auth_write(self, tg_id):
             return
         if _db_mod is None or not _db_mod.is_available():
-            _json(self, {"discounts": []})
+            _json(self, {"discounts": [], "codes": []})
             return
-        _json(self, {"discounts": _db_mod.list_discount_codes()})
+        data = _db_mod.list_discount_codes()
+        _json(self, {"discounts": data, "codes": data})
 
     def _api_admin_discount_set_active(self, data: dict, active: bool):
         tg_id = str(data.get("telegram_id", ""))
@@ -3141,7 +3151,8 @@ class MiniAppHandler(BaseHTTPRequestHandler):
                 ccq_rows = cur.fetchall()
                 cur.execute("""
                     SELECT id, product, type, trade_date::text, unit, qty, qty_luong,
-                           price_per_luong, total_vnd, note
+                           price_per_luong, total_vnd, note,
+                           COALESCE(name, '') AS name
                     FROM user_gold_trades
                     WHERE telegram_id = %s
                     ORDER BY trade_date DESC, id DESC
@@ -3167,6 +3178,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
                 "date": r[3], "trade_date": r[3],
                 "unit": r[4], "qty": r[5], "qty_luong": r[6],
                 "price_per_luong": r[7], "total_vnd": r[8], "note": r[9],
+                "name": r[10],
                 "asset_type": "gold",
             })
         trades.sort(key=lambda t: (t["date"] or ""), reverse=True)
