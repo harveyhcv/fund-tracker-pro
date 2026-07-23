@@ -1487,6 +1487,17 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             self._api_admin_users(qs)
         elif path == "/api/admin/discount/list":
             self._api_admin_discount_list(qs)
+        elif path == "/api/admin/payments/recent":
+            self._api_admin_payments_recent(qs)
+        elif path == "/api/history":
+            self._api_unified_history(qs)
+        elif path.startswith("/api/nav_history/"):
+            code = path[len("/api/nav_history/"):].upper()
+            self._api_nav_history_chart(code, qs)
+        elif path.startswith("/api/gold/price_history/"):
+            from urllib.parse import unquote
+            product = unquote(path[len("/api/gold/price_history/"):])
+            self._api_gold_price_history(product)
         elif path == "/health":
             _json(self, {"ok": True, "ts": datetime.now().isoformat()})
         elif path == "/api/version":
@@ -3106,6 +3117,178 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             return
         ok = _db_mod.set_discount_code_active(code, active, actor_id=tg_id)
         _json(self, {"ok": ok})
+
+    # ── GOV-026: 4 endpoints mới cho Harvey's web.html ──────────────────────────
+
+    def _api_unified_history(self, qs: dict):
+        """GET /api/history?user_id=... — gộp CCQ + gold trades thành 1 list.
+        Response: {trades: [{...ccq, asset_type:'ccq'} | {...gold, asset_type:'gold'}]}
+        """
+        tg_id = _qs_tg_id(qs)
+        if not tg_id:
+            _json(self, {"error": "user_id required"}, 400); return
+        if not _auth_write(self, tg_id): return
+        _init_trade_tables()
+        try:
+            conn = _get_db_conn()
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT id, code, type, trade_date::text, units, nav, amount, note, nav_mismatch
+                    FROM user_ccq_trades
+                    WHERE telegram_id = %s
+                    ORDER BY trade_date DESC, id DESC
+                """, [tg_id])
+                ccq_rows = cur.fetchall()
+                cur.execute("""
+                    SELECT id, product, type, trade_date::text, unit, qty, qty_luong,
+                           price_per_luong, total_vnd, note
+                    FROM user_gold_trades
+                    WHERE telegram_id = %s
+                    ORDER BY trade_date DESC, id DESC
+                """, [tg_id])
+                gold_rows = cur.fetchall()
+            conn.close()
+        except Exception as e:
+            _json(self, {"error": str(e)}, 500); return
+        trades = []
+        for r in ccq_rows:
+            trades.append({
+                "index": r[0], "telegram_id": tg_id,
+                "code": r[1], "fund_code": r[1], "type": r[2],
+                "date": r[3], "trade_date": r[3],
+                "units": r[4], "nav": r[5], "price_per_unit": r[5],
+                "amount": r[6], "note": r[7], "nav_mismatch": r[8],
+                "asset_type": "ccq",
+            })
+        for r in gold_rows:
+            trades.append({
+                "index": r[0], "telegram_id": tg_id,
+                "product": r[1], "type": r[2],
+                "date": r[3], "trade_date": r[3],
+                "unit": r[4], "qty": r[5], "qty_luong": r[6],
+                "price_per_luong": r[7], "total_vnd": r[8], "note": r[9],
+                "asset_type": "gold",
+            })
+        trades.sort(key=lambda t: (t["date"] or ""), reverse=True)
+        _json(self, {"trades": trades})
+
+    def _api_nav_history_chart(self, code: str, qs: dict):
+        """GET /api/nav_history/<code>?limit=365 — lịch sử NAV cho chart.
+        Response: {code, history:[{date, nav},...]} oldest-first.
+        """
+        if not code or len(code) > 12:
+            _json(self, {"error": "Invalid code"}, 400); return
+        try:
+            limit = max(1, min(3650, int((qs.get("limit") or ["365"])[0])))
+        except (ValueError, TypeError):
+            limit = 365
+        db_url = os.environ.get("DATABASE_URL", _load_cfg().get("database_url", ""))
+        if not db_url:
+            _json(self, {"error": "DATABASE_URL not set"}, 503); return
+        try:
+            import psycopg2
+            conn = psycopg2.connect(db_url, connect_timeout=8)
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT nav_date::text, nav::float
+                    FROM nav_history
+                    WHERE fund_code = %s AND nav IS NOT NULL
+                    ORDER BY nav_date DESC
+                    LIMIT %s
+                """, (code, limit))
+                rows = cur.fetchall()
+            conn.close()
+        except Exception as e:
+            _json(self, {"error": str(e)}, 500); return
+        history = [{"date": r[0], "nav": r[1]} for r in reversed(rows)]
+        _json(self, {"code": code, "history": history})
+
+    def _api_gold_price_history(self, product: str):
+        """GET /api/gold/price_history/<product> — lịch sử giá vàng cho 1 sản phẩm.
+        product là product code trong bảng gold_prices (VD: SJC_1L, XAUUSD).
+        Response: {product, history:[{date, price},...]} oldest-first.
+        Trả history:[] nếu product là tên tuỳ chỉnh không có trong gold_prices.
+        """
+        if not product or len(product) > 80:
+            _json(self, {"error": "Invalid product"}, 400); return
+        db_url = os.environ.get("DATABASE_URL", _load_cfg().get("database_url", ""))
+        if not db_url:
+            _json(self, {"error": "DATABASE_URL not set"}, 503); return
+        try:
+            import psycopg2
+            conn = psycopg2.connect(db_url, connect_timeout=8)
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT price_date::text,
+                           COALESCE(buy_price, sell_price)::float AS price
+                    FROM gold_prices
+                    WHERE product = %s
+                    ORDER BY price_date
+                """, (product,))
+                rows = cur.fetchall()
+            conn.close()
+        except Exception as e:
+            _json(self, {"error": str(e)}, 500); return
+        history = [{"date": r[0], "price": r[1]} for r in rows]
+        _json(self, {"product": product, "history": history})
+
+    def _api_admin_payments_recent(self, qs: dict):
+        """GET /api/admin/payments/recent?user_id=... — 50 giao dịch gần nhất (admin only).
+        Gộp bank_transfer_orders (SePay) + processed_payments (Stars/MoMo).
+        Response: {payments:[{telegram_id,name,plan,method,amount_vnd,stars,status,created_at}]}
+        """
+        tg_id = (qs.get("user_id") or [""])[0]
+        if not _is_admin(tg_id):
+            _json(self, {"error": "admin_only"}, 403); return
+        if not _auth_write(self, tg_id): return
+        db_url = os.environ.get("DATABASE_URL", _load_cfg().get("database_url", ""))
+        if not db_url:
+            _json(self, {"payments": []}); return
+        try:
+            import psycopg2
+            conn = psycopg2.connect(db_url, connect_timeout=8)
+            with conn.cursor() as cur:
+                # SePay: lấy từ bank_transfer_orders, join bot_profiles cho tên
+                cur.execute("""
+                    SELECT b.telegram_id::text, b.plan_key, b.amount_vnd::float,
+                           b.status, b.created_at::text,
+                           COALESCE(p.name, b.telegram_id::text) AS name
+                    FROM bank_transfer_orders b
+                    LEFT JOIN bot_profiles p ON p.telegram_id::text = b.telegram_id::text
+                    ORDER BY b.created_at DESC
+                    LIMIT 30
+                """)
+                sepay_rows = cur.fetchall()
+                # Stars/MoMo: từ processed_payments (không có amount/plan — chỉ có provider + tg_id)
+                cur.execute("""
+                    SELECT pp.telegram_id::text, pp.provider, pp.created_at::text,
+                           COALESCE(p.name, pp.telegram_id::text) AS name
+                    FROM processed_payments pp
+                    LEFT JOIN bot_profiles p ON p.telegram_id::text = pp.telegram_id::text
+                    WHERE pp.provider IN ('stars','momo')
+                    ORDER BY pp.created_at DESC
+                    LIMIT 30
+                """)
+                other_rows = cur.fetchall()
+            conn.close()
+        except Exception as e:
+            _json(self, {"error": str(e)}, 500); return
+        payments = []
+        for r in sepay_rows:
+            payments.append({
+                "telegram_id": r[0], "plan": r[1],
+                "amount_vnd": r[2], "status": r[3],
+                "created_at": r[4], "name": r[5],
+                "method": "sepay",
+            })
+        for r in other_rows:
+            payments.append({
+                "telegram_id": r[0], "method": r[1],
+                "created_at": r[2], "name": r[3],
+                "status": "paid",
+            })
+        payments.sort(key=lambda p: p.get("created_at") or "", reverse=True)
+        _json(self, {"payments": payments[:50]})
 
     def _api_admin_discount_edit(self, data: dict):
         """POST /api/admin/discount/edit — sửa mã đã tạo (không đổi code, uses_count)."""
