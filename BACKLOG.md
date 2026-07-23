@@ -4,8 +4,33 @@
 # Priority: P0 (blocker) / P1 (important) / P2 (nice-to-have)
 # Claude đọc file này ĐẦU TIÊN mỗi session. Pick task IN_PROGRESS nếu có, nếu không pick P0 cao nhất.
 #
-# Last updated: 2026-07-22 (ca chiều — GOV-025: GET /api/admin/users endpoint mới.
-# Suite: 334/334 OK. Tất cả P0/P1 DONE — chỉ còn PAY-006/007 P2 chờ merchant credentials)
+# Last updated: 2026-07-23 (ca sáng — GOV-026: 4 endpoints mới + GOV-027: field name compat
+# + gold name column. Suite: 359/359 OK. P0/P1 vẫn DONE; PAY-006/007 P2 blocked credentials)
+
+## Session (autonomous, scheduled) — Ca sáng 2026-07-23: GOV-026 + GOV-027
+# Tình trạng đầu session: tất cả P0/P1 đã DONE từ trước. Điều kiện dừng: "Hết P0+P1".
+# Hành động:
+# 1. Scan Harvey's uncommitted web_js.js (+1791 lines) → 4 API calls thiếu backend:
+#    - GET /api/history?user_id=... (unified CCQ+gold trades)
+#    - GET /api/nav_history/<code>?limit=N (NAV chart data)
+#    - GET /api/gold/price_history/<product> (gold chart data)
+#    - GET /api/admin/payments/recent?user_id=... (admin: 50 recent payments)
+# 2. GOV-026: Implement 4 endpoints trong miniapp_server.py + routing + 25 tests.
+#    Commit: (pending at context switch) — committed trong context mới.
+#    Suite: 334 → 359/359 passed.
+# 3. GOV-027: Phát hiện thêm field name mismatches + thiếu column:
+#    - /api/admin/discount/list: trả về cả 'codes' + 'discounts' (web_js.js đọc .codes,
+#      index.html đọc .discounts — backward compat)
+#    - /api/trade: accept fund_code/trade_type/trade_date aliases (new) và code/type/date (old)
+#    - /api/gold/trade: accept trade_type/units/price/trade_date aliases + tên cũ
+#    - user_gold_trades: additive name TEXT DEFAULT '' column (ALTER TABLE IF NOT EXISTS)
+#    - GET /api/gold/trades + GET /api/history: SELECT + response include name field
+#    Commit: fdd1c37 fix(GOV-027): field name compat + gold trade name column
+#    Suite: 359/359 passed.
+# Việc Harvey cần làm:
+#   (1) Commit + push web_js.js/web_body.html/build_web.py (Harvey uncommitted) để dùng endpoints mới
+#   (2) Cấp JWT tcinvest mới (hết hạn từ 2026-07-16)
+#   (3) Set WEB_SESSION_SECRET trên Railway + /setdomain trên @BotFather (GOV-015 web auth)
 
 ## Session (autonomous, scheduled) — Ca chiều 2026-07-22: GOV-025 admin user search
 # Tình trạng: tất cả P0/P1 đã DONE từ trước. Điều kiện dừng: "Hết P0+P1".
