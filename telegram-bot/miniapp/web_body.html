@@ -31,7 +31,29 @@
       <div class="upgrade-feature"><span class="chk">&#x2713;</span> DCA thông minh &amp; dự báo T+2</div>
       <div class="upgrade-feature"><span class="chk">&#x2713;</span> Thông báo realtime qua Telegram</div>
       <div id="plan-cards" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:14px 0"></div>
-      <button id="upgrade-cta-btn" class="btn btn-primary" onclick="startUpgrade()">&#x2B50; NÂNG CẤP PRO NGAY</button>
+      <!-- Payment method toggle -->
+      <div class="type-toggle" style="margin-bottom:12px;grid-template-columns:1fr 1fr 1fr">
+        <button class="type-btn active" id="pay-stars-btn" onclick="setPaymentMethod('stars')">&#x2B50; Sao</button>
+        <button class="type-btn" id="pay-sepay-btn" onclick="setPaymentMethod('sepay')">&#x1F3E6; QR</button>
+        <button class="type-btn" id="pay-momo-btn" onclick="setPaymentMethod('momo')">&#x1F49C; MoMo</button>
+      </div>
+      <div id="pay-stars-section">
+        <button id="upgrade-cta-btn" class="btn btn-primary" onclick="startUpgrade()">&#x2B50; NÂNG CẤP PRO NGAY</button>
+      </div>
+      <div id="pay-sepay-section" style="display:none">
+        <input type="text" id="sepay-discount-code" placeholder="Mã giảm giá (nếu có)" style="margin-bottom:8px;text-transform:uppercase">
+        <div id="sepay-final-price" style="display:none;font-size:12px;color:var(--buy);margin-bottom:8px;font-family:var(--mono)"></div>
+        <button class="btn btn-primary" onclick="startUpgradeSepay()" id="sepay-create-btn">&#x1F3E6; TẠO QR CHUYỂN KHOẢN</button>
+        <div id="sepay-qr-area" style="display:none;margin-top:12px;text-align:center">
+          <img id="sepay-qr-img" src="" alt="QR" style="width:200px;height:200px;border-radius:8px;border:1px solid var(--bdr)">
+          <div id="sepay-ref" style="font-family:var(--mono);font-size:11px;color:var(--txt2);margin-top:8px"></div>
+          <div id="sepay-status" style="font-size:12px;margin-top:6px;color:var(--txt2)">Đang chờ thanh toán...</div>
+        </div>
+      </div>
+      <div id="pay-momo-section" style="display:none">
+        <button class="btn btn-primary" id="momo-btn" onclick="startUpgradeMomo()">&#x1F49C; THANH TOÁN MOMO</button>
+        <div style="font-size:11px;color:var(--txt2);margin-top:8px;text-align:center">Chuyển hướng đến ví MoMo để thanh toán</div>
+      </div>
       <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--bdr)">
         <label>Mã giảm giá / giới thiệu</label>
         <div style="display:flex;gap:8px;margin-top:4px">
@@ -64,13 +86,13 @@
       <svg viewBox="0 0 24 24"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
       Giao Dịch
     </button>
+    <button class="nav-btn" data-tab="history" onclick="goTab('history',this)">
+      <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      Phân Tích
+    </button>
     <button class="nav-btn" data-tab="user" onclick="goTab('user',this)">
       <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
       Tài Khoản
-    </button>
-    <button class="nav-btn" id="nav-admin" style="display:none" data-tab="admin" onclick="goTab('admin',this)">
-      <svg viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-      Quản Trị
     </button>
   </div>
 
@@ -89,7 +111,7 @@
 <div class="main" id="app">
 
   <!-- Header -->
-  <header class="header">
+  <header class="header" onclick="onHdrTap()">
     <div class="header-title" id="header-title">TRANG CHỦ</div>
     <div class="header-search">
       <span class="si">&#128269;</span>
@@ -122,14 +144,45 @@
       <div id="pf-banner"></div>
       <div id="pf-alloc"></div>
 
-      <div class="section-label" style="padding:8px 14px 4px">QUỸ MỞ</div>
+      <!-- #2: School summary card -->
+      <div id="pf-school-summary"></div>
+      <div class="section-label section-ccq" style="padding:6px 14px 4px">
+        <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--c0);margin-right:6px;vertical-align:middle"></span>QUỸ MỞ
+      </div>
       <div id="pf-sub-ccq"><div class="loading"><div class="spinner"></div>Đang tải...</div></div>
 
-      <div class="section-label" style="padding:8px 14px 4px;margin-top:4px">VÀNG</div>
+      <div class="section-label section-gold" style="padding:6px 14px 4px;margin-top:2px">
+        <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#fbbf24;margin-right:6px;vertical-align:middle"></span>VÀNG
+      </div>
       <div id="pf-sub-gold"><div style="font-size:12px;color:var(--txt3);padding:8px 14px">Chưa có vàng.</div></div>
     </div>
 
-    <!-- CỘT GIỮA: THỊ TRƯỜNG (flex:1) -->
+    <!-- CỘT GIỮA: BIỂU ĐỒ & PHÂN TÍCH (flex:1) -->
+    <div class="col col-chart" id="chart-col">
+      <div class="col-head">
+        <div class="col-head-row">
+          <div>
+            <div class="col-title" id="chart-col-title">BIỂU ĐỒ NAV</div>
+            <div class="col-sub" id="chart-col-sub">Chọn một quỹ để xem</div>
+          </div>
+          <div class="chart-range-bar" id="chart-range-bar" style="display:none">
+            <button class="range-btn" onclick="setChartRange('1M',this)">1T</button>
+            <button class="range-btn" onclick="setChartRange('3M',this)">3T</button>
+            <button class="range-btn active" onclick="setChartRange('1Y',this)">1N</button>
+            <button class="range-btn" onclick="setChartRange('3Y',this)">3N</button>
+            <button class="range-btn" onclick="setChartRange('ALL',this)">Tất cả</button>
+          </div>
+        </div>
+      </div>
+      <div id="chart-col-content">
+        <div class="chart-empty-state">
+          <div class="chart-empty-icon">&#128202;</div>
+          <div>Nhấn vào một quỹ trong bảng giá<br>để xem biểu đồ NAV và tín hiệu kỹ thuật</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CỘT PHẢI: THỊ TRƯỜNG (360px) -->
     <div class="col col-market">
       <div class="col-head" style="position:sticky;top:0;z-index:10">
         <div class="col-head-row">
@@ -152,24 +205,6 @@
       <div id="market-content"><div class="loading"><div class="spinner"></div>Đang tải thị trường...</div></div>
     </div>
 
-    <!-- CỘT PHẢI: BIỂU ĐỒ & PHÂN TÍCH (420px) -->
-    <div class="col col-chart" id="chart-col">
-      <div class="col-head">
-        <div class="col-head-row">
-          <div>
-            <div class="col-title" id="chart-col-title">BIỂU ĐỒ NAV</div>
-            <div class="col-sub" id="chart-col-sub">Chọn một quỹ để xem</div>
-          </div>
-        </div>
-      </div>
-      <div id="chart-col-content">
-        <div class="chart-empty-state">
-          <div class="chart-empty-icon">&#128202;</div>
-          <div>Nhấn vào một quỹ trong bảng giá<br>để xem biểu đồ NAV và tín hiệu kỹ thuật</div>
-        </div>
-      </div>
-    </div>
-
   </div><!-- /.three-col -->
 </div><!-- /#page-home -->
 
@@ -179,24 +214,29 @@
 <div id="page-trade" class="page">
   <div class="trade-grid">
 
-    <!-- CỘT TRÁI: Tín hiệu -->
+    <!-- CỘT TRÁI: Tín hiệu + inline research -->
     <div class="trade-col trade-col-left">
-      <div class="col-head">
+      <div class="col-head" style="flex-shrink:0">
         <div class="col-title">TÍN HIỆU QUỸ THEO DÕI</div>
         <div class="col-sub" id="sig-count-sub">— quỹ đang nắm</div>
       </div>
-      <div id="sig-content"><div class="loading"><div class="spinner"></div></div></div>
+      <div id="sig-content" style="flex-shrink:0"><div class="loading"><div class="spinner"></div></div></div>
+      <!-- Inline chart + detail khi click signal -->
+      <div id="trade-signal-research" style="display:none;border-top:1px solid var(--bdr);flex:1;overflow-y:auto"></div>
     </div>
 
-    <!-- CỘT GIỮA: Form giao dịch + Lịch sử -->
+    <!-- CỘT GIỮA: Form giao dịch + Lịch sử (tab) -->
     <div class="trade-col trade-col-mid">
       <div class="trade-form-area">
-        <div class="col-head"><div class="col-title">GIAO DỊCH</div></div>
-        <div style="padding:0 14px">
-          <div class="tab-bar" style="margin-top:10px">
+        <div class="col-head" style="flex-shrink:0"><div class="col-title">GIAO DỊCH</div></div>
+        <div style="padding:0 14px 0;flex-shrink:0">
+          <div class="tab-bar" style="margin-top:10px;margin-bottom:0">
             <button class="tab active" onclick="showOrderSub('ccq',this)">Quỹ mở (CCQ)</button>
             <button class="tab" onclick="showOrderSub('gold',this)">Vàng</button>
+            <button class="tab" onclick="showOrderSub('history',this)">Lịch sử</button>
           </div>
+        </div>
+        <div class="trade-form-inner">
           <div id="order-sub-ccq">
             <div class="type-toggle" style="grid-template-columns:1fr 1fr 1fr">
               <button class="type-btn buy active" onclick="setTradeType('buy',this)">MUA</button>
@@ -209,6 +249,7 @@
             <input type="text" id="trade-amount" placeholder="0">
             <label id="trade-nav-label">NAV tại ngày mua (₫)</label>
             <input type="text" id="trade-nav-input" placeholder="0">
+            <div id="trade-nav-mismatch" style="display:none;font-size:11px;color:#facc15;background:#1a1000;border:1px solid #854d0e;border-radius:6px;padding:6px 10px;margin:4px 0"></div>
             <label>Ngày giao dịch</label>
             <input type="date" id="trade-date">
             <label>Ghi chú</label>
@@ -222,8 +263,19 @@
               <button class="type-btn sell" onclick="setGoldType('sell')">BÁN</button>
             </div>
             <label>Loại vàng</label>
-            <select id="gold-product-select"></select>
-            <label>Số lượng (lượng)</label>
+            <select id="gold-product-select" onchange="_onGoldProductChange(this.value)"></select>
+            <div id="gold-other-name-row" style="display:none;margin-top:6px">
+              <label>Tên loại vàng khác</label>
+              <input type="text" id="gold-other-name" placeholder="VD: Vàng Phú Quý 24K">
+            </div>
+            <div style="display:flex;align-items:center;margin-top:10px;margin-bottom:4px;gap:8px">
+              <label style="margin:0;flex:1">Số lượng</label>
+              <div class="type-toggle" style="margin:0;width:auto">
+                <button class="type-btn active" id="gold-unit-luong" onclick="setGoldUnitMode('luong',this)" style="padding:3px 8px;font-size:10px">Lượng</button>
+                <button class="type-btn" id="gold-unit-chi" onclick="setGoldUnitMode('chi',this)" style="padding:3px 8px;font-size:10px">Chỉ</button>
+                <button class="type-btn" id="gold-unit-gram" onclick="setGoldUnitMode('gram',this)" style="padding:3px 8px;font-size:10px">Gram</button>
+              </div>
+            </div>
             <input type="text" id="gold-units" placeholder="0.5">
             <label id="gold-price-label">Giá mua (₫/lượng)</label>
             <input type="text" id="gold-price" placeholder="0">
@@ -234,19 +286,36 @@
             <button class="btn btn-buy" id="gold-trade-btn" onclick="submitGoldTrade()">XÁC NHẬN MUA</button>
             <div id="gold-trade-status" style="font-size:12px;margin-top:8px;text-align:center"></div>
           </div>
-          <div id="order-sub-history" style="display:none"></div>
-        </div>
-      </div>
-      <!-- Lịch sử giao dịch (nửa dưới) -->
-      <div class="trade-history-area">
-        <div class="trade-history-head">
-          <span class="col-title" style="font-size:10px">LỊCH SỬ GIAO DỊCH</span>
-          <button onclick="loadUnifiedHistory()" class="col-action">&#x21BB;</button>
-        </div>
-        <div class="trade-history-scroll">
-          <div id="history-content"><div class="loading"><div class="spinner"></div></div></div>
-        </div>
-      </div>
+          <div id="order-sub-history">
+            <div class="trade-history-head">
+              <span class="col-title" style="font-size:10px">LỊCH SỬ GIAO DỊCH</span>
+              <div style="display:flex;gap:4px">
+                <button onclick="toggleHistFilter()" class="col-action" title="Bộ lọc">&#x1F50D;</button>
+                <button onclick="loadUnifiedHistory()" class="col-action">&#x21BB;</button>
+              </div>
+            </div>
+            <div id="hist-filter-panel" style="display:none;padding:8px 12px;border-bottom:1px solid var(--bdr);background:var(--bg3)">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">
+                <select id="hist-filter-asset" style="font-size:11px;padding:4px 6px" onchange="applyHistFilter()">
+                  <option value="all">Tất cả</option>
+                  <option value="ccq">Quỹ mở</option>
+                  <option value="gold">Vàng</option>
+                </select>
+                <select id="hist-filter-code" style="font-size:11px;padding:4px 6px" onchange="applyHistFilter()">
+                  <option value="">Tất cả mã</option>
+                </select>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+                <input type="date" id="hist-filter-from" style="font-size:11px;padding:4px 6px" onchange="applyHistFilter()">
+                <input type="date" id="hist-filter-to"   style="font-size:11px;padding:4px 6px" onchange="applyHistFilter()">
+              </div>
+            </div>
+            <div class="trade-history-scroll">
+              <div id="history-content"><div class="loading"><div class="spinner"></div></div></div>
+            </div>
+          </div>
+        </div><!-- /.trade-form-inner -->
+      </div><!-- /.trade-form-area -->
     </div>
 
     <!-- CỘT PHẢI: DCA + Dự báo vàng -->
@@ -259,7 +328,7 @@
           <button class="style-btn" onclick="setDcaStyle('vca',this)">VCA<span>Linh hoạt</span></button>
           <button class="style-btn" onclick="setDcaStyle('ca',this)">CA<span>Trung bình</span></button>
           <button class="style-btn" onclick="setDcaStyle('lump',this)">LUMP<span>1 lần</span></button>
-          <button class="style-btn" style="grid-column:1/-1" onclick="setDcaStyle('smart',this)">SMART<span>AI mix</span></button>
+          <button class="style-btn" onclick="setDcaStyle('smart',this)">SMART<span>AI mix</span></button>
         </div>
         <div id="dca-style-desc" class="style-desc"></div>
         <div class="budget-row">
@@ -269,15 +338,29 @@
         <div id="dca-content"><div style="font-size:12px;color:var(--txt2);text-align:center;padding:16px">Nhập ngân sách và nhấn Tính</div></div>
 
         <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--bdr)">
-          <div class="col-title" style="font-size:10px;margin-bottom:8px">DỰ BÁO VÀNG</div>
-          <div style="display:flex;gap:6px;margin-bottom:8px">
-            <button class="gp-btn gp-active" id="gold-pred-buy" onclick="setGoldPredType('buy',this)">Giá mua</button>
-            <button class="gp-btn" id="gold-pred-sell" onclick="setGoldPredType('sell',this)">Giá bán</button>
-            <button class="gp-btn gp-active" id="gold-pred-chi" onclick="setGoldUnit('chi',this)">Chỉ</button>
-            <button class="gp-btn" id="gold-pred-luong" onclick="setGoldUnit('luong',this)">Lượng</button>
+          <div class="col-title" style="font-size:10px;margin-bottom:8px">DỰ BÁO &amp; PHÂN TÍCH VÀNG</div>
+          <!-- Gold school selector -->
+          <div class="type-toggle" style="margin-bottom:8px;grid-template-columns:1fr 1fr 1fr">
+            <button class="type-btn gp-school-btn" onclick="setGoldSchool('short',this)">Lướt sóng</button>
+            <button class="type-btn gp-school-btn active" onclick="setGoldSchool('dca',this)">DCA</button>
+            <button class="type-btn gp-school-btn" onclick="setGoldSchool('value',this)">Phân kỳ</button>
           </div>
-          <button class="btn btn-primary" onclick="calcGoldDCA()" style="margin-bottom:10px">Tính dự báo vàng</button>
+          <!-- Macro inputs -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">
+            <div><label style="font-size:9px">XAU/USD</label><input type="text" id="gp-xau" placeholder="3100" style="font-size:11px;padding:5px 8px"></div>
+            <div><label style="font-size:9px">USD/VND</label><input type="text" id="gp-usd" placeholder="25000" style="font-size:11px;padding:5px 8px"></div>
+            <div><label style="font-size:9px">BTC/USD</label><input type="text" id="gp-btc" placeholder="95000" style="font-size:11px;padding:5px 8px"></div>
+            <div><label style="font-size:9px">Lạm phát %</label><input type="text" id="gp-inflation" placeholder="4" style="font-size:11px;padding:5px 8px"></div>
+          </div>
+          <div style="display:flex;gap:6px;margin-bottom:6px">
+            <button class="btn btn-primary" onclick="runGoldPrediction()" style="flex:1;margin:0;padding:8px">Tính</button>
+            <button onclick="autoFillMarketData()" style="padding:8px 10px;background:var(--bg3);border:1px solid var(--bdr);color:var(--txt2);border-radius:8px;cursor:pointer;font-size:11px;white-space:nowrap">&#x21BB; Auto-fill</button>
+          </div>
           <div id="gold-dca-content"></div>
+        </div>
+        <!-- Watch funds shortcut -->
+        <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--bdr)">
+          <button onclick="openWatchModal()" style="width:100%;padding:9px;background:var(--bg3);border:1px solid var(--bdr);color:var(--txt2);border-radius:8px;cursor:pointer;font-size:12px;font-family:var(--sans)">&#x1F441; Quản lý quỹ theo dõi</button>
         </div>
       </div>
     </div>
@@ -330,92 +413,334 @@
       </div>
 
     </div><!-- /.user-page-grid -->
-  </div>
+
+    <!-- Admin section — chỉ hiện với is_admin=true -->
+    <div id="admin-section" style="display:none">
+      <div class="admin-section-hdr">⚙ QUẢN TRỊ HỆ THỐNG</div>
+      <div class="admin-inline-grid">
+
+        <div class="card">
+          <div class="card-title">CẬP NHẬT TCBS TOKEN</div>
+          <input type="text" id="admin-token-input" placeholder="Dán TCBS JWT token...">
+          <button class="btn btn-primary" onclick="adminUpdateToken()">Lưu Token</button>
+          <div id="admin-token-status" style="font-size:12px;margin-top:6px"></div>
+          <div style="margin-top:10px">
+            <button onclick="openTCInvest()" style="background:#001a33;border:1px solid var(--c0);color:var(--c0);border-radius:8px;padding:8px 14px;font-size:12px;font-family:var(--mono);cursor:pointer;width:100%">Mở TCInvest lấy token tự động</button>
+            <div id="bm-slot" style="margin-top:8px;font-size:11px;color:var(--txt2)"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">FETCH NAV</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button onclick="adminFetchAll()" class="btn btn-primary" style="width:auto;padding:10px 14px;margin:0">Fetch tất cả</button>
+            <button onclick="adminFetchFmarket()" style="width:auto;padding:10px 14px;margin:0;background:var(--bg3);border:1px solid var(--bdr);color:var(--txt);border-radius:8px;cursor:pointer;font-family:var(--sans);font-size:13px">Fmarket only</button>
+            <button onclick="showTcbsMiniModal()" style="width:auto;padding:10px 14px;margin:0;background:var(--bg3);border:1px solid var(--bdr);color:var(--txt2);border-radius:8px;cursor:pointer;font-family:var(--sans);font-size:13px">TCBS token</button>
+            <button onclick="openNavImport()" style="width:auto;padding:10px 14px;margin:0;background:var(--bg3);border:1px solid var(--c0);color:var(--c0);border-radius:8px;cursor:pointer;font-family:var(--sans);font-size:13px">&#x2B06; Import NAV</button>
+          </div>
+          <div id="admin-fetch-status" style="font-size:12px;margin-top:8px"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">NAV CHỜ XÁC NHẬN</div>
+          <div id="admin-nav-confirm-list"><div style="font-size:12px;color:var(--txt2)">Đang tải...</div></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">THỐNG KÊ HỆ THỐNG</div>
+          <div id="admin-summary-box"><div style="font-size:12px;color:var(--txt2)">Đang tải...</div></div>
+        </div>
+
+        <div class="card full-col">
+          <div class="card-title">MÃ GIẢM GIÁ</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+            <div>
+              <div id="admin-discount-list"><div style="font-size:12px;color:var(--txt2)">Đang tải...</div></div>
+            </div>
+            <div>
+              <div style="font-size:11px;color:var(--c0);font-family:var(--mono);margin-bottom:8px">TẠO MÃ MỚI</div>
+              <label>Mã (viết hoa)</label>
+              <input type="text" id="disc-new-code" placeholder="VD: WELCOME50" style="text-transform:uppercase">
+              <label>Loại lợi ích</label>
+              <div style="display:flex;gap:8px;margin-bottom:8px">
+                <button id="disc-type-pct-btn" onclick="_discSetBenefitType('discount_pct')" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--c0);background:#001a33;color:var(--c0);font-family:var(--mono);font-size:12px;cursor:pointer">% Giảm giá</button>
+                <button id="disc-type-days-btn" onclick="_discSetBenefitType('free_days')" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--bdr);background:var(--bg3);color:var(--txt2);font-family:var(--mono);font-size:12px;cursor:pointer">Tặng ngày</button>
+              </div>
+              <label>Giá trị</label>
+              <input type="text" id="disc-new-value" placeholder="VD: 30">
+              <label>Cần thanh toán?</label>
+              <div style="display:flex;gap:8px;margin-bottom:8px">
+                <button id="disc-req-yes" onclick="_discSetRequiresPurchase(true)" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--bdr);background:var(--bg3);color:var(--txt2);font-family:var(--mono);font-size:12px;cursor:pointer">Có (voucher)</button>
+                <button id="disc-req-no" onclick="_discSetRequiresPurchase(false)" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--bdr);background:var(--bg3);color:var(--txt2);font-family:var(--mono);font-size:12px;cursor:pointer">Không (promo)</button>
+              </div>
+              <label>Hết hạn (trống = không giới hạn)</label>
+              <input type="datetime-local" id="disc-new-until">
+              <label>Số lượt tối đa</label>
+              <input type="number" id="disc-new-maxuses" placeholder="">
+              <label>Ghi chú</label>
+              <input type="text" id="disc-new-note" placeholder="(tuỳ chọn)">
+              <div id="disc-rule-warn" style="font-size:11px;color:var(--sell);margin-top:6px"></div>
+              <button id="disc-submit-btn" class="btn btn-primary" onclick="createDiscount()">Tạo mã</button>
+              <div id="disc-create-status" style="font-size:12px;margin-top:6px"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card full-col">
+          <div class="card-title">AUDIT LOG (50 gần nhất)</div>
+          <div id="admin-audit-list" style="font-size:11px;font-family:var(--mono);max-height:200px;overflow-y:auto">Đang tải...</div>
+        </div>
+
+        <!-- #29: Recent Payments -->
+        <div class="card full-col">
+          <div class="card-title">THANH TOÁN GẦN ĐÂY</div>
+          <div style="overflow-x:auto"><div id="admin-payments-list">Đang tải...</div></div>
+        </div>
+
+      </div><!-- /.admin-inline-grid -->
+
+      <!-- User management — full width -->
+      <div class="card au-card" style="margin-top:16px">
+        <div class="col-header">
+          <div class="card-title">QUẢN LÝ NGƯỜI DÙNG</div>
+          <input id="admin-user-search" class="au-search" type="text" placeholder="Tìm tên hoặc ID…" oninput="loadAdminUsers(this.value)" />
+        </div>
+        <div id="admin-user-list">Đang tải...</div>
+      </div>
+
+    </div><!-- /#admin-section -->
+
+  </div><!-- /.user-page-scroll -->
 </div><!-- /#page-user -->
 
 <!-- ══════════════════════════════════════════════════════════
-     TAB 4: QUẢN TRỊ — chỉ hiện với is_admin=true
+     TAB PHÂN TÍCH — NAV chart / T+2 accuracy / Gold history
 ══════════════════════════════════════════════════════════════ -->
-<div id="page-admin" class="page">
-  <div class="admin-page-scroll">
-    <div class="admin-page-grid">
+<div id="page-history" class="page">
+  <div class="hist-page-layout">
 
-      <div class="card">
-        <div class="card-title">CẬP NHẬT TCBS TOKEN</div>
-        <input type="text" id="admin-token-input" placeholder="Dán TCBS JWT token...">
-        <button class="btn btn-primary" onclick="adminUpdateToken()">Lưu Token</button>
-        <div id="admin-token-status" style="font-size:12px;margin-top:6px"></div>
-        <div style="margin-top:10px">
-          <button onclick="openTCInvest()" style="background:#001a33;border:1px solid var(--c0);color:var(--c0);border-radius:8px;padding:8px 14px;font-size:12px;font-family:var(--mono);cursor:pointer;width:100%">Mở TCInvest lấy token tự động</button>
-          <div id="bm-slot" style="margin-top:8px;font-size:11px;color:var(--txt2)"></div>
+    <!-- Cột trái: Fund list (signal rows) + nhập NAV -->
+    <div class="hist-page-left">
+      <div class="col-head" style="flex-shrink:0">
+        <div class="col-head-row">
+          <div class="col-title">CHỌN QUỸ PHÂN TÍCH</div>
+          <span id="hist-fund-count" style="font-size:10px;color:var(--txt2)"></span>
         </div>
       </div>
-
-      <div class="card">
-        <div class="card-title">FETCH NAV</div>
-        <div style="display:flex;gap:8px">
-          <button onclick="adminFetchAll()" class="btn btn-primary" style="width:auto;padding:10px 14px;margin:0">Fetch tất cả</button>
-          <button onclick="adminFetchFmarket()" style="width:auto;padding:10px 14px;margin:0;background:var(--bg3);border:1px solid var(--bdr);color:var(--txt);border-radius:8px;cursor:pointer;font-family:var(--sans);font-size:13px">Fmarket only</button>
+      <!-- Fund signal rows — JS renders -->
+      <div id="hist-fund-list" style="flex:1;overflow-y:auto">
+        <div class="loading"><div class="spinner"></div></div>
+      </div>
+      <!-- Nhập NAV thủ công (single row) -->
+      <div style="padding:10px 12px;border-top:1px solid var(--bdr);flex-shrink:0;background:var(--bg2)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div class="col-title" style="font-size:9px;margin:0">NHẬP NAV THỦ CÔNG</div>
+          <span id="hist-fund-label" style="font-size:10px;color:var(--c0);font-family:var(--mono)"></span>
         </div>
-        <div id="admin-fetch-status" style="font-size:12px;margin-top:8px"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">
+          <input type="date" id="bulk-nav-date-single" style="font-size:11px;padding:5px 8px">
+          <input type="text" id="bulk-nav-value-single" placeholder="NAV (đ)" style="font-size:11px;padding:5px 8px;font-family:var(--mono)">
+        </div>
+        <button onclick="submitSingleNav()" class="btn btn-primary" style="padding:8px;font-size:12px;margin:0">Lưu NAV</button>
+        <div id="bulk-nav-status" style="font-size:11px;margin-top:6px;min-height:14px;text-align:center"></div>
       </div>
-
-      <div class="card">
-        <div class="card-title">NAV CHỜ XÁC NHẬN</div>
-        <div id="admin-nav-confirm-list"><div style="font-size:12px;color:var(--txt2)">Đang tải...</div></div>
+      <!-- Admin: fetch NAV trigger -->
+      <div id="hist-admin-actions" style="display:none;padding:0 12px 10px;border-top:1px solid var(--bdr);flex-shrink:0">
+        <button class="btn btn-primary" style="margin:8px 0 4px;padding:8px;font-size:12px" onclick="autoUpdateNav()">&#x21BB; Fetch NAV mới nhất</button>
+        <div id="hist-fetch-status" style="font-size:11px;color:var(--txt2)"></div>
       </div>
+    </div>
 
-      <div class="card">
-        <div class="card-title">THỐNG KÊ HỆ THỐNG</div>
-        <div id="admin-summary-box"><div style="font-size:12px;color:var(--txt2)">Đang tải...</div></div>
+    <!-- Cột phải: NAV header + View toggle + Chart + Indicators -->
+    <div class="hist-page-right">
+      <!-- NAV headline cho quỹ đang chọn -->
+      <div class="hist-nav-header" id="hist-nav-header">
+        <div style="color:var(--txt2);font-size:12px;padding:4px 0">Chọn quỹ bên trái để xem biểu đồ</div>
       </div>
-
-      <div class="card full-col">
-        <div class="card-title">MÃ GIẢM GIÁ</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-          <div>
-            <div id="admin-discount-list"><div style="font-size:12px;color:var(--txt2)">Đang tải...</div></div>
-          </div>
-          <div>
-            <div style="font-size:11px;color:var(--c0);font-family:var(--mono);margin-bottom:8px">TẠO MÃ MỚI</div>
-            <label>Mã (viết hoa)</label>
-            <input type="text" id="disc-new-code" placeholder="VD: WELCOME50" style="text-transform:uppercase">
-            <label>Loại lợi ích</label>
-            <div style="display:flex;gap:8px;margin-bottom:8px">
-              <button id="disc-type-pct-btn" onclick="_discSetBenefitType('discount_pct')" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--c0);background:#001a33;color:var(--c0);font-family:var(--mono);font-size:12px;cursor:pointer">% Giảm giá</button>
-              <button id="disc-type-days-btn" onclick="_discSetBenefitType('free_days')" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--bdr);background:var(--bg3);color:var(--txt2);font-family:var(--mono);font-size:12px;cursor:pointer">Tặng ngày</button>
-            </div>
-            <label>Giá trị</label>
-            <input type="text" id="disc-new-value" placeholder="VD: 30">
-            <label>Cần thanh toán?</label>
-            <div style="display:flex;gap:8px;margin-bottom:8px">
-              <button id="disc-req-yes" onclick="_discSetRequiresPurchase(true)" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--bdr);background:var(--bg3);color:var(--txt2);font-family:var(--mono);font-size:12px;cursor:pointer">Có (voucher)</button>
-              <button id="disc-req-no" onclick="_discSetRequiresPurchase(false)" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--bdr);background:var(--bg3);color:var(--txt2);font-family:var(--mono);font-size:12px;cursor:pointer">Không (promo)</button>
-            </div>
-            <label>Hết hạn (trống = không giới hạn)</label>
-            <input type="datetime-local" id="disc-new-until">
-            <label>Số lượt tối đa</label>
-            <input type="number" id="disc-new-maxuses" placeholder="">
-            <label>Ghi chú</label>
-            <input type="text" id="disc-new-note" placeholder="(tuỳ chọn)">
-            <div id="disc-rule-warn" style="font-size:11px;color:var(--sell);margin-top:6px"></div>
-            <button id="disc-submit-btn" class="btn btn-primary" onclick="createDiscount()">Tạo mã</button>
-            <div id="disc-create-status" style="font-size:12px;margin-top:6px"></div>
+      <div class="hist-nav-right">
+        <!-- View toggle + time range -->
+        <div style="display:flex;flex-wrap:wrap;gap:6px;padding:8px 14px 6px;border-bottom:1px solid var(--bdr);flex-shrink:0;align-items:center">
+          <button id="hist-view-nav"  class="tab active" onclick="setHistView('nav',this)"  style="font-size:11px;padding:5px 10px">📈 NAV</button>
+          <button id="hist-view-t2"   class="tab"        onclick="setHistView('t2',this)"   style="font-size:11px;padding:5px 10px">⏱ T+2</button>
+          <button id="hist-view-gold" class="tab"        onclick="setHistView('gold',this)" style="font-size:11px;padding:5px 10px">🪙 Vàng</button>
+          <div id="hist-range-bar" style="display:flex;gap:4px;margin-left:auto">
+            <button class="hist-range-btn active" onclick="setHistRange('1M',this)">1T</button>
+            <button class="hist-range-btn" onclick="setHistRange('3M',this)">3T</button>
+            <button class="hist-range-btn" onclick="setHistRange('6M',this)">6T</button>
+            <button class="hist-range-btn" onclick="setHistRange('1Y',this)">1N</button>
+            <button class="hist-range-btn" onclick="setHistRange('ALL',this)">Tất cả</button>
           </div>
         </div>
+        <!-- Chart area -->
+        <div id="hist-chart-area">
+          <div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--txt2);font-size:12px">Chọn quỹ bên trái</div>
+        </div>
+        <!-- Indicators + Analysis below chart -->
+        <div id="hist-analysis-panel" style="padding:0 14px 16px;border-top:1px solid var(--bdr);overflow-y:auto">
+          <div style="color:var(--txt2);font-size:12px;padding:12px 0;text-align:center">Chọn quỹ để xem chỉ báo kỹ thuật</div>
+        </div>
       </div>
+    </div>
 
-      <div class="card full-col">
-        <div class="card-title">AUDIT LOG (50 gần nhất)</div>
-        <div id="admin-audit-list" style="font-size:11px;font-family:var(--mono);max-height:200px;overflow-y:auto">Đang tải...</div>
-      </div>
-
-    </div><!-- /.admin-page-grid -->
   </div>
-</div><!-- /#page-admin -->
+</div>
 
   </div><!-- /.content -->
 </div><!-- /.main#app -->
+
+<!-- ── Edit CCQ Trade Modal ── -->
+<div id="edit-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:500;align-items:center;justify-content:center">
+  <div style="background:var(--bg2);border:1px solid var(--bdr);border-radius:16px;width:min(420px,95vw);padding:20px;max-height:90vh;overflow-y:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:var(--c0)">SỬA GIAO DỊCH CCQ</div>
+      <button onclick="closeEditModal()" style="background:none;border:none;color:var(--txt2);font-size:18px;cursor:pointer">&#x2715;</button>
+    </div>
+    <input type="hidden" id="edit-idx">
+    <div class="type-toggle" style="grid-template-columns:1fr 1fr 1fr;margin-bottom:12px">
+      <button id="edit-type-buy"      class="type-btn buy active" onclick="setEditType('buy')">MUA</button>
+      <button id="edit-type-sell"     class="type-btn sell"       onclick="setEditType('sell')">BÁN</button>
+      <button id="edit-type-dividend" class="type-btn div"        onclick="setEditType('dividend')">LỢI TỨC</button>
+    </div>
+    <label>Mã quỹ</label>
+    <input type="text" id="edit-fund" readonly style="background:var(--bg3);color:var(--txt2)">
+    <label id="edit-units-label">Số CCQ</label>
+    <input type="text" id="edit-units" placeholder="0" oninput="calcEditAmount()">
+    <div id="edit-price-row">
+      <label>NAV tại ngày GD (₫)</label>
+      <input type="text" id="edit-price" placeholder="0" oninput="calcEditAmount()">
+    </div>
+    <div id="edit-amount-preview" style="font-size:12px;color:var(--c0);font-family:var(--mono);margin:4px 0 8px;text-align:right"></div>
+    <label>Ngày giao dịch</label>
+    <input type="date" id="edit-date">
+    <label>Ghi chú</label>
+    <input type="text" id="edit-note" placeholder="(tuỳ chọn)">
+    <button class="btn btn-primary" onclick="saveEditTrade()" style="margin-top:12px">Lưu thay đổi</button>
+    <div id="edit-trade-status" style="font-size:12px;margin-top:6px;text-align:center"></div>
+  </div>
+</div>
+
+<!-- ── Edit Gold Trade Modal ── -->
+<div id="edit-gold-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:500;align-items:center;justify-content:center">
+  <div style="background:var(--bg2);border:1px solid var(--bdr);border-radius:16px;width:min(420px,95vw);padding:20px;max-height:90vh;overflow-y:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:#fbbf24">SỬA GIAO DỊCH VÀNG</div>
+      <button onclick="closeEditGoldModal()" style="background:none;border:none;color:var(--txt2);font-size:18px;cursor:pointer">&#x2715;</button>
+    </div>
+    <input type="hidden" id="edit-gold-idx">
+    <div class="type-toggle" style="margin-bottom:12px">
+      <button id="edit-gold-type-buy"  class="type-btn buy active" onclick="setEditGoldType('buy')">MUA</button>
+      <button id="edit-gold-type-sell" class="type-btn sell"       onclick="setEditGoldType('sell')">BÁN</button>
+    </div>
+    <label>Loại vàng</label>
+    <input type="text" id="edit-gold-product" readonly style="background:var(--bg3);color:var(--txt2)">
+    <label>Số lượng (lượng)</label>
+    <input type="text" id="edit-gold-qty" placeholder="0.5" oninput="calcEditGoldTotal()">
+    <label>Giá/lượng (₫)</label>
+    <input type="text" id="edit-gold-price" placeholder="0" oninput="calcEditGoldTotal()">
+    <div id="edit-gold-total-preview" style="font-size:12px;color:var(--c0);font-family:var(--mono);margin:4px 0 8px;text-align:right"></div>
+    <label>Ngày giao dịch</label>
+    <input type="date" id="edit-gold-date">
+    <label>Tên/ghi chú</label>
+    <input type="text" id="edit-gold-note" placeholder="(tuỳ chọn)">
+    <button class="btn btn-primary" id="edit-gold-save-btn" onclick="saveEditGoldTrade()" style="margin-top:12px">Lưu lệnh MUA</button>
+    <div id="edit-gold-status" style="font-size:12px;margin-top:6px;text-align:center"></div>
+  </div>
+</div>
+
+<!-- ── Watch Funds Modal ── -->
+<div id="watch-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:450;align-items:flex-start;justify-content:center;padding-top:60px">
+  <div style="background:var(--bg2);border:1px solid var(--bdr);border-radius:16px;width:min(460px,95vw);max-height:80vh;display:flex;flex-direction:column">
+    <div style="padding:16px 20px;border-bottom:1px solid var(--bdr);display:flex;justify-content:space-between;align-items:center;flex-shrink:0">
+      <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:var(--c0)">THEO DÕI QUỸ</div>
+      <button onclick="closeWatchModal()" style="background:none;border:none;color:var(--txt2);font-size:18px;cursor:pointer">&#x2715;</button>
+    </div>
+    <div style="padding:12px 16px;flex-shrink:0">
+      <input type="text" id="watch-search" placeholder="Tìm mã quỹ..." oninput="filterWatchList()" style="width:100%;box-sizing:border-box">
+    </div>
+    <div id="watch-list" style="flex:1;overflow-y:auto;padding:0 16px 12px"></div>
+    <div style="padding:12px 16px;border-top:1px solid var(--bdr);flex-shrink:0;display:flex;gap:8px;align-items:center">
+      <div id="watch-status" style="font-size:12px;flex:1;color:var(--txt2)"></div>
+      <button class="btn btn-primary" onclick="saveWatchedFunds()" style="width:auto;margin:0;padding:8px 20px">Lưu</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── NAV Import Modal ── -->
+<div id="nav-import-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:480;align-items:flex-start;justify-content:center;padding-top:60px">
+  <div style="background:var(--bg2);border:1px solid var(--bdr);border-radius:16px;width:min(480px,95vw);max-height:85vh;display:flex;flex-direction:column">
+    <div style="padding:16px 20px;border-bottom:1px solid var(--bdr);display:flex;justify-content:space-between;align-items:center;flex-shrink:0">
+      <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:var(--c0)">IMPORT NAV THỦ CÔNG</div>
+      <button onclick="closeNavImport()" style="background:none;border:none;color:var(--txt2);font-size:18px;cursor:pointer">&#x2715;</button>
+    </div>
+    <div style="padding:14px 20px;flex:1;overflow-y:auto">
+      <label>Mã quỹ</label>
+      <input type="text" id="nav-import-code" placeholder="VD: TCBF" style="text-transform:uppercase;margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <div style="font-size:11px;color:var(--txt2);font-family:var(--mono)">NGÀY &amp; NAV</div>
+        <button onclick="navImportAddRow()" style="background:none;border:1px solid var(--bdr);color:var(--c0);border-radius:6px;padding:3px 10px;font-size:12px;cursor:pointer">+ Thêm dòng</button>
+      </div>
+      <div id="nav-import-rows" style="display:flex;flex-direction:column;gap:6px"></div>
+      <div id="nav-import-status" style="font-size:12px;margin-top:10px;text-align:center"></div>
+    </div>
+    <div style="padding:12px 20px;border-top:1px solid var(--bdr);flex-shrink:0">
+      <button class="btn btn-primary" onclick="navImportSubmit()">&#x2B06; Import NAV</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── TCBS Mini Modal ── -->
+<div id="tcbs-mini-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:490;align-items:center;justify-content:center">
+  <div style="background:var(--bg2);border:1px solid var(--c0);border-radius:16px;width:min(400px,92vw);padding:20px">
+    <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:var(--c0);margin-bottom:12px">&#x26A0; TOKEN TCBS HẾT HẠN</div>
+    <div style="font-size:12px;color:var(--txt2);margin-bottom:12px">Dán JWT token mới từ TCInvest để tiếp tục fetch NAV TCBS.</div>
+    <input type="text" id="tcbs-mini-token" placeholder="eyJ..." style="font-family:var(--mono);font-size:11px">
+    <div id="tcbs-mini-status" style="font-size:12px;margin:8px 0;color:var(--txt2)"></div>
+    <div style="display:flex;gap:8px;margin-top:4px">
+      <button class="btn btn-primary" onclick="tcbsMiniSubmit()" style="flex:1;margin:0">Lưu &amp; Fetch</button>
+      <button onclick="tcbsMiniSkip()" style="flex:1;padding:10px;background:var(--bg3);border:1px solid var(--bdr);color:var(--txt2);border-radius:8px;cursor:pointer;font-family:var(--sans);font-size:13px">Bỏ qua TCBS</button>
+      <button onclick="closeTcbsMiniModal()" style="padding:10px 14px;background:none;border:1px solid var(--bdr);color:var(--txt2);border-radius:8px;cursor:pointer">&#x2715;</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Token Update Modal (Easter egg: 5-tap header) ── -->
+<div id="token-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:500;align-items:center;justify-content:center">
+  <div style="background:var(--bg2);border:1px solid var(--c0);border-radius:16px;width:min(400px,92vw);padding:20px">
+    <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:var(--c0);margin-bottom:12px">&#x1F511; CẬP NHẬT TOKEN TCBS</div>
+    <input type="text" id="token-input" placeholder="Dán TCBS JWT token..." style="font-family:var(--mono);font-size:11px">
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button class="btn btn-primary" onclick="(()=>{const t=document.getElementById('token-input').value.trim();if(t){document.getElementById('admin-token-input').value=t;adminUpdateToken();}document.getElementById('token-modal').style.display='none';})()" style="flex:1;margin:0">Lưu Token</button>
+      <button onclick="document.getElementById('token-modal').style.display='none'" style="padding:10px 14px;background:none;border:1px solid var(--bdr);color:var(--txt2);border-radius:8px;cursor:pointer">&#x2715;</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── #14 Price Alert Modal ── -->
+<div id="alert-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:500;align-items:center;justify-content:center">
+  <div style="background:var(--bg2);border:1px solid var(--bdr);border-radius:16px;width:min(400px,95vw);padding:20px;max-height:85vh;overflow-y:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:var(--c0)">&#x1F514; ĐẶT CẢNH BÁO GIÁ</div>
+      <button onclick="closeAlertModal()" style="background:none;border:none;color:var(--txt2);font-size:18px;cursor:pointer">&#x2715;</button>
+    </div>
+    <label>Mã quỹ</label>
+    <input type="text" id="alert-fund-code" placeholder="VD: VHIZ" style="text-transform:uppercase">
+    <label>Hướng cảnh báo</label>
+    <div class="type-toggle" style="margin-bottom:10px">
+      <button id="alert-dir-above" class="type-btn buy active" onclick="setAlertDirection('above',this)">&#x2191; Vượt lên trên</button>
+      <button id="alert-dir-below" class="type-btn sell" onclick="setAlertDirection('below',this)">&#x2193; Giảm xuống dưới</button>
+    </div>
+    <label>Giá cảnh báo (đ) — hoặc nhập % bên dưới</label>
+    <input type="text" id="alert-price" placeholder="VD: 20000">
+    <label>Hoặc thay đổi % so với NAV hiện tại</label>
+    <input type="text" id="alert-pct" placeholder="VD: +5 hoặc -3">
+    <div id="alert-status" style="font-size:12px;margin:6px 0;text-align:center"></div>
+    <button class="btn btn-primary" onclick="saveAlert()">&#x1F514; ĐẶT CẢNH BÁO</button>
+    <div style="margin-top:14px;border-top:1px solid var(--bdr);padding-top:12px">
+      <div style="font-size:11px;font-family:var(--mono);color:var(--txt2);margin-bottom:8px">CẢNH BÁO ĐANG ĐẶT</div>
+      <div id="alert-list"></div>
+    </div>
+  </div>
+</div>
 
 <script src="web_js.js"></script>
 </body>

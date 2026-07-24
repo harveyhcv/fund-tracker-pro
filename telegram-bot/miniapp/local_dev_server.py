@@ -13,18 +13,49 @@ import os
 import sqlite3
 import sys
 import time
+
+# Fix Unicode print trên Windows (cp1252 không encode được tiếng Việt)
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 import threading
 import urllib.parse
+import urllib.request
 from datetime import datetime, date
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from socketserver import ThreadingMixIn
 from pathlib import Path
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
-ROOT    = Path(__file__).parent
-NAV_DB  = ROOT.parent.parent / "core_data" / "nav.db"
-USER_DB = ROOT / "local_users.db"
-PORT    = int(os.environ.get("PORT", 8080))
+ROOT        = Path(__file__).parent
+NAV_DB      = ROOT.parent.parent / "core_data" / "nav.db"
+USER_DB     = ROOT / "local_users.db"
+LOCAL_CFG   = ROOT / "local_config.json"
+PORT        = int(os.environ.get("PORT", 8080))
+
+# ── Fetch config ──────────────────────────────────────────────────────────────
+PROTECTED_SOURCES = {"fixed", "manual", "confirmed", "tcinvest"}
+
+# fmarket_id cho các quỹ có trên fmarket (None = chỉ dùng TCInvest)
+FUND_FMARKET: dict = {
+    "SSISCA": 11, "VCBFBCF": 32, "VCBFFIF": 33, "VCBFAIF": 82,
+    "VESAF": 23, "VEOF": 20, "VDEF": 80, "VIBF": 22, "VMEEF": 68,
+    "UVDIF": 78, "UVEEF": 58, "DCAF": 29, "DCDE": 25, "DCBF": 49,
+    "DCDS": 43, "MBVF": 77, "MBBF": 37, "BVPF": 47, "DFIX": 66,
+    "ESBF": 71, "ESSCF": 72, "KDEF": 64, "LHCDF": 63, "MAGEF": 73,
+    "MAFPF1": 69, "MIRAEF": 57, "NTPPF": 62, "PHVSF": 59, "MABF": 84,
+}
+TCINVEST_ALIASES = {"VMEEF": "VMPF", "NTPPF": "TVPF"}
+
+def _load_local_cfg() -> dict:
+    if LOCAL_CFG.exists():
+        try: return json.loads(LOCAL_CFG.read_text("utf-8"))
+        except: pass
+    return {}
+
+def _save_local_cfg(data: dict):
+    LOCAL_CFG.write_text(json.dumps(data, ensure_ascii=False, indent=2), "utf-8")
 
 # ── Local user DB (SQLite) ────────────────────────────────────────────────────
 def _user_conn():
@@ -179,15 +210,130 @@ def calc_signal(code: str, pts: list) -> dict:
         elif bb_pct > 80: score -= 2; details.append(f"BB {bb_pct:.0f}% gần đỉnh")
         else: details.append(f"BB {bb_pct:.0f}%")
 
-    if score >= 4: sig = "MUA MANH"
+    if score >= 4: sig = "MUA MẠNH"
     elif score >= 2: sig = "MUA"
-    elif score <= -4: sig = "BAN MANH"
-    elif score <= -2: sig = "BAN"
-    else: sig = "TRUNG LAP"
+    elif score <= -4: sig = "BÁN MẠNH"
+    elif score <= -2: sig = "BÁN"
+    else: sig = "TRUNG LẬP"
 
     return {"signal":sig, "score":score, "rsi":rsi, "bb_pct":bb_pct, "macd_hist":macd_hist,
             "nav":last, "nav_date":pts[-1]["date"], "chg_pct":chg_pct,
             "chg7":chg7, "chg30":chg30, "details":details}
+
+# ── NAV fetch helpers ─────────────────────────────────────────────────────────
+def _http_json(url: str, headers: dict = None, body: bytes = None, method: str = None) -> dict:
+    req = urllib.request.Request(url, data=body, headers=headers or {}, method=method or ("POST" if body else "GET"))
+    try:
+        with urllib.request.urlopen(req, timeout=15) as r:
+            return json.loads(r.read().decode("utf-8"))
+    except Exception as e:
+        print(f"[HTTP] {url}: {e}", flush=True)
+        return {}
+
+def fetch_tcinvest_nav(code: str, token: str) -> list:
+    """Returns [{date, nav}] sorted ascending."""
+    alias = TCINVEST_ALIASES.get(code, code)
+    url = f"https://apiextaws.tcbs.com.vn/visionary-port/v1/chart-nav?code={alias}&timeline=ALL"
+    hdrs = {
+        "Accept": "application/json", "Accept-language": "vi",
+        "Origin": "https://tcinvest.tcbs.com.vn",
+        "Referer": "https://tcinvest.tcbs.com.vn/",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+    }
+    if token: hdrs["Authorization"] = f"Bearer {token}"
+    data = _http_json(url, hdrs)
+    rows = data if isinstance(data, list) else (data.get("data") or [])
+    pts = []
+    for r in rows:
+        d = r.get("matchedDate") or r.get("date") or ""
+        n = r.get("navCurrent") or r.get("nav")
+        if d and n:
+            pts.append({"date": str(d)[:10], "nav": float(n)})
+    pts.sort(key=lambda x: x["date"])
+    return pts
+
+def fetch_fmarket_nav(fmarket_id: int) -> list:
+    """Returns [{date, nav}] sorted ascending."""
+    today = date.today().strftime("%Y%m%d")
+    url = "https://api.fmarket.vn/res/product/get-nav-history"
+    body = json.dumps({"isAllData": 1, "productId": fmarket_id, "fromDate": None, "toDate": today}).encode()
+    hdrs = {"Content-Type": "application/json", "Accept": "application/json"}
+    data = _http_json(url, hdrs, body)
+    # parse nhiều kiểu response từ fmarket (list / dict / nested)
+    if isinstance(data, list):
+        items = data
+    else:
+        inner = data.get("data")
+        if isinstance(inner, list):
+            items = inner
+        elif isinstance(inner, dict):
+            items = inner.get("navHistories") or []
+        else:
+            items = data.get("navHistories") or []
+    pts = []
+    for r in items:
+        d = r.get("navDate") or r.get("date") or ""
+        n = r.get("nav") or r.get("navValue")
+        if d and n:
+            pts.append({"date": str(d)[:10], "nav": float(n)})
+    pts.sort(key=lambda x: x["date"])
+    return pts
+
+def upsert_nav_safe(code: str, pts: list, source: str):
+    """Upsert NAV vào nav.db — không ghi đè PROTECTED_SOURCES."""
+    if not pts: return 0
+    conn = _nav_conn()
+    written = 0
+    for p in pts:
+        d, n = p["date"], p["nav"]
+        existing = conn.execute(
+            "SELECT source, status FROM nav_history WHERE fund_code=? AND date=?", (code, d)
+        ).fetchone()
+        if existing and (existing[0] in PROTECTED_SOURCES or existing[1] == 'verified'):
+            continue
+        conn.execute(
+            """INSERT INTO nav_history (fund_code, date, nav, source, status, updated_at)
+               VALUES (?, ?, ?, ?, 'verified', datetime('now'))
+               ON CONFLICT(fund_code, date) DO UPDATE SET
+                 nav=excluded.nav, source=excluded.source, updated_at=datetime('now')
+               WHERE status != 'verified'""",
+            (code, d, n, source)
+        )
+        written += 1
+    conn.commit(); conn.close()
+    return written
+
+_fetch_log: list = []  # audit trail for admin UI
+
+def _run_fetch_all(token: str, skip_tcbs: bool = False):
+    """Chạy trong background thread — fetch NAV từ TCInvest + fmarket."""
+    global _fetch_log, _signals_ts
+    conn = _nav_conn()
+    codes = [r[0] for r in conn.execute("SELECT code FROM funds ORDER BY code").fetchall()]
+    conn.close()
+    log = []
+    print(f"[FETCH] Bắt đầu fetch {len(codes)} quỹ (skip_tcbs={skip_tcbs})", flush=True)
+    for code in codes:
+        written = 0
+        source = None
+        if not skip_tcbs:
+            pts = fetch_tcinvest_nav(code, token)
+            if pts:
+                written = upsert_nav_safe(code, pts, "tcinvest")
+                source = "tcinvest"
+        if not written:
+            fid = FUND_FMARKET.get(code)
+            if fid:
+                pts = fetch_fmarket_nav(fid)
+                if pts:
+                    written = upsert_nav_safe(code, pts, "fmarket")
+                    source = "fmarket"
+        entry = {"code": code, "written": written, "source": source or "—", "ts": datetime.now().isoformat()[:16]}
+        log.append(entry)
+        print(f"[FETCH] {code}: {written} rows ({source or 'skip'})", flush=True)
+    _fetch_log = log
+    _signals_ts = 0  # invalidate signals cache
+    print(f"[FETCH] Hoàn thành. Tổng rows mới: {sum(x['written'] for x in log)}", flush=True)
 
 # ── Portfolio calculation ─────────────────────────────────────────────────────
 def _calc_portfolio(telegram_id: int) -> dict:
@@ -450,6 +596,74 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/referral/mine":
             return self._json({"code": f"LOCAL{uid}", "uses_count": 0})
 
+        # ── API: admin summary ──
+        if path == "/api/admin/summary":
+            nav_conn = _nav_conn()
+            total_nav = nav_conn.execute("SELECT COUNT(*) FROM nav_history").fetchone()[0]
+            today_str = date.today().isoformat()
+            today_nav = nav_conn.execute(
+                "SELECT COUNT(DISTINCT fund_code) FROM nav_history WHERE date=?", (today_str,)
+            ).fetchone()[0]
+            total_funds = nav_conn.execute("SELECT COUNT(*) FROM funds").fetchone()[0]
+            missing = [r[0] for r in nav_conn.execute(
+                "SELECT f.code FROM funds f WHERE f.code NOT IN (SELECT DISTINCT fund_code FROM nav_history WHERE date=?)", (today_str,)
+            ).fetchall()]
+            nav_conn.close()
+            u_conn = _user_conn()
+            user_total = u_conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+            user_pro = u_conn.execute("SELECT COUNT(*) FROM users WHERE tier='pro'").fetchone()[0]
+            u_conn.close()
+            return self._json({
+                "users": {"total": user_total, "pro": user_pro, "free": user_total - user_pro},
+                "nav_total_rows": total_nav, "total_funds": total_funds,
+                "funds_with_nav_today": today_nav, "funds_missing_today": missing,
+                "last_fetch_log": _fetch_log[-5:] if _fetch_log else []
+            })
+
+        # ── API: admin users ──
+        if path == "/api/admin/users":
+            q = qs.get("q", "").lower()
+            u_conn = _user_conn()
+            rows = u_conn.execute(
+                "SELECT telegram_id, name, tier, is_admin, created_at FROM users ORDER BY created_at DESC"
+            ).fetchall()
+            u_conn.close()
+            users = []
+            for r in rows:
+                u = dict(r)
+                # trade count
+                uc = _user_conn()
+                u["trade_count"] = uc.execute(
+                    "SELECT COUNT(*) FROM trades WHERE telegram_id=?", (r["telegram_id"],)
+                ).fetchone()[0]
+                uc.close()
+                if not q or q in u["name"].lower() or q in str(u["telegram_id"]):
+                    users.append(u)
+            return self._json({"users": users, "total": len(users)})
+
+        # ── API: admin nav pending ──
+        if path == "/api/admin/nav/pending":
+            return self._json({"pending": []})
+
+        # ── API: admin audit ──
+        if path == "/api/admin/audit":
+            entries = []
+            for e in reversed(_fetch_log):
+                entries.append({"action": f"fetch_nav:{e['code']}", "detail": f"{e['written']} rows ({e['source']})", "ts": e["ts"]})
+            return self._json({"log": entries[:50]})
+
+        # ── API: admin discount ──
+        if path == "/api/admin/discount/list":
+            return self._json({"codes": []})
+
+        # ── API: nav_history/<code> ──
+        if path.startswith("/api/nav_history/"):
+            code = path.split("/")[-1].upper()
+            qs = self._qs()
+            limit = int(qs.get("limit", ["365"])[0])
+            pts = get_nav_series(code, limit)
+            return self._json({"code": code, "history": pts})
+
         # ── Stubs ──
         if path.startswith("/api/"):
             return self._json({"ok": True, "msg": "local stub"})
@@ -530,6 +744,32 @@ class Handler(BaseHTTPRequestHandler):
                                 "reason":f"Score {s['score']:+d} · RSI {s['rsi'] or '—'}"})
             allocs.sort(key=lambda x: -x["amount"])
             return self._json({"allocations": allocs})
+
+        # ── POST: admin settoken ──
+        if path == "/api/admin/settoken":
+            token = body.get("token", "").strip()
+            if not token:
+                return self._json({"error": "Token rỗng"}, 400)
+            cfg = _load_local_cfg()
+            cfg["tcbs_token"] = token
+            _save_local_cfg(cfg)
+            print(f"[ADMIN] Đã lưu token ({len(token)} chars)", flush=True)
+            return self._json({"ok": True, "msg": "✓ Token đã lưu vào local_config.json"})
+
+        # ── POST: admin fetch-nav ──
+        if path == "/api/admin/fetch-nav":
+            cfg = _load_local_cfg()
+            token = cfg.get("tcbs_token", "")
+            skip_tcbs = bool(body.get("skip_tcbs"))
+            if not token and not skip_tcbs:
+                return self._json({"error": "Chưa có TCInvest token. Lưu token trước."}, 400)
+            t = threading.Thread(target=_run_fetch_all, args=(token, skip_tcbs), daemon=True)
+            t.start()
+            return self._json({"ok": True, "msg": "Đang fetch NAV ở background — xem log terminal"})
+
+        # ── POST: admin nav confirm (stub) ──
+        if path == "/api/admin/nav/confirm":
+            return self._json({"ok": True})
 
         # stubs
         if path.startswith("/api/"):

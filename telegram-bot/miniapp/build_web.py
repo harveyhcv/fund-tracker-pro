@@ -60,10 +60,16 @@ body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14p
 .three-col{display:flex;width:100%;height:100%;overflow:hidden}
 .col{border-right:1px solid var(--bdr);display:flex;flex-direction:column;height:100%;overflow:hidden}
 .col:last-child{border-right:none}
-.col-portfolio{width:280px;min-width:240px;overflow-y:auto}
-.col-market{flex:1;min-width:260px;display:flex;flex-direction:column;overflow:hidden}
-.col-chart{width:400px;min-width:320px;overflow-y:auto}
+.col-portfolio{width:270px;min-width:220px;overflow-y:auto}
+.col-chart{flex:1;min-width:360px;max-width:620px;display:flex;flex-direction:column;overflow:hidden}
+.col-market{flex:1;min-width:340px;max-width:480px;display:flex;flex-direction:column;overflow:hidden}
+#chart-col-content{flex:1;overflow-y:auto;padding:0}
 #market-content{flex:1;overflow-y:auto}
+/* ── Chart time range bar ── */
+.chart-range-bar{display:flex;gap:4px;align-items:center}
+.range-btn{background:none;border:1px solid var(--bdr);border-radius:4px;color:var(--txt2);font-family:var(--mono);font-size:10px;padding:3px 7px;cursor:pointer;transition:all .15s}
+.range-btn:hover{border-color:var(--c0);color:var(--c0)}
+.range-btn.active{background:rgba(0,229,255,.12);border-color:var(--c0);color:var(--c0);font-weight:600}
 .market-toolbar{padding:8px 12px 0;flex-shrink:0;border-bottom:1px solid var(--bdr)}
 .col-head{padding:10px 14px 8px;border-bottom:1px solid var(--bdr);flex-shrink:0;background:var(--bg2)}
 .col-head-row{display:flex;justify-content:space-between;align-items:center}
@@ -80,10 +86,10 @@ body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14p
 .trade-col-left{background:var(--bg);overflow-y:auto;flex:1}
 .trade-col-mid{background:var(--bg4);flex:1}
 .trade-col-right{background:var(--bg);overflow-y:auto;flex:1}
-.trade-form-area{flex:0 0 auto;overflow-y:auto;max-height:62%}
-.trade-history-area{flex:1;display:flex;flex-direction:column;overflow:hidden;border-top:2px solid var(--bdr)}
-.trade-history-head{padding:8px 12px;border-bottom:1px solid var(--bdr);display:flex;justify-content:space-between;align-items:center;flex-shrink:0;background:var(--bg4)}
+.trade-form-area{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.trade-history-head{padding:8px 12px;border-bottom:1px solid var(--bdr);display:flex;justify-content:space-between;align-items:center;flex-shrink:0;background:var(--bg4);position:sticky;top:0;z-index:2}
 .trade-history-scroll{flex:1;overflow-y:auto}
+#order-sub-history{margin:0!important;padding:0!important}
 /* ── User page ────────────────────────────── */
 .user-page-scroll{overflow-y:auto;width:100%;height:100%;padding:20px}
 .user-page-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:1100px}
@@ -91,17 +97,31 @@ body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14p
 .acct-card-title{font-family:var(--mono);font-size:10px;color:var(--txt3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px;display:flex;align-items:center;gap:6px}
 .acct-card-title svg{stroke:var(--txt3)}
 .full-col{grid-column:1/-1}
-/* ── Admin page ───────────────────────────── */
-.admin-page-scroll{overflow-y:auto;width:100%;height:100%;padding:20px}
-.admin-page-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:1200px}
-.section-label{font-family:var(--mono);font-size:10px;color:var(--txt2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;border-bottom:1px solid var(--bdr);padding-bottom:4px}
+/* ── Admin section (inline dưới user page) ── */
+.admin-section{margin-top:20px;padding-top:16px;border-top:1px solid var(--bdr)}
+.admin-section-hdr{font-family:var(--mono);font-size:10px;color:var(--c0);text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px;opacity:.8}
+.admin-inline-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:1100px}
+.au-card{max-width:1100px}
+.au-search{background:var(--bg2);border:1px solid var(--bdr);border-radius:6px;color:var(--txt);font-family:var(--sans);font-size:12px;padding:5px 10px;outline:none;width:180px}
+.au-search:focus{border-color:var(--c0)}
+.au-table{width:100%;border-collapse:collapse;font-size:12px}
+.au-table th{font-family:var(--mono);font-size:10px;color:var(--txt2);text-transform:uppercase;letter-spacing:.06em;padding:6px 8px;border-bottom:1px solid var(--bdr);text-align:left;white-space:nowrap}
+.au-table td{padding:8px 8px;border-bottom:1px solid var(--bdr);vertical-align:middle;white-space:nowrap}
+.au-row:last-child td{border-bottom:none}
+.au-row:hover td{background:var(--bg2)}
+.au-id{font-family:var(--mono);font-size:11px;color:var(--txt2)}
+.au-name{font-weight:500}
+.au-badge-admin{display:inline-block;margin-left:6px;padding:1px 5px;border-radius:3px;font-family:var(--mono);font-size:9px;background:rgba(0,229,255,.15);color:var(--c0);letter-spacing:.04em}
+.section-label{font-family:var(--mono);font-size:11px;color:var(--txt2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;border-bottom:1px solid var(--bdr);padding-bottom:4px}
+.section-ccq{color:var(--c0);border-color:rgba(0,229,255,.25)}
+.section-gold{color:#fbbf24;border-color:rgba(251,191,36,.25)}
 .col-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
 .refresh-btn{background:none;border:none;color:var(--c0);font-size:12px;font-family:var(--mono);cursor:pointer;padding:0}
 .hdr{font-family:var(--mono);font-size:12px;color:var(--c0);letter-spacing:.08em;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center}
 .hdr-sub{color:var(--txt2);font-size:11px}
-.card{background:var(--bg2);border:1px solid var(--bdr);border-radius:10px;padding:12px;margin-bottom:8px}
-.card-title{font-family:var(--mono);font-size:11px;color:var(--txt2);margin-bottom:8px;text-transform:uppercase;letter-spacing:.06em}
-.badge{display:inline-block;padding:2px 7px;border-radius:20px;font-size:11px;font-family:var(--mono);font-weight:600}
+.card{background:var(--bg2);border:1px solid var(--bdr);border-radius:10px;padding:12px;margin-bottom:6px}
+.card-title{font-family:var(--mono);font-size:12px;color:var(--txt2);margin-bottom:8px;text-transform:uppercase;letter-spacing:.06em}
+.badge{display:inline-block;padding:3px 8px;border-radius:20px;font-size:12px;font-family:var(--mono);font-weight:600}
 .badge.buy{background:#052e1a;color:var(--buy);border:1px solid #166534}
 .badge.sell{background:#2d0a0a;color:var(--sell);border:1px solid #7f1d1d}
 .badge.hold{background:#2d2700;color:var(--hold);border:1px solid #713f12}
@@ -118,19 +138,19 @@ body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14p
 .sum-detail{padding:2px 0 8px 4px;display:flex;flex-direction:column;gap:4px}
 .sum-detail-row{display:flex;justify-content:space-between;font-size:11px;color:var(--txt2);font-family:var(--mono)}
 .sum-detail-pct{opacity:.6;font-size:10px}
-.fund-row{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--bdr);gap:8px;cursor:pointer;transition:background .15s;border-radius:6px;padding:10px 4px}
+.fund-row{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--bdr);gap:8px;cursor:pointer;transition:background .15s;border-radius:6px;padding:8px 4px}
 .fund-row:last-child{border:none}
 .fund-row:active{background:var(--bg3)}
-.fund-code{font-family:var(--mono);font-weight:700;font-size:12px;flex:0 0 auto;background:var(--bg3);border:1px solid var(--bdr);border-radius:5px;padding:2px 6px}
-.fund-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.fund-code{font-family:var(--mono);font-weight:700;font-size:13px;flex:0 0 auto;background:var(--bg3);border:1px solid var(--bdr);border-radius:5px;padding:2px 7px}
+.fund-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
 .fund-top{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap}
-.fund-nav{font-family:var(--mono);font-size:14px;font-weight:600;color:var(--txt)}
-.fund-sub{font-size:11px;color:var(--txt2);display:flex;align-items:center;gap:6px}
+.fund-nav{font-family:var(--mono);font-size:15px;font-weight:600;color:var(--txt)}
+.fund-sub{font-size:12px;color:var(--txt2);display:flex;align-items:center;gap:6px}
 .fund-right{text-align:right;flex:0 0 auto;display:flex;flex-direction:column;gap:4px}
-.sig-row{display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;padding:10px 4px;border-bottom:1px solid var(--bdr);cursor:pointer;border-radius:6px;transition:background .15s}
+.sig-row{display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;padding:9px 4px;border-bottom:1px solid var(--bdr);cursor:pointer;border-radius:6px;transition:background .15s}
 .sig-row:last-child{border:none}
 .sig-row:active{background:var(--bg3)}
-.sig-code{font-family:var(--mono);font-size:13px;font-weight:600}
+.sig-code{font-family:var(--mono);font-size:14px;font-weight:600}
 .sig-meters{display:flex;gap:6px;align-items:center}
 .meter{display:flex;flex-direction:column;align-items:center;gap:1px}
 .meter-lbl{font-size:9px;color:var(--txt2);text-transform:uppercase}
@@ -194,7 +214,7 @@ canvas{width:100%!important;height:100%!important}
 .school-card{background:var(--bg3);border-radius:8px;padding:10px;margin-bottom:8px;border-left:3px solid var(--bdr)}
 .school-card.buy{border-color:var(--buy)}.school-card.sell{border-color:var(--sell)}.school-card.hold{border-color:var(--hold)}
 .school-hdr{display:flex;justify-content:space-between;align-items:flex-start;cursor:pointer;gap:8px}
-.school-title{font-size:12px;font-weight:700;flex:1}
+.school-title{font-size:12px;font-weight:700;flex:1}.school-subtitle{font-size:10px;color:var(--txt2);margin-top:1px;font-family:var(--mono)}
 .school-chevron{font-size:14px;color:var(--txt2);transition:transform .2s;flex-shrink:0}
 .school-card.open .school-chevron{transform:rotate(180deg)}
 .school-summary{font-size:11px;color:var(--txt2);margin-top:4px}
@@ -207,6 +227,17 @@ canvas{width:100%!important;height:100%!important}
 .school-action.hold{background:var(--bg2);color:var(--hold);border-left:2px solid var(--hold)}
 .ind-row{display:flex;gap:6px;align-items:flex-start;font-size:12px;color:var(--txt2);padding:3px 0}
 .ind-lbl{font-family:var(--mono);font-size:11px;min-width:52px;color:var(--txt2)}
+/* ── Research indicator panel ── */
+.res-header{display:flex;justify-content:space-between;align-items:flex-start;padding:12px 14px 10px;border-bottom:1px solid var(--bdr)}
+.res-nav{font-size:20px;font-weight:700;font-family:var(--mono);color:var(--txt)}
+.res-inds{display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:10px;padding:10px 14px;border-bottom:1px solid var(--bdr);background:var(--bg2)}
+.res-ind{display:flex;flex-direction:column;gap:4px}
+.res-ind-lbl{font-size:9px;font-family:var(--mono);color:var(--txt2);letter-spacing:.06em;text-transform:uppercase}
+.res-ind-val{font-size:14px;font-weight:700;font-family:var(--mono)}
+.res-ind-desc{font-size:10px;color:var(--txt2)}
+.res-score{text-align:center;padding:0 10px;border-left:1px solid var(--bdr)}
+.res-score-val{font-size:26px;font-weight:800;font-family:var(--mono);line-height:1}
+.res-conclusion{padding:8px 14px;font-size:12px;color:var(--txt2);line-height:1.6;border-bottom:1px solid var(--bdr)}
 .ind-val{flex:1;color:var(--txt)}
 .range-bar-wrap{height:6px;background:var(--bg3);border-radius:3px;margin:4px 0 2px;position:relative}
 .range-bar-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,var(--buy),var(--hold),var(--sell))}
@@ -239,6 +270,75 @@ canvas{width:100%!important;height:100%!important}
 .gp-btn{flex:1;padding:5px 0;border-radius:6px;border:1px solid var(--bdr);font-size:11px;font-family:var(--mono);color:var(--txt2);background:var(--bg3);cursor:pointer}
 .gp-btn.gp-active{background:var(--c0);color:#000;border-color:var(--c0);font-weight:700}
 .ref-box{display:flex;gap:8px;align-items:center;margin-bottom:6px}
+/* ── Watch Modal ─────────────────────────── */
+.watch-item{display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid var(--bdr);cursor:pointer;border-radius:4px}
+.watch-item:hover{background:rgba(0,229,255,.04)}
+.watch-check{width:18px;height:18px;border-radius:4px;border:1.5px solid var(--bdr);display:flex;align-items:center;justify-content:center;font-size:11px;color:transparent;flex-shrink:0;transition:all .15s}
+.watch-check.on{background:var(--c0);border-color:var(--c0);color:#000}
+/* ── History Page ────────────────────────── */
+.trade-form-inner{flex:1;overflow-y:auto;padding:0 14px;min-height:0}
+.hist-page-layout{display:flex;height:100%;overflow:hidden}
+.hist-page-left{width:300px;min-width:250px;border-right:1px solid var(--bdr);display:flex;flex-direction:column;overflow:hidden}
+.hist-page-right{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
+.hist-nav-header{padding:10px 14px 8px;border-bottom:1px solid var(--bdr);flex-shrink:0;background:var(--bg2)}
+.hist-nav-hval{font-family:var(--mono);font-size:18px;font-weight:700;color:var(--txt)}
+.hist-nav-hchg{font-family:var(--mono);font-size:13px;font-weight:600;margin-left:8px}
+.hist-nav-right{flex:1;min-width:0;display:flex;flex-direction:column;overflow-y:auto}
+#hist-chart-area{height:280px;min-height:220px;position:relative;padding:8px;flex-shrink:0}
+#hist-chart-area canvas{width:100%!important;height:100%!important}
+.hist-fund-row{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--bdr);cursor:pointer;transition:background .15s}
+.hist-fund-row:hover,.hist-fund-row.active{background:rgba(0,229,255,.06)}
+.hist-fund-row.active{border-left:2px solid var(--c0)}
+.hist-fund-code{font-family:var(--mono);font-size:13px;font-weight:700;min-width:60px}
+.hist-fund-nav{font-family:var(--mono);font-size:12px;color:var(--txt);flex:1}
+.hist-fund-held{font-size:10px;color:var(--c0);font-family:var(--mono);border:1px solid var(--c0);border-radius:3px;padding:0 4px;flex-shrink:0}
+/* ── NAV Import ──────────────────────────── */
+.nav-import-row{display:flex;gap:6px;align-items:center}
+.nav-import-row input{flex:1;font-size:12px;padding:6px 8px}
+/* ── Gold School Btn ─────────────────────── */
+.gp-school-btn.active{background:rgba(0,229,255,.15);border-color:var(--c0);color:var(--c0)}
+/* ── Hist filter panel fix ───────────────── */
+#hist-filter-panel select,#hist-filter-panel input{background:var(--bg);border:1px solid var(--bdr);color:var(--txt);border-radius:6px}
+/* ── Bulk NAV entry ──────────────────────── */
+.bulk-nav-row{display:grid;grid-template-columns:2fr 2fr 2fr 20px;gap:4px;margin-bottom:5px;align-items:center}
+.bulk-nav-row input{font-size:11px;padding:5px 6px;background:var(--bg);border:1px solid var(--bdr);color:var(--txt);border-radius:6px;font-family:var(--mono);width:100%;box-sizing:border-box}
+.bulk-nav-row input:focus{border-color:var(--c0);outline:none}
+/* ── Hist range buttons ──────────────────── */
+.hist-range-btn{background:var(--bg3);border:1px solid var(--bdr);color:var(--txt2);border-radius:5px;padding:4px 8px;font-size:11px;font-family:var(--mono);cursor:pointer;transition:all .15s}
+.hist-range-btn.active,.hist-range-btn:hover{background:rgba(0,229,255,.12);border-color:var(--c0);color:var(--c0)}
+/* ── Responsive ──────────────────────────── */
+@media(max-width:900px){
+  .three-col{flex-direction:column}
+  .col-portfolio,.col-market{width:100%;min-width:0;max-width:none;height:auto;overflow-y:visible;border-right:none;border-bottom:1px solid var(--bdr)}
+  .col-chart{min-width:0;height:60vw;min-height:260px;max-height:400px}
+  .trade-grid{flex-direction:column}
+  .trade-col{min-width:0;border-right:none;border-bottom:1px solid var(--bdr)}
+  .hist-page-layout{flex-direction:column}
+  .hist-page-left{width:100%;min-width:0;border-right:none;border-bottom:1px solid var(--bdr);max-height:340px;overflow-y:auto}
+  .hist-page-right{height:60vw;min-height:260px}
+  .sidebar{width:100%;height:54px;flex-direction:row;overflow-x:auto;border-right:none;border-top:1px solid var(--bdr);position:fixed;bottom:0;left:0;right:0;z-index:100;background:var(--bg2);padding:0}
+  .nav-btn{flex-direction:column;padding:6px 12px;font-size:9px;gap:2px;min-width:60px;white-space:nowrap}
+  .nav-btn svg{width:18px;height:18px}
+  .main{margin-left:0;padding-bottom:60px}
+}
+@media(min-width:901px) and (max-width:1200px){
+  .col-portfolio{width:240px;min-width:200px}
+  .col-market{min-width:300px;max-width:420px}
+  .col-chart{min-width:320px}
+}
+@media(min-width:1600px){
+  :root{font-size:15px}
+  .col-portfolio{width:310px}
+  .col-market{max-width:560px}
+  .fund-nav{font-size:16px}
+  .res-nav{font-size:26px}
+  .total-val{font-size:28px}
+  .card{border-radius:14px}
+}
+@media(min-width:2000px){
+  :root{font-size:16px}
+  .col-portfolio{width:360px}
+}
 </style>
 </head>"""
 
