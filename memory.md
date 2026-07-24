@@ -1105,3 +1105,118 @@ tồn tại trong `miniapp_server.py`. Phát hiện bằng cách review `git dif
 4. Commit `web_js.js` + `web_body.html` + `build_web.py` uncommitted để frontend dùng GOV-025
 5. Commit `ios/` + `dashboard/portfolio.html` + `scripts/*`
 6. Xác nhận `prediction_actuals` đủ ngày cho T2-008 `--reweight` lần đầu
+
+---
+
+## ✅ Session (autonomous, scheduled) — Ca sáng 2026-07-23: GOV-026/027
+
+**Baseline**: py_compile OK, 334/334 tests pass.
+
+**Phát hiện**: Harvey's uncommitted `web_js.js` đã mở rộng lên +1791 dòng (từ +548 trước). Scan
+toàn bộ → phát hiện 4 API calls chưa có backend:
+
+**GOV-026** — 4 endpoints mới:
+- `GET /api/history?user_id=` — unified CCQ+gold trade history (25 test)
+- `GET /api/nav_history/<code>?limit=N` — lịch sử NAV cho chart
+- `GET /api/gold/price_history/<product>` — lịch sử giá vàng theo sản phẩm (SJC_1L v.v.)
+- `GET /api/admin/payments/recent?user_id=` — 50 giao dịch thanh toán gần nhất (admin)
+
+**GOV-027** — field-name compat + column mới:
+- `user_gold_trades`: additive `name TEXT DEFAULT ''` (ALTER TABLE IF NOT EXISTS)
+- `/api/gold/trades` + `/api/history`: SELECT + response thêm field `name`
+- `/api/admin/discount/list`: trả cả `codes` + `discounts` (backward compat)
+- `/api/trade` (CCQ edit): nhận cả `fund_code/trade_type/trade_date` aliases (mới) lẫn `code/type/date` (cũ)
+- `/api/gold/trade` (gold edit): nhận cả `trade_type/units/price/trade_date` aliases + tên cũ
+
+Commits: 3 commits, push `origin/staging`. Suite: 334 → 359/359.
+
+---
+
+## ✅ Session (autonomous, scheduled) — Ca chiều 2026-07-23: GOV-028/029/030
+
+**Baseline**: py_compile OK, 359/359 tests pass (sau ca sáng).
+
+**Tiếp tục scan web_js.js** — phần còn lại ca sáng chưa xem:
+- `renderHistChart/loadHistChart` (~line 1824): đọc `d.history` — khớp backend `{history:[{date,nav}]}` ✅
+- Gold price history chart (~line 2384): `h.history[].{date,price}` — khớp backend ✅
+- `loadAdminPayments` (~line 2120): `p.stars` absent là intentional, comment line 3275 nói
+  `processed_payments` không có amount — frontend gracefully shows '—' ✅
+
+**3 bugs phát hiện và fix** (tất cả từ GOV-026/027 chưa hoàn toàn sync backend↔frontend):
+
+### GOV-028 · _api_edit_gold_trade không persist name column
+GOV-027 thêm `name TEXT DEFAULT ''` vào `user_gold_trades` nhưng edit endpoint không được update.
+SELECT 8 cột (không có name), UPDATE không set name, frontend gửi `{name: note}` (line 1731) bị bỏ.
+Fix: SELECT thêm `name` → row[8]; `gold_name = str(data.get("name", row[8] or ""))[:100]`;
+UPDATE thêm `name=%s`; audit log before/after include `name`.
+File mới: `tests/test_gov028_edit_gold_name.py` — 8 tests.
+Commit: `0cf2bd2 fix(GOV-028): _api_edit_gold_trade now persists name column (GOV-027 missed)`
+
+### GOV-029 · /api/history trả index thay vì id
+Frontend dùng `t.id||t._idx` để build edit/delete URL (web_js.js lines 1140-1141).
+Backend chỉ trả `"index": r[0]`. `t.id` undefined → fallback `_idx` (array position) → apiPost
+sai record. Edit-idx hidden input (line 1650) cũng bị ảnh hưởng.
+Fix: thêm `"id": r[0]` song song `"index": r[0]` trong `_api_unified_history`, cả CCQ lẫn gold.
+Test: `test_merges_ccq_and_gold` thêm assert `ccq["id"]==1` và `gold["id"]==2`.
+Commit: `b5fb785 fix(GOV-029): /api/history add id field alongside index for edit/delete URLs`
+
+### GOV-030 · /api/history thiếu trade_type alias
+Frontend `renderUnifiedHistory` dùng `t.trade_type` cho nhãn MUA/BÁN (line 1130); `openEditModal`
+dùng `trade.trade_type` để pre-select toggle. Backend chỉ trả `"type": r[2]`. Kết quả: tất cả
+nhãn rỗng, edit modal default buy dù là sell.
+Fix: thêm `"trade_type": r[2]` song song `"type": r[2]` trong cả CCQ rows và gold rows.
+Test: `test_merges_ccq_and_gold` thêm assert `ccq["trade_type"]=="buy"` và `gold["trade_type"]`.
+Commit: `0f46261 fix(GOV-030): /api/history add trade_type alias for frontend type labels`
+
+**Kết quả**: Suite 359 → 367/367 pass (+8). Tất cả P0/P1 DONE. web_js.js scan hoàn tất.
+
+**Kỹ thuật đáng nhớ**:
+- Pattern "field-name compat" quan trọng khi frontend và backend evolve song song — luôn scan
+  toàn bộ uncommitted JS trước khi đóng session để catch mismatches.
+- `id` vs `index` vs `_idx`: dùng phải nhất quán. Rule: backend dùng `id` (tên tự nhiên cho PK),
+  `index` là alias backward-compat. Frontend cũng dùng `id` là primary.
+- Khi edit endpoint bỏ sót field mới (GOV-028 pattern): tìm bằng `grep -n "SELECT.*FROM.*WHERE id=%s"` rồi đối chiếu với bảng schema sau mỗi migration.
+
+**Việc cần Harvey (tồn đọng, không thay đổi từ ca sáng):**
+1. Set `WEB_SESSION_SECRET` trên Railway + `/setdomain` @BotFather (GOV-015 live)
+2. JWT tcinvest mới (hết hạn từ 16/07)
+3. Xác nhận NTPPF/VMEEF (FK violation trong harvest_nav)
+4. Commit `web_js.js` + `web_body.html` + `build_web.py` uncommitted (đã có backend cho tất cả)
+5. Commit `ios/` + `dashboard/portfolio.html` + `scripts/*`
+6. Xác nhận `prediction_actuals` đủ ngày cho T2-008 `--reweight` lần đầu
+
+---
+
+## ✅ Session (autonomous, scheduled) — Ca sáng 2026-07-24: verify baseline, không code thêm
+
+**Baseline**: py_compile 5 file chính (bot.py, miniapp_server.py, db.py, build_web.py,
+local_dev_server.py) → All OK. 367/367 tests pass.
+
+**Tình trạng đầu session**: tất cả P0/P1 đã DONE (xác nhận từ ca chiều 23/07). Điều kiện
+dừng "Hết P0+P1" áp dụng ngay. Không có commit mới từ Harvey (commit mới nhất: 0f46261
+GOV-030, ca chiều 23/07).
+
+**Harvey's uncommitted files vẫn như ca chiều 23/07** (web_js.js +1853 lines, web_body.html
++573, web.html +2568, build_web.py +142, local_dev_server.py +420 lines new nav proxy code).
+Đã rescan toàn bộ API calls trong web_js.js — xác nhận `apiFetch` tự append `user_id` query
+param (line 173: `let qs2 = USER_ID ? sep+'user_id='+USER_ID : ''`), không có gap mới.
+Confirmed: 30+ unique /api/ paths trong web_js.js — tất cả đã có backend implementation.
+
+**web_body.html thay đổi** (Harvey): payment method toggle mới (Stars/QR/MoMo 3 nút riêng),
+SePay QR section với discount code input, desktop 3-col layout (chart col + signals col +
+market col). Tất cả gọi backend đã có (PAY-009/005/001 endpoints đều tồn tại).
+
+**local_dev_server.py thay đổi** (Harvey): thêm Unicode stdout fix Windows, FUND_FMARKET
+config, TCINVEST_ALIASES, local_config.json support, `urllib.request` import cho future
+proxy code. py_compile pass.
+
+**Không code gì mới** — không còn P0/P1, không có gap mới. Chỉ còn PAY-006 (VNPay)/PAY-007
+(Stripe) P2 chờ merchant credentials.
+
+**Việc cần Harvey (tồn đọng, không thay đổi):**
+1. Set `WEB_SESSION_SECRET` trên Railway + `/setdomain` @BotFather (GOV-015 live)
+2. JWT tcinvest mới (hết hạn từ 16/07, job_check_jwt tự báo qua Telegram)
+3. Xác nhận NTPPF/VMEEF (FK violation ongoing trong harvest_nav)
+4. Commit `web_js.js` + `web_body.html` + `build_web.py` + `local_dev_server.py` uncommitted
+5. Commit `ios/` + `dashboard/portfolio.html` + `scripts/*`
+6. Xác nhận `prediction_actuals` đủ ngày cho T2-008 `--reweight` lần đầu

@@ -4,8 +4,45 @@
 # Priority: P0 (blocker) / P1 (important) / P2 (nice-to-have)
 # Claude đọc file này ĐẦU TIÊN mỗi session. Pick task IN_PROGRESS nếu có, nếu không pick P0 cao nhất.
 #
-# Last updated: 2026-07-23 (ca sáng — GOV-026: 4 endpoints mới + GOV-027: field name compat
-# + gold name column. Suite: 359/359 OK. P0/P1 vẫn DONE; PAY-006/007 P2 blocked credentials)
+# Last updated: 2026-07-23 (ca chiều — GOV-028/029/030: 3 field-name bugs trong /api/history
+# phát hiện khi scan web_js.js (+1791 dòng) Harvey uncommitted. Suite: 367/367 OK.
+# P0/P1 vẫn DONE; PAY-006/007 P2 blocked credentials)
+
+## Session (autonomous, scheduled) — Ca sáng 2026-07-24: verify baseline, không code thêm
+# Tình trạng: tất cả P0/P1 đã DONE (xác nhận từ ca chiều 23/07). Không có commit mới từ Harvey.
+# Baseline: py_compile 5 file chính OK, 367/367 tests pass.
+# Harvey's uncommitted files (web_js.js +1853 lines, web_body.html +573, web.html +2568,
+# build_web.py +142, local_dev_server.py +420) đã được rescan: apiFetch tự append user_id,
+# 30+ /api/ paths đều có backend — không có gap mới. web_body.html: payment toggle mới
+# (Stars/QR/MoMo), SePay QR section, desktop 3-col layout — tất cả gọi backend đã có.
+# Điều kiện dừng "Hết P0+P1" áp dụng ngay. Không code thêm gì.
+# Notion sync không khả dụng (MCP chưa authed).
+# Việc cần Harvey (tồn đọng, không đổi từ ca chiều 23/07):
+#   (1) Commit + push web_js.js/web_body.html/build_web.py/local_dev_server.py
+#   (2) Cấp JWT tcinvest mới (hết hạn từ 2026-07-16)
+#   (3) Set WEB_SESSION_SECRET trên Railway + /setdomain @BotFather (GOV-015 web auth)
+
+## Session (autonomous, scheduled) — Ca chiều 2026-07-23: GOV-028/029/030
+# Tình trạng đầu session: tất cả P0/P1 đã DONE từ trước (ca sáng cùng ngày xác nhận).
+# Điều kiện dừng: "Hết P0+P1". Hành động:
+# 1. Tiếp tục scan Harvey's uncommitted web_js.js (+1791 lines, từ ca sáng):
+#    - renderHistChart/loadHistChart (~line 1824): đọc d.history||d — khớp backend ✅
+#    - Gold price history (~line 2384): h.history[].{date,price} — khớp backend ✅
+#    - loadAdminPayments (~line 2120): p.name/plan/method/amount_vnd/status/created_at —
+#      p.stars intentionally missing trong processed_payments (noted tại line 3275) ✅
+# 2. Phát hiện 3 bugs từ việc GOV-026/027 chưa hoàn toàn align backend với frontend:
+#    - GOV-028: _api_edit_gold_trade SELECT thiếu name, UPDATE không persist name column
+#      (GOV-027 thêm column nhưng quên update edit endpoint)
+#    - GOV-029: /api/history trả index (DB id) nhưng frontend tìm t.id →
+#      openEditModal fallback sang array position → sửa nhầm record
+#    - GOV-030: /api/history thiếu trade_type alias → mọi type label render rỗng
+# 3. Fix + test + commit + push cho cả 3 bugs.
+#    Suite: 359 → 367/367 passed (+8 tests cho GOV-028).
+# Kết quả: tất cả P0/P1 vẫn DONE. Web_js.js đã scan đầy đủ, không còn bug nào.
+# Việc Harvey cần làm (không đổi từ ca sáng):
+#   (1) Commit + push web_js.js/web_body.html/build_web.py (Harvey uncommitted)
+#   (2) Cấp JWT tcinvest mới (hết hạn từ 2026-07-16)
+#   (3) Set WEB_SESSION_SECRET trên Railway + /setdomain @BotFather (GOV-015 web auth)
 
 ## Session (autonomous, scheduled) — Ca sáng 2026-07-23: GOV-026 + GOV-027
 # Tình trạng đầu session: tất cả P0/P1 đã DONE từ trước. Điều kiện dừng: "Hết P0+P1".
@@ -939,6 +976,34 @@
 ---
 
 ## XONG (DONE)
+
+- [DONE] GOV-030 · /api/history thiếu trade_type alias — frontend renderUnifiedHistory dùng
+  t.trade_type để hiện nhãn MUA/BÁN; openEditModal dùng trade.trade_type để pre-select toggle.
+  Backend chỉ trả "type": r[2], không có alias "trade_type". Kết quả: mọi nhãn render rỗng,
+  edit modal luôn default buy dù là sell trade.
+  Fix: thêm "trade_type": r[2] vào cả CCQ rows và gold rows trong _api_unified_history.
+  Commit: 0f46261 fix(GOV-030): /api/history add trade_type alias for frontend type labels
+  Test: test_merges_ccq_and_gold thêm assert ccq["trade_type"]=="buy" và gold["trade_type"]
+  | 2026-07-23 (ca chiều, autonomous session)
+
+- [DONE] GOV-029 · /api/history trả index thay vì id — frontend dùng t.id||t._idx để build
+  edit/delete URL (openEditGoldModal/openEditModal, web_js.js lines 1140-1141). Backend chỉ trả
+  "index": r[0]; t.id undefined → fallback sang array position (_idx) → apiPost('/api/trade/
+  ${array_position}') gọi sai DB record. Cùng bug trong edit-idx hidden input (line 1650).
+  Fix: thêm "id": r[0] song song với "index": r[0] trong cả CCQ rows và gold rows.
+  Commit: b5fb785 fix(GOV-029): /api/history add id field alongside index for edit/delete URLs
+  Test: test_merges_ccq_and_gold thêm assert ccq["id"]==1 và gold["id"]==2
+  | 2026-07-23 (ca chiều, autonomous session)
+
+- [DONE] GOV-028 · _api_edit_gold_trade không persist name column — GOV-027 thêm column
+  `name TEXT DEFAULT ''` vào user_gold_trades nhưng quên update edit endpoint. SELECT không
+  fetch name, UPDATE không set name. Frontend gửi {name: note} (web_js.js line 1731) nhưng
+  backend bỏ qua → name bị xóa mỗi lần edit.
+  Fix: SELECT thêm name (row[8]), gold_name = data.get("name", row[8] or "")[:100],
+  UPDATE thêm name=%s, audit log trước/sau include name.
+  Commit: 0cf2bd2 fix(GOV-028): _api_edit_gold_trade now persists name column (GOV-027 missed)
+  New test file: tests/test_gov028_edit_gold_name.py (8 tests)
+  | 2026-07-23 (ca chiều, autonomous session)
 
 - [DONE] GOV-025 · GET /api/admin/users — admin user search endpoint. Harvey's uncommitted
   `web_js.js` (ca chiều 21/07, +548 dòng) có hàm `loadAdminUsers(q)` gọi endpoint này nhưng
