@@ -1,6 +1,19 @@
 <body>
 <div id="toast"></div>
 
+<!-- ── Login Overlay (standalone web, không phải Telegram Mini App) ── -->
+<div id="login-overlay" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:9999;flex-direction:column;align-items:center;justify-content:center;gap:20px;padding:32px">
+  <div style="font-family:var(--mono);font-size:22px;font-weight:700;color:var(--c0);letter-spacing:.08em">◈ FUND TRACKER PRO</div>
+  <div style="font-size:13px;color:var(--txt2);text-align:center;max-width:280px;line-height:1.6">Đăng nhập bằng tài khoản Telegram để truy cập danh mục và tín hiệu của bạn.</div>
+  <div id="login-widget-wrap" style="margin-top:8px">
+    <!-- Telegram Login Widget được inject bởi JS sau khi load xong -->
+    <button onclick="_loadTelegramWidget()" style="background:var(--c0);color:#000;border:none;border-radius:8px;padding:12px 28px;font-family:var(--mono);font-size:13px;font-weight:700;cursor:pointer;letter-spacing:.04em">
+      Đăng nhập với Telegram
+    </button>
+  </div>
+  <div style="font-size:10px;color:var(--txt3);margin-top:8px">Dữ liệu của bạn được bảo mật và không chia sẻ với bên thứ ba.</div>
+</div>
+
 <!-- ── Fund Analysis Modal ── -->
 <div class="modal-overlay" id="modal" onclick="closeModal(event)">
   <div class="modal-sheet">

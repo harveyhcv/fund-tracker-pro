@@ -785,6 +785,21 @@ class Handler(BaseHTTPRequestHandler):
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
+    # Safety guard: local_dev_server.py KHÔNG được deploy lên server công khai.
+    # Nó không có auth thật — dùng ?user_id bypass cho local dev.
+    # Nếu vô tình chạy trên server, set FUND_TRACKER_DEV=1 để override (nhưng biết rủi ro).
+    import socket as _socket
+    _hostname = _socket.gethostname().lower()
+    _is_likely_server = not any(h in _hostname for h in ['localhost','local','macbook','imac','desktop','laptop','harvey','windows','surface','pc'])
+    if _is_likely_server and not os.environ.get('FUND_TRACKER_DEV'):
+        print("=" * 60)
+        print("[SECURITY] local_dev_server.py CHỈ DÙNG CHO LOCAL DEV.")
+        print("           Không deploy file này lên server công khai.")
+        print("           Trên production: dùng miniapp_server.py thay thế.")
+        print("           Nếu chắc chắn muốn chạy, set FUND_TRACKER_DEV=1")
+        print("=" * 60)
+        sys.exit(1)
+
     if not NAV_DB.exists():
         print(f"[ERROR] Không tìm thấy {NAV_DB}")
         print("        Chạy từ đúng thư mục: cd telegram-bot/miniapp && python local_dev_server.py")

@@ -4,14 +4,105 @@ const qs = new URLSearchParams(location.search);
 const IS_DEV  = qs.get('dev') === '1' || location.hash === '#dev';
 const IS_BETA = qs.get('beta') === '1';
 
-// Telegram WebApp auth — ưu tiên Telegram SDK, fallback URL params
+// Telegram WebApp auth — ưu tiên Telegram SDK, fallback web session, fallback URL params
 const _tg = window.Telegram?.WebApp;
 const _tgUser = _tg?.initDataUnsafe?.user;
-const USER_ID   = String(_tgUser?.id   || qs.get('user_id')  || '');
-const USER_NAME = String(_tgUser?.first_name || qs.get('name') || '');
 const _INIT_DATA = _tg?.initData || '';  // dùng làm X-Init-Data header
 
+// Web session (standalone browser mode — sau khi login qua Telegram Login Widget)
+const _WEB_SESSION_LS = 'ftp_web_session';
+const _UID_LS = 'ftp_uid';
+const _NAME_LS = 'ftp_name';
+let _webSession = localStorage.getItem(_WEB_SESSION_LS) || '';
+
+// USER_ID: Telegram > localStorage từ web login > URL param (dev only)
+const USER_ID   = String(_tgUser?.id   || localStorage.getItem(_UID_LS)  || qs.get('user_id')  || '');
+const USER_NAME = String(_tgUser?.first_name || localStorage.getItem(_NAME_LS) || qs.get('name') || '');
+
+function _saveWebSession(token, uid, name) {
+  localStorage.setItem(_WEB_SESSION_LS, token);
+  localStorage.setItem(_UID_LS, String(uid));
+  localStorage.setItem(_NAME_LS, String(name));
+  _webSession = token;
+}
+function _clearWebSession() {
+  localStorage.removeItem(_WEB_SESSION_LS);
+  localStorage.removeItem(_UID_LS);
+  localStorage.removeItem(_NAME_LS);
+  _webSession = '';
+}
+
 if (_tg) { _tg.ready(); _tg.expand(); }
+
+// ── Web standalone login (Telegram Login Widget) ──────────────────────────────
+// Chỉ dùng khi mở trong browser thường (không phải Telegram Mini App).
+// Flow: user click "Đăng nhập với Telegram" → widget popup → callback _onTelegramLogin
+// → POST /api/auth/telegram-login → nhận token → lưu localStorage → reload app.
+
+function _needsWebLogin() {
+  // Cần login nếu: không phải Telegram Mini App, không có session, không phải IS_DEV
+  return !_tg && !_webSession && !IS_DEV && !USER_ID;
+}
+
+function _showLoginScreen() {
+  const el = document.getElementById('login-overlay');
+  if (el) el.style.display = 'flex';
+}
+
+function _hideLoginScreen() {
+  const el = document.getElementById('login-overlay');
+  if (el) el.style.display = 'none';
+}
+
+// Được gọi bởi Telegram Login Widget sau khi user xác thực thành công
+async function _onTelegramLogin(data) {
+  try {
+    const res = await fetch(API_BASE + '/api/auth/telegram-login', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(data)
+    });
+    if (!res.ok) { const e = await res.json().catch(()=>{}); alert('Đăng nhập thất bại: ' + (e?.error||res.status)); return; }
+    const json = await res.json();
+    if (json.token) {
+      _saveWebSession(json.token, json.telegram_id || data.id, json.name || data.first_name);
+      _hideLoginScreen();
+      location.reload();  // reload để USER_ID được set đúng từ localStorage
+    } else {
+      alert('Lỗi: server không trả về token');
+    }
+  } catch(e) {
+    alert('Lỗi kết nối: ' + e.message);
+  }
+}
+
+function logoutWeb() {
+  _clearWebSession();
+  location.reload();
+}
+
+function _loadTelegramWidget() {
+  // Inject Telegram Login Widget script — bot username lấy từ /api/me hoặc config
+  // Widget gọi window._onTelegramLogin(data) khi user xác thực xong
+  const wrap = document.getElementById('login-widget-wrap');
+  if (!wrap) return;
+  wrap.innerHTML = '<div style="color:var(--txt2);font-size:12px">Đang tải widget Telegram...</div>';
+  fetch(API_BASE + '/health').then(r=>r.json()).then(cfg => {
+    const botUsername = cfg.bot_username || '';
+    if (!botUsername) { wrap.innerHTML = '<div style="color:var(--sell);font-size:12px">Chưa cấu hình bot username. Liên hệ admin.</div>'; return; }
+    const s = document.createElement('script');
+    s.src = 'https://telegram.org/js/telegram-widget.js?22';
+    s.setAttribute('data-telegram-login', botUsername);
+    s.setAttribute('data-size', 'large');
+    s.setAttribute('data-onauth', '_onTelegramLogin(user)');
+    s.setAttribute('data-request-access', 'write');
+    s.async = true;
+    wrap.innerHTML = '';
+    wrap.appendChild(s);
+  }).catch(() => {
+    wrap.innerHTML = '<div style="color:var(--sell);font-size:12px">Không kết nối được server. Thử lại sau.</div>';
+  });
+}
 
 // ── State ────────────────────────────────────────────────────────────────────
 let _me = null, _signals = null, _goldData = null, _allFunds = {}, _watchedSet = new Set();
@@ -166,6 +257,7 @@ function _todayISO() { return new Date().toISOString().slice(0,10); }
 function _authHeaders() {
   const h = {'Content-Type':'application/json'};
   if (_INIT_DATA) h['X-Init-Data'] = _INIT_DATA;
+  else if (_webSession) h['X-Web-Session'] = _webSession;
   return h;
 }
 async function apiFetch(path, ms=12000) {
@@ -178,6 +270,7 @@ async function apiFetch(path, ms=12000) {
   try {
     const r = await fetch(API_BASE+path+qs2, {headers:_authHeaders(), signal:ctrl.signal});
     clearTimeout(tid);
+    if (r.status === 401 && !_tg && !IS_DEV) { _clearWebSession(); _showLoginScreen(); throw new Error('Phiên hết hạn'); }
     if (!r.ok) { const e=await r.json().catch(()=>({})); const err=new Error(e.error||r.status); err.body=e; err.status=r.status; throw err; }
     return r.json();
   } catch(e) { clearTimeout(tid); throw e.name==='AbortError' ? new Error('Timeout') : e; }
@@ -278,6 +371,7 @@ function renderTierBar(me) {
 // ── Portfolio ─────────────────────────────────────────────────────────────────
 async function loadMe() {
   if (IS_DEV) { _me = MOCK_ME; _goldData = MOCK_GOLD; renderTierBar(_me); renderPortfolio(_me); return; }
+  if (_needsWebLogin()) { _showLoginScreen(); return; }
   if (!USER_ID) { document.getElementById('pf-sub-ccq').innerHTML=renderErr('Cần user_id. Mở từ Telegram bot hoặc thêm ?user_id=... vào URL.'); return; }
   try {
     _me = await apiFetch('/api/me');

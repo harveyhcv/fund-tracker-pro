@@ -1135,6 +1135,38 @@ def _auth_write(handler, claimed_tg_id: str) -> bool:
     return False
 
 
+def _auth_read_tg_id(handler, qs: dict) -> "str | None":
+    """Xác thực quyền đọc cho GET requests. Trả về:
+    - tg_id (str) nếu token hợp lệ (X-Init-Data hoặc X-Web-Session)
+    - "" (chuỗi rỗng) nếu token có mặt nhưng không hợp lệ → caller reject 401
+    - None nếu không có token → gradual enforcement, log warning nhưng cho qua
+    Không tự gửi HTTP response — caller xử lý.
+    """
+    init_data   = handler.headers.get("X-Init-Data", "")
+    web_session = handler.headers.get("X-Web-Session", "")
+
+    if init_data:
+        cfg       = _load_cfg()
+        bot_token = cfg.get("bot_token") or os.environ.get("BOT_TOKEN", "")
+        user      = _validate_init_data(init_data, bot_token)
+        return str(user.get("id", "")) if user else ""
+
+    if web_session:
+        verified = _verify_web_session(web_session)
+        return verified if verified else ""
+
+    if os.environ.get("MINIAPP_NO_AUTH"):
+        return _qs_tg_id(qs)
+
+    # Không có token — cho qua tạm, log để theo dõi
+    qs_id = _qs_tg_id(qs)
+    if qs_id:
+        import urllib.parse as _up
+        _path = _up.urlparse(handler.path).path
+        print(f"[WARN] Unauthenticated GET uid={qs_id} path={_path}", flush=True)
+    return None
+
+
 # ── Telegram Login Widget auth (bản Web độc lập, ngoài Telegram) ─────────────
 # Mini App dùng "initData" (window.Telegram.WebApp) — chỉ hoạt động khi mở QUA
 # app Telegram. Web bên ngoài (browser thường) dùng cơ chế khác của Telegram:
@@ -1434,6 +1466,22 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         path   = parsed.path.rstrip("/") or "/"
         qs     = parse_qs(parsed.query)
 
+        # ── Auth guard cho user-scoped API endpoints ──────────────────────────
+        # Các path sau không cần auth (public / không có dữ liệu cá nhân):
+        _PUBLIC_PREFIXES = (
+            "/health", "/api/version", "/api/fed-rate",
+            "/api/payment/sepay/status", "/api/gold/price_history",
+        )
+        if path.startswith("/api/") and not any(path.startswith(p) for p in _PUBLIC_PREFIXES):
+            verified = _auth_read_tg_id(self, qs)
+            if verified is not None:          # token có mặt → validate nó
+                claimed = _qs_tg_id(qs)
+                if not verified:              # token sai / hết hạn
+                    return _json(self, {"error": "Token không hợp lệ hoặc đã hết hạn. Vui lòng đăng nhập lại."}, 401)
+                if claimed and verified != claimed:
+                    return _json(self, {"error": "Không có quyền xem dữ liệu của tài khoản này."}, 403)
+        # ── Hết auth guard ────────────────────────────────────────────────────
+
         if path in ("/", "/index.html"):
             self._serve_html()
         elif path == "/admin/pnl":
@@ -1501,7 +1549,9 @@ class MiniAppHandler(BaseHTTPRequestHandler):
             product = unquote(path[len("/api/gold/price_history/"):])
             self._api_gold_price_history(product)
         elif path == "/health":
-            _json(self, {"ok": True, "ts": datetime.now().isoformat()})
+            cfg = _load_cfg()
+            _json(self, {"ok": True, "ts": datetime.now().isoformat(),
+                         "bot_username": cfg.get("bot_username", "")})
         elif path == "/api/version":
             self._api_version(qs)
         else:
