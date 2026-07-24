@@ -4,9 +4,21 @@
 # Priority: P0 (blocker) / P1 (important) / P2 (nice-to-have)
 # Claude đọc file này ĐẦU TIÊN mỗi session. Pick task IN_PROGRESS nếu có, nếu không pick P0 cao nhất.
 #
-# Last updated: 2026-07-23 (ca chiều — GOV-028/029/030: 3 field-name bugs trong /api/history
-# phát hiện khi scan web_js.js (+1791 dòng) Harvey uncommitted. Suite: 367/367 OK.
-# P0/P1 vẫn DONE; PAY-006/007 P2 blocked credentials)
+# Last updated: 2026-07-24 (ca chiều — verify baseline + scan uncommitted files, không code thêm.
+# Tất cả P0/P1 DONE; PAY-006/007 P2 blocked credentials)
+
+## Session (autonomous, scheduled) — Ca chiều 2026-07-24: verify baseline, không code thêm
+# Tình trạng: tất cả P0/P1 đã DONE (xác nhận từ ca sáng cùng ngày). Không có commit mới từ Harvey
+# kể từ ca sáng (chỉ 1 commit: 2cb7f1d docs ca sáng). Harvey uncommitted files không đổi
+# (web_js.js +1853, web_body.html +573, web.html +2568, build_web.py +142, local_dev_server.py +420)
+# — đã được ca sáng scan đầy đủ, không có gap backend mới.
+# Baseline: py_compile bot.py/miniapp_server.py/db.py OK, 367/367 tests pass (2.32s).
+# Điều kiện dừng "Hết P0+P1" áp dụng ngay. Không code thêm gì.
+# Notion sync không khả dụng (MCP chưa authed).
+# Việc cần Harvey (tồn đọng, không đổi từ ca sáng):
+#   (1) Commit + push web_js.js/web_body.html/build_web.py/local_dev_server.py
+#   (2) Cấp JWT tcinvest mới (hết hạn từ 2026-07-16)
+#   (3) Set WEB_SESSION_SECRET trên Railway + /setdomain @BotFather (GOV-015 web auth)
 
 ## Session (autonomous, scheduled) — Ca sáng 2026-07-24: verify baseline, không code thêm
 # Tình trạng: tất cả P0/P1 đã DONE (xác nhận từ ca chiều 23/07). Không có commit mới từ Harvey.
