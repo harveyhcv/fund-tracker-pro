@@ -7,6 +7,39 @@
 # Last updated: 2026-07-24 (ca chiều — verify baseline + scan uncommitted files, không code thêm.
 # Tất cả P0/P1 DONE; PAY-006/007 P2 blocked credentials)
 
+## Session (Harvey-directed) — 2026-07-24 chiều: Web parity audit + UI fixes (WEB-001..008)
+# Harvey cung cấp 4 screenshots + feedback list. Implement:
+# WEB-001 DONE: Phân Tích fund list hiện TẤT CẢ quỹ (43) thay vì chỉ 10 (slice removed)
+# WEB-002 DONE: ★/☆ watch toggle trên mỗi hàng fund trong Phân Tích → gọi /api/me/watched_funds
+# WEB-003 DONE: _renderHistAnalysis fallback _marketData khi _signals rỗng → indicators hiển thị
+# WEB-004 DONE: Map macd_hist → macd field (API trả macd_hist, code đọc macd → sửa trực tiếp)
+# WEB-005 DONE: T+2 prediction block trong analysis panel (chỉ hiện khi API có t2_prediction.nav)
+# WEB-006 DONE: Data adequacy warning khi < 20 điểm NAV ("⚠ tín hiệu RSI/BB%/MACD chưa chính xác")
+# WEB-007 DONE: Kết luận block (Score + label MUA/BÁN/TRUNG LẬP) ở cuối analysis panel
+# WEB-008 DONE: Alert icon ⚠ trong market board khi s.data_stale|nav_stale|alert|nav_jump_anomaly
+# WEB-009 DONE: loadHistTab default chọn fund đầu từ held/watched thay vì slice(0,5)
+# Build: 236,511 chars. No console errors. Verified via JS: 43 quỹ, P&L đúng (SSISCA 40.3M).
+# Commit: (pending — xem bên dưới)
+#
+# BACKLOG phát hiện từ feedback Harvey (chưa implement — nhiều tasks cần Harvey xác nhận ưu tiên):
+# WEB-010 TODO P1: Trang Chủ — hiện portfolio NAV chart mặc định thay vì empty placeholder
+# WEB-011 TODO P1: Gold analysis signals trong Phân Tích tab (hiện chỉ có ở Giao Dịch)
+# WEB-012 TODO P1: Fund comparison tool — so sánh 2 quỹ cùng lúc (NAV chart overlay + signals)
+# WEB-013 TODO P2: T+2 accuracy chart cần dữ liệu thật (hiện dùng mock random data)
+# WEB-014 TODO P2: NAV dashboard warning icons (nav_jump_anomaly, stale) — cần backend expose field
+# WEB-015 TODO P2: "Quỹ chưa cập nhật NAV hôm nay" alert giống Mini App
+# WEB-016 TODO P2: Fund watchlist management — add/remove từ Trang Chủ sidebar
+# WEB-017 TODO P1: NAV data completeness — nhiều quỹ chỉ 3 ngày data → cần bulk backfill
+#   → BLOCKED: TCInvest JWT hết hạn từ 2026-07-16, Harvey cần cấp token mới trên Railway
+# WEB-018 TODO P3: TCInvest cross-fetch helper (CORS ngăn browser đọc cookie TCInvest tự động)
+#   → Giải pháp hiện có: TCInvest modal (showTcbsMiniModal) để paste JWT thủ công
+#   → Giải pháp tốt hơn: bookmarklet hoặc extension để extract token → đã có bookmarklet từ 21/07?
+#
+# Việc cần Harvey:
+#   (1) Cấp JWT tcinvest mới → Railway sẽ tự backfill lại NAV cho tất cả quỹ (fix WEB-017)
+#   (2) Set WEB_SESSION_SECRET trên Railway + /setdomain @BotFather (GOV-015)
+#   (3) Xác nhận priority order cho WEB-010..018
+
 ## Session (autonomous, scheduled) — Ca chiều 2026-07-24: verify baseline, không code thêm
 # Tình trạng: tất cả P0/P1 đã DONE (xác nhận từ ca sáng cùng ngày). Không có commit mới từ Harvey
 # kể từ ca sáng (chỉ 1 commit: 2cb7f1d docs ca sáng). Harvey uncommitted files không đổi

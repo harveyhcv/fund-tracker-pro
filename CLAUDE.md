@@ -10,6 +10,11 @@
 
 ```
 S1. Đọc BACKLOG.md → tìm task IN_PROGRESS hoặc P0 đầu tiên
+    ⚠️ AUTONOMOUS SESSION: chỉ pick task liên quan đến:
+       - Web frontend: web.html / web_js.js / web_body.html / build_web.py
+       - Native apps: ios/ (iOS) hoặc android/ (Android)
+       KHÔNG tự pick task fix backend miniapp_server.py / bot.py trừ khi Harvey yêu cầu.
+       Nếu phát hiện bug backend → ghi BACKLOG, KHÔNG implement.
 S2. Đọc .claude/memory/project-state.md → lấy context hiện tại
 S3. Chạy: git status --short → xem file nào đang thay đổi
 S4. Announce rõ ràng: "Tôi sẽ làm [ID]: [mô tả], file sẽ sửa: [list]"
@@ -25,6 +30,7 @@ S8. Cập nhật memory nếu học được điều quan trọng
 - Đọc file không liên quan đến task
 - Đánh dấu DONE khi chưa qua verification gate
 - Restore lệnh /explain, /research, hay bất kỳ lệnh đã bỏ trong bot.py
+- Autonomous session tự pick task backend (miniapp_server.py/bot.py) khi không có yêu cầu từ Harvey
 
 ## ✅ VERIFICATION GATES
 
@@ -32,9 +38,34 @@ S8. Cập nhật memory nếu học được điều quan trọng
 |-----------|------|
 | Python code | `python -m py_compile <file>` |
 | Bot command | `python -c "import telegram-bot.bot; print('OK')"` |
-| Server endpoint | `curl -s http://localhost:8080/<path>` |
+| Web server endpoint | `curl -s http://localhost:8443/<path>` |
 | DB operation | `SELECT COUNT(*) FROM nav_history` |
-| Dashboard JS | Preview trong browser, check console errors |
+| Web frontend JS | Preview tại `http://localhost:8443/web.html?user_id=1`, check console errors |
+
+## 🔍 QA ROUTINE — WEB PARITY CHECK (Harvey yêu cầu 2026-07-24)
+
+**Mỗi khi làm việc với web frontend, Claude phải kiểm tra parity với Mini App:**
+
+```
+QA-1. Trang Chủ: Portfolio P&L đúng không? NAV hợp lệ, không 0M?
+QA-2. Market board: Hiển thị đủ quỹ? Signal badges (MUA/BÁN/TRUNG LẬP) đúng màu?
+QA-3. Phân Tích fund list: Hiện TẤT CẢ quỹ (không phải chỉ 10)?
+      Held/watched được pin lên đầu? ★/☆ toggle hoạt động?
+QA-4. Phân Tích analysis panel: RSI + BB% + MACD hiển thị đúng giá trị từ API?
+      Score đúng? Kết luận đúng? T+2 hiện khi có data?
+QA-5. Giao Dịch: Trade form submit OK? Lịch sử giao dịch load đúng?
+QA-6. Tín hiệu trong Giao Dịch tab: chỉ hiện quỹ đang nắm (has_position=true)?
+QA-7. Gold analysis (Giao Dịch → DCA vàng): RSI vàng, phí bù XAU, phân kỳ đúng?
+QA-8. T+2 chart trong Phân Tích: render đúng khi click tab T+2?
+QA-9. Console errors: zero errors khi dùng với ?user_id=1?
+```
+
+**Features cần parity với Mini App (theo dõi qua WEB-010..018 trong BACKLOG):**
+- Tín hiệu phân tích vàng tích hợp vào tab Phân Tích
+- So sánh 2 quỹ (fund comparison tool)
+- T+2 chart với dữ liệu thật (không phải mock)
+- Warning icons cho NAV stale/anomaly giống Mini App
+- Quỹ watchlist add/remove từ sidebar Trang Chủ
 
 ---
 
@@ -72,37 +103,42 @@ khoản `/beta`, telegram_id âm — xem BETA-001).
 ## 📋 PROJECT OVERVIEW
 
 **Tên dự án**: Fund Tracker Pro
-**Mô tả**: Hệ thống theo dõi NAV quỹ mở Việt Nam gồm 3 thành phần: Web Dashboard (HTML/JS), Local Server (Python), Telegram Bot (Python). Hiển thị NAV real-time, tín hiệu kỹ thuật RSI/MACD/BB, quản lý portfolio.
-**Loại**: Web App (local) + Python Backend + Telegram Bot
+**Mô tả**: Hệ thống theo dõi NAV quỹ mở Việt Nam. Sản phẩm chính: Web App (`web.html`) + Python Backend (`miniapp_server.py`). Tích hợp Telegram Bot tuỳ chọn. Hiển thị NAV real-time, tín hiệu kỹ thuật RSI/MACD/BB, quản lý portfolio.
+**Loại**: Web App (standalone, có thể mở browser thẳng) + Python Backend + Telegram Bot (optional channel)
 **Ngôn ngữ làm việc**: Tiếng Việt
-**Giai đoạn hiện tại**: **WEB-FIRST** — Hoàn thiện Web Dashboard + Python Backend trước. Swift iOS (`ios/`) là phase tiếp theo, chưa phát triển.
+**Giai đoạn hiện tại**:
+- **Phase hiện tại — WEB**: Hoàn thiện `web.html` (standalone web app, port 8443). Dùng local trước khi có domain/Railway.
+- **Phase tiếp theo — NATIVE**: iOS (SwiftUI) + Android sau khi Web ổn định.
+- **KHÔNG implement native trước khi Web hoàn thiện.**
 
 ---
 
-## 🛠️ TECH STACK HIỆN TẠI (WEB)
+## 🛠️ TECH STACK HIỆN TẠI (WEB — SẢN PHẨM CHÍNH)
 
-| Layer        | Công nghệ               | File                                    |
-|--------------|-------------------------|-----------------------------------------|
-| Dashboard    | HTML + Vanilla JS + CSS | `dashboard/Quy Tracker Dashboard.html`  |
-| Charts       | Chart.js 4.4.4          | CDN trong HTML                          |
-| Fonts        | IBM Plex Mono + DM Sans | Google Fonts trong HTML                 |
-| Server       | Python `http.server`    | `dashboard/server.py` (port 8080)       |
-| Bot          | Python + requests       | `telegram-bot/bot.py`                   |
-| Scheduling   | `schedule` library      | Trong bot.py                            |
-| Data Source  | fmarket.vn + TCBS API   | Fetch trong bot.py                      |
-| NAV Storage  | `nav_data.json` (delta) | `dashboard/nav_data.json`               |
-| History Base | `HIST.chart` (embedded) | Baked vào Dashboard.html (~797KB)       |
+| Layer        | Công nghệ               | File                                             |
+|--------------|-------------------------|--------------------------------------------------|
+| Web App      | HTML + Vanilla JS + CSS | `telegram-bot/miniapp/web.html` (built file)     |
+| Source       | web_body.html + web_js.js | `telegram-bot/miniapp/` (edit ở đây)           |
+| Build script | Python                  | `telegram-bot/miniapp/build_web.py`              |
+| Charts       | Chart.js 4.4.4          | CDN trong HTML                                   |
+| Fonts        | IBM Plex Mono + DM Sans | Google Fonts trong HTML                          |
+| Web Server   | Python (aiohttp)        | `telegram-bot/miniapp/local_dev_server.py` (port 8443) |
+| API Backend  | Python                  | `telegram-bot/miniapp/miniapp_server.py`         |
+| Bot          | Python + requests       | `telegram-bot/bot.py` (optional Telegram channel)|
+| Data Source  | fmarket.vn + TCBS API   | Fetch trong bot.py / miniapp_server.py           |
+| DB           | SQLite (local) / PostgreSQL (Railway) | `telegram-bot/miniapp/local_users.db` |
 
-## 📱 TECH STACK TƯƠNG LAI (iOS — CHƯA BẮT ĐẦU)
+> ℹ️ `dashboard/` (port 8080) là bản cũ, không còn là sản phẩm chính. Giữ lại để tham chiếu.
 
-| Layer     | Công nghệ  | Ghi chú                                 |
-|-----------|------------|-----------------------------------------|
-| UI        | SwiftUI    | `ios/ContentView.swift` (skeleton)      |
-| Math      | Swift      | `ios/MathEngine.swift` (đã sync threshold vs Python) |
-| Network   | URLSession | `ios/NetworkManager.swift` (skeleton)   |
-| Storage   | UserDefaults / Keychain | Chưa implement                 |
+## 📱 TECH STACK TƯƠNG LAI (NATIVE — PHASE SAU)
 
-> ⚠️ iOS skeleton chỉ để giữ chỗ kiến trúc. **Không được implement iOS trước khi Web hoàn thiện.**
+| Platform  | Công nghệ  | Ghi chú                                          |
+|-----------|------------|--------------------------------------------------|
+| iOS       | SwiftUI    | `ios/` (skeleton có sẵn, chưa implement)         |
+| Android   | Jetpack Compose hoặc Flutter | Chưa bắt đầu                        |
+| Shared    | REST API từ `miniapp_server.py` | Native apps gọi cùng backend        |
+
+> ⚠️ **Không implement native trước khi Web hoàn thiện.**
 
 ---
 
@@ -110,37 +146,35 @@ khoản `/beta`, telegram_id âm — xem BETA-001).
 
 ```
 Fund Tracker Pro/
-├── claude.md                        ← File này
-├── memory.md                        ← Context phiên trước (đọc khi mở)
+├── CLAUDE.md                        ← File này
+├── BACKLOG.md                       ← Task list (đọc mỗi session)
 ├── api_docs.md                      ← Tài liệu APIs
 ├── db_schema.md                     ← Data models
-├── migration_log.md                 ← Nhật ký thay đổi
-│
-├── dashboard/
-│   ├── Quy Tracker Dashboard.html   ← Web UI v4.2 (dark theme, Chart.js)
-│   └── server.py                    ← Local server port 8080
 │
 ├── telegram-bot/
-│   ├── bot.py                       ← Telegram bot
+│   ├── bot.py                       ← Telegram bot (optional channel)
+│   ├── miniapp_server.py            ← API backend (port 8443)
+│   ├── db.py                        ← Database layer
 │   ├── config.json                  ← Bot token + profiles (GITIGNORED)
-│   ├── config.example.json
-│   ├── requirements.txt
-│   └── setup_mac.sh
+│   └── miniapp/                     ← ★ SẢN PHẨM CHÍNH (WEB APP)
+│       ├── web.html                 ← Built file (KHÔNG edit trực tiếp)
+│       ├── web_body.html            ← HTML source → edit ở đây
+│       ├── web_js.js                ← JS source → edit ở đây
+│       ├── build_web.py             ← Build script: body+js → web.html
+│       └── local_dev_server.py      ← Dev server port 8443
 │
-├── ios/                             ← Swift skeleton — PHASE 2 (sau khi Web hoàn thiện)
-│   ├── ContentView.swift            ← UI skeleton
-│   ├── MathEngine.swift             ← Đã sync threshold với Python
-│   ├── NetworkManager.swift         ← Skeleton
-│   └── Models.swift                 ← Data models skeleton
+├── dashboard/                       ← Bản cũ (port 8080) — giữ tham chiếu, không phát triển thêm
+│   ├── Quy Tracker Dashboard.html
+│   └── server.py
+│
+├── ios/                             ← Native iOS — PHASE SAU khi Web xong
+│   ├── ContentView.swift
+│   ├── MathEngine.swift
+│   ├── NetworkManager.swift
+│   └── Models.swift
 │
 └── .claude/
-    ├── agents/
-    │   ├── frontend-dev.md          ← Dashboard HTML/CSS/JS
-    │   ├── python-dev.md            ← server.py + bot.py
-    │   ├── qa-tester.md             ← Test curl + Python + UI checklist
-    │   ├── architect.md             ← Lập kế hoạch
-    │   ├── researcher.md            ← Tìm tài liệu
-    │   └── reviewer.md              ← Review code
+    ├── agents/                      ← Sub-agent definitions
     └── rules/
         └── python-rules.md
 ```
@@ -150,22 +184,26 @@ Fund Tracker Pro/
 ## 🔗 QUAN HỆ GIỮA CÁC THÀNH PHẦN
 
 ```
-dashboard/
-  Quy Tracker Dashboard.html  ←→  server.py (port 8080)
-                                    ├── GET  /nav-data        → nav_data.json (delta)
-                                    ├── POST /save-nav        → ghi vào nav_data.json
-                                    ├── GET/POST /bot-config  → telegram-bot/config.json
-                                    ├── POST /tcbs-auth/otp   → proxy TCBS
-                                    └── POST /tcbs-auth/verify → lưu token → config.json
+telegram-bot/miniapp/
+  web.html (built)  ←→  local_dev_server.py (port 8443)
+                           └── proxy API calls → miniapp_server.py
+                                 ├── GET  /api/me              → user profile + portfolio
+                                 ├── GET  /api/signals         → RSI/BB/MACD signals
+                                 ├── GET  /api/history         → trade history (CCQ + Vàng)
+                                 ├── GET  /api/nav_history/<code> → NAV chart data
+                                 ├── POST /api/trade/ccq       → mua/bán CCQ
+                                 ├── POST /api/trade/gold      → mua/bán vàng
+                                 ├── POST /api/nav/manual      → nhập NAV thủ công
+                                 └── ... (30+ endpoints)
 
-  HIST.chart (797KB embedded)  ←─ Full history từ ngày thành lập → 2026-04-02
-  nav_data.json (delta, ~2KB)  ←─ Chỉ điểm NAV SAU HIST cutoff
+  Dev URL: http://localhost:8443/web.html?user_id=1
+  Prod URL: https://<railway-domain>/web.html (khi có Railway)
 
 telegram-bot/
   bot.py  ←→  fmarket API (trực tiếp)
           ←→  TCBS API (trực tiếp)
           ←→  Telegram API (long-polling)
-          ─→  [TODO] POST localhost:8080/save-nav (sau mỗi job_morning)
+          ←→  miniapp_server.py (DB shared qua db.py)
 ```
 
 ---

@@ -1631,12 +1631,15 @@ function renderMarket() {
     const rsi=s.rsi??50, bb=s.bb_pct??50, chg=s.chg_pct||0;
     const rsiC=rsi<35?'var(--buy)':rsi>65?'var(--sell)':'var(--hold)';
     const bbC=bb<20?'var(--buy)':bb>80?'var(--sell)':'var(--hold)';
+    const alertIcon = (s.data_stale||s.nav_stale||s.alert||s.nav_jump_anomaly)
+      ? `<span title="${s.alert||'Dữ liệu hoặc NAV có thể chưa cập nhật'}" style="color:#facc15;font-size:9px;line-height:1">⚠</span>` : '';
     html+=`<div class="sig-row" onclick="selectFundChart('${code}')" data-code="${code}">
       <div>
-        <div style="display:flex;align-items:baseline;gap:6px">
+        <div style="display:flex;align-items:center;gap:5px">
           <span class="sig-code">${code}</span>
           <span class="pnl ${pnlC(chg)}" style="font-size:11px">${fmtP(chg)}</span>
           ${s.has_position?'<span style="font-size:9px;color:var(--c0);font-family:var(--mono)">&#x2022;NẮM</span>':''}
+          ${alertIcon}
         </div>
         <div style="font-size:11px;color:var(--txt2)">${fmt(s.nav)} đ</div>
       </div>
@@ -2982,32 +2985,59 @@ async function saveWatchedFunds() {
 async function loadHistoryPage() {
   if (_histPageCode) { loadHistChart(_histPageCode); return; }
   _renderHistFundList();
-  const funds = _me?.watched_funds?.length ? _me.watched_funds : Object.keys(_marketData||MOCK_SIGNALS).slice(0,5);
-  if (funds[0]) loadHistChart(funds[0]);
+  const _sigs0 = _signals || _marketData || MOCK_SIGNALS || {};
+  const _held0 = new Set(_me?.portfolio?.items?.map(i=>i.code)||[]);
+  const _watched0 = new Set(_me?.watched_funds || []);
+  const _all0 = Object.keys(_sigs0);
+  const _firstCode = _all0.find(c=>_held0.has(c)||_watched0.has(c)) || _all0[0];
+  if (_firstCode) loadHistChart(_firstCode);
 }
 function _renderHistFundList() {
   const el = document.getElementById('hist-fund-list'); if (!el) return;
   const sigs = _signals || _marketData || MOCK_SIGNALS || {};
   const held = new Set(_me?.portfolio?.items?.map(i=>i.code)||[]);
-  const funds = _me?.watched_funds?.length ? _me.watched_funds : Object.keys(sigs).slice(0,10);
+  const watched = new Set(_me?.watched_funds || []);
+  // Show ALL funds — held/watched pinned at top, rest sorted alphabetically
+  const allCodes = Object.keys(sigs);
+  const priority = allCodes.filter(c => held.has(c) || watched.has(c));
+  const rest = allCodes.filter(c => !held.has(c) && !watched.has(c)).sort();
+  const funds = [...priority, ...rest];
   const countEl = document.getElementById('hist-fund-count');
   if (countEl) countEl.textContent = funds.length + ' quỹ';
-  if (!funds.length) { el.innerHTML='<div style="color:var(--txt2);font-size:12px;padding:16px;text-align:center">Chưa có quỹ theo dõi</div>'; return; }
+  if (!allCodes.length) { el.innerHTML='<div style="color:var(--txt2);font-size:12px;padding:16px;text-align:center">Đang tải dữ liệu...</div>'; return; }
   el.innerHTML = funds.map(code => {
     const s = sigs[code] || {};
     const nav = s.nav ? fmt(s.nav)+' đ' : '—';
-    const chg = s.change_pct ?? s.change ?? null;
+    const chg = s.chg_pct ?? s.change_pct ?? s.change ?? null;
     const chgHtml = chg!=null ? `<span class="pnl ${pnlC(chg)}" style="font-size:11px">${chg>=0?'+':''}${chg.toFixed(2)}%</span>` : '';
     const sig = s.signal || '';
     const sigClass = sig.includes('MUA')?'buy':sig.includes('BÁN')||sig.includes('BAN')?'sell':'hold';
     const sigHtml = sig ? `<span class="badge ${sigClass}" style="font-size:9px;padding:1px 5px">${sig}</span>` : '';
+    const isWatched = watched.has(code);
+    const starBtn = `<span onclick="event.stopPropagation();_toggleWatchFund('${code}')" title="${isWatched?'Bỏ theo dõi':'Thêm theo dõi'}" style="cursor:pointer;font-size:10px;color:${isWatched?'var(--c0)':'var(--txt3)'};padding:0 1px;line-height:1;flex-shrink:0">${isWatched?'★':'☆'}</span>`;
     const heldBadge = held.has(code) ? `<span class="hist-fund-held">NẮM</span>` : '';
     return `<div class="hist-fund-row ${_histPageCode===code?'active':''}" onclick="_selectHistFund('${code}',this)">
-      <div class="hist-fund-code">${code}</div>
+      <div style="display:flex;align-items:center;gap:3px;min-width:0">
+        <div class="hist-fund-code">${code}</div>
+        ${starBtn}${heldBadge}
+      </div>
       <div class="hist-fund-nav">${nav} ${chgHtml}</div>
-      ${heldBadge}${sigHtml}
+      ${sigHtml}
     </div>`;
   }).join('');
+}
+async function _toggleWatchFund(code) {
+  const watched = new Set(_me?.watched_funds || []);
+  const wasWatched = watched.has(code);
+  if (wasWatched) watched.delete(code); else watched.add(code);
+  const list = [...watched];
+  if (_me) _me.watched_funds = list;
+  _renderHistFundList();
+  if (IS_DEV) { toast(wasWatched ? `Đã bỏ ${code} khỏi theo dõi (DEV)` : `Đã thêm ${code} vào theo dõi (DEV)`); return; }
+  try {
+    await apiPost('/api/me/watched_funds', {telegram_id: USER_ID, watched_funds: list});
+    toast(wasWatched ? `Đã bỏ ${code} khỏi danh sách theo dõi` : `Đã thêm ${code} vào danh sách theo dõi`);
+  } catch(e) { toast('Lỗi: '+(e.body?.error||e.message)); }
 }
 function _selectHistFund(code, el) {
   document.querySelectorAll('.hist-fund-row').forEach(r=>r.classList.remove('active'));
@@ -3503,13 +3533,21 @@ async function submitBulkNav() {
 // ── Analysis panel below chart ─────────────────────────────────────────────────
 function _renderHistAnalysis(code) {
   const panel = document.getElementById('hist-analysis-panel'); if(!panel) return;
-  const s = (_signals||MOCK_SIGNALS||{})[code];
+  // Use any available signal source: signals API → market data → mock
+  const s = (_signals?.[code]) || (_marketData?.[code]) || (MOCK_SIGNALS?.[code]);
   const pfItem = _me?.portfolio?.items?.find(h=>h.code===code);
-  if(!s && !pfItem) { panel.innerHTML='<div style="color:var(--txt2);font-size:12px;padding:12px 0;text-align:center">Không có dữ liệu phân tích</div>'; return; }
+  if(!s && !pfItem) {
+    panel.innerHTML=`<div style="color:var(--txt2);font-size:12px;padding:16px;text-align:center;line-height:1.7">
+      <div style="font-size:22px;margin-bottom:8px">📊</div>
+      <div style="color:var(--txt1);font-weight:600;font-family:var(--mono);font-size:11px;margin-bottom:6px">${code}</div>
+      <div>Chưa đủ dữ liệu để tính tín hiệu.<br><span style="font-size:10px">Cần ít nhất 20 ngày NAV để tính RSI/BB%/MACD.<br>Dùng "Nhập NAV thủ công" bên dưới để bổ sung.</span></div>
+    </div>`;
+    return;
+  }
 
   const rsi = s?.rsi||50;
-  const bb  = s?.bb||s?.bb_pct||50;
-  const macd= s?.macd||0;
+  const bb  = s?.bb_pct??s?.bb??50;
+  const macd= s?.macd_hist??s?.macd??0;
   const score=s?.score||0;
   const rsiColor = rsi<35?'var(--buy)':rsi>65?'var(--sell)':'var(--txt2)';
   const rsiLabel = rsi<30?'Quá bán':rsi<45?'Yếu':rsi>70?'Quá mua':rsi>55?'Mạnh':'Trung tính';
@@ -3565,7 +3603,37 @@ function _renderHistAnalysis(code) {
       </div>
     </div>` : '';
 
-  panel.innerHTML = `<div style="padding:12px 0">${pnlHtml}${indHtml}</div>`;
+  // T+2 prediction block
+  const t2Nav = s?.t2_prediction?.nav || s?.t2_nav;
+  const t2Date = s?.t2_prediction?.date || '';
+  const t2Dev = (t2Nav && s?.nav) ? ((t2Nav - s.nav) / s.nav * 100) : null;
+  const t2Html = (s && t2Nav) ? `
+    <div style="background:var(--bg3);border:1px solid #facc1533;border-radius:8px;padding:10px 12px;margin-bottom:10px">
+      <div style="font-size:10px;font-family:var(--mono);color:var(--txt2);letter-spacing:.05em;margin-bottom:6px">DỰ BÁO T+2${t2Date?' · '+t2Date:''}</div>
+      <div style="display:flex;align-items:baseline;gap:8px">
+        <div style="font-family:var(--mono);font-size:16px;font-weight:700;color:#facc15">${fmt(t2Nav)} đ</div>
+        ${t2Dev!=null?`<div class="pnl ${pnlC(t2Dev)}" style="font-size:12px">${t2Dev>=0?'+':''}${t2Dev.toFixed(2)}%</div>`:''}
+      </div>
+      <div style="font-size:10px;color:var(--txt3);margin-top:3px">Dự báo dựa trên mô hình trend ngắn hạn</div>
+    </div>` : '';
+
+  // Data adequacy warning
+  const pts = _histPageData || [];
+  const dataWarnHtml = (s && pts.length > 0 && pts.length < 20) ? `
+    <div style="background:#facc1511;border:1px solid #facc1533;border-radius:6px;padding:6px 10px;margin-bottom:8px;font-size:10px;color:#facc15">
+      ⚠ Chỉ có ${pts.length} điểm NAV — tín hiệu RSI/BB%/MACD có thể chưa chính xác (cần ≥20 ngày)
+    </div>` : '';
+
+  // Conclusion
+  const scoreDesc = score>=4?'MUA MẠNH':score>=2?'MUA':score<=-4?'BÁN MẠNH':score<=-2?'BÁN':'TRUNG LẬP';
+  const scoreColor = score>=2?'var(--buy)':score<=-2?'var(--sell)':'var(--txt2)';
+  const conclusionHtml = s ? `
+    <div style="background:var(--bg3);border-radius:8px;padding:8px 12px;text-align:center">
+      <div style="font-size:9px;font-family:var(--mono);color:var(--txt3);letter-spacing:.06em;margin-bottom:4px">KẾT LUẬN</div>
+      <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:${scoreColor}">Score ${score>0?'+':''}${score} — ${scoreDesc}</div>
+    </div>` : '';
+
+  panel.innerHTML = `<div style="padding:12px 0">${pnlHtml}${t2Html}${dataWarnHtml}${indHtml}${conclusionHtml}</div>`;
 }
 
 // #13 T+2 accuracy chart ───────────────────────────────────────────────────────
