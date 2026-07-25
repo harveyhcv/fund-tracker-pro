@@ -287,17 +287,20 @@ def _calc_gold_signals(db_url: str) -> dict:
 
 
 def _gold_rsi(prices: list, period: int = 14) -> float | None:
+    """RSI theo Wilder's exponential smoothing — đồng nhất với bot.py calc_rsi."""
     if len(prices) < period + 1:
         return None
-    deltas = [prices[i] - prices[i-1] for i in range(1, len(prices))]
-    gains  = [max(d, 0) for d in deltas[-period:]]
-    losses = [max(-d, 0) for d in deltas[-period:]]
-    avg_g  = sum(gains) / period
-    avg_l  = sum(losses) / period
+    deltas = [prices[i] - prices[i - 1] for i in range(1, len(prices))]
+    gains  = [max(d, 0.0) for d in deltas]
+    losses = [max(-d, 0.0) for d in deltas]
+    avg_g = sum(gains[:period]) / period
+    avg_l = sum(losses[:period]) / period
+    for g, l in zip(gains[period:], losses[period:]):
+        avg_g = (avg_g * (period - 1) + g) / period
+        avg_l = (avg_l * (period - 1) + l) / period
     if avg_l == 0:
         return 100.0
-    rs = avg_g / avg_l
-    return 100 - (100 / (1 + rs))
+    return 100 - (100 / (1 + avg_g / avg_l))
 
 
 _GOLD_PRICE_SRC_PRIORITY = {"VANGTODAYAPI": 2, "DOJI_SCRAPE": 2, "SJC": 1, "GIAVANG_ORG": 0}

@@ -178,8 +178,8 @@ class TestCalcBb:
 class TestCalcMacd:
 
     def test_returns_none_when_insufficient(self):
-        # Cần slow + signal_p + 5 = 26+9+5 = 40
-        assert B.calc_macd([100] * 39) is None
+        # Cần slow + signal_p = 26+9 = 35
+        assert B.calc_macd([100] * 34) is None
 
     def test_returns_dict_with_enough_data(self):
         result = B.calc_macd(NAVS_100)

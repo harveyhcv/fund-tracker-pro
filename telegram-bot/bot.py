@@ -515,19 +515,20 @@ def _ema(arr: list, period: int) -> float:
 
 
 def calc_rsi(navs: list, period: int = 14) -> Optional[float]:
+    """RSI theo Wilder's exponential smoothing — tiêu chuẩn Bloomberg/Reuters."""
     if len(navs) < period + 1:
         return None
-    window = navs[-(period + 1):]
-    gains = losses = 0.0
-    for i in range(1, len(window)):
-        diff = window[i] - window[i - 1]
-        if diff > 0:
-            gains += diff
-        else:
-            losses -= diff
-    if losses == 0:
+    deltas = [navs[i] - navs[i - 1] for i in range(1, len(navs))]
+    gains  = [max(d, 0.0) for d in deltas]
+    losses = [max(-d, 0.0) for d in deltas]
+    avg_g = sum(gains[:period]) / period
+    avg_l = sum(losses[:period]) / period
+    for g, l in zip(gains[period:], losses[period:]):
+        avg_g = (avg_g * (period - 1) + g) / period
+        avg_l = (avg_l * (period - 1) + l) / period
+    if avg_l == 0:
         return 100.0
-    return round(100 - 100 / (1 + gains / losses), 2)
+    return round(100 - 100 / (1 + avg_g / avg_l), 2)
 
 
 def calc_ma(navs: list, period: int) -> Optional[float]:
@@ -548,20 +549,32 @@ def calc_bb(navs: list, period: int = 20) -> Optional[dict]:
 
 
 def calc_macd(navs: list, fast=12, slow=26, signal_p=9) -> Optional[dict]:
-    if len(navs) < slow + signal_p + 5:
+    """MACD với full-history EMA warm-up — không cắt window."""
+    if len(navs) < slow + signal_p:
         return None
-    macd_line = _ema(navs[-fast - 5:], fast) - _ema(navs[-slow - 5:], slow)
-    n = len(navs)
-    macd_series = [
-        _ema(navs[max(0, i - fast - 4): i + 1], fast)
-        - _ema(navs[max(0, i - slow - 4): i + 1], slow)
-        for i in range(n - signal_p - 1, n)
-    ]
-    sig_line = _ema(macd_series, signal_p)
+    k_f = 2.0 / (fast + 1)
+    k_s = 2.0 / (slow + 1)
+    k_g = 2.0 / (signal_p + 1)
+    ef = sum(navs[:fast]) / fast
+    es = sum(navs[:slow]) / slow
+    for v in navs[fast:slow]:
+        ef = v * k_f + ef * (1 - k_f)
+    macd_vals: list = []
+    for v in navs[slow:]:
+        ef = v * k_f + ef * (1 - k_f)
+        es = v * k_s + es * (1 - k_s)
+        macd_vals.append(ef - es)
+    if len(macd_vals) < signal_p:
+        return None
+    sg = sum(macd_vals[:signal_p]) / signal_p
+    for v in macd_vals[signal_p:]:
+        sg = v * k_g + sg * (1 - k_g)
+    macd_r = round(macd_vals[-1], 4)
+    sg_r   = round(sg, 4)
     return {
-        "macd": round(macd_line, 4),
-        "signal": round(sig_line, 4),
-        "hist": round(macd_line - sig_line, 4),
+        "macd": macd_r,
+        "signal": sg_r,
+        "hist": round(macd_r - sg_r, 4),
     }
 
 
@@ -750,6 +763,18 @@ def calc_signal(code: str, pts: list) -> dict:
     chg7  = round((last / nav7_ref  - 1) * 100, 2) if nav7_ref  else None
     chg30 = round((last / nav30_ref - 1) * 100, 2) if nav30_ref else None
 
+    # NAV jump anomaly: skip signals for corporate actions (split/merge) — >15%/ngày
+    if prev > 0 and abs(chg_pct) > 15:
+        return {
+            "signal": "N/A", "score": 0, "rsi": None,
+            "bb_pct": None, "macd_hist": None,
+            "nav": last, "nav_prev": prev, "chg_pct": round(chg_pct, 3),
+            "nav_date": pts[-1]["date"],
+            "chg7": chg7, "chg30": chg30,
+            "nav_jump_anomaly": True,
+            "details": [f"NAV jump {chg_pct:+.1f}% — có thể do sáp nhập/chia tách"],
+        }
+
     score = 0
     details = []
 
@@ -790,10 +815,14 @@ def calc_signal(code: str, pts: list) -> dict:
     bb_pct = None
     if bb:
         bb_pct = bb["pct"]
-        if bb_pct < 10:
+        if bb_pct < 0:           # Giá dưới lower band — oversold cực mạnh
+            score += 4; details.append(f"BB {bb_pct:.0f}% 🟢🟢🟢 dưới band")
+        elif bb_pct < 10:
             score += 3; details.append(f"BB {bb_pct:.0f}% 🟢🟢 đáy dải")
         elif bb_pct < 20:
             score += 2; details.append(f"BB {bb_pct:.0f}% 🟢 gần đáy")
+        elif bb_pct > 100:       # Giá trên upper band — overbought cực mạnh
+            score -= 4; details.append(f"BB {bb_pct:.0f}% 🔴🔴🔴 trên band")
         elif bb_pct > 90:
             score -= 3; details.append(f"BB {bb_pct:.0f}% 🔴🔴 đỉnh dải")
         elif bb_pct > 80:
