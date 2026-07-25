@@ -537,7 +537,8 @@ class Handler(BaseHTTPRequestHandler):
 
         # ── API: gold ──
         if path == "/api/gold":
-            return self._json(_calc_gold_portfolio(uid))
+            # Wrap giống production: {portfolio, signals, prices}
+            return self._json({"portfolio": _calc_gold_portfolio(uid), "signals": None, "prices": {}})
 
         # ── API: signals ──
         if path == "/api/signals":

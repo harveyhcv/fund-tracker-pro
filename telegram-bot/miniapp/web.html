@@ -1653,6 +1653,12 @@ function renderMarket() {
   }
   html+='</div>';
   document.getElementById('market-content').innerHTML=html;
+  // WEB-010: auto-select first held fund on initial load so chart-col is never empty
+  const colEl = document.getElementById('chart-col-content');
+  if (colEl && !colEl.children.length) {
+    const autoCode = codes.find(c => _marketData[c]?.has_position) || codes[0];
+    if (autoCode) setTimeout(()=>selectFundChart(autoCode), 80);
+  }
 }
 
 function filterMarket() { renderMarket(); }
@@ -3005,7 +3011,21 @@ function _renderHistFundList() {
   const countEl = document.getElementById('hist-fund-count');
   if (countEl) countEl.textContent = funds.length + ' quỹ';
   if (!allCodes.length) { el.innerHTML='<div style="color:var(--txt2);font-size:12px;padding:16px;text-align:center">Đang tải dữ liệu...</div>'; return; }
-  el.innerHTML = funds.map(code => {
+  // WEB-011: Gold row pinned at top of fund list
+  const gs = _goldData?.signals;
+  const goldActiveClass = _histPageCode==='GOLD_SJC' ? 'active' : '';
+  const goldSigLabel = gs?.signal || '';
+  const goldSigClass = goldSigLabel.includes('MUA')?'buy':goldSigLabel.includes('THẬN')||goldSigLabel.includes('BÁN')?'sell':'hold';
+  const goldChgHtml = gs?.chg_pct!=null ? `<span class="pnl ${pnlC(gs.chg_pct)}" style="font-size:10px">${gs.chg_pct>=0?'+':''}${gs.chg_pct.toFixed(2)}%</span>` : '';
+  const goldPriceHtml = gs?.price ? `<span style="font-family:var(--mono);font-size:10px;color:var(--txt2)">${(gs.price/1e6).toFixed(0)}M</span>` : '';
+  const goldRow = `<div class="hist-fund-row ${goldActiveClass}" onclick="_selectHistFund('GOLD_SJC',this)" style="border-left:2px solid #fbbf24;padding-left:6px">
+    <div style="display:flex;align-items:center;gap:3px;min-width:0">
+      <div class="hist-fund-code" style="color:#fbbf24">🥇 VÀNG</div>
+    </div>
+    <div class="hist-fund-nav">${goldPriceHtml} ${goldChgHtml}</div>
+    ${goldSigLabel?`<span class="badge ${goldSigClass}" style="font-size:9px;padding:1px 5px">${goldSigLabel}</span>`:'<span style="font-size:9px;color:var(--txt3)">—</span>'}
+  </div>`;
+  el.innerHTML = goldRow + funds.map(code => {
     const s = sigs[code] || {};
     const nav = s.nav ? fmt(s.nav)+' đ' : '—';
     const chg = s.chg_pct ?? s.change_pct ?? s.change ?? null;
@@ -3043,10 +3063,12 @@ function _selectHistFund(code, el) {
   document.querySelectorAll('.hist-fund-row').forEach(r=>r.classList.remove('active'));
   el?.classList.add('active');
   const lbl = document.getElementById('hist-fund-label');
-  if (lbl) lbl.textContent = code;
-  loadHistChart(code);
+  if (lbl) lbl.textContent = code === 'GOLD_SJC' ? '🥇 VÀNG SJC' : code;
+  if (code === 'GOLD_SJC') loadGoldAnalysis();
+  else loadHistChart(code);
 }
 async function loadHistChart(code) {
+  if (code === 'GOLD_SJC') { loadGoldAnalysis(); return; }
   _histPageCode = code;
   const lbl = document.getElementById('hist-fund-label');
   if (lbl) lbl.textContent = code;
@@ -3454,8 +3476,9 @@ function setHistView(view, el) {
   const analysisPanel = document.getElementById('hist-analysis-panel');
   if(rangeBar) rangeBar.style.display = view==='nav' ? 'flex' : 'none';
   if(analysisPanel) analysisPanel.style.display = view==='nav' ? 'block' : 'none';
-  if(view==='nav' && _histPageCode) loadHistChart(_histPageCode);
-  else if(view==='t2') renderT2AccuracyChart(_histPageCode||Object.keys(MOCK_SIGNALS||{})[0]||'VESAF');
+  if(view==='nav' && _histPageCode) {
+    if (_histPageCode==='GOLD_SJC') loadGoldAnalysis(); else loadHistChart(_histPageCode);
+  } else if(view==='t2') renderT2AccuracyChart(_histPageCode||Object.keys(MOCK_SIGNALS||{})[0]||'VESAF');
   else if(view==='gold') loadGoldHistory();
 }
 
@@ -3634,6 +3657,122 @@ function _renderHistAnalysis(code) {
     </div>` : '';
 
   panel.innerHTML = `<div style="padding:12px 0">${pnlHtml}${t2Html}${dataWarnHtml}${indHtml}${conclusionHtml}</div>`;
+}
+
+// WEB-011: Gold analysis in Phân Tích tab ──────────────────────────────────────
+async function loadGoldAnalysis() {
+  _histPageCode = 'GOLD_SJC';
+  const lbl = document.getElementById('hist-fund-label');
+  if (lbl) lbl.textContent = '🥇 VÀNG SJC';
+  // Ensure NAV view mode (shows analysis panel)
+  if (_histView !== 'nav') {
+    _histView = 'nav';
+    ['hist-view-nav','hist-view-t2','hist-view-gold'].forEach(id=>{
+      const b=document.getElementById(id); if(b) b.classList.remove('active');
+    });
+    const nb=document.getElementById('hist-view-nav'); if(nb) nb.classList.add('active');
+  }
+  const rangeBar=document.getElementById('hist-range-bar');
+  const analysisPanel=document.getElementById('hist-analysis-panel');
+  if(rangeBar) rangeBar.style.display='flex';
+  if(analysisPanel) analysisPanel.style.display='block';
+  // Update active row in fund list
+  document.querySelectorAll('.hist-fund-row').forEach(r=>{
+    r.classList.toggle('active', !!r.querySelector('.hist-fund-code[style*="fbbf24"]'));
+  });
+  const chartEl=document.getElementById('hist-chart-area'); if(!chartEl) return;
+  chartEl.innerHTML=spin();
+  try {
+    if (!_goldData) {
+      const d=await apiFetch(`/api/gold?user_id=${USER_ID}`);
+      _goldData=d;
+    }
+    const prod='VANGTODAYAPI:SJC_1L';
+    const hist=await apiFetch('/api/gold/price_history/'+encodeURIComponent(prod)).catch(()=>({history:[]}));
+    const history=hist.history||[];
+    if (history.length) {
+      chartEl.innerHTML='<canvas id="gold-analysis-canvas" style="width:100%;height:100%"></canvas>';
+      if (_histPageChart) { _histPageChart.destroy(); _histPageChart=null; }
+      const labels=history.map(h=>h.date);
+      const vals=history.map(h=>h.sell||h.buy||0);
+      _histPageChart=new Chart(document.getElementById('gold-analysis-canvas'),{
+        type:'line',
+        data:{labels,datasets:[{data:vals,borderColor:'#fbbf24',borderWidth:2,fill:true,backgroundColor:'#fbbf2422',tension:0.3,pointRadius:0}]},
+        options:{responsive:true,maintainAspectRatio:false,
+          plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>fmt(c.parsed.y)+' đ'}}},
+          scales:{x:{display:false},y:{display:true,grid:{color:'#1e3050'},
+            ticks:{color:'#94a3b8',font:{family:'IBM Plex Mono',size:10},
+              callback:v=>v>=1e6?(v/1e6).toFixed(0)+'M':''+v}}}}
+      });
+    } else {
+      chartEl.innerHTML='<div style="color:var(--txt2);font-size:12px;padding:24px;text-align:center;line-height:1.7">📊<br>Chưa có lịch sử giá vàng SJC.<br><span style="font-size:10px">Cần kết nối Railway DB để xem biểu đồ.</span></div>';
+    }
+  } catch(e) { if(chartEl) chartEl.innerHTML=renderErr('Lỗi: '+e.message); }
+  _renderGoldAnalysisPanel();
+}
+
+function _renderGoldAnalysisPanel() {
+  const panel=document.getElementById('hist-analysis-panel'); if(!panel) return;
+  const s=_goldData?.signals;
+  const hasData = s && (s.price || s.rsi != null);
+  if (!hasData) {
+    panel.innerHTML=`<div style="color:var(--txt2);font-size:12px;padding:16px;text-align:center;line-height:1.7">
+      <div style="font-size:22px;margin-bottom:8px">🥇</div>
+      <div style="color:var(--txt1);font-weight:600;font-family:var(--mono);font-size:11px;margin-bottom:6px">VÀNG SJC</div>
+      <div>Tín hiệu vàng chỉ có trên Railway.<br><span style="font-size:10px;color:var(--txt3)">Giá vàng lịch sử cần DB cloud để tính RSI/BB%.</span></div>
+    </div>`;
+    return;
+  }
+  const rsi=s.rsi||50, bb=s.bb_pct||50, score=s.score||0;
+  const rsiColor=rsi<35?'var(--buy)':rsi>65?'var(--sell)':'var(--txt2)';
+  const rsiLabel=rsi<33?'Quá bán':rsi<48?'Yếu':rsi>70?'Quá mua':rsi>55?'Mạnh':'Trung tính';
+  const bbColor=bb<25?'var(--buy)':bb>75?'var(--sell)':'var(--txt2)';
+  const priceHtml=s.price?`
+    <div style="background:var(--bg3);border-radius:8px;padding:10px 12px;margin-bottom:10px">
+      <div style="font-size:10px;font-family:var(--mono);color:var(--txt2);letter-spacing:.05em;margin-bottom:6px">GIÁ VÀNG SJC HIỆN TẠI</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+        <div><div style="font-size:10px;color:var(--txt3)">Giá bán</div><div style="font-family:var(--mono);font-size:13px;font-weight:600">${fmt(s.price)} đ/lượng</div></div>
+        <div><div style="font-size:10px;color:var(--txt3)">Thay đổi ngày</div><div class="pnl ${pnlC(s.chg_pct||0)}" style="font-family:var(--mono);font-size:13px;font-weight:600">${fmtP(s.chg_pct||0)}</div></div>
+        ${s.ma20?`<div><div style="font-size:10px;color:var(--txt3)">MA20</div><div style="font-family:var(--mono);font-size:12px">${fmt(s.ma20)} đ</div></div>`:''}
+        ${s.ma50?`<div><div style="font-size:10px;color:var(--txt3)">MA50</div><div style="font-family:var(--mono);font-size:12px">${fmt(s.ma50)} đ</div></div>`:''}
+      </div>
+    </div>`:'';
+  const indHtml=`
+    <div style="font-size:10px;font-family:var(--mono);color:var(--txt2);letter-spacing:.05em;margin-bottom:8px">CHỈ SỐ KỸ THUẬT — VÀNG SJC</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+      <div style="background:var(--bg3);border-radius:8px;padding:8px 10px">
+        <div style="font-size:10px;color:var(--txt3);margin-bottom:4px">RSI (14)</div>
+        <div style="font-family:var(--mono);font-size:14px;font-weight:700;color:${rsiColor}">${rsi.toFixed?rsi.toFixed(1):rsi}</div>
+        <div style="font-size:10px;color:${rsiColor};margin-top:2px">${rsiLabel}</div>
+        <div style="height:4px;background:var(--bdr);border-radius:2px;margin-top:6px"><div style="height:100%;width:${Math.min(rsi,100)}%;background:${rsiColor};border-radius:2px"></div></div>
+      </div>
+      <div style="background:var(--bg3);border-radius:8px;padding:8px 10px">
+        <div style="font-size:10px;color:var(--txt3);margin-bottom:4px">BB %B</div>
+        <div style="font-family:var(--mono);font-size:14px;font-weight:700;color:${bbColor}">${bb.toFixed?bb.toFixed(1):bb}%</div>
+        <div style="font-size:10px;color:${bbColor};margin-top:2px">${bb<25?'Gần band dưới':bb>75?'Gần band trên':'Giữa dải'}</div>
+        <div style="height:4px;background:var(--bdr);border-radius:2px;margin-top:6px"><div style="height:100%;width:${Math.min(bb,100)}%;background:${bbColor};border-radius:2px"></div></div>
+      </div>
+      <div style="background:var(--bg3);border-radius:8px;padding:8px 10px">
+        <div style="font-size:10px;color:var(--txt3);margin-bottom:4px">Score</div>
+        <div style="font-family:var(--mono);font-size:14px;font-weight:700;color:${score>0?'var(--buy)':score<0?'var(--sell)':'var(--txt2)'}">${score>0?'+':''}${score}</div>
+        <div style="font-size:10px;color:var(--txt3);margin-top:2px">Thang vàng (max ±4)</div>
+      </div>
+      ${s.ma20?`<div style="background:var(--bg3);border-radius:8px;padding:8px 10px">
+        <div style="font-size:10px;color:var(--txt3);margin-bottom:4px">Xu hướng MA</div>
+        <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:${s.price>s.ma20?'var(--buy)':'var(--sell)'}">
+          ${s.price>s.ma20?'↑ Trên MA20':'↓ Dưới MA20'}
+        </div>
+        <div style="font-size:10px;color:var(--txt3);margin-top:2px">${s.ma50?(s.price>s.ma50?'↑ Trên MA50':'↓ Dưới MA50'):''}</div>
+      </div>`:'' }
+    </div>`;
+  const scoreDesc=score>=3?'MUA':score>=1?'TÍCH LŨY':score<=-2?'THẬN TRỌNG':'HOLD';
+  const scoreColor=score>=1?'var(--buy)':score<=-2?'var(--sell)':'var(--txt2)';
+  const conclusionHtml=`
+    <div style="background:var(--bg3);border-radius:8px;padding:8px 12px;text-align:center">
+      <div style="font-size:9px;font-family:var(--mono);color:var(--txt3);letter-spacing:.06em;margin-bottom:4px">KẾT LUẬN — VÀNG SJC</div>
+      <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:${scoreColor}">${s.signal||('Score '+(score>0?'+':'')+score+' — '+scoreDesc)}</div>
+    </div>`;
+  panel.innerHTML=`<div style="padding:12px 0">${priceHtml}${indHtml}${conclusionHtml}</div>`;
 }
 
 // #13 T+2 accuracy chart ───────────────────────────────────────────────────────
