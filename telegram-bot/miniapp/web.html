@@ -555,6 +555,7 @@ canvas{width:100%!important;height:100%!important}
           <button class="filter-btn" onclick="setMarketFilter('held',this)">Đang nắm</button>
         </div>
       </div>
+      <div id="market-stale-banner" style="display:none"></div>
       <div id="market-content"><div class="loading"><div class="spinner"></div>Đang tải thị trường...</div></div>
     </div>
 
@@ -1654,6 +1655,23 @@ function renderMarket() {
   }
   html+='</div>';
   document.getElementById('market-content').innerHTML=html;
+  // WEB-015: stale NAV banner
+  const allMarketCodes = Object.keys(_marketData||{});
+  const staleCodes = allMarketCodes.filter(c=>_marketData[c].nav_stale||_marketData[c].data_stale);
+  const staleBanner = document.getElementById('market-stale-banner');
+  if(staleBanner) {
+    if(staleCodes.length) {
+      staleBanner.style.display='block';
+      staleBanner.innerHTML=`<div style="background:rgba(250,204,21,.08);border-left:3px solid #facc15;padding:7px 12px;margin:0 0 2px;font-size:11px;color:#facc15;display:flex;align-items:center;gap:8px">
+        <span style="font-size:13px">⚠</span>
+        <span>${staleCodes.length} quỹ chưa cập nhật NAV hôm nay:
+        <span style="font-family:var(--mono)">${staleCodes.slice(0,5).join(', ')}${staleCodes.length>5?`…+${staleCodes.length-5}`:''}</span></span>
+      </div>`;
+    } else {
+      staleBanner.style.display='none';
+      staleBanner.innerHTML='';
+    }
+  }
   // WEB-010: auto-select first held fund on initial load so chart-col is never empty
   const colEl = document.getElementById('chart-col-content');
   if (colEl && !colEl.children.length) {
