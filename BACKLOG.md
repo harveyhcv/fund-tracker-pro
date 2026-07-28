@@ -4,8 +4,41 @@
 # Priority: P0 (blocker) / P1 (important) / P2 (nice-to-have)
 # Claude đọc file này ĐẦU TIÊN mỗi session. Pick task IN_PROGRESS nếu có, nếu không pick P0 cao nhất.
 #
-# Last updated: 2026-07-24 (ca chiều — verify baseline + scan uncommitted files, không code thêm.
-# Tất cả P0/P1 DONE; PAY-006/007 P2 blocked credentials)
+# Last updated: 2026-07-28 (autonomous ca chiều: WEB-012, WEB-015, WEB-016)
+
+## Session (autonomous, scheduled) — Ca chiều 2026-07-28: WEB-012/015/016
+# WEB-012 DONE: ⚖️ So Sánh view — so sánh 2 quỹ cùng lúc trong Phân Tích tab
+#   - Nút "⚖️ So Sánh" trong view toggle bar
+#   - loadComparisonView(): dropdown chọn quỹ 2, fetch 2 NAV history, normalize về % return
+#   - renderComparisonChart(): Chart.js dual-line, forward-fill missing dates, legend + tooltip % return
+#   - _renderCmpSignals(): bảng tín hiệu RSI/BB%/MACD/score so sánh 2 quỹ (cyan vs yellow)
+#   - _selectHistFund() + setHistRange() cập nhật khi ở cmp mode
+# WEB-015 DONE: Stale NAV banner trên Trang Chủ market board
+#   - <div id="market-stale-banner"> trước <div id="market-content">
+#   - renderMarket() hiện banner vàng nếu staleCodes.length > 0 (nav_stale||data_stale)
+#   - Ẩn khi không có quỹ stale
+# WEB-016 DONE: ★/☆ quick-watch toggle trên mỗi market row (Trang Chủ)
+#   - Mỗi sig-row có <span class="watch-star"> bên cạnh signal badge
+#   - _quickWatch(code, e): stopPropagation, gọi _toggleWatchFund, cập nhật DOM star optimistically
+#   - isWatched check từ _me?.watched_funds
+#   - Verified: click VHIZ → ★ cyan + "Bỏ theo dõi", toggle lại → ☆ + "Thêm theo dõi"
+# Build: 256,846 chars. Tất cả P2 web tasks hoàn thành (trừ WEB-013/014/017/018).
+# P1 còn lại: WEB-017 (BLOCKED TCInvest JWT), WEB-013 (cần real T+2 data từ backend)
+# Việc cần Harvey:
+#   (1) Cấp JWT TCInvest mới → Railway backfill NAV (fix WEB-017)
+#   (2) WEB-013: backend cần expose t2_accuracy history per fund để chart thật
+#
+## Session (Harvey-directed) — 2026-07-25: Tier 1 analytics + WEB-010/011
+# ANA-001 DONE: calc_rsi Wilder's EMA (bot.py + local_dev_server.py + _gold_rsi miniapp_server.py)
+# ANA-002 DONE: calc_macd full-history EMA warm-up (không cắt navs[-fast-5:] nữa)
+# ANA-003 DONE: BB%B extended range bb_pct<0 (+4) và bb_pct>100 (-4) — giá ngoài dải Bollinger
+# ANA-004 DONE: NAV anomaly filter |chg_pct|>15% → trả N/A + nav_jump_anomaly=True (skip calc)
+# ANA-005 DONE: local_dev_server threshold sync ±6/±3 (align với bot.py sau khi BB max tăng lên ±4)
+# WEB-010 DONE: Trang Chủ chart-col auto-select quỹ đầu (has_position) khi market load lần đầu
+# WEB-011 DONE: 🥇 VÀNG SJC pinned ở đầu fund list trong Phân Tích; loadGoldAnalysis() hiển thị
+#   price chart + RSI/BB%/MA signals từ _goldData.signals; graceful fallback khi chạy local
+#   (signals chỉ từ Railway PostgreSQL, local hiện "Tín hiệu vàng chỉ có trên Railway")
+# 367/367 tests pass. Commits: 876c218 (analytics), 2dd3607 (WEB-010/011)
 
 ## Session (Harvey-directed) — 2026-07-24 chiều: Web parity audit + UI fixes (WEB-001..008)
 # Harvey cung cấp 4 screenshots + feedback list. Implement:
@@ -22,13 +55,13 @@
 # Commit: (pending — xem bên dưới)
 #
 # BACKLOG phát hiện từ feedback Harvey (chưa implement — nhiều tasks cần Harvey xác nhận ưu tiên):
-# WEB-010 TODO P1: Trang Chủ — hiện portfolio NAV chart mặc định thay vì empty placeholder
-# WEB-011 TODO P1: Gold analysis signals trong Phân Tích tab (hiện chỉ có ở Giao Dịch)
-# WEB-012 TODO P1: Fund comparison tool — so sánh 2 quỹ cùng lúc (NAV chart overlay + signals)
+# WEB-010 DONE: Trang Chủ — auto-select quỹ đầu (has_position) khi load
+# WEB-011 DONE: Gold analysis signals trong Phân Tích tab — VÀNG SJC row + panel
+# WEB-012 DONE: Fund comparison tool — so sánh 2 quỹ cùng lúc (NAV chart overlay + signals)
 # WEB-013 TODO P2: T+2 accuracy chart cần dữ liệu thật (hiện dùng mock random data)
 # WEB-014 TODO P2: NAV dashboard warning icons (nav_jump_anomaly, stale) — cần backend expose field
-# WEB-015 TODO P2: "Quỹ chưa cập nhật NAV hôm nay" alert giống Mini App
-# WEB-016 TODO P2: Fund watchlist management — add/remove từ Trang Chủ sidebar
+# WEB-015 DONE: "Quỹ chưa cập nhật NAV hôm nay" stale banner trên Trang Chủ market board
+# WEB-016 DONE: Fund watchlist ★/☆ quick-toggle trên mỗi market row (Trang Chủ) — _quickWatch()
 # WEB-017 TODO P1: NAV data completeness — nhiều quỹ chỉ 3 ngày data → cần bulk backfill
 #   → BLOCKED: TCInvest JWT hết hạn từ 2026-07-16, Harvey cần cấp token mới trên Railway
 # WEB-018 TODO P3: TCInvest cross-fetch helper (CORS ngăn browser đọc cookie TCInvest tự động)

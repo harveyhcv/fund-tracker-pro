@@ -535,6 +535,7 @@ function renderMarket() {
     const bbC=bb<20?'var(--buy)':bb>80?'var(--sell)':'var(--hold)';
     const alertIcon = (s.data_stale||s.nav_stale||s.alert||s.nav_jump_anomaly)
       ? `<span title="${s.alert||'Dữ liệu hoặc NAV có thể chưa cập nhật'}" style="color:#facc15;font-size:9px;line-height:1">⚠</span>` : '';
+    const isWatched = (_me?.watched_funds||[]).includes(code);
     html+=`<div class="sig-row" onclick="selectFundChart('${code}')" data-code="${code}">
       <div>
         <div style="display:flex;align-items:center;gap:5px">
@@ -550,7 +551,10 @@ function renderMarket() {
         <div class="meter"><div class="meter-lbl">BB%</div><div class="meter-bar"><div class="meter-fill" style="width:${bb}%;background:${bbC}"></div></div><div class="meter-val">${bb.toFixed?bb.toFixed(0):bb}</div></div>
         <div class="meter"><div class="meter-lbl">SCR</div><div class="meter-val" style="font-size:11px;color:${(s.score||0)>=3?'var(--buy)':(s.score||0)<=-3?'var(--sell)':'var(--txt)'}">${(s.score>=0?'+':'')}${s.score||0}</div></div>
       </div>
-      <div style="text-align:right"><div class="badge ${sigC(s.signal)}">${sigLabel(s.signal)}</div></div>
+      <div style="text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:3px">
+        <div class="badge ${sigC(s.signal)}">${sigLabel(s.signal)}</div>
+        <span class="watch-star" onclick="event.stopPropagation();_quickWatch('${code}',event)" title="${isWatched?'Bỏ theo dõi':'Thêm theo dõi'}" style="cursor:pointer;font-size:13px;color:${isWatched?'var(--c0)':'var(--txt3)'}">${isWatched?'★':'☆'}</span>
+      </div>
     </div>`;
   }
   html+='</div>';
@@ -1964,6 +1968,17 @@ function _renderHistFundList() {
       ${sigHtml}
     </div>`;
   }).join('');
+}
+async function _quickWatch(code, e) {
+  if (e) e.stopPropagation();
+  await _toggleWatchFund(code);
+  const star = document.querySelector(`[data-code="${code}"] .watch-star`);
+  if (star) {
+    const w = (_me?.watched_funds||[]).includes(code);
+    star.textContent = w ? '★' : '☆';
+    star.style.color = w ? 'var(--c0)' : 'var(--txt3)';
+    star.title = w ? 'Bỏ theo dõi' : 'Thêm theo dõi';
+  }
 }
 async function _toggleWatchFund(code) {
   const watched = new Set(_me?.watched_funds || []);
