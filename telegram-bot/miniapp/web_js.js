@@ -1966,6 +1966,7 @@ function _selectHistFund(code, el) {
   el?.classList.add('active');
   const lbl = document.getElementById('hist-fund-label');
   if (lbl) lbl.textContent = code === 'GOLD_SJC' ? '🥇 VÀNG SJC' : code;
+  if (_histView === 'cmp') { _histPageCode = code; loadComparisonView(); return; }
   if (code === 'GOLD_SJC') loadGoldAnalysis();
   else loadHistChart(code);
 }
@@ -2366,29 +2367,183 @@ function renderSchoolSummary(items) {
 // ── History tab: view state + switcher ────────────────────────────────────────
 let _histView = 'nav';
 let _histRange = '1M';
+let _cmpCode2 = '';
 
 function setHistView(view, el) {
   _histView = view;
-  ['hist-view-nav','hist-view-t2','hist-view-gold'].forEach(id=>{
+  ['hist-view-nav','hist-view-t2','hist-view-gold','hist-view-cmp'].forEach(id=>{
     const b=document.getElementById(id); if(b) b.classList.remove('active');
   });
   if(el) el.classList.add('active');
-  // Show range bar + analysis only for NAV view
   const rangeBar = document.getElementById('hist-range-bar');
   const analysisPanel = document.getElementById('hist-analysis-panel');
-  if(rangeBar) rangeBar.style.display = view==='nav' ? 'flex' : 'none';
-  if(analysisPanel) analysisPanel.style.display = view==='nav' ? 'block' : 'none';
+  if(rangeBar) rangeBar.style.display = (view==='nav'||view==='cmp') ? 'flex' : 'none';
+  if(analysisPanel) analysisPanel.style.display = (view==='nav') ? 'block' : 'none';
   if(view==='nav' && _histPageCode) {
     if (_histPageCode==='GOLD_SJC') loadGoldAnalysis(); else loadHistChart(_histPageCode);
   } else if(view==='t2') renderT2AccuracyChart(_histPageCode||Object.keys(MOCK_SIGNALS||{})[0]||'VESAF');
   else if(view==='gold') loadGoldHistory();
+  else if(view==='cmp') loadComparisonView();
+}
+
+// ── WEB-012: Fund comparison tool ─────────────────────────────────────────────
+async function loadComparisonView() {
+  const el = document.getElementById('hist-chart-area'); if (!el) return;
+  const code1 = _histPageCode;
+  if (!code1) {
+    el.innerHTML = '<div style="padding:24px;text-align:center;color:var(--txt2);font-size:12px">Chọn quỹ bên trái để so sánh</div>';
+    return;
+  }
+  const allCodes = Object.keys(_marketData || _signals || MOCK_SIGNALS || {}).filter(c=>c!==code1 && c!=='GOLD_SJC');
+  const cmpOpts = allCodes.map(c=>`<option value="${c}" ${c===_cmpCode2?'selected':''}>${c}</option>`).join('');
+  const sel2 = `<select onchange="_cmpCode2=this.value;loadComparisonView()" style="font-family:var(--mono);font-size:12px;background:var(--bg3);color:var(--txt);border:1px solid var(--bdr);border-radius:6px;padding:4px 8px;min-width:120px">
+    <option value="">-- Chọn quỹ 2 --</option>${cmpOpts}
+  </select>`;
+  const hdrEl = document.getElementById('hist-nav-header');
+  if (hdrEl) hdrEl.innerHTML = `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <span style="font-family:var(--mono);font-size:11px;color:var(--c0)">${code1}</span>
+    <span style="font-size:10px;color:var(--txt2)">so với</span>
+    ${sel2}
+  </div>`;
+  if (!_cmpCode2) {
+    el.innerHTML = '<div style="padding:24px;text-align:center;color:var(--txt2);font-size:12px">Chọn quỹ thứ 2 để so sánh</div>';
+    return;
+  }
+  el.innerHTML = spin();
+  try {
+    let pts1, pts2;
+    if (IS_DEV) {
+      const s1 = (MOCK_SIGNALS||{})[code1]||{nav:15000};
+      const s2 = (MOCK_SIGNALS||{})[_cmpCode2]||{nav:12000};
+      pts1 = _mockNavHistory(s1.nav||15000, 365);
+      pts2 = _mockNavHistory(s2.nav||12000, 365);
+    } else {
+      [pts1, pts2] = await Promise.all([
+        apiFetch(`/api/nav_history/${code1}?limit=365`).then(d=>d.history||d),
+        apiFetch(`/api/nav_history/${_cmpCode2}?limit=365`).then(d=>d.history||d),
+      ]);
+    }
+    renderComparisonChart(pts1, pts2, code1, _cmpCode2);
+    _renderCmpSignals(code1, _cmpCode2);
+  } catch(e) { el.innerHTML = renderErr('Lỗi: '+e.message); }
+}
+
+function renderComparisonChart(pts1, pts2, code1, code2) {
+  const el = document.getElementById('hist-chart-area'); if (!el) return;
+  // Apply time range
+  let p1 = pts1, p2 = pts2;
+  if (_histRange && _histRange !== 'ALL') {
+    const days = {'1M':30,'3M':90,'6M':180,'1Y':365}[_histRange]||30;
+    const cutoff = new Date(); cutoff.setDate(cutoff.getDate()-days);
+    const cut = cutoff.toISOString().slice(0,10);
+    p1 = p1.filter(p=>p.date>=cut);
+    p2 = p2.filter(p=>p.date>=cut);
+  }
+  if (!p1.length && !p2.length) { el.innerHTML='<div style="color:var(--txt2);padding:24px;text-align:center">Chưa có dữ liệu</div>'; return; }
+  // Build union of dates (all dates from both series)
+  const allDates = [...new Set([...p1.map(p=>p.date), ...p2.map(p=>p.date)])].sort();
+  const map1 = Object.fromEntries(p1.map(p=>[p.date, p.nav]));
+  const map2 = Object.fromEntries(p2.map(p=>[p.date, p.nav]));
+  // Forward-fill missing dates
+  let last1=null, last2=null;
+  const vals1=[], vals2=[];
+  allDates.forEach(d=>{
+    if(map1[d]!=null) last1=map1[d];
+    if(map2[d]!=null) last2=map2[d];
+    vals1.push(last1); vals2.push(last2);
+  });
+  // Normalize to % return from first valid point
+  const base1 = vals1.find(v=>v!=null)||1;
+  const base2 = vals2.find(v=>v!=null)||1;
+  const norm1 = vals1.map(v=>v!=null?((v-base1)/base1*100):null);
+  const norm2 = vals2.map(v=>v!=null?((v-base2)/base2*100):null);
+  // Calc final returns for header
+  const fin1 = norm1.filter(v=>v!=null).slice(-1)[0]??0;
+  const fin2 = norm2.filter(v=>v!=null).slice(-1)[0]??0;
+  const c1Color='#00e5ff', c2Color='#fbbf24';
+  // Stats in header
+  const hdrEl = document.getElementById('hist-nav-header');
+  if (hdrEl) {
+    const sel2 = hdrEl.querySelector('select');
+    const selHtml = sel2 ? sel2.outerHTML : '';
+    hdrEl.innerHTML = `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <span style="font-family:var(--mono);font-size:11px;color:${c1Color}">${code1} <span class="pnl ${pnlC(fin1)}">${fin1>=0?'+':''}${fin1.toFixed(2)}%</span></span>
+      <span style="font-size:10px;color:var(--txt2)">vs</span>
+      ${selHtml||`<span style="font-family:var(--mono);font-size:11px;color:${c2Color}">${code2}</span>`}
+      <span style="font-family:var(--mono);font-size:11px;color:${c2Color}">${code2} <span class="pnl ${pnlC(fin2)}">${fin2>=0?'+':''}${fin2.toFixed(2)}%</span></span>
+    </div>
+    <div style="font-size:10px;color:var(--txt2);margin-top:2px">% sinh lời từ đầu kỳ (tỷ lệ hóa về 0%)</div>`;
+  }
+  el.innerHTML = '<canvas id="cmp-canvas"></canvas>';
+  const ctx = document.getElementById('cmp-canvas'); if(!ctx) return;
+  if (_histPageChart) { try{_histPageChart.destroy();}catch(e){} _histPageChart=null; }
+  _histPageChart = new Chart(ctx, {
+    type:'line',
+    data:{labels:allDates, datasets:[
+      {label:code1, data:norm1, borderColor:c1Color, borderWidth:1.5, fill:false, tension:0.25, pointRadius:0, pointHoverRadius:4, spanGaps:true},
+      {label:code2, data:norm2, borderColor:c2Color, borderWidth:1.5, fill:false, tension:0.25, pointRadius:0, pointHoverRadius:4, spanGaps:true},
+    ]},
+    options:{responsive:true, maintainAspectRatio:false, animation:false,
+      plugins:{
+        legend:{display:true, position:'top', labels:{color:'#9ca3af',font:{size:10},boxWidth:12,padding:10}},
+        tooltip:{mode:'index', intersect:false, callbacks:{label:(c)=>`${c.dataset.label}: ${c.parsed.y!=null?(c.parsed.y>=0?'+':'')+c.parsed.y.toFixed(2)+'%':'N/A'}`}},
+        crosshair:_crosshairPlugin
+      },
+      scales:{
+        x:{ticks:{maxTicksLimit:8,color:'#6b7280',font:{size:10}},grid:{color:'rgba(255,255,255,.04)'}},
+        y:{ticks:{color:'#6b7280',font:{size:10}, callback:v=>(v>=0?'+':'')+v.toFixed(1)+'%'}, grid:{color:'rgba(255,255,255,.04)'},
+           title:{display:true, text:'% Sinh lời', color:'#6b7280',font:{size:9}}}
+      }
+    }
+  });
+}
+
+function _renderCmpSignals(code1, code2) {
+  const panel = document.getElementById('hist-analysis-panel'); if(!panel) return;
+  panel.style.display='block';
+  const s1 = (_signals?.[code1])||(_marketData?.[code1])||(MOCK_SIGNALS?.[code1]);
+  const s2 = (_signals?.[code2])||(_marketData?.[code2])||(MOCK_SIGNALS?.[code2]);
+  if(!s1 && !s2) { panel.innerHTML=''; return; }
+  const fmtI = (v,unit='')=>v!=null?v.toFixed(2)+unit:'—';
+  const sigBadge = sig=>{
+    const sc=sigC(sig); const label={'buy':'MUA','strong_buy':'MUA MẠNH','sell':'BÁN','strong_sell':'BÁN MẠNH'}[sig]||'TL';
+    return `<span class="sig-badge ${sc}" style="font-size:10px;padding:2px 6px">${label}</span>`;
+  };
+  const row=(label,v1,v2)=>`<tr>
+    <td style="color:var(--txt2);font-size:10px;padding:4px 0">${label}</td>
+    <td style="font-family:var(--mono);font-size:11px;text-align:right;color:var(--c0);padding:4px 8px">${v1}</td>
+    <td style="font-family:var(--mono);font-size:11px;text-align:right;color:#fbbf24;padding:4px 0">${v2}</td>
+  </tr>`;
+  panel.innerHTML=`
+  <div style="padding:12px 0 4px;font-family:var(--mono);font-size:10px;color:var(--txt2);letter-spacing:.06em">SO SÁNH TÍN HIỆU</div>
+  <table style="width:100%;border-collapse:collapse">
+    <thead><tr>
+      <th style="font-size:9px;color:var(--txt3);text-align:left;padding-bottom:4px;font-weight:400"></th>
+      <th style="font-size:10px;color:#00e5ff;text-align:right;padding-bottom:4px;font-family:var(--mono)">${code1}</th>
+      <th style="font-size:10px;color:#fbbf24;text-align:right;padding-bottom:4px;font-family:var(--mono)">${code2}</th>
+    </tr></thead>
+    <tbody>
+      ${row('NAV', s1?fmt(s1.nav)+'đ':'—', s2?fmt(s2.nav)+'đ':'—')}
+      ${row('Thay đổi 1N', s1?fmtP(s1.chg_pct):'—', s2?fmtP(s2.chg_pct):'—')}
+      ${row('RSI(14)', fmtI(s1?.rsi), fmtI(s2?.rsi))}
+      ${row('BB%B', fmtI(s1?.bb_pct??s1?.bb), fmtI(s2?.bb_pct??s2?.bb))}
+      ${row('MACD hist', fmtI(s1?.macd_hist??s1?.macd), fmtI(s2?.macd_hist??s2?.macd))}
+      <tr>
+        <td style="color:var(--txt2);font-size:10px;padding:6px 0 4px">Tín hiệu</td>
+        <td style="text-align:right;padding:6px 8px 4px">${s1?sigBadge(s1.signal):'—'}</td>
+        <td style="text-align:right;padding:6px 0 4px">${s2?sigBadge(s2.signal):'—'}</td>
+      </tr>
+      ${row('Score', s1?.score!=null?s1.score.toFixed(1):'—', s2?.score!=null?s2.score.toFixed(1):'—')}
+    </tbody>
+  </table>`;
 }
 
 function setHistRange(range, el) {
   _histRange = range;
   document.querySelectorAll('.hist-range-btn').forEach(b=>b.classList.remove('active'));
   if(el) el.classList.add('active');
-  if(_histPageData) renderHistChart(_histPageData, _histPageCode);
+  if(_histView==='cmp' && _histPageCode && _cmpCode2) loadComparisonView();
+  else if(_histPageData) renderHistChart(_histPageData, _histPageCode);
 }
 
 // ── Bulk NAV entry ─────────────────────────────────────────────────────────────
