@@ -920,35 +920,95 @@ function renderSignals(sigs) {
     ${nNeutral?`<span style="font-size:11px;background:#facc1522;color:#facc15;border:1px solid #facc1544;border-radius:5px;padding:3px 10px;font-family:var(--mono)">● ${nNeutral} TRUNG LẬP</span>`:''}
     ${nSell?`<span style="font-size:11px;background:#f8717122;color:var(--sell);border:1px solid #f8717144;border-radius:5px;padding:3px 10px;font-family:var(--mono)">● ${nSell} BÁN</span>`:''}
   </div>`;
-  let html=summaryHtml+'<div class="card">';
+  let html=summaryHtml+'<div style="display:flex;flex-direction:column;gap:10px">';
   for (const code of codes) {
-    const s=sigs[code]; const rsi=s.rsi??50,bb=s.bb_pct??50,chg=s.chg_pct||0,sc=s.score||0;
-    const rsiC=rsi<35?'var(--buy)':rsi>65?'var(--sell)':'var(--hold)';
-    const bbC=bb<20?'var(--buy)':bb>80?'var(--sell)':'var(--hold)';
-    const scC=sc>=3?'var(--buy)':sc<=-3?'var(--sell)':'var(--txt2)';
+    const s=sigs[code];
+    const rsi=s.rsi??50, bb=s.bb_pct??50, macdH=s.macd_hist??0, chg=s.chg_pct||0, sc=s.score||0;
+    const scC=sc>=3?'var(--buy)':sc<=-3?'var(--sell)':'#facc15';
+    const sigFtColor={equity:'var(--buy)',bond:'#60a5fa',balanced:'#a78bfa',money_market:'#facc15'}[s.fund_type||'equity']||'var(--c0)';
+    const sigFtLabel={equity:'Cổ phiếu',bond:'Trái phiếu',balanced:'Cân bằng',money_market:'Tiền tệ'}[s.fund_type||'equity']||'Quỹ mở';
     const t2=s.t2_prediction;
-    const chg30Html = s.chg30 != null ? `<span style="font-size:9px;color:${s.chg30>=0?'var(--buy)':'var(--sell)'};font-family:var(--mono)" title="1 tháng">1T:${s.chg30>=0?'+':''}${s.chg30.toFixed(1)}%</span>` : '';
-    const sigFtBorder = {equity:'var(--buy)',bond:'#60a5fa',balanced:'#a78bfa',money_market:'#facc15'}[s.fund_type||'equity']||'var(--c0)';
-    html+=`<div class="sig-row" onclick="openResearch('${code}')" style="border-left:2px solid ${sigFtBorder}">
-      <div>
-        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-          <span class="sig-code">${code}</span>
-          <span class="pnl ${pnlC(chg)}" style="font-size:11px">${fmtP(chg)}</span>
+    const details=Array.isArray(s.details)?s.details:[];
+    // RSI interpretation
+    const rsiInterp=rsi<25?{txt:'Quá bán mạnh',c:'var(--buy)'}:rsi<40?{txt:'Vùng bán',c:'var(--buy)'}:rsi<60?{txt:'Trung tính',c:'var(--txt2)'}:rsi<75?{txt:'Vùng mua',c:'var(--sell)'}:{txt:'Quá mua',c:'var(--sell)'};
+    // BB% interpretation
+    const bbInterp=bb<15?{txt:'Gần đáy BB',c:'var(--buy)'}:bb<35?{txt:'Vùng thấp',c:'var(--buy)'}:bb<65?{txt:'Trung tính',c:'var(--txt2)'}:bb<85?{txt:'Vùng cao',c:'var(--sell)'}:{txt:'Sát đỉnh BB',c:'var(--sell)'};
+    // MACD histogram bar (normalized to ±100 from NAV)
+    const macdPct=s.nav>0?Math.min(Math.abs(macdH)/s.nav*100*20,50):Math.min(Math.abs(macdH)/100,50);
+    const macdC=macdH>=0?'var(--buy)':'var(--sell)';
+    const macdInterp=macdH>0?{txt:'Đà tăng',c:'var(--buy)'}:macdH<0?{txt:'Đà giảm',c:'var(--sell)'}:{txt:'Trung tính',c:'var(--txt2)'};
+    // Score bar (−6 to +6, mapped to 0..100%)
+    const scoreBarPct=Math.abs(sc)/6*50; // 0..50
+    // Performance trend from chg7/chg30
+    const chg7=s.chg7||0; const chg30=s.chg30||0;
+    // Compute signal strength label
+    const strengthLabel=Math.abs(sc)>=5?'Rất mạnh':Math.abs(sc)>=3?'Mạnh':Math.abs(sc)>=1?'Vừa':'Trung lập';
+    html+=`<div style="background:var(--bg2);border-radius:12px;overflow:hidden;border:1px solid var(--bdr);cursor:pointer" onclick="openResearch('${code}')">
+      <!-- Header row -->
+      <div style="padding:12px 14px 8px;border-bottom:1px solid var(--bdr)${sc>=3?';border-left:3px solid var(--buy)':sc<=-3?';border-left:3px solid var(--sell)':';border-left:3px solid '+sigFtColor}">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <span style="font-family:var(--mono);font-size:15px;font-weight:700;color:var(--c0)">${code}</span>
+              <span style="font-size:9px;padding:2px 7px;border-radius:4px;border:1px solid ${sigFtColor}44;color:${sigFtColor};font-family:var(--mono)">${sigFtLabel}</span>
+            </div>
+            <div style="margin-top:3px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <span style="font-family:var(--mono);font-size:13px;font-weight:600;color:var(--txt1)">${fmt(s.nav)} đ</span>
+              <span class="pnl ${pnlC(chg)}" style="font-size:11px;font-family:var(--mono)">${fmtP(chg)}</span>
+              ${s.chg7!=null?`<span style="font-size:9px;color:${chg7>=0?'var(--buy)':'var(--sell)'};font-family:var(--mono)">7N:${chg7>=0?'+':''}${chg7.toFixed(1)}%</span>`:''}
+              ${s.chg30!=null?`<span style="font-size:9px;color:${chg30>=0?'var(--buy)':'var(--sell)'};font-family:var(--mono)">1T:${chg30>=0?'+':''}${chg30.toFixed(1)}%</span>`:''}
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+            <div class="badge ${sigC(s.signal)}" style="font-size:11px;padding:4px 10px">${sigLabel(s.signal)}</div>
+            <div style="display:flex;align-items:center;gap:4px">
+              <span style="font-family:var(--mono);font-size:12px;font-weight:700;color:${scC}">${sc>0?'+':''}${sc}</span>
+              <span style="font-size:9px;color:var(--txt3)">${strengthLabel}</span>
+            </div>
+          </div>
         </div>
-        <div style="display:flex;align-items:center;gap:6px;margin-top:2px">
-          <span style="font-size:11px;color:var(--txt2)">${fmt(s.nav)} đ</span>
-          ${chg30Html}
+        <!-- Score bar -->
+        <div style="margin-top:8px">
+          <div style="height:3px;background:var(--bdr);border-radius:2px;position:relative">
+            <div style="position:absolute;${sc>=0?'left:50%':'right:50%'};width:${scoreBarPct}%;height:100%;background:${scC};border-radius:2px"></div>
+            <div style="position:absolute;left:50%;transform:translateX(-50%);width:1px;height:100%;background:var(--txt3)"></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:8px;color:var(--txt3);margin-top:2px"><span>BÁN −6</span><span>TRUNG LẬP 0</span><span>MUA +6</span></div>
         </div>
-        ${t2 ? `<div style="font-size:9px;font-family:var(--mono);color:${t2.pct>=0?'var(--buy)':'var(--sell)'};margin-top:2px" title="Dự báo T+2">T+2: ${t2.pct>=0?'+':''}${t2.pct.toFixed(2)}%</div>` : ''}
       </div>
-      <div class="sig-meters">
-        <div class="meter"><div class="meter-lbl">RSI</div><div class="meter-bar"><div class="meter-fill" style="width:${rsi}%;background:${rsiC}"></div></div><div class="meter-val">${rsi.toFixed?rsi.toFixed(0):rsi}</div></div>
-        <div class="meter"><div class="meter-lbl">BB%</div><div class="meter-bar"><div class="meter-fill" style="width:${bb}%;background:${bbC}"></div></div><div class="meter-val">${bb.toFixed?bb.toFixed(0):bb}</div></div>
-        <div class="meter"><div class="meter-lbl">SCR</div><div class="meter-val" style="font-size:11px;color:${scC}">${sc>=0?'+':''}${sc}</div></div>
+      <!-- Indicator row -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;border-bottom:1px solid var(--bdr)">
+        ${[
+          {lbl:'RSI',val:rsi.toFixed(0),interp:rsiInterp,barPct:rsi,barC:rsiInterp.c},
+          {lbl:'BB%B',val:bb.toFixed(0)+'%',interp:bbInterp,barPct:bb,barC:bbInterp.c},
+          {lbl:'MACD',val:macdH.toFixed(1),interp:macdInterp,barPct:macdPct,barC:macdC,centered:true},
+        ].map(({lbl,val,interp,barPct,barC,centered}) => `
+          <div style="padding:8px 10px;border-right:1px solid var(--bdr)">
+            <div style="font-size:9px;color:var(--txt3);font-family:var(--mono);letter-spacing:.05em">${lbl}</div>
+            <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:${interp.c};margin:2px 0">${val}</div>
+            <div style="height:3px;background:var(--bdr);border-radius:2px;position:relative;margin-bottom:3px">
+              ${centered
+                ? `<div style="position:absolute;${macdH>=0?'left:50%':'right:50%'};width:${barPct}%;height:100%;background:${barC};border-radius:2px"></div><div style="position:absolute;left:50%;transform:translateX(-50%);width:1px;height:100%;background:var(--txt3)"></div>`
+                : `<div style="position:absolute;left:0;width:${barPct}%;height:100%;background:${barC};border-radius:2px"></div>`}
+            </div>
+            <div style="font-size:9px;color:${interp.c}">${interp.txt}</div>
+          </div>`).join('')}
       </div>
-      <div style="text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:4px">
-        <div class="badge ${sigC(s.signal)}">${sigLabel(s.signal)}</div>
-        <button onclick="event.stopPropagation();openAlertModal('${code}')" style="background:none;border:1px solid var(--bdr);color:var(--txt2);border-radius:5px;padding:2px 6px;font-size:10px;cursor:pointer">🔔</button>
+      <!-- Signal details + T+2 -->
+      <div style="padding:8px 12px;display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap">
+        <div style="flex:1;min-width:0">
+          ${details.length
+            ? `<div style="display:flex;flex-wrap:wrap;gap:4px">${details.map(d=>`<span style="font-size:10px;padding:2px 7px;background:var(--bg3);border-radius:4px;color:var(--txt2);border:1px solid var(--bdr)">${d}</span>`).join('')}</div>`
+            : `<span style="font-size:10px;color:var(--txt3)">Không có tín hiệu rõ ràng</span>`}
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+          ${t2?`<div style="text-align:center;background:${t2.pct>=0?'#4ade8011':'#f8717111'};border:1px solid ${t2.pct>=0?'#4ade8033':'#f8717133'};border-radius:6px;padding:4px 8px">
+            <div style="font-size:8px;color:var(--txt3);font-family:var(--mono)">T+2</div>
+            <div style="font-family:var(--mono);font-size:11px;font-weight:700;color:${t2.pct>=0?'var(--buy)':'var(--sell)'}">${fmt(t2.nav||0)}</div>
+            <div style="font-size:9px;color:${t2.pct>=0?'var(--buy)':'var(--sell)'}">${t2.pct>=0?'+':''}${(t2.pct||0).toFixed(2)}%</div>
+          </div>`:''}
+          <button onclick="event.stopPropagation();openAlertModal('${code}')" style="background:none;border:1px solid var(--bdr);color:var(--txt2);border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer">🔔</button>
+        </div>
       </div>
     </div>`;
   }
