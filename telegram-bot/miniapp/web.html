@@ -3586,6 +3586,7 @@ async function loadHistChart(code) {
     ]);
     _histPageData = (d.history || d).sort((a,b)=>a.date<b.date?-1:1);
     _histNavCache[code] = _histPageData;  // cache for sparklines / portfolio chart
+    _renderHistFundList(); // re-render list so sparklines fill in now that cache exists
     // Store research metadata for analysis panel
     if (res) {
       if (!_signals) _signals = {};
@@ -4477,17 +4478,61 @@ function _renderHistAnalysis(code) {
   const d90  = p90  ?? s?.chg90;
   const d180 = p180 ?? s?.chg180;
   const d365 = p365 ?? s?.chg1y;
-  const perfHtml = _mkSect('HI\u1ec6U SU\u1ea4T \u0110\u1ea6U T\u01af', '\u{1F4C8}', `
+  // Annualized returns
+  const ann1y = d365;
+  const ann3y = p3y != null ? (Math.pow(1 + p3y/100, 1/3) - 1) * 100 : null;
+  // Consistency: % of weeks positive (from pts)
+  const _navValsEarly = pts.map(p => p.nav); // navVals is defined later in section 5b
+  let posWeeks = 0, totalWeeks = 0;
+  for (let i = 7; i < _navValsEarly.length; i += 7) {
+    totalWeeks++;
+    if (_navValsEarly[i] > _navValsEarly[i-7]) posWeeks++;
+  }
+  const consistencyPct = totalWeeks >= 4 ? Math.round(posWeeks / totalWeeks * 100) : null;
+  const consistencyLabel = consistencyPct == null ? null
+    : consistencyPct >= 70 ? 'Rất ổn định' : consistencyPct >= 55 ? 'Ổn định' : consistencyPct >= 45 ? 'Dao động' : 'Không ổn định';
+  const consistencyC = consistencyPct == null ? 'var(--txt2)'
+    : consistencyPct >= 70 ? 'var(--buy)' : consistencyPct >= 45 ? '#facc15' : 'var(--sell)';
+  // Cross-fund peer ranking (same fund type, from _signals)
+  const allSigVals = Object.entries(_signals || {});
+  const sameFtSigs = allSigVals.filter(([,fs]) => fs.fund_type === fundType);
+  const rank30 = d30 != null ? sameFtSigs.filter(([,fs]) => (fs.chg30??-999) > d30).length + 1 : null;
+  const total30 = sameFtSigs.filter(([,fs]) => fs.chg30 != null).length;
+  const rank7  = p7 != null  ? sameFtSigs.filter(([,fs]) => (fs.chg7 ??-999) > p7 ).length + 1 : null;
+  const total7  = sameFtSigs.filter(([,fs]) => fs.chg7  != null).length;
+  const rankPctile30 = rank30 != null && total30 > 0 ? Math.round((1 - rank30/total30) * 100) : null;
+  const rankLabel30  = rankPctile30 == null ? '' : rankPctile30 >= 80 ? 'Top 20%' : rankPctile30 >= 60 ? 'Trên trung bình' : rankPctile30 >= 40 ? 'Trung bình' : rankPctile30 >= 20 ? 'Dưới trung bình' : 'Thấp';
+  const rankC30 = rankPctile30 == null ? 'var(--txt2)' : rankPctile30 >= 80 ? 'var(--buy)' : rankPctile30 >= 40 ? '#facc15' : 'var(--sell)';
+  const perfHtml = _mkSect('HIỆU SUẤT ĐẦU TƯ', '📈', `
     <div style="background:var(--bg3);border-radius:8px;overflow:hidden;padding:2px 12px 4px">
-      ${_mkPerfRow('7 ng\u00e0y g\u1ea7n nh\u1ea5t', p7)}
-      ${_mkPerfRow('1 th\u00e1ng', d30)}
-      ${_mkPerfRow('3 th\u00e1ng', d90)}
-      ${_mkPerfRow('6 th\u00e1ng', d180)}
-      ${_mkPerfRow('1 n\u0103m', d365)}
-      ${p3y != null ? _mkPerfRow('3 n\u0103m', p3y) : ''}
+      ${_mkPerfRow('7 ngày gần nhất', p7, rank7 != null && total7 > 1 ? `Hạng #${rank7}/${total7} ${ftLabel.replace('Quỹ ','')}` : '')}
+      ${_mkPerfRow('1 tháng', d30, rank30 != null && total30 > 1 ? `Hạng #${rank30}/${total30} ${ftLabel.replace('Quỹ ','')} · ${rankLabel30}` : '')}
+      ${_mkPerfRow('3 tháng', d90)}
+      ${_mkPerfRow('6 tháng', d180)}
+      ${_mkPerfRow('1 năm', d365, ann1y != null ? `Lợi nhuận hàng năm (không ghép lãi)` : '')}
+      ${p3y != null ? _mkPerfRow('3 năm (gộp)', p3y, ann3y != null ? `Kép: ${ann3y>=0?'+':''}${ann3y.toFixed(1)}%/năm` : '') : ''}
     </div>
-    <div style="margin-top:6px;font-size:10px;color:var(--txt3);line-height:1.5">Hi\u1ec7u su\u1ea5t l\u00e0 % thay \u0111\u1ed5i NAV theo th\u1eddi gian. Ch\u01b0a t\u00ednh ph\u00ed mua/b\u00e1n ho\u1eb7c thu\u1ebf.</div>`);
+    ${(rank30 != null && total30 > 1) ? `<div style="background:${rankC30}11;border:1px solid ${rankC30}33;border-radius:8px;padding:10px 12px;margin-top:8px;display:flex;align-items:center;gap:10px">
+      <div style="font-size:22px;font-family:var(--mono);font-weight:700;color:${rankC30}">#${rank30}</div>
+      <div>
+        <div style="font-size:11px;font-weight:600;color:${rankC30}">${rankLabel30} trong nhóm ${ftLabel}</div>
+        <div style="font-size:10px;color:var(--txt3)">1 tháng · xếp hạng trong ${total30} quỹ ${ftLabel.replace('Quỹ ','')} đang theo dõi</div>
+      </div>
+      ${rankPctile30 != null ? `<div style="margin-left:auto;text-align:right"><div style="font-size:9px;color:var(--txt3)">Percentile</div><div style="font-family:var(--mono);font-size:14px;font-weight:700;color:${rankC30}">${rankPctile30}%</div></div>` : ''}
+    </div>` : ''}
+    ${consistencyPct != null ? `<div style="background:var(--bg3);border-radius:8px;padding:8px 12px;margin-top:8px;display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <div style="font-size:10px;color:var(--txt2)">Tỷ lệ tuần tăng</div>
+        <div style="font-size:9px;color:var(--txt3)">NAV tuần sau > tuần trước · ${totalWeeks} tuần đã đo</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-family:var(--mono);font-size:15px;font-weight:700;color:${consistencyC}">${consistencyPct}%</div>
+        <div style="font-size:9px;color:${consistencyC}">${consistencyLabel}</div>
+      </div>
+    </div>` : ''}
+    <div style="margin-top:6px;font-size:10px;color:var(--txt3);line-height:1.5">Hiệu suất = % thay đổi NAV theo thời gian. Chưa tính phí mua/bán hoặc thuế. Xếp hạng so với các quỹ cùng loại trong danh sách đang theo dõi.</div>`);
 
+  // ── 4. RISK METRICS ──
   // ── 4. RISK METRICS ──
   const vol = _annVol(pts) ?? s?.vol_ann;
   const mdd = _maxDrawdown(pts);
