@@ -536,7 +536,7 @@ function renderMarket() {
     const alertIcon = (s.data_stale||s.nav_stale||s.alert||s.nav_jump_anomaly)
       ? `<span title="${s.alert||'Dữ liệu hoặc NAV có thể chưa cập nhật'}" style="color:#facc15;font-size:9px;line-height:1">⚠</span>` : '';
     const isWatched = (_me?.watched_funds||[]).includes(code);
-    html+=`<div class="sig-row" onclick="selectFundChart('${code}')" data-code="${code}">
+    html+=`<div class="sig-row" onclick="openResearch('${code}')" data-code="${code}">
       <div>
         <div style="display:flex;align-items:center;gap:5px">
           <span class="sig-code">${code}</span>
@@ -580,7 +580,7 @@ function renderMarket() {
   const colEl = document.getElementById('chart-col-content');
   if (colEl && !colEl.children.length) {
     const autoCode = codes.find(c => _marketData[c]?.has_position) || codes[0];
-    if (autoCode) setTimeout(()=>selectFundChart(autoCode), 80);
+    if (autoCode) setTimeout(()=>openResearch(autoCode), 80);
   }
 }
 
@@ -742,14 +742,24 @@ function closeModal(e) { if(e.target===document.getElementById('modal')) closeMo
 function closeModalBtn() { document.getElementById('modal').classList.remove('open'); if(_navChart){_navChart.destroy();_navChart=null;} }
 
 // ── Time range filter ─────────────────────────────────────────────────────────
-function setChartRange(range, btn) {
+async function setChartRange(range, btn) {
   _chartRange = range;
   document.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
   if (btn) btn.classList.add('active');
-  if (_researchCode && _navHistoryFull[_researchCode]) {
-    const filtered = _filterByRange(_navHistoryFull[_researchCode], range);
-    _redrawNavChart(filtered);
+  if (!_researchCode) return;
+  // For ALL: try to fetch complete history if we only have a subset
+  if (range === 'ALL' && !_navHistoryFull[_researchCode + '_fullFetched'] && !IS_DEV) {
+    try {
+      const d = await apiFetch(`/api/nav_history/${_researchCode}`);
+      const h = Array.isArray(d) ? d : (d.history || []);
+      if (h.length > (_navHistoryFull[_researchCode]?.length || 0)) {
+        _navHistoryFull[_researchCode] = h;
+      }
+    } catch(e) { /* use cached data */ }
+    _navHistoryFull[_researchCode + '_fullFetched'] = true;
   }
+  const hist = _navHistoryFull[_researchCode];
+  if (hist?.length) _redrawNavChart(_filterByRange(hist, range));
 }
 
 function _filterByRange(history, range) {
@@ -1436,7 +1446,8 @@ async function loadUserProfile() {
       <div><div style="font-size:16px;font-weight:700">${me.name}</div><div style="font-size:12px;color:var(--txt2);margin-top:2px">ID: ${me.telegram_id}</div></div>
       <span class="tier-chip ${isAdmin?'admin':tier}">${isAdmin?'ADMIN':tier.toUpperCase()}</span>
     </div>`;
-    if (!isAdmin && tier!=='pro') document.getElementById('acc-upgrade-section').innerHTML=`<button class="btn btn-primary" onclick="showUpgradeModal({})">&#x2B50; NANG CAP PRO NGAY</button>`;
+    if (!isAdmin && tier!=='pro') document.getElementById('acc-upgrade-section').innerHTML=`<button class="btn btn-primary" onclick="showUpgradeModal({})">&#x2B50; NÂNG CẤP PRO NGAY</button>`;
+    else document.getElementById('acc-upgrade-section').innerHTML=`<div style="color:var(--buy);font-size:13px;padding:4px 0">✓ ${isAdmin?'Tài khoản Admin — toàn quyền truy cập':'Pro đang hoạt động'}</div>`;
     return;
   }
   if (!_me) { try { _me=await apiFetch('/api/me'); renderTierBar(_me); } catch(e){} }
@@ -1444,22 +1455,23 @@ async function loadUserProfile() {
   const tier=me.tier||'free', isAdmin=me.is_admin;
   const exp=me.pro_expires_at?new Date(me.pro_expires_at).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit',year:'numeric'}):'';
   el.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:flex-start">
-    <div><div style="font-size:16px;font-weight:700">${me.name||''}</div><div style="font-size:12px;color:var(--txt2);margin-top:2px">ID: ${me.telegram_id}</div>${exp?`<div style="font-size:11px;color:var(--txt2)">Pro den ${exp}</div>`:''}</div>
+    <div><div style="font-size:16px;font-weight:700">${me.name||''}</div><div style="font-size:12px;color:var(--txt2);margin-top:2px">ID: ${me.telegram_id}</div>${exp?`<div style="font-size:11px;color:var(--txt2)">Pro đến ${exp}</div>`:''}</div>
     <span class="tier-chip ${isAdmin?'admin':tier}">${isAdmin?'ADMIN':tier.toUpperCase()}</span>
   </div>`;
-  if (!isAdmin && tier!=='pro') document.getElementById('acc-upgrade-section').innerHTML=`<button class="btn btn-primary" onclick="showUpgradeModal({})">&#x2B50; NANG CAP PRO NGAY</button>`;
+  if (!isAdmin && tier!=='pro') document.getElementById('acc-upgrade-section').innerHTML=`<button class="btn btn-primary" onclick="showUpgradeModal({})">&#x2B50; NÂNG CẤP PRO NGAY</button>`;
+  else document.getElementById('acc-upgrade-section').innerHTML=`<div style="color:var(--buy);font-size:13px;padding:4px 0">✓ ${isAdmin?'Tài khoản Admin — toàn quyền truy cập':`Pro đang hoạt động${exp?' (đến '+exp+')':''}`}</div>`;
 }
 
 async function loadReferralCode() {
   const box=document.getElementById('referral-code-box'), st=document.getElementById('referral-stats');
   if (IS_DEV) {
-    box.innerHTML=`<div style="flex:1;font-family:var(--mono);font-size:15px;font-weight:700;color:var(--c0);background:var(--bg);border:1px solid var(--bdr);border-radius:8px;padding:8px 10px">HARVEY2024</div><button class="btn btn-primary" style="width:auto;margin:0;padding:0 14px" onclick="navigator.clipboard?.writeText('HARVEY2024').then(()=>toast('Da sao chep!'))">Sao chep</button>`;
-    st.textContent='&#x2713; Da co 3 nguoi dung ma cua ban'; return;
+    box.innerHTML=`<div style="flex:1;font-family:var(--mono);font-size:15px;font-weight:700;color:var(--c0);background:var(--bg);border:1px solid var(--bdr);border-radius:8px;padding:8px 10px">HARVEY2024</div><button class="btn btn-primary" style="width:auto;margin:0;padding:0 14px;white-space:nowrap" onclick="navigator.clipboard?.writeText('HARVEY2024').then(()=>toast('Đã sao chép!'))">Sao chép</button>`;
+    st.textContent='✓ Đã có 3 người dùng mã của bạn'; return;
   }
   if (!USER_ID) { box.innerHTML='<div style="font-size:12px;color:var(--txt2)">Cần user_id để lấy mã giới thiệu.</div>'; return; }
   try {
     const d=await apiFetch('/api/referral/mine');
-    box.innerHTML=`<div style="flex:1;font-family:var(--mono);font-size:15px;font-weight:700;color:var(--c0);background:var(--bg);border:1px solid var(--bdr);border-radius:8px;padding:8px 10px;letter-spacing:.05em">${d.code}</div><button class="btn btn-primary" style="width:auto;margin:0;padding:0 14px" onclick="navigator.clipboard?.writeText('${d.code}').then(()=>toast('Da sao chep!'))">Sao chep</button>`;
+    box.innerHTML=`<div style="flex:1;font-family:var(--mono);font-size:15px;font-weight:700;color:var(--c0);background:var(--bg);border:1px solid var(--bdr);border-radius:8px;padding:8px 10px;letter-spacing:.05em">${d.code}</div><button class="btn btn-primary" style="width:auto;margin:0;padding:0 14px;white-space:nowrap" onclick="navigator.clipboard?.writeText('${d.code}').then(()=>toast('Đã sao chép!'))">Sao chép</button>`;
     st.textContent=d.uses_count>0?`&#x2713; Đã có ${d.uses_count} người dùng mã của bạn`:'Chưa có ai dùng mã của bạn';
   } catch(e) { box.innerHTML=`<div style="font-size:12px;color:var(--sell)">Loi: ${e.message}</div>`; }
 }
@@ -1588,7 +1600,7 @@ async function adminFetchAll() {
   const st=document.getElementById('admin-fetch-status');
   st.style.color='var(--txt2)'; st.textContent='Đang fetch tất cả quỹ...';
   if (IS_DEV) { st.style.color='var(--buy)'; st.textContent='✓ DEV: Fetch started (giả lập)'; return; }
-  try { const d=await apiPost('/api/admin/fetch-nav',{telegram_id:USER_ID}); st.style.color='var(--buy)'; st.textContent=`✓ ${d.msg||'Fetch started'}`; }
+  try { const d=await apiPost('/api/admin/fetch-nav',{telegram_id:USER_ID}); st.style.color='var(--buy)'; st.textContent=`✓ Đang fetch trong nền. NAV sẽ cập nhật sau 1–2 phút.`; }
   catch(e) { st.style.color='var(--sell)'; st.textContent='⚠ '+(e.body?.error||e.message); }
 }
 
@@ -1596,7 +1608,7 @@ async function adminFetchFmarket() {
   const st=document.getElementById('admin-fetch-status');
   st.style.color='var(--txt2)'; st.textContent='Đang fetch fmarket...';
   if (IS_DEV) { st.style.color='var(--buy)'; st.textContent='✓ DEV: Fmarket fetch started'; return; }
-  try { const d=await apiPost('/api/admin/fetch-nav',{telegram_id:USER_ID,skip_tcbs:true}); st.style.color='var(--buy)'; st.textContent=`✓ ${d.msg||'Fetch started (fmarket only)'}`; }
+  try { const d=await apiPost('/api/admin/fetch-nav',{telegram_id:USER_ID,skip_tcbs:true}); st.style.color='var(--buy)'; st.textContent=`✓ Đang fetch fmarket trong nền. NAV cập nhật sau ~1 phút.`; }
   catch(e) { st.style.color='var(--sell)'; st.textContent='⚠ '+(e.body?.error||e.message); }
 }
 
@@ -2450,9 +2462,10 @@ async function loadComparisonView() {
       pts1 = _mockNavHistory(s1.nav||15000, 365);
       pts2 = _mockNavHistory(s2.nav||12000, 365);
     } else {
+      const _cmpLim = (_histRange && _histRange !== 'ALL') ? `?limit=${({'1M':30,'3M':90,'6M':180,'1Y':365,'3Y':1095}[_histRange]||365)}` : '';
       [pts1, pts2] = await Promise.all([
-        apiFetch(`/api/nav_history/${code1}?limit=365`).then(d=>d.history||d),
-        apiFetch(`/api/nav_history/${_cmpCode2}?limit=365`).then(d=>d.history||d),
+        apiFetch(`/api/nav_history/${code1}${_cmpLim}`).then(d=>Array.isArray(d)?d:(d.history||d)),
+        apiFetch(`/api/nav_history/${_cmpCode2}${_cmpLim}`).then(d=>Array.isArray(d)?d:(d.history||d)),
       ]);
     }
     renderComparisonChart(pts1, pts2, code1, _cmpCode2);
@@ -2865,20 +2878,38 @@ function _renderGoldAnalysisPanel() {
 }
 
 // #13 T+2 accuracy chart ───────────────────────────────────────────────────────
-function renderT2AccuracyChart(code) {
+async function renderT2AccuracyChart(code) {
   const el=document.getElementById('hist-chart-area'); if(!el) return;
-  const days=30;
-  const pts=[];
-  const nav0=(_histPageData?.history?.slice(-1)[0]?.nav)||(_signals?.[code]?.nav)||15000;
-  let nav=nav0*(0.9+Math.random()*0.05);
-  for(let i=days;i>=0;i--){
-    const d=new Date();d.setDate(d.getDate()-i);
-    if(d.getDay()===0||d.getDay()===6) continue;
-    nav*=(1+(Math.random()-0.47)*0.007);
-    const predicted=Math.round(nav*(0.995+Math.random()*0.01));
-    pts.push({date:d.toISOString().slice(0,10),actual:Math.round(nav),predicted});
+  el.innerHTML=spin();
+  let pts, summary=[];
+  if (IS_DEV) {
+    const days=30, nav0=(_histPageData?.history?.slice(-1)[0]?.nav)||15000;
+    let nav=nav0*(0.9+Math.random()*0.05); pts=[];
+    for(let i=days;i>=0;i--){
+      const d=new Date();d.setDate(d.getDate()-i);
+      if(d.getDay()===0||d.getDay()===6) continue;
+      nav*=(1+(Math.random()-0.47)*0.007);
+      const predicted=Math.round(nav*(0.995+Math.random()*0.01));
+      pts.push({date:d.toISOString().slice(0,10),actual:Math.round(nav),predicted,error_pct:(predicted-Math.round(nav))/Math.round(nav)*100});
+    }
+  } else {
+    try {
+      const d=await apiFetch(`/api/t2/accuracy/${code}`);
+      const hist=(d.history||[]).slice().reverse(); // API trả newest-first → oldest-first cho chart
+      summary=d.summary||[];
+      if (!hist.length) {
+        el.innerHTML='<div style="padding:24px;text-align:center;color:var(--txt2)">Chưa có dữ liệu dự báo T+2 để so sánh.<br><span style="font-size:11px;opacity:.7">Dữ liệu tích lũy sau khi pipeline T+2 chạy đủ ngày.</span></div>';
+        const st=document.getElementById('hist-stats');
+        if(st) st.innerHTML=`<div class="sum-row"><span class="sum-label">Quỹ</span><span class="sum-val">${code}</span></div><div style="font-size:11px;color:var(--txt2);margin-top:8px">Chưa có dữ liệu chấm điểm T+2</div>`;
+        return;
+      }
+      pts=hist.map(h=>({date:h.predicted_for_date,actual:h.actual_nav,predicted:h.predicted_nav,error_pct:h.error_pct}));
+    } catch(e) {
+      el.innerHTML=`<div style="padding:24px;text-align:center;color:var(--sell)">Lỗi tải T+2: ${e.message}</div>`;
+      return;
+    }
   }
-  const labels=pts.map(p=>p.date);
+  const labels=pts.map(p=>p.date.slice(5));
   el.innerHTML='<canvas id="t2-acc-canvas" style="width:100%;height:100%"></canvas>';
   if(_histPageChart){try{_histPageChart.destroy();}catch(e){}_histPageChart=null;}
   const ctx=document.getElementById('t2-acc-canvas');
@@ -2889,13 +2920,14 @@ function renderT2AccuracyChart(code) {
     plugins:{legend:{display:true,labels:{color:'#94a3b8',font:{family:'IBM Plex Mono',size:10}}},tooltip:{mode:'index',intersect:false}},
     scales:{x:{ticks:{color:'#6b7280',font:{size:10},maxTicksLimit:8},grid:{color:'rgba(255,255,255,.04)'}},
       y:{ticks:{color:'#6b7280',font:{size:10},callback:v=>fmt(Math.round(v))},grid:{color:'rgba(255,255,255,.04)'}}}}});
-  const errs=pts.map(p=>Math.abs((p.predicted-p.actual)/p.actual*100));
+  const errs=pts.map(p=>Math.abs(typeof p.error_pct==='number'?p.error_pct:(p.predicted-p.actual)/p.actual*100));
   const mape=(errs.reduce((a,b)=>a+b,0)/errs.length).toFixed(2);
+  const bestModel=summary.length?summary[0].model_version:'—';
   const st=document.getElementById('hist-stats');
   if(st) st.innerHTML=`
     <div class="sum-row"><span class="sum-label">Quỹ</span><span class="sum-val">${code}</span></div>
-    <div class="sum-row"><span class="sum-label">MAPE 30 ngày</span><span class="sum-val pnl ${parseFloat(mape)<5?'pos':'neg'}">${mape}%</span></div>
-    <div class="sum-row"><span class="sum-label">Điểm dữ liệu</span><span class="sum-val">${pts.length}</span></div>
+    <div class="sum-row"><span class="sum-label">MAPE (${pts.length} phiên)</span><span class="sum-val pnl ${parseFloat(mape)<5?'pos':'neg'}">${mape}%</span></div>
+    ${summary.length?`<div class="sum-row"><span class="sum-label">Model tốt nhất</span><span class="sum-val" style="color:var(--c0)">${bestModel}</span></div>`:''}
     <div style="margin-top:8px;font-size:10px;color:var(--txt2)">Đường xanh = Thực tế · Vàng đứt = T+2 dự báo</div>`;
 }
 
