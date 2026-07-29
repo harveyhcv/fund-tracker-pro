@@ -1,4 +1,4 @@
-// ── Config ──────────────────────────────────────────────────────────────────
+﻿// ── Config ──────────────────────────────────────────────────────────────────
 const API_BASE = window.location.origin;
 const qs = new URLSearchParams(location.search);
 const IS_DEV  = qs.get('dev') === '1' || location.hash === '#dev';
@@ -167,11 +167,11 @@ const MOCK_ME = {
   portfolio: {
     total_cost: 85203600, total_value: 103522225, total_pnl: 18318625, total_pnl_pct: 21.5,
     items: [
-      {code:'VHIZ',  nav:18450, units:850.5,  avg_cost:15200, cost:12943600, value:15691725, pnl:2748125,  pnl_pct:21.2, chg_pct:0.12,  signal:'MUA MANH'},
+      {code:'VHIZ',  nav:18450, units:850.5,  avg_cost:15200, cost:12943600, value:15691725, pnl:2748125,  pnl_pct:21.2, chg_pct:0.12,  signal:'MUA MẠNH'},
       {code:'VESAF', nav:22100, units:1200,   avg_cost:19500, cost:23400000, value:26520000, pnl:3120000,  pnl_pct:13.3, chg_pct:-0.05, signal:'MUA'},
       {code:'VCBFTBF',nav:14320,units:2000,  avg_cost:14100, cost:28200000, value:28640000, pnl:440000,   pnl_pct:1.6,  chg_pct:0.08,  signal:'TRUNG LAP'},
       {code:'VFMVF1',nav:31200, units:500,   avg_cost:28000, cost:14000000, value:15600000, pnl:1600000,  pnl_pct:11.4, chg_pct:0.22,  signal:'MUA'},
-      {code:'VFMVSF',nav:16800, units:360,   avg_cost:18500, cost:6660000,  value:6048000,  pnl:-612000,  pnl_pct:-9.2, chg_pct:-0.33, signal:'BAN MANH'},
+      {code:'VFMVSF',nav:16800, units:360,   avg_cost:18500, cost:6660000,  value:6048000,  pnl:-612000,  pnl_pct:-9.2, chg_pct:-0.33, signal:'BÁN MẠNH'},
     ]
   }
 };
@@ -186,11 +186,11 @@ const MOCK_GOLD = {
   prices: {'VANGTODAYAPI:SJC_1L':87000000,'VANGTODAYAPI:DOJI_NHAN_9999':86600000}
 };
 const MOCK_SIGNALS = {
-  VHIZ:    {nav:18450, chg_pct:0.12,  rsi:38, bb_pct:22, macd:0.03,  score:4,  signal:'MUA MANH',  has_position:true},
+  VHIZ:    {nav:18450, chg_pct:0.12,  rsi:38, bb_pct:22, macd:0.03,  score:4,  signal:'MUA MẠNH',  has_position:true},
   VESAF:   {nav:22100, chg_pct:-0.05, rsi:52, bb_pct:48, macd:-0.01, score:2,  signal:'MUA',       has_position:true},
   VCBFTBF: {nav:14320, chg_pct:0.08,  rsi:50, bb_pct:51, macd:0.0,   score:0,  signal:'TRUNG LAP', has_position:true},
   VFMVF1:  {nav:31200, chg_pct:0.22,  rsi:62, bb_pct:67, macd:0.05,  score:3,  signal:'MUA',       has_position:true},
-  VFMVSF:  {nav:16800, chg_pct:-0.33, rsi:72, bb_pct:81, macd:-0.04, score:-4, signal:'BAN MANH',  has_position:true},
+  VFMVSF:  {nav:16800, chg_pct:-0.33, rsi:72, bb_pct:81, macd:-0.04, score:-4, signal:'BÁN MẠNH',  has_position:true},
   MAFBAL:  {nav:25600, chg_pct:0.15,  rsi:44, bb_pct:35, macd:0.02,  score:3,  signal:'MUA',       has_position:false},
   TCEF:    {nav:18900, chg_pct:-0.08, rsi:58, bb_pct:62, macd:-0.02, score:-1, signal:'TRUNG LAP', has_position:false},
   SSIBF1:  {nav:12100, chg_pct:0.05,  rsi:41, bb_pct:28, macd:0.01,  score:2,  signal:'MUA',       has_position:false},
@@ -417,6 +417,18 @@ function toggleSumDetail(id, rowEl) {
   rowEl?.querySelector('.sum-chevron')?.classList.toggle('open',open);
 }
 
+function _pfT2Summary(items) {
+  // Compute weighted-average T+2 prediction across portfolio holdings
+  let totalVal=0, weightedPct=0, count=0;
+  for (const h of items) {
+    const t2=_marketData?.[h.code]?.t2_prediction || _signals?.[h.code]?.t2_prediction;
+    if (!t2 || !h.value) continue;
+    totalVal+=h.value; weightedPct+=t2.pct*h.value; count++;
+  }
+  if (!count||!totalVal) return null;
+  return {pct: weightedPct/totalVal, count};
+}
+
 function renderPortfolio(me) {
   renderPfBanner(); renderPfAlloc();
   const pf=me.portfolio;
@@ -429,13 +441,25 @@ function renderPortfolio(me) {
   if (!pf.items.length) {
     html=`<div class="card" style="text-align:center;color:var(--txt2);padding:24px">Chưa có giao dịch CCQ.<br>Thêm ở tab Giao Dịch.</div>`;
   } else {
-    html='<div class="card">';
+    // Portfolio T+2 aggregate insight
+    const pfT2 = _pfT2Summary(pf.items);
+    if (pfT2) {
+      const t2c = pfT2.pct>=0.3?'var(--buy)':pfT2.pct<=-0.3?'var(--sell)':'var(--txt2)';
+      const t2sign = pfT2.pct>=0?'+':'';
+      html+=`<div style="background:rgba(0,229,255,.06);border:1px solid rgba(0,229,255,.2);border-radius:8px;padding:8px 12px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:11px;color:var(--txt2)">Dự báo T+2 danh mục (${pfT2.count} quỹ)</span>
+        <span style="font-family:var(--mono);font-size:13px;font-weight:600;color:${t2c}">${t2sign}${pfT2.pct.toFixed(2)}%</span>
+      </div>`;
+    }
+    html+='<div class="card">';
     for (const h of pf.items) {
       const chg=h.chg_pct||0;
       const navSrc = h.nav_source || '';
       const navBadgeTxt = navSrc==='provisional'?'est':navSrc==='pending_confirm'?'pend':navSrc==='confirmed'?'conf':navSrc==='fixed'?'fix':navSrc==='manual'?'man':'';
       const navBadgeCol = (navSrc==='confirmed'||navSrc==='fixed')?'var(--buy)':navSrc==='pending_confirm'?'#fbbf24':'var(--txt2)';
       const navBadge = navBadgeTxt ? `<span style="font-size:9px;color:${navBadgeCol};border:1px solid ${navBadgeCol};border-radius:3px;padding:0 3px;margin-left:4px;font-family:var(--mono)">${navBadgeTxt}</span>` : '';
+      const t2=_marketData?.[h.code]?.t2_prediction || _signals?.[h.code]?.t2_prediction;
+      const t2html = t2 ? `<span style="font-size:9px;font-family:var(--mono);color:${t2.pct>=0?'var(--buy)':'var(--sell)'};margin-left:4px" title="Dự báo T+2">T+2 ${t2.pct>=0?'+':''}${t2.pct.toFixed(2)}%</span>` : '';
       html+=`<div class="fund-row" onclick="openResearch('${h.code}')">
         <div class="fund-info">
           <div class="fund-top">
@@ -443,7 +467,7 @@ function renderPortfolio(me) {
             <span class="fund-nav">${fmt(h.nav)} đ${navBadge}</span>
             <span class="pnl ${pnlC(chg)}" style="font-size:11px">${fmtP(chg)}</span>
           </div>
-          <div class="fund-sub"><span>${fmt(h.units)} CCQ</span><span style="opacity:.4">&middot;</span><span>Giá vốn ${fmt(h.avg_cost)} đ</span></div>
+          <div class="fund-sub"><span>${fmt(h.units)} CCQ</span><span style="opacity:.4">&middot;</span><span>Giá vốn ${fmt(h.avg_cost)} đ</span>${t2html}</div>
         </div>
         <div class="fund-right">
           <div class="badge ${sigC(h.signal)}">${sigLabel(h.signal)}</div>
@@ -525,6 +549,12 @@ function renderMarket() {
     if (_marketFilter==='hold') return sc==='hold';
     if (_marketFilter==='held') return s.has_position;
     return true;
+  }).sort((a,b)=>{
+    // Held funds always first, then sort by signal score descending
+    const sa=_marketData[a], sb=_marketData[b];
+    if (sa.has_position && !sb.has_position) return -1;
+    if (!sa.has_position && sb.has_position) return 1;
+    return (sb.score||0)-(sa.score||0);
   });
   if (!codes.length) { document.getElementById('market-content').innerHTML='<div style="text-align:center;color:var(--txt2);padding:20px">Không có quỹ nào.</div>'; return; }
   let html='<div class="card">';
@@ -553,6 +583,7 @@ function renderMarket() {
       </div>
       <div style="text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:3px">
         <div class="badge ${sigC(s.signal)}">${sigLabel(s.signal)}</div>
+        ${s.t2_prediction ? `<span style="font-size:9px;font-family:var(--mono);color:${s.t2_prediction.pct>=0?'var(--buy)':'var(--sell)'}" title="Dự báo T+2">T+2 ${s.t2_prediction.pct>=0?'+':''}${s.t2_prediction.pct.toFixed(2)}%</span>` : ''}
         <span class="watch-star" onclick="event.stopPropagation();_quickWatch('${code}',event)" title="${isWatched?'Bỏ theo dõi':'Thêm theo dõi'}" style="cursor:pointer;font-size:13px;color:${isWatched?'var(--c0)':'var(--txt3)'}">${isWatched?'★':'☆'}</span>
       </div>
     </div>`;
@@ -750,7 +781,7 @@ async function setChartRange(range, btn) {
   // For ALL: try to fetch complete history if we only have a subset
   if (range === 'ALL' && !_navHistoryFull[_researchCode + '_fullFetched'] && !IS_DEV) {
     try {
-      const d = await apiFetch(`/api/nav_history/${_researchCode}?limit=3650`);
+      const d = await apiFetch(`/api/nav_history/${_researchCode}`);
       const h = Array.isArray(d) ? d : (d.history || []);
       if (h.length > (_navHistoryFull[_researchCode]?.length || 0)) {
         _navHistoryFull[_researchCode] = h;
@@ -1075,7 +1106,7 @@ function renderResearchInline(d, el, canvasId) {
   </div>`;
   html += _resIndicators(d);
   html += _t2PredHtml(d);
-  if (hasHistory) html+=`<div style="padding:8px 14px 10px;height:190px;position:relative"><canvas id="${canvasId}"></canvas></div>`;
+  if (hasHistory) html+=`<div style="padding:8px 14px 10px;height:300px;position:relative"><canvas id="${canvasId}"></canvas></div>`;
   if (d.conclusion) html+=`<div class="res-conclusion">${d.conclusion}</div>`;
   html += _schoolCards(d.schools?.length ? d.schools : _computeSchools(d));
   html += `<div style="padding:4px 14px 8px"><button onclick="openAlertModal('${d.code}')" style="width:100%;padding:8px;background:var(--bg3);border:1px solid var(--bdr);color:var(--txt2);border-radius:8px;cursor:pointer;font-size:12px">🔔 Đặt cảnh báo giá</button></div>`;
@@ -1965,9 +1996,11 @@ function _renderHistFundList() {
     const nav = s.nav ? fmt(s.nav)+' đ' : '—';
     const chg = s.chg_pct ?? s.change_pct ?? s.change ?? null;
     const chgHtml = chg!=null ? `<span class="pnl ${pnlC(chg)}" style="font-size:11px">${chg>=0?'+':''}${chg.toFixed(2)}%</span>` : '';
+    const chg30 = s.chg30 ?? null;
+    const chg30Html = chg30!=null ? `<span style="font-size:9px;color:${chg30>=0?'var(--buy)':'var(--sell)'};font-family:var(--mono)">${chg30>=0?'+':''}${chg30.toFixed(1)}% 1T</span>` : '';
     const sig = s.signal || '';
     const sigClass = sig.includes('MUA')?'buy':sig.includes('BÁN')||sig.includes('BAN')?'sell':'hold';
-    const sigHtml = sig ? `<span class="badge ${sigClass}" style="font-size:9px;padding:1px 5px">${sig}</span>` : '';
+    const sigHtml = sig && sig!=='N/A' ? `<span class="badge ${sigClass}" style="font-size:9px;padding:1px 5px">${sig}</span>` : '';
     const isWatched = watched.has(code);
     const starBtn = `<span onclick="event.stopPropagation();_toggleWatchFund('${code}')" title="${isWatched?'Bỏ theo dõi':'Thêm theo dõi'}" style="cursor:pointer;font-size:10px;color:${isWatched?'var(--c0)':'var(--txt3)'};padding:0 1px;line-height:1;flex-shrink:0">${isWatched?'★':'☆'}</span>`;
     const heldBadge = held.has(code) ? `<span class="hist-fund-held">NẮM</span>` : '';
@@ -1977,7 +2010,7 @@ function _renderHistFundList() {
         ${starBtn}${heldBadge}
       </div>
       <div class="hist-fund-nav">${nav} ${chgHtml}</div>
-      ${sigHtml}
+      <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">${sigHtml}${chg30Html}</div>
     </div>`;
   }).join('');
 }
@@ -2033,8 +2066,20 @@ async function loadHistChart(code) {
     return;
   }
   try {
-    const d = await apiFetch(`/api/nav_history/${code}?limit=365`);
-    _histPageData = d.history || d;
+    // Fetch nav history and research metadata in parallel
+    const [d, res] = await Promise.all([
+      apiFetch(`/api/nav_history/${code}`),
+      apiFetch(`/api/research/${code}`).catch(()=>null)
+    ]);
+    _histPageData = (d.history || d).sort((a,b)=>a.date<b.date?-1:1);
+    // Store research metadata for analysis panel
+    if (res) {
+      if (!_signals) _signals = {};
+      _signals[code] = {...(_signals[code]||{}), ...res, t2_prediction: res.t2_prediction};
+    }
+    // Update label with fund name if available
+    const lbl2 = document.getElementById('hist-fund-label');
+    if (lbl2 && res?.name && res.name !== code) lbl2.textContent = `${code} — ${res.name.slice(0,20)}`;
     renderHistChart(_histPageData, code);
     _renderHistAnalysis(code);
   } catch(e) { el.innerHTML=renderErr('Lỗi: '+e.message); }
@@ -2082,11 +2127,19 @@ function renderHistChart(pts, code) {
   const gc = ctx.getContext('2d');
   const grad = gc.createLinearGradient(0,0,0,ctx.offsetHeight||200);
   grad.addColorStop(0,'rgba(0,229,255,.3)'); grad.addColorStop(1,'rgba(0,229,255,0)');
+  const _ma=(arr,n)=>arr.map((_,i)=>i<n-1?null:arr.slice(i-n+1,i+1).reduce((a,b)=>a+b,0)/n);
+  const ma20=_ma(vals,20), ma50=_ma(vals,50);
   _histPageChart = new Chart(ctx, {
     type:'line',
-    data:{labels, datasets:[{data:vals, borderColor:'#00e5ff', borderWidth:1.5, fill:true, backgroundColor:grad, tension:0.35, pointRadius:0, pointHoverRadius:4}]},
+    data:{labels, datasets:[
+      {data:vals, label:'NAV', borderColor:'#00e5ff', borderWidth:1.5, fill:true, backgroundColor:grad, tension:0.35, pointRadius:0, pointHoverRadius:4},
+      {data:ma20, label:'MA20', borderColor:'rgba(250,204,21,0.7)', borderWidth:1, fill:false, tension:0.3, pointRadius:0, spanGaps:true},
+      {data:ma50, label:'MA50', borderColor:'rgba(74,222,128,0.7)', borderWidth:1, fill:false, tension:0.3, pointRadius:0, spanGaps:true}
+    ]},
     options:{responsive:true, maintainAspectRatio:false, animation:false,
-      plugins:{legend:{display:false}, tooltip:{mode:'index',intersect:false, callbacks:{label:(ctx)=>`NAV: ${fmt(Math.round(ctx.parsed.y))} đ`}}, crosshair:_crosshairPlugin},
+      plugins:{legend:{display:vals.length>50, labels:{color:'#6b7280',font:{size:9},boxWidth:12,padding:8}},
+        tooltip:{mode:'index',intersect:false, callbacks:{label:(c)=>c.dataset.label==='NAV'?`NAV: ${fmt(Math.round(c.parsed.y))} đ`:`${c.dataset.label}: ${fmt(Math.round(c.parsed.y))}`}},
+        crosshair:_crosshairPlugin},
       scales:{x:{ticks:{maxTicksLimit:8,color:'#6b7280',font:{size:10}},grid:{color:'rgba(255,255,255,.04)'}}, y:{ticks:{color:'#6b7280',font:{size:10}, callback:v=>fmt(Math.round(v))},grid:{color:'rgba(255,255,255,.04)'}}}}
   });
 }
@@ -2655,110 +2708,251 @@ async function submitBulkNav() {
   } catch(e) { if(st){st.style.color='var(--sell)';st.textContent='Lỗi: '+(e?.body?.error||e.message);} }
 }
 
+// ── Analysis helpers ──────────────────────────────────────────────────────────
+function _perfReturn(pts, calDays) {
+  if (!pts?.length) return null;
+  const last = pts[pts.length-1];
+  const cut = new Date(last.date); cut.setDate(cut.getDate()-calDays);
+  const cutStr = cut.toISOString().slice(0,10);
+  const start = pts.find(p=>p.date>=cutStr);
+  if (!start || start.date===last.date) return null;
+  return (last.nav - start.nav) / start.nav * 100;
+}
+function _annVol(pts, n=252) {
+  const tail = pts.slice(-Math.min(n, pts.length));
+  if (tail.length < 10) return null;
+  const r = [];
+  for (let i=1;i<tail.length;i++) if(tail[i-1].nav>0) r.push((tail[i].nav-tail[i-1].nav)/tail[i-1].nav);
+  if (r.length < 5) return null;
+  const m = r.reduce((a,b)=>a+b,0)/r.length;
+  return Math.sqrt(r.reduce((a,b)=>a+(b-m)**2,0)/r.length * 252)*100;
+}
+function _maxDrawdown(pts) {
+  if (!pts?.length) return 0;
+  let peak=0, dd=0;
+  for(const p of pts){if(p.nav>peak)peak=p.nav; const d=peak>0?(peak-p.nav)/peak:0; if(d>dd)dd=d;}
+  return dd*100;
+}
+function _sharpe(pts, n=252, rf=3.5) {
+  const tail = pts.slice(-Math.min(n,pts.length));
+  if(tail.length<10) return null;
+  const rfD = rf/100/252;
+  const r = [];
+  for(let i=1;i<tail.length;i++) if(tail[i-1].nav>0) r.push((tail[i].nav-tail[i-1].nav)/tail[i-1].nav - rfD);
+  if(r.length<5) return null;
+  const m=r.reduce((a,b)=>a+b,0)/r.length;
+  const s2=r.reduce((a,b)=>a+b**2,0)/r.length - m**2;
+  if(s2<=0) return null;
+  return m/Math.sqrt(s2)*Math.sqrt(252);
+}
+function _smartPredict(pts, horizon=2) {
+  if(!pts||pts.length<10) return null;
+  const tail = pts.slice(-30);
+  const n = tail.length;
+  const xs=tail.map((_,i)=>i), ys=tail.map(p=>p.nav);
+  const mx=xs.reduce((a,b)=>a+b,0)/n, my=ys.reduce((a,b)=>a+b,0)/n;
+  const cov=xs.reduce((s,x,i)=>s+(x-mx)*(ys[i]-my),0);
+  const vx=xs.reduce((s,x)=>s+(x-mx)**2,0);
+  const slope=vx?cov/vx:0;
+  const regNav = my + slope*(n-1+horizon - mx);
+  const mom5 = n>5 ? tail[n-1].nav + (tail[n-1].nav-tail[n-6].nav)/5*horizon : regNav;
+  const mom3 = n>3 ? tail[n-1].nav + (tail[n-1].nav-tail[n-4].nav)/3*horizon : regNav;
+  return regNav*0.5 + mom5*0.3 + mom3*0.2;
+}
+function _savePrediction(code, predNav, predDate) {
+  try {
+    const key=`ftp_pred_${code}`;
+    const hist=JSON.parse(localStorage.getItem(key)||'[]');
+    const today=new Date().toISOString().slice(0,10);
+    if(!hist.find(p=>p.predDate===predDate&&p.madeOn===today))
+      hist.push({predNav, predDate, madeOn:today});
+    if(hist.length>50) hist.splice(0, hist.length-50);
+    localStorage.setItem(key, JSON.stringify(hist));
+  } catch(e){}
+}
+function _checkPredAccuracy(code, actualPts) {
+  try {
+    const key=`ftp_pred_${code}`;
+    const hist=JSON.parse(localStorage.getItem(key)||'[]');
+    const navMap={}; actualPts.forEach(p=>{ navMap[p.date]=p.nav; });
+    let verified=0;
+    hist.forEach(p=>{
+      if(navMap[p.predDate]&&!p.actualNav){ p.actualNav=navMap[p.predDate]; verified++; }
+    });
+    if(verified>0) localStorage.setItem(key, JSON.stringify(hist));
+    const allV=hist.filter(p=>p.actualNav);
+    if(!allV.length) return null;
+    const errs=allV.map(p=>Math.abs((p.predNav-p.actualNav)/p.actualNav*100));
+    return {mae: errs.reduce((a,b)=>a+b,0)/errs.length, count: allV.length};
+  } catch(e){ return null; }
+}
+
 // ── Analysis panel below chart ─────────────────────────────────────────────────
 function _renderHistAnalysis(code) {
   const panel = document.getElementById('hist-analysis-panel'); if(!panel) return;
-  // Use any available signal source: signals API → market data → mock
   const s = (_signals?.[code]) || (_marketData?.[code]) || (MOCK_SIGNALS?.[code]);
   const pfItem = _me?.portfolio?.items?.find(h=>h.code===code);
-  if(!s && !pfItem) {
+  const pts = _histPageData || [];
+
+  if(!s && !pfItem && pts.length < 5) {
     panel.innerHTML=`<div style="color:var(--txt2);font-size:12px;padding:16px;text-align:center;line-height:1.7">
       <div style="font-size:22px;margin-bottom:8px">📊</div>
       <div style="color:var(--txt1);font-weight:600;font-family:var(--mono);font-size:11px;margin-bottom:6px">${code}</div>
-      <div>Chưa đủ dữ liệu để tính tín hiệu.<br><span style="font-size:10px">Cần ít nhất 20 ngày NAV để tính RSI/BB%/MACD.<br>Dùng "Nhập NAV thủ công" bên dưới để bổ sung.</span></div>
+      <div>Chưa đủ dữ liệu phân tích.<br><span style="font-size:10px">Cần ít nhất 20 ngày NAV.</span></div>
     </div>`;
     return;
   }
 
-  const rsi = s?.rsi||50;
-  const bb  = s?.bb_pct??s?.bb??50;
-  const macd= s?.macd_hist??s?.macd??0;
-  const score=s?.score||0;
-  const rsiColor = rsi<35?'var(--buy)':rsi>65?'var(--sell)':'var(--txt2)';
-  const rsiLabel = rsi<30?'Quá bán':rsi<45?'Yếu':rsi>70?'Quá mua':rsi>55?'Mạnh':'Trung tính';
-  const bbColor  = bb<30?'var(--buy)':bb>70?'var(--sell)':'var(--txt2)';
-  const macdColor= macd>0?'var(--buy)':macd<0?'var(--sell)':'var(--txt2)';
-
-  // P&L block (only if in portfolio)
-  let pnlHtml = '';
+  // ── P&L block ──
+  let pnlHtml='';
   if(pfItem) {
-    const nav = s?.nav || pfItem.current_nav || 0;
-    const units = pfItem.units||0;
-    const cost  = pfItem.cost||0;
-    const mktVal= nav*units;
-    const pnl   = mktVal - cost;
-    const pnlP  = cost>0 ? pnl/cost*100 : 0;
-    pnlHtml = `
-      <div style="background:var(--bg3);border-radius:8px;padding:10px 12px;margin-bottom:10px">
-        <div style="font-size:10px;font-family:var(--mono);color:var(--txt2);margin-bottom:6px;letter-spacing:.05em">P&amp;L — ${code}</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
-          <div><div style="font-size:10px;color:var(--txt3)">Giá trị TT</div><div style="font-family:var(--mono);font-size:13px;font-weight:600">${(mktVal/1e6).toFixed(2)}M</div></div>
-          <div><div style="font-size:10px;color:var(--txt3)">Lãi/Lỗ</div><div class="pnl ${pnlC(pnlP)}" style="font-family:var(--mono);font-size:13px;font-weight:600">${pnl>=0?'+':''}${(pnl/1e6).toFixed(2)}M (${fmtP(pnlP)})</div></div>
-          <div><div style="font-size:10px;color:var(--txt3)">Số CCQ</div><div style="font-family:var(--mono);font-size:12px">${units.toFixed(2)}</div></div>
-          <div><div style="font-size:10px;color:var(--txt3)">Giá vốn TB</div><div style="font-family:var(--mono);font-size:12px">${fmt(cost/units||0)} đ</div></div>
-        </div>
-      </div>`;
+    const nav=s?.nav||pfItem.current_nav||0, units=pfItem.units||0, cost=pfItem.cost||0;
+    const mktVal=nav*units, pnl=mktVal-cost, pnlP=cost>0?pnl/cost*100:0;
+    pnlHtml=`<div style="background:var(--bg3);border-radius:8px;padding:10px 12px;margin-bottom:10px">
+      <div style="font-size:10px;font-family:var(--mono);color:var(--txt2);margin-bottom:6px;letter-spacing:.05em">DANH MỤC — ${code}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+        <div><div style="font-size:10px;color:var(--txt3)">Giá trị TT</div><div style="font-family:var(--mono);font-size:13px;font-weight:600">${(mktVal/1e6).toFixed(2)}M đ</div></div>
+        <div><div style="font-size:10px;color:var(--txt3)">Lãi/Lỗ</div><div class="pnl ${pnlC(pnlP)}" style="font-family:var(--mono);font-size:13px;font-weight:600">${pnl>=0?'+':''}${(pnl/1e6).toFixed(2)}M (${fmtP(pnlP)})</div></div>
+        <div><div style="font-size:10px;color:var(--txt3)">Số CCQ</div><div style="font-family:var(--mono);font-size:12px">${units.toFixed(2)}</div></div>
+        <div><div style="font-size:10px;color:var(--txt3)">Giá vốn TB</div><div style="font-family:var(--mono);font-size:12px">${fmt(units>0?cost/units:0)} đ</div></div>
+      </div>
+    </div>`;
   }
 
-  // Technical indicators
-  const indHtml = s ? `
-    <div style="font-size:10px;font-family:var(--mono);color:var(--txt2);letter-spacing:.05em;margin-bottom:8px">CHỈ SỐ KỸ THUẬT</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
-      <div style="background:var(--bg3);border-radius:8px;padding:8px 10px">
-        <div style="font-size:10px;color:var(--txt3);margin-bottom:4px">RSI (14)</div>
+  // ── Performance table ──
+  const p7=_perfReturn(pts,7),p30=_perfReturn(pts,30),p90=_perfReturn(pts,90);
+  const p180=_perfReturn(pts,180),p365=_perfReturn(pts,365),p3y=_perfReturn(pts,1095);
+  const pF=(v)=>v==null?'<span style="color:var(--txt3)">-</span>':`<span style="color:${v>=0?'var(--buy)':'var(--sell)'};font-weight:600">${v>=0?'+':''}${v.toFixed(2)}%</span>`;
+  const perfHtml=pts.length>5?`<div style="font-size:10px;font-family:var(--mono);color:var(--txt2);letter-spacing:.05em;margin-bottom:6px">HIỆU SUẤT</div>
+    <table style="width:100%;border-collapse:collapse;margin-bottom:10px;font-size:11px">
+      <tr><td style="color:var(--txt3);padding:3px 0">1 tuần</td><td style="text-align:right;font-family:var(--mono)">${pF(p7)}</td>
+          <td style="color:var(--txt3);padding:3px 0 3px 12px">1 tháng</td><td style="text-align:right;font-family:var(--mono)">${pF(p30)}</td></tr>
+      <tr><td style="color:var(--txt3);padding:3px 0">3 tháng</td><td style="text-align:right;font-family:var(--mono)">${pF(p90)}</td>
+          <td style="color:var(--txt3);padding:3px 0 3px 12px">6 tháng</td><td style="text-align:right;font-family:var(--mono)">${pF(p180)}</td></tr>
+      <tr><td style="color:var(--txt3);padding:3px 0">1 năm</td><td style="text-align:right;font-family:var(--mono)">${pF(p365)}</td>
+          <td style="color:var(--txt3);padding:3px 0 3px 12px">3 năm</td><td style="text-align:right;font-family:var(--mono)">${pF(p3y)}</td></tr>
+    </table>`:'';
+
+  // ── Risk metrics ──
+  const vol=_annVol(pts),mdd=_maxDrawdown(pts),sr=_sharpe(pts);
+  const volC=vol==null?'var(--txt2)':vol<10?'var(--buy)':vol<20?'#facc15':'var(--sell)';
+  const mddC=mdd<5?'var(--buy)':mdd<15?'#facc15':'var(--sell)';
+  const srC=sr==null?'var(--txt2)':sr>1?'var(--buy)':sr>0?'#facc15':'var(--sell)';
+  const riskHtml=pts.length>20?`<div style="font-size:10px;font-family:var(--mono);color:var(--txt2);letter-spacing:.05em;margin-bottom:6px">RỦI RO</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:10px">
+      <div style="background:var(--bg3);border-radius:6px;padding:8px;text-align:center">
+        <div style="font-size:9px;color:var(--txt3);margin-bottom:3px">Biến động</div>
+        <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:${volC}">${vol!=null?vol.toFixed(1)+'%':'-'}</div>
+        <div style="font-size:9px;color:var(--txt3)">Hàng năm</div>
+      </div>
+      <div style="background:var(--bg3);border-radius:6px;padding:8px;text-align:center">
+        <div style="font-size:9px;color:var(--txt3);margin-bottom:3px">Max DD</div>
+        <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:${mddC}">-${mdd.toFixed(1)}%</div>
+        <div style="font-size:9px;color:var(--txt3)">Toàn LS</div>
+      </div>
+      <div style="background:var(--bg3);border-radius:6px;padding:8px;text-align:center">
+        <div style="font-size:9px;color:var(--txt3);margin-bottom:3px">Sharpe</div>
+        <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:${srC}">${sr!=null?sr.toFixed(2):'-'}</div>
+        <div style="font-size:9px;color:var(--txt3)">rf=3.5%</div>
+      </div>
+    </div>`:'';
+
+  // ── 52-week range ──
+  const cut52D=new Date(); cut52D.setDate(cut52D.getDate()-365);
+  const cut52=cut52D.toISOString().slice(0,10);
+  const nav52=pts.filter(p=>p.date>=cut52);
+  const curr=pts[pts.length-1]?.nav||0;
+  const hi52=nav52.length?Math.max(...nav52.map(p=>p.nav)):curr;
+  const lo52=nav52.length?Math.min(...nav52.map(p=>p.nav)):curr;
+  const pct52=hi52>lo52?Math.round((curr-lo52)/(hi52-lo52)*100):50;
+  const rangeHtml=nav52.length>5?`<div style="font-size:10px;font-family:var(--mono);color:var(--txt2);letter-spacing:.05em;margin-bottom:6px">VÙNG GIÁ 52 TUẦN</div>
+    <div style="margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--txt3);margin-bottom:4px">
+        <span>Thấp: ${fmt(Math.round(lo52))}</span><span>Cao: ${fmt(Math.round(hi52))}</span>
+      </div>
+      <div style="height:6px;background:var(--bdr);border-radius:3px;position:relative">
+        <div style="height:100%;width:${pct52}%;background:linear-gradient(90deg,var(--sell),#facc15,var(--buy));border-radius:3px"></div>
+        <div style="position:absolute;top:-3px;left:${pct52}%;transform:translateX(-50%);width:12px;height:12px;background:var(--c0);border-radius:50%;border:2px solid var(--bg)"></div>
+      </div>
+      <div style="text-align:center;font-size:10px;color:var(--txt2);margin-top:4px">Hiện tại: <span style="color:var(--c0);font-family:var(--mono)">${fmt(Math.round(curr))}</span> · <span style="color:var(--txt3)">${pct52}% từ đáy</span></div>
+    </div>`:'';
+
+  // ── Technical indicators ──
+  const rsi=s?.rsi||50,bb=s?.bb_pct??s?.bb??50,macd=s?.macd_hist??s?.macd??0,score=s?.score||0;
+  const rsiColor=rsi<35?'var(--buy)':rsi>65?'var(--sell)':'var(--txt2)';
+  const rsiLabel=rsi<30?'Quá bán':rsi<45?'Yếu':rsi>70?'Quá mua':rsi>55?'Mạnh':'Trung tính';
+  const bbColor=bb<30?'var(--buy)':bb>70?'var(--sell)':'var(--txt2)';
+  const macdColor=macd>0?'var(--buy)':macd<0?'var(--sell)':'var(--txt2)';
+  const dataWarn=pts.length>0&&pts.length<20?`<div style="background:#facc1511;border:1px solid #facc1533;border-radius:6px;padding:5px 8px;margin-bottom:8px;font-size:10px;color:#facc15">Chi co ${pts.length} diem NAV - tin hieu co the chua chinh xac</div>`:'';
+  const indHtml=s?`${dataWarn}<div style="font-size:10px;font-family:var(--mono);color:var(--txt2);letter-spacing:.05em;margin-bottom:6px">TÍN HIỆU KỸ THUẬT</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px">
+      <div style="background:var(--bg3);border-radius:6px;padding:8px 10px">
+        <div style="font-size:9px;color:var(--txt3);margin-bottom:3px">RSI (14)</div>
         <div style="font-family:var(--mono);font-size:14px;font-weight:700;color:${rsiColor}">${rsi.toFixed(1)}</div>
-        <div style="font-size:10px;color:${rsiColor};margin-top:2px">${rsiLabel}</div>
-        <div style="height:4px;background:var(--bdr);border-radius:2px;margin-top:6px"><div style="height:100%;width:${Math.min(rsi,100)}%;background:${rsiColor};border-radius:2px"></div></div>
+        <div style="font-size:9px;color:${rsiColor};margin-top:1px">${rsiLabel}</div>
+        <div style="height:3px;background:var(--bdr);border-radius:2px;margin-top:5px"><div style="height:100%;width:${Math.min(rsi,100)}%;background:${rsiColor};border-radius:2px"></div></div>
       </div>
-      <div style="background:var(--bg3);border-radius:8px;padding:8px 10px">
-        <div style="font-size:10px;color:var(--txt3);margin-bottom:4px">BB %B</div>
+      <div style="background:var(--bg3);border-radius:6px;padding:8px 10px">
+        <div style="font-size:9px;color:var(--txt3);margin-bottom:3px">BB %B</div>
         <div style="font-family:var(--mono);font-size:14px;font-weight:700;color:${bbColor}">${bb.toFixed(1)}%</div>
-        <div style="font-size:10px;color:${bbColor};margin-top:2px">${bb<30?'Gần band dưới':bb>70?'Gần band trên':'Giữa dải'}</div>
-        <div style="height:4px;background:var(--bdr);border-radius:2px;margin-top:6px"><div style="height:100%;width:${Math.min(bb,100)}%;background:${bbColor};border-radius:2px"></div></div>
+        <div style="font-size:9px;color:${bbColor};margin-top:1px">${bb<30?'Vùng mua':bb>70?'Vùng bán':'Trung tính'}</div>
+        <div style="height:3px;background:var(--bdr);border-radius:2px;margin-top:5px"><div style="height:100%;width:${Math.min(bb,100)}%;background:${bbColor};border-radius:2px"></div></div>
       </div>
-      <div style="background:var(--bg3);border-radius:8px;padding:8px 10px">
-        <div style="font-size:10px;color:var(--txt3);margin-bottom:4px">MACD</div>
+      <div style="background:var(--bg3);border-radius:6px;padding:8px 10px">
+        <div style="font-size:9px;color:var(--txt3);margin-bottom:3px">MACD Hist</div>
         <div style="font-family:var(--mono);font-size:14px;font-weight:700;color:${macdColor}">${macd>=0?'+':''}${(macd||0).toFixed(2)}</div>
-        <div style="font-size:10px;color:${macdColor};margin-top:2px">${macd>0?'Xu hướng tăng':macd<0?'Xu hướng giảm':'Trung tính'}</div>
+        <div style="font-size:9px;color:${macdColor};margin-top:1px">${macd>0?'Tăng':macd<0?'Giảm':'Trung tính'}</div>
       </div>
-      <div style="background:var(--bg3);border-radius:8px;padding:8px 10px">
-        <div style="font-size:10px;color:var(--txt3);margin-bottom:4px">Score</div>
+      <div style="background:var(--bg3);border-radius:6px;padding:8px 10px">
+        <div style="font-size:9px;color:var(--txt3);margin-bottom:3px">Smart Score</div>
         <div style="font-family:var(--mono);font-size:14px;font-weight:700;color:${score>0?'var(--buy)':score<0?'var(--sell)':'var(--txt2)'}">${score>0?'+':''}${score}</div>
-        <div style="font-size:10px;color:var(--txt2);margin-top:2px">${score>=2?'Tín hiệu MUA':score<=-2?'Tín hiệu BÁN':'Chờ đợi'}</div>
+        <div style="font-size:9px;color:var(--txt2);margin-top:1px">${score>=4?'MUA MẠNH':score>=2?'MUA':score<=-4?'BÁN MẠNH':score<=-2?'BÁN':'Chờ tín hiệu'}</div>
       </div>
-    </div>` : '';
+    </div>`:'';
 
-  // T+2 prediction block
-  const t2Nav = s?.t2_prediction?.nav || s?.t2_nav;
-  const t2Date = s?.t2_prediction?.date || '';
-  const t2Dev = (t2Nav && s?.nav) ? ((t2Nav - s.nav) / s.nav * 100) : null;
-  const t2Html = (s && t2Nav) ? `
+  // ── Smart Prediction ──
+  const predNav=_smartPredict(pts,2),predNav5=_smartPredict(pts,5);
+  const predPct=predNav&&curr?(predNav-curr)/curr*100:null;
+  const predPct5=predNav5&&curr?(predNav5-curr)/curr*100:null;
+  const acc=_checkPredAccuracy(code, pts);
+  if(predNav&&curr){
+    const pd=new Date(); pd.setDate(pd.getDate()+2);
+    _savePrediction(code, predNav, pd.toISOString().slice(0,10));
+  }
+  const t2ApiNav=s?.t2_prediction?.nav||s?.t2_nav;
+  const predHtml=predNav?`<div style="font-size:10px;font-family:var(--mono);color:var(--txt2);letter-spacing:.05em;margin-bottom:6px">DỰ BÁO THÔNG MINH</div>
     <div style="background:var(--bg3);border:1px solid #facc1533;border-radius:8px;padding:10px 12px;margin-bottom:10px">
-      <div style="font-size:10px;font-family:var(--mono);color:var(--txt2);letter-spacing:.05em;margin-bottom:6px">DỰ BÁO T+2${t2Date?' · '+t2Date:''}</div>
-      <div style="display:flex;align-items:baseline;gap:8px">
-        <div style="font-family:var(--mono);font-size:16px;font-weight:700;color:#facc15">${fmt(t2Nav)} đ</div>
-        ${t2Dev!=null?`<div class="pnl ${pnlC(t2Dev)}" style="font-size:12px">${t2Dev>=0?'+':''}${t2Dev.toFixed(2)}%</div>`:''}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+        <div><div style="font-size:9px;color:var(--txt3)">T+2 (2 ngày)</div>
+          <div style="font-family:var(--mono);font-size:14px;font-weight:700;color:#facc15">${fmt(Math.round(predNav))}</div>
+          ${predPct!=null?`<div class="pnl ${pnlC(predPct)}" style="font-size:10px">${predPct>=0?'+':''}${predPct.toFixed(2)}%</div>`:''}
+        </div>
+        <div><div style="font-size:9px;color:var(--txt3)">T+5 (1 tuần)</div>
+          <div style="font-family:var(--mono);font-size:14px;font-weight:700;color:#facc15">${predNav5?fmt(Math.round(predNav5)):'-'}</div>
+          ${predPct5!=null?`<div class="pnl ${pnlC(predPct5)}" style="font-size:10px">${predPct5>=0?'+':''}${predPct5.toFixed(2)}%</div>`:''}
+        </div>
       </div>
-      <div style="font-size:10px;color:var(--txt3);margin-top:3px">Dự báo dựa trên mô hình trend ngắn hạn</div>
-    </div>` : '';
+      ${t2ApiNav?`<div style="border-top:1px solid var(--bdr);padding-top:6px;margin-top:2px;display:flex;align-items:center;gap:8px"><span style="font-size:9px;color:var(--txt3)">Server T+2:</span><span style="font-family:var(--mono);font-size:11px;color:#facc15">${fmt(t2ApiNav)}</span></div>`:''}
+      <div style="font-size:9px;color:var(--txt3);border-top:1px solid var(--bdr);padding-top:6px;margin-top:6px">LinReg 50% + Mom5N 30% + Mom3N 20%${acc?' · SAI SỐ: +-'+acc.mae.toFixed(2)+'% ('+acc.count+' lần)':''}</div>
+    </div>`:'';
 
-  // Data adequacy warning
-  const pts = _histPageData || [];
-  const dataWarnHtml = (s && pts.length > 0 && pts.length < 20) ? `
-    <div style="background:#facc1511;border:1px solid #facc1533;border-radius:6px;padding:6px 10px;margin-bottom:8px;font-size:10px;color:#facc15">
-      ⚠ Chỉ có ${pts.length} điểm NAV — tín hiệu RSI/BB%/MACD có thể chưa chính xác (cần ≥20 ngày)
-    </div>` : '';
+  // ── Conclusion ──
+  const scoreDesc=score>=4?'MUA MẠNH':score>=2?'MUA':score<=-4?'BÁN MẠNH':score<=-2?'BÁN':'TRUNG LẬP';
+  const scoreColor=score>=2?'var(--buy)':score<=-2?'var(--sell)':'var(--txt2)';
+  const reasons=[];
+  if(s){
+    if(rsi<35) reasons.push('RSI quá bán'); else if(rsi>65) reasons.push('RSI quá mua');
+    if(bb<25) reasons.push('BB% dưới band'); else if(bb>75) reasons.push('BB% trên band');
+    if(macd>0) reasons.push('MACD dương'); else if(macd<0) reasons.push('MACD âm');
+  }
+  if(p30!=null) reasons.push(`1T: ${p30>=0?'+':''}${p30.toFixed(1)}%`);
+  const conclusionHtml=s?`<div style="background:var(--bg3);border-radius:8px;padding:10px 12px;text-align:center">
+    <div style="font-size:9px;font-family:var(--mono);color:var(--txt3);letter-spacing:.06em;margin-bottom:4px">KẾT LUẬN</div>
+    <div style="font-family:var(--mono);font-size:14px;font-weight:700;color:${scoreColor};margin-bottom:4px">Score ${score>0?'+':''}${score} - ${scoreDesc}</div>
+    ${reasons.length?`<div style="font-size:10px;color:var(--txt3)">${reasons.join(' / ')}</div>`:''}
+  </div>`:'';
 
-  // Conclusion
-  const scoreDesc = score>=4?'MUA MẠNH':score>=2?'MUA':score<=-4?'BÁN MẠNH':score<=-2?'BÁN':'TRUNG LẬP';
-  const scoreColor = score>=2?'var(--buy)':score<=-2?'var(--sell)':'var(--txt2)';
-  const conclusionHtml = s ? `
-    <div style="background:var(--bg3);border-radius:8px;padding:8px 12px;text-align:center">
-      <div style="font-size:9px;font-family:var(--mono);color:var(--txt3);letter-spacing:.06em;margin-bottom:4px">KẾT LUẬN</div>
-      <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:${scoreColor}">Score ${score>0?'+':''}${score} — ${scoreDesc}</div>
-    </div>` : '';
-
-  panel.innerHTML = `<div style="padding:12px 0">${pnlHtml}${t2Html}${dataWarnHtml}${indHtml}${conclusionHtml}</div>`;
+  panel.innerHTML=`<div style="padding:12px 0">${pnlHtml}${perfHtml}${riskHtml}${rangeHtml}${indHtml}${predHtml}${conclusionHtml}</div>`;
 }
 
 // WEB-011: Gold analysis in Phân Tích tab ──────────────────────────────────────
