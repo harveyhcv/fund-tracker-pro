@@ -203,6 +203,7 @@
             <div class="col-title">BẢNG GIÁ THỊ TRƯỜNG</div>
             <div class="col-sub" id="market-count-sub">— quỹ · Tín hiệu real-time</div>
           </div>
+          <button class="col-action" id="market-bulk-toggle" onclick="_toggleMarketBulkMode()">&#x2611; Chọn nhiều</button>
           <button class="col-action" onclick="loadMarket()">&#x21BB; Cập nhật</button>
         </div>
       </div>
@@ -216,6 +217,10 @@
         </div>
       </div>
       <div id="market-stale-banner" style="display:none"></div>
+      <div id="market-bulk-bar" style="display:none;background:rgba(0,229,255,.08);border-left:3px solid var(--c0);padding:7px 12px;margin:0 0 2px;font-size:11px;color:var(--c0);align-items:center;justify-content:space-between;gap:8px">
+        <span id="market-bulk-count">Đã chọn 0 quỹ</span>
+        <button class="btn btn-primary" style="padding:4px 10px;font-size:11px;margin:0" onclick="_bulkAddWatch()">&#x2605; Thêm vào theo dõi</button>
+      </div>
       <div id="market-content"><div class="loading"><div class="spinner"></div>Đang tải thị trường...</div></div>
     </div>
 

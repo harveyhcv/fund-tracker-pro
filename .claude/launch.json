@@ -10,8 +10,24 @@
     {
       "name": "miniapp",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "8443", "--directory", "telegram-bot/miniapp"],
-      "port": 8443
+      "runtimeArgs": ["telegram-bot/miniapp/local_dev_server.py"],
+      "port": 8443,
+      "env": { "PORT": "8443" }
+    },
+    {
+      "name": "local-dev",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["telegram-bot/miniapp/local_dev_server.py"],
+      "port": 8080,
+      "url": "http://localhost:8080"
+    },
+    {
+      "name": "verify-8555",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["telegram-bot/miniapp/local_dev_server.py"],
+      "port": 8555,
+      "env": { "PORT": "8555" },
+      "url": "http://localhost:8555"
     },
     {
       "name": "miniapp-full",

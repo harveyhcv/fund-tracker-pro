@@ -4448,8 +4448,14 @@ function _renderHistAnalysis(code) {
       </div>
     </div>
     ${details.length ? `<div style="background:var(--bg3);border-radius:6px;padding:8px 12px">
-      <div style="font-size:9px;color:var(--txt3);margin-bottom:4px">Chi ti\u1ebft t\u00ednh \u0111i\u1ec3m</div>
-      <div style="font-size:10px;color:var(--txt2);line-height:1.7">${details.join(' &nbsp;\u00b7&nbsp; ')}</div>
+      <div style="font-size:9px;color:var(--txt3);margin-bottom:6px">Chi ti\u1ebft t\u00ednh \u0111i\u1ec3m</div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px">${details.map(d => {
+        const isBull = /qu\u00e1 b\u00e1n|\u0111\u00e1y|\u25b2|mua|t\u00edch c\u1ef1c|h\u1ed7 tr\u1ee3/.test(d);
+        const isBear = /qu\u00e1 mua|\u0111\u1ec9nh|\u25bc|b\u00e1n|c\u1ea9n th\u1eadn|cao|tr\u00ean band/.test(d);
+        const bg = isBull ? '#4ade8022' : isBear ? '#f8717122' : 'var(--bg2)';
+        const col = isBull ? 'var(--buy)' : isBear ? 'var(--sell)' : 'var(--txt2)';
+        return `<span style="display:inline-block;background:${bg};color:${col};border:1px solid ${col}44;border-radius:12px;padding:2px 8px;font-size:10px;font-family:var(--mono)">${d}</span>`;
+      }).join('')}</div>
     </div>` : ''}`) : '';
 
   // ── 7. PREDICTION ──

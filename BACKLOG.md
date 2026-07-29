@@ -4,7 +4,66 @@
 # Priority: P0 (blocker) / P1 (important) / P2 (nice-to-have)
 # Claude đọc file này ĐẦU TIÊN mỗi session. Pick task IN_PROGRESS nếu có, nếu không pick P0 cao nhất.
 #
-# Last updated: 2026-07-28 (autonomous ca chiều: WEB-012, WEB-015, WEB-016)
+# Last updated: 2026-07-30 (autonomous 0:00 continuation: WEB-019..023 + iOS check)
+
+## Session (autonomous, scheduled) — 0:00 2026-07-30: WEB-019..023, iOS check
+# ⚠️ Phát hiện: 1 session autonomous KHÁC đã chạy song song trong cùng thư mục cùng lúc
+#   (web_js.js/web.html bị sửa + commit liên tục mỗi vài phút: d065015, 53dc123, ea49164,
+#   a16d915 — sparklines, portfolio mini chart, sort buttons, keyboard shortcut '/', perf bars,
+#   market breadth counts). Để tránh corrupt file dùng chung, session này CHỈ thêm phần chưa
+#   trùng (bulk-watch) + luôn Read lại file ngay trước mỗi Edit, KHÔNG dùng Write toàn file.
+# WEB-019 DONE: Bulk "☑ Chọn nhiều" trên Bảng giá thị trường — chọn nhiều quỹ (checkbox
+#   per-row) rồi 1 nút "★ Thêm vào theo dõi" thêm tất cả vào watched_funds cùng lúc.
+#   _toggleMarketBulkMode()/_toggleBulkPick()/_bulkAddWatch() trong web_js.js; UI trong
+#   web_body.html (#market-bulk-toggle, #market-bulk-bar). Verified qua browser (port 8555
+#   riêng để không đụng server 8443/8080 của session kia): chọn 2 quỹ → "Đã chọn 2 quỹ" →
+#   bấm nút → toast + thoát bulk mode, 0 console error.
+# WEB-020 NOTE (bug phát hiện, KHÔNG tự sửa — thuộc code session kia đang code dở):
+#   Sparkline (_sparklineSvg, web_js.js commit ea49164) đọc từ _histNavCache[code], nhưng
+#   cache chỉ được set trong loadHistChart() SAU KHI _renderHistFundList() đã render xong —
+#   không có re-render lại sau khi cache có dữ liệu → sparkline gần như KHÔNG BAO GIỜ hiện
+#   trong thực tế (verified: cacheKeys=['SSISCA'] sau khi auto-load nhưng svgCount vẫn 0
+#   trong #hist-fund-list). Fix gợi ý: thêm `_renderHistFundList()` cuối `loadHistChart()`
+#   sau khi set `_histNavCache[code]`.
+# QA-3 CONFIRMED: _renderHistFundList đã hiện TẤT CẢ quỹ (không giới hạn 10), held/watched
+#   pinned đầu, ★/☆ toggle hoạt động — việc này session trước (29/07) đã làm, không cần sửa.
+# iOS check: Fund_Tracker_ProApp.swift không cần đổi gì (chỉ gọi ContentView(), không phụ
+#   thuộc ModelContainer/environment nào). Item.swift là placeholder cố ý trống từ v1.1
+#   (SwiftData đã gỡ) — không cần dọn.
+# Verify: py_compile build_web.py/local_dev_server.py/miniapp_server.py/bot.py/db.py OK,
+#   node --check web_js.js OK, build_web.py chạy OK (306,328 → sau đó session kia build lại
+#   323,876 chars), browser verify (port 8555, user_id=1): 0 console error ở Trang Chủ,
+#   Phân Tích, bulk-watch flow.
+# Việc cần Harvey:
+#   (1) WEB-020: fix sparkline không hiện (thêm re-render sau cache) — 1 dòng, dễ
+#   (2) Xác nhận có đúng 2 session autonomous chạy trùng giờ không (nếu vô tình double-trigger
+#       scheduled task, nên kiểm tra lại cấu hình để tránh corrupt file trong tương lai)
+#   (3) Các mục cũ vẫn tồn đọng: JWT tcinvest mới (WEB-017), Xcode project cũ bị xoá +
+#       ios/ mới chưa track (không tự commit, chờ Harvey xác nhận ý định restructure)
+
+## Session (autonomous, scheduled) — Ca sáng 2026-07-29: WEB-013, GOV-031
+# WEB-013 DONE: T+2 accuracy chart sử dụng dữ liệu thật từ /api/t2/accuracy/<code>
+#   - renderT2AccuracyChart() đổi thành async; fetch /api/t2/accuracy/${code} thay vì random mock
+#   - IS_DEV mode: giữ mock data (5 điểm ví dụ), production: dùng history thật
+#   - history từ API newest-first → .slice().reverse() để chart hiện đúng chiều thời gian
+#   - Empty state: ẩn canvas, hiện thông báo "Chưa có lịch sử dự đoán T+2"
+#   - MAPE summary từ best model (mape_7d/30d/all) hiện trước chart
+#   - Commits: cd7e94c (WEB-013), 99ced1d (GOV-031)
+# GOV-031 DONE: NAV chart range ALL bị giới hạn 365 ngày thay vì all-time
+#   - setChartRange('ALL'): đổi fetch từ /api/nav_history/${code} → /api/nav_history/${code}?limit=3650
+#   - Comparison chart _cmpLim: đổi '' → '?limit=3650' để ALL range lấy đủ data
+#   - Backend đã có max cap 3650 (10 năm) — đủ cho tất cả quỹ hiện có
+# ANA-006 NOTE (pending Harvey): fund_type-aware signal scoring — Harvey implement trong
+#   local_dev_server.py (bond vs equity threshold) nhưng chưa có trong production miniapp_server.py.
+#   Cần thêm fund_type column vào funds_master (GOV-006 compliant: ADD COLUMN IF NOT EXISTS).
+#   → Autonomous session KHÔNG implement ANA-006 (backend task, cần Harvey confirm)
+# Điều kiện dừng: Hết P0+P1 (WEB-017 BLOCKED, WEB-014 unclear, WEB-018 P3 deferred)
+# Suite: 367/367 tests pass.
+# Việc cần Harvey:
+#   (1) Commit Harvey's uncommitted: build_web.py, local_dev_server.py, web_body.html
+#   (2) Cấp JWT tcinvest mới → Railway backfill NAV (fix WEB-017)
+#   (3) WEB-014 clarify: NAV dashboard warning icons cần expose field gì từ backend?
+#   (4) ANA-006: confirm + implement fund_type-aware signals cho production
 
 ## Session (autonomous, scheduled) — Ca chiều 2026-07-28: WEB-012/015/016
 # WEB-012 DONE: ⚖️ So Sánh view — so sánh 2 quỹ cùng lúc trong Phân Tích tab
@@ -58,7 +117,7 @@
 # WEB-010 DONE: Trang Chủ — auto-select quỹ đầu (has_position) khi load
 # WEB-011 DONE: Gold analysis signals trong Phân Tích tab — VÀNG SJC row + panel
 # WEB-012 DONE: Fund comparison tool — so sánh 2 quỹ cùng lúc (NAV chart overlay + signals)
-# WEB-013 TODO P2: T+2 accuracy chart cần dữ liệu thật (hiện dùng mock random data)
+# WEB-013 DONE P2: T+2 accuracy chart dùng dữ liệu thật từ /api/t2/accuracy/<code> (commit cd7e94c)
 # WEB-014 TODO P2: NAV dashboard warning icons (nav_jump_anomaly, stale) — cần backend expose field
 # WEB-015 DONE: "Quỹ chưa cập nhật NAV hôm nay" stale banner trên Trang Chủ market board
 # WEB-016 DONE: Fund watchlist ★/☆ quick-toggle trên mỗi market row (Trang Chủ) — _quickWatch()
