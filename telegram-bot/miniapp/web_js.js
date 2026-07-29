@@ -750,7 +750,7 @@ async function setChartRange(range, btn) {
   // For ALL: try to fetch complete history if we only have a subset
   if (range === 'ALL' && !_navHistoryFull[_researchCode + '_fullFetched'] && !IS_DEV) {
     try {
-      const d = await apiFetch(`/api/nav_history/${_researchCode}`);
+      const d = await apiFetch(`/api/nav_history/${_researchCode}?limit=3650`);
       const h = Array.isArray(d) ? d : (d.history || []);
       if (h.length > (_navHistoryFull[_researchCode]?.length || 0)) {
         _navHistoryFull[_researchCode] = h;
@@ -2462,7 +2462,7 @@ async function loadComparisonView() {
       pts1 = _mockNavHistory(s1.nav||15000, 365);
       pts2 = _mockNavHistory(s2.nav||12000, 365);
     } else {
-      const _cmpLim = (_histRange && _histRange !== 'ALL') ? `?limit=${({'1M':30,'3M':90,'6M':180,'1Y':365,'3Y':1095}[_histRange]||365)}` : '';
+      const _cmpLim = (_histRange && _histRange !== 'ALL') ? `?limit=${({'1M':30,'3M':90,'6M':180,'1Y':365,'3Y':1095}[_histRange]||365)}` : '?limit=3650';
       [pts1, pts2] = await Promise.all([
         apiFetch(`/api/nav_history/${code1}${_cmpLim}`).then(d=>Array.isArray(d)?d:(d.history||d)),
         apiFetch(`/api/nav_history/${_cmpCode2}${_cmpLim}`).then(d=>Array.isArray(d)?d:(d.history||d)),
