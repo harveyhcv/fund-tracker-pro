@@ -319,7 +319,7 @@ function goTab(name, btn) {
   const searchEl = document.getElementById('market-search')?.closest('.header-search');
   if (searchEl) searchEl.style.display = name === 'home' ? '' : 'none';
   if (name === 'home')    { if (!_me) loadMe(); if (!_marketData) loadMarket(); }
-  if (name === 'trade')   { if (!_signals) loadSignals(); loadUnifiedHistory(); setDcaStyle(_dcaStyle); }
+  if (name === 'trade')   { if (!_signals) loadSignals(); else renderSignals(_signals); loadUnifiedHistory(); setDcaStyle(_dcaStyle); }
   if (name === 'history') loadHistoryPage();
   if (name === 'user')    loadAccountTab();
 }
@@ -346,7 +346,7 @@ function showSubtab(page, sub, el) {
   document.getElementById(prefix+sub).style.display = 'block';
   el.closest('.subtab-bar').querySelectorAll('.subtab').forEach(t => t.classList.remove('active'));
   el.classList.add('active');
-  if (page==='trade' && sub==='signals' && !_signals) loadSignals();
+  if (page==='trade' && sub==='signals') { if (!_signals) loadSignals(); else renderSignals(_signals); }
   if (page==='trade' && sub==='dca') { setDcaStyle(_dcaStyle); }
 }
 
