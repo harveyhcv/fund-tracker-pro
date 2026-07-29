@@ -3756,11 +3756,28 @@ function _renderHistAnalysis(code) {
     const cheapTech = rsi < 45 && bb < 45;
     const expTech   = rsi > 60 && bb > 65;
     const isBond    = fundType === 'bond' || fundType === 'money_market';
+    // Position sizing hint based on score strength + volatility
+    const vol = _annVol(pts);
+    const sizingHint = (() => {
+      const baseAmt = score >= 5 ? '30–50%' : score >= 3 ? '15–30%' : score >= 1 ? '5–15%' : null;
+      if (!baseAmt) return null;
+      if (vol && vol > 20) return `${baseAmt} số vốn dự kiến — chia 3 lần (biến động cao ${vol.toFixed(0)}%, tránh mua 1 lần)`;
+      if (vol && vol > 12) return `${baseAmt} số vốn dự kiến — có thể chia 2 lần`;
+      return `${baseAmt} số vốn dự kiến — quỹ ổn định, có thể mua 1–2 lần`;
+    })();
+    // Key price levels from Fibonacci (defined in section 5b)
+    const fibSupport = typeof fibLevels !== 'undefined' && fibLevels.length
+      ? fibLevels.filter(f => f.nav < curr).slice(-2)  // 2 levels below current
+      : [];
+    const fibResist = typeof fibLevels !== 'undefined' && fibLevels.length
+      ? fibLevels.filter(f => f.nav > curr).slice(0, 2)  // 2 levels above current
+      : [];
     let rows = [];
     if (score >= 3) {
       rows.push(['ℹ️ Chưa có vị thế', cheapTech
         ? `Thời điểm tốt để mua vào — kỹ thuật thuận chiều, giá đang ở vùng hấp dẫn. Có thể mua 1 lần hoặc chia 2 lần trong 2 tuần.`
         : `Xu hướng tốt nhưng giá không còn rẻ. Nên mua chia nhỏ 2–3 lần để giảm rủi ro thời điểm.`]);
+      if (sizingHint) rows.push(['📐 Gợi ý tỷ trọng', sizingHint]);
     } else if (score <= -3) {
       rows.push(['ℹ️ Chưa có vị thế', `Chờ tín hiệu đảo chiều rõ hơn (RSI hồi về 40–50, MACD cắt lên) trước khi mua vào. Không nên bắt dao đang rơi.`]);
     } else {
@@ -3772,8 +3789,25 @@ function _renderHistAnalysis(code) {
         rows.push(['💼 Đang nắm giữ', `Cân nhắc chốt một phần lời${pnlPct > 5 ? ` (hiện đang lãi ${pnlPct.toFixed(1)}%)` : ''}. Kỹ thuật đang tiêu cực và giá ở vùng cao.`]);
       } else if (score >= 3 && cheapTech) {
         rows.push(['💼 Đang nắm giữ', `Tiếp tục nắm — tín hiệu kỹ thuật tốt. Có thể mua thêm để tăng vị thế${isBond ? ' (quỹ trái phiếu phù hợp tích lũy đều)' : ''}.`]);
+        if (sizingHint) rows.push(['📐 Tỷ trọng mua thêm', sizingHint]);
       } else {
         rows.push(['💼 Đang nắm giữ', `Giữ vị thế hiện tại. Chưa có lý do kỹ thuật rõ ràng để mua thêm hoặc bán bớt.`]);
+      }
+      // Stop-loss guidance using Fibonacci support
+      if (fibSupport.length && pfItem.avg_cost > 0) {
+        const stopLevel = fibSupport[fibSupport.length - 1]; // Nearest support below
+        const stopPct = (stopLevel.nav - pfItem.avg_cost) / pfItem.avg_cost * 100;
+        if (Math.abs(stopPct) < 25) { // Only show if reasonable
+          rows.push(['🛑 Mức tham khảo thoát', `Hỗ trợ Fibonacci ${stopLevel.label}: ${fmt(Math.round(stopLevel.nav))} đ${stopPct < 0 ? ` (−${Math.abs(stopPct).toFixed(1)}% so với giá vốn)` : ''}. Nếu NAV phá xuống vùng này, đáng xem xét cắt lỗ một phần.`]);
+        }
+      }
+    }
+    // Target price (upside) from Fibonacci resistance
+    if (score >= 2 && fibResist.length) {
+      const target = fibResist[0]; // Nearest resistance above
+      const upside = (target.nav - curr) / curr * 100;
+      if (upside > 0.5 && upside < 30) {
+        rows.push(['🎯 Mục tiêu giá', `Kháng cự Fibonacci ${target.label}: ${fmt(Math.round(target.nav))} đ (+${upside.toFixed(1)}% từ NAV hiện tại). Đây là vùng giá chốt lời ngắn hạn hợp lý.`]);
       }
     }
     const watchConds = [];
@@ -3781,6 +3815,7 @@ function _renderHistAnalysis(code) {
     if (rsi > 65)             watchConds.push('RSI giảm về dưới 60 (áp lực mua hạ nhiệt)');
     if (bb < 30 || bb > 80)  watchConds.push('BB%B về vùng 30–70 (giá trở về bình thường)');
     if (Math.abs(score) <= 2) watchConds.push('Score đạt ≥3 hoặc ≤−3');
+    if (typeof maCrossSignal !== 'undefined' && maCrossSignal === 'below') watchConds.push('MA20 cắt lên MA50 (Golden Cross)');
     if (watchConds.length) rows.push(['👀 Theo dõi khi', watchConds.join('; ')]);
     return rows.map(([lbl, txt]) => `
       <div style="border-top:1px solid var(--bdr);padding:8px 0">
@@ -3788,7 +3823,7 @@ function _renderHistAnalysis(code) {
         <div style="font-size:11px;color:var(--txt1);line-height:1.6">${txt}</div>
       </div>`).join('');
   })();
-  const conclusionHtml = _mkSect('KẾT LUẬN & KHUYẾN NGHỊ', '💡', `
+  const conclusionHtml = _mkSect(  const conclusionHtml = _mkSect('KẾT LUẬN & KHUYẾN NGHỊ', '💡', `
     <div style="background:${score >= 3 ? '#4ade8011' : score <= -3 ? '#f8717111' : '#facc1511'};border:1px solid ${score >= 3 ? '#4ade8033' : score <= -3 ? '#f8717133' : '#facc1533'};border-radius:10px;padding:14px;margin-bottom:10px">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
         <div style="font-family:var(--mono);font-size:20px;font-weight:700;color:${scoreColor}">${score > 0 ? '+' : ''}${score}</div>
