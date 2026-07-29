@@ -4948,7 +4948,7 @@ function _renderHistAnalysis(code) {
         <div style="font-size:11px;color:var(--txt1);line-height:1.6">${txt}</div>
       </div>`).join('');
   })();
-  const conclusionHtml = _mkSect(  const conclusionHtml = _mkSect('KẾT LUẬN & KHUYẾN NGHỊ', '💡', `
+  const conclusionHtml = _mkSect('KẾT LUẬN & KHUYẾN NGHỊ', '💡', `
     <div style="background:${score >= 3 ? '#4ade8011' : score <= -3 ? '#f8717111' : '#facc1511'};border:1px solid ${score >= 3 ? '#4ade8033' : score <= -3 ? '#f8717133' : '#facc1533'};border-radius:10px;padding:14px;margin-bottom:10px">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
         <div style="font-family:var(--mono);font-size:20px;font-weight:700;color:${scoreColor}">${score > 0 ? '+' : ''}${score}</div>
