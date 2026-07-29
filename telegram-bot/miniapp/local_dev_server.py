@@ -134,6 +134,59 @@ def get_latest_nav(code: str):
     conn.close()
     return (r[0], float(r[1])) if r else (None, None)
 
+# ── Fund type classification ──────────────────────────────────────────────────
+_FUND_TYPE_CACHE: dict = {}
+
+_BOND_KEYWORDS    = ['trái phiếu', 'tích lũy', 'hưu trí', 'thu nhập cố định', 'bền vững',
+                     'fixed income', 'tpdn', 'có bảo đảm', 'tiền tệ']
+_EQUITY_KEYWORDS  = ['cổ phiếu', 'tăng trưởng toàn cầu', 'năng động', 'emerging', 'tăng trưởng cổ phiếu']
+_BALANCED_KEYWORDS= ['cân bằng']
+
+def get_fund_type(code: str) -> str:
+    """Trả về 'bond' | 'equity' | 'balanced'. Cache từ DB."""
+    if code in _FUND_TYPE_CACHE:
+        return _FUND_TYPE_CACHE[code]
+    conn = _nav_conn()
+    row = conn.execute("SELECT name, fund_type FROM funds WHERE code=?", (code,)).fetchone()
+    conn.close()
+    if row:
+        stored_type = (row[1] or '').lower()
+        if stored_type in ('bond', 'equity', 'balanced', 'money_market'):
+            _FUND_TYPE_CACHE[code] = stored_type
+            return stored_type
+        name = (row[0] or '').lower()
+        if any(k in name for k in _BOND_KEYWORDS):
+            t = 'bond'
+        elif any(k in name for k in _BALANCED_KEYWORDS):
+            t = 'balanced'
+        else:
+            t = 'equity'
+    else:
+        t = 'equity'
+    _FUND_TYPE_CACHE[code] = t
+    return t
+
+def filter_nav_anomalies(pts: list, fund_type: str = 'equity') -> list:
+    """Lọc điểm NAV bất thường (spike/drop đột ngột). Bond: ±5%, Equity: ±20%."""
+    if len(pts) < 3:
+        return pts
+    threshold = 5.0 if fund_type == 'bond' else 20.0
+    clean = [pts[0]]
+    for i in range(1, len(pts)):
+        prev = clean[-1]['nav']
+        curr = pts[i]['nav']
+        if prev > 0:
+            chg = abs(curr - prev) / prev * 100
+            if chg > threshold:
+                # Check if next point confirms (real move) or reverts (bad data)
+                if i + 1 < len(pts):
+                    nxt = pts[i + 1]['nav']
+                    # If next is close to prev → curr is a spike → skip
+                    if prev > 0 and abs(nxt - prev) / prev * 100 < threshold:
+                        continue
+        clean.append(pts[i])
+    return clean
+
 # ── Indicator math (copied from bot.py) ──────────────────────────────────────
 def _avg(lst): return sum(lst) / len(lst) if lst else 0
 
@@ -184,46 +237,151 @@ def calc_macd(navs, fast=12, slow=26, signal_p=9):
     macd_r = round(macd_vals[-1], 4); sg_r = round(sg, 4)
     return {"macd": macd_r, "signal": sg_r, "hist": round(macd_r - sg_r, 4)}
 
+def calc_ensemble_predict(navs: list, horizon: int = 2, fund_type: str = "equity") -> dict | None:
+    """
+    Ensemble prediction, điều chỉnh theo loại quỹ:
+    - Equity:       LinReg(30d)×40% + Mom5×35% + Mom3×25%  — phản ứng nhanh với momentum
+    - Bond:         LinReg(60d)×70% + Mom10×20% + Mom5×10% — xu hướng dài, bỏ qua spike coupon
+    - Balanced:     LinReg(45d)×55% + Mom5×28% + Mom3×17%
+    - Money market: Trả về None (NAV gần như cố định, dự báo vô nghĩa)
+    """
+    if not navs or len(navs) < 10:
+        return None
+    if fund_type == "money_market":
+        return None  # Quỹ tiền tệ không cần dự báo — NAV tăng tuyến tính ổn định
+
+    if fund_type == "bond":
+        window, w_reg, w_m5, w_m3 = 60, 0.70, 0.20, 0.10
+        mom_fast, mom_slow = 5, 10
+    elif fund_type == "balanced":
+        window, w_reg, w_m5, w_m3 = 45, 0.55, 0.28, 0.17
+        mom_fast, mom_slow = 3, 5
+    else:  # equity (default)
+        window, w_reg, w_m5, w_m3 = 30, 0.40, 0.35, 0.25
+        mom_fast, mom_slow = 3, 5
+
+    tail = navs[-window:] if len(navs) >= window else navs
+    n = len(tail)
+    xs = list(range(n)); ys = tail
+    mx = sum(xs)/n; my = sum(ys)/n
+    cov = sum((xs[i]-mx)*(ys[i]-my) for i in range(n))
+    vx  = sum((x-mx)**2 for x in xs)
+    slope = cov/vx if vx else 0
+    reg_nav = my + slope*(n - 1 + horizon - mx)
+
+    mom_s = tail[-1] + (tail[-1]-tail[-mom_slow-1])/mom_slow*horizon if n > mom_slow else reg_nav
+    mom_f = tail[-1] + (tail[-1]-tail[-mom_fast-1])/mom_fast*horizon if n > mom_fast else reg_nav
+
+    pred = round(reg_nav*w_reg + mom_s*w_m5 + mom_f*w_m3, 0)
+    curr = tail[-1]
+    pct  = round((pred - curr)/curr*100, 3) if curr else 0
+
+    # Confidence: thấp nếu regression slope gần 0 (quỹ đứng yên) hoặc window nhỏ
+    r_squared = None
+    if vx > 0 and n > 5:
+        ss_res = sum((ys[i]-(my+slope*(xs[i]-mx)))**2 for i in range(n))
+        ss_tot = sum((y-my)**2 for y in ys)
+        r_squared = round(1 - ss_res/ss_tot, 3) if ss_tot > 0 else None
+
+    return {"nav": pred, "pct": pct, "horizon": horizon,
+            "window": window, "r2": r_squared, "fund_type": fund_type}
+
 def calc_signal(code: str, pts: list) -> dict:
     if not pts or len(pts) < 30:
         return {"signal":"N/A","score":0,"rsi":None,"bb_pct":None,"macd_hist":None,
-                "nav":0,"nav_date":"","chg_pct":0,"chg7":None,"chg30":None,"details":[]}
-    navs = [p["nav"] for p in pts]
+                "nav":0,"nav_date":"","chg_pct":0,"chg7":None,"chg30":None,"details":[],
+                "fund_type":"equity"}
+    fund_type = get_fund_type(code)
+
+    # Lọc anomaly trước khi tính chỉ số
+    pts_clean = filter_nav_anomalies(pts, fund_type)
+    if len(pts_clean) < 30:
+        pts_clean = pts  # fallback nếu lọc quá nhiều
+
+    navs = [p["nav"] for p in pts_clean]
     last = navs[-1]; prev = navs[-2] if len(navs)>=2 else last
     chg_pct = round((last-prev)/prev*100, 2) if prev else 0
-    chg7 = round((last/navs[-6]-1)*100, 2) if len(navs)>=6 else None
-    chg30 = round((last/navs[-23]-1)*100, 2) if len(navs)>=23 else None
-    if prev > 0 and abs(chg_pct) > 15:
+    # chg7: 7 trading days = index -8 (8th from last = 7 intervals)
+    chg7  = round((last/navs[-8] -1)*100, 2) if len(navs)>=8  else None
+    chg30 = round((last/navs[-22]-1)*100, 2) if len(navs)>=22 else None
+    chg90 = round((last/navs[-65]-1)*100, 2) if len(navs)>=65 else None
+    chg1y = round((last/navs[-252]-1)*100,2) if len(navs)>=252 else None
+
+    # Volatility (annualized 20-day std of daily returns)
+    vol_ann = None
+    if len(navs) >= 22:
+        rets = [(navs[i]-navs[i-1])/navs[i-1] for i in range(max(1,len(navs)-21),len(navs)) if navs[i-1]>0]
+        if len(rets)>=10:
+            mean_r = sum(rets)/len(rets)
+            var_r  = sum((r-mean_r)**2 for r in rets)/len(rets)
+            vol_ann = round((var_r**0.5)*(252**0.5)*100, 2)
+
+    # Tech reliability — equity: HIGH, balanced: MEDIUM, bond: LOW, money_market: N/A
+    tech_reliability = {"equity":"HIGH","balanced":"MEDIUM","bond":"LOW","money_market":"N/A"}.get(fund_type,"MEDIUM")
+
+    # Money market: NAV tăng tuyến tính, kỹ thuật vô nghĩa
+    if fund_type == "money_market":
+        return {"signal":"TRUNG LẬP","score":0,"rsi":None,"bb_pct":None,"macd_hist":None,
+                "nav":last,"nav_date":pts_clean[-1]["date"],"chg_pct":chg_pct,
+                "chg7":chg7,"chg30":chg30,"chg90":chg90,"chg1y":chg1y,
+                "vol_ann":vol_ann,"tech_reliability":"N/A","fund_type":fund_type,
+                "details":["Quỹ tiền tệ — NAV tăng ổn định, phân tích kỹ thuật không áp dụng"]}
+
+    # Dùng ngưỡng anomaly theo fund type (equity 15%, bond 8%)
+    anomaly_threshold = 8.0 if fund_type == 'bond' else 15.0
+    if prev > 0 and abs(chg_pct) > anomaly_threshold:
         return {"signal":"N/A","score":0,"rsi":None,"bb_pct":None,"macd_hist":None,
-                "nav":last,"nav_date":pts[-1]["date"],"chg_pct":chg_pct,
-                "chg7":chg7,"chg30":chg30,"nav_jump_anomaly":True,
-                "details":[f"NAV jump {chg_pct:+.1f}% — có thể do sáp nhập/chia tách"]}
+                "nav":last,"nav_date":pts_clean[-1]["date"],"chg_pct":chg_pct,
+                "chg7":chg7,"chg30":chg30,"chg90":chg90,"chg1y":chg1y,
+                "vol_ann":vol_ann,"tech_reliability":tech_reliability,"fund_type":fund_type,
+                "nav_jump_anomaly":True,"details":[f"NAV jump {chg_pct:+.1f}% — có thể do sáp nhập/chia tách"]}
     score = 0; details = []
 
     rsi = calc_rsi(navs)
     bb = calc_bb(navs); bb_pct = bb["pct"] if bb else None
     macd = calc_macd(navs); macd_hist = macd["hist"] if macd else None
 
+    is_bond = fund_type in ('bond',)
+
+    # RSI scoring — quỹ trái phiếu: RSI cao là bình thường (trend tăng đều)
     if rsi is not None:
-        if rsi < 30: score += 3; details.append(f"RSI {rsi:.0f} quá bán mạnh")
-        elif rsi < 40: score += 2; details.append(f"RSI {rsi:.0f} quá bán")
-        elif rsi < 48: score += 1; details.append(f"RSI {rsi:.0f} tích cực")
-        elif rsi > 75: score -= 3; details.append(f"RSI {rsi:.0f} quá mua mạnh")
-        elif rsi > 65: score -= 2; details.append(f"RSI {rsi:.0f} quá mua")
-        else: details.append(f"RSI {rsi:.0f}")
+        if is_bond:
+            # Bond: chỉ score khi RSI rất thấp (dấu hiệu đột biến)
+            if rsi < 30: score += 2; details.append(f"RSI {rsi:.0f} bán tháo (bond)")
+            else: details.append(f"RSI {rsi:.0f} (bond — bình thường)")
+        else:
+            if rsi < 30: score += 3; details.append(f"RSI {rsi:.0f} quá bán mạnh")
+            elif rsi < 40: score += 2; details.append(f"RSI {rsi:.0f} quá bán")
+            elif rsi < 48: score += 1; details.append(f"RSI {rsi:.0f} tích cực")
+            elif rsi > 75: score -= 3; details.append(f"RSI {rsi:.0f} quá mua mạnh")
+            elif rsi > 65: score -= 2; details.append(f"RSI {rsi:.0f} quá mua")
+            else: details.append(f"RSI {rsi:.0f}")
 
+    # MACD scoring — áp dụng cho cả 2 loại
     if macd_hist is not None:
-        if macd_hist > 0: score += 1; details.append("MACD ▲")
-        else: score -= 1; details.append("MACD ▼")
+        if is_bond:
+            # Bond MACD nhỏ hơn nhiều — chỉ dùng chiều
+            if macd_hist > 0: score += 1; details.append("MACD ▲")
+            else: score -= 1; details.append("MACD ▼")
+        else:
+            if macd_hist > 0: score += 1; details.append("MACD ▲")
+            else: score -= 1; details.append("MACD ▼")
 
+    # BB% scoring — quỹ trái phiếu: BB cao là bình thường (trend tăng đều)
     if bb_pct is not None:
-        if bb_pct < 0:    score += 4; details.append(f"BB {bb_pct:.0f}% dưới band")
-        elif bb_pct < 10: score += 3; details.append(f"BB {bb_pct:.0f}% đáy dải")
-        elif bb_pct < 20: score += 2; details.append(f"BB {bb_pct:.0f}% gần đáy")
-        elif bb_pct > 100: score -= 4; details.append(f"BB {bb_pct:.0f}% trên band")
-        elif bb_pct > 90: score -= 3; details.append(f"BB {bb_pct:.0f}% đỉnh dải")
-        elif bb_pct > 80: score -= 2; details.append(f"BB {bb_pct:.0f}% gần đỉnh")
-        else: details.append(f"BB {bb_pct:.0f}%")
+        if is_bond:
+            # Bond: chỉ score khi BB rất thấp (đột biến giảm)
+            if bb_pct < 0:    score += 3; details.append(f"BB {bb_pct:.0f}% dưới band (bond)")
+            elif bb_pct < 10: score += 2; details.append(f"BB {bb_pct:.0f}% đáy (bond)")
+            else: details.append(f"BB {bb_pct:.0f}% (bond — bình thường)")
+        else:
+            if bb_pct < 0:    score += 4; details.append(f"BB {bb_pct:.0f}% dưới band")
+            elif bb_pct < 10: score += 3; details.append(f"BB {bb_pct:.0f}% đáy dải")
+            elif bb_pct < 20: score += 2; details.append(f"BB {bb_pct:.0f}% gần đáy")
+            elif bb_pct > 100: score -= 4; details.append(f"BB {bb_pct:.0f}% trên band")
+            elif bb_pct > 90: score -= 3; details.append(f"BB {bb_pct:.0f}% đỉnh dải")
+            elif bb_pct > 80: score -= 2; details.append(f"BB {bb_pct:.0f}% gần đỉnh")
+            else: details.append(f"BB {bb_pct:.0f}%")
 
     if score >= 6: sig = "MUA MẠNH"
     elif score >= 3: sig = "MUA"
@@ -232,8 +390,10 @@ def calc_signal(code: str, pts: list) -> dict:
     else: sig = "TRUNG LẬP"
 
     return {"signal":sig, "score":score, "rsi":rsi, "bb_pct":bb_pct, "macd_hist":macd_hist,
-            "nav":last, "nav_date":pts[-1]["date"], "chg_pct":chg_pct,
-            "chg7":chg7, "chg30":chg30, "details":details}
+            "nav":last, "nav_date":pts_clean[-1]["date"], "chg_pct":chg_pct,
+            "chg7":chg7, "chg30":chg30, "chg90":chg90, "chg1y":chg1y,
+            "vol_ann":vol_ann, "tech_reliability":tech_reliability,
+            "details":details, "fund_type":fund_type}
 
 # ── NAV fetch helpers ─────────────────────────────────────────────────────────
 def _http_json(url: str, headers: dict = None, body: bytes = None, method: str = None) -> dict:
@@ -555,7 +715,9 @@ class Handler(BaseHTTPRequestHandler):
                 for code in codes:
                     pts = get_nav_series(code, 200)
                     s = calc_signal(code, pts)
-                    sigs[code] = {**s, "has_position": code in held}
+                    ft_s = s.get("fund_type","equity")
+                    t2 = calc_ensemble_predict([p["nav"] for p in pts], 2, ft_s) if len(pts)>=10 else None
+                    sigs[code] = {**s, "has_position": code in held, "t2_prediction": t2}
                 _signals_cache = sigs; _signals_ts = now
             # merge has_position với uid hiện tại
             conn_u = _user_conn()
@@ -569,26 +731,61 @@ class Handler(BaseHTTPRequestHandler):
         # ── API: research/<code> ──
         if path.startswith("/api/research/"):
             code = path.split("/")[-1].upper()
-            pts = get_nav_series(code, 400)
-            s = calc_signal(code, pts)
-            nav_hist = [{"date": p["date"], "nav": p["nav"]} for p in pts[-90:]]
+            pts_all = get_nav_series(code, 99999)   # full history cho chart
+            ft = get_fund_type(code)
+            pts_all = filter_nav_anomalies(pts_all, ft)  # lọc spike trước khi hiện chart
+            pts_sig = pts_all[-400:] if len(pts_all) > 400 else pts_all
+            s = calc_signal(code, pts_sig)
+            nav_hist = [{"date": p["date"], "nav": p["nav"]} for p in pts_all]
             rsi = s["rsi"] or 50; bb = s["bb_pct"] or 50; score = s["score"]
 
-            conclusion = f"Score {score:+d} — "
-            if score >= 4: conclusion += "Tín hiệu MUA MẠNH. RSI và BB đều ở vùng quá bán, MACD đang tăng."
-            elif score >= 2: conclusion += "Tín hiệu MUA. Nhiều chỉ báo kỹ thuật tích cực."
-            elif score <= -4: conclusion += "Tín hiệu BÁN MẠNH. RSI và BB ở vùng quá mua."
-            elif score <= -2: conclusion += "Tín hiệu BÁN. Áp lực bán đang tăng."
-            else: conclusion += "Trung lập. Chưa có tín hiệu rõ ràng, theo dõi thêm."
+            # Fund-type-aware conclusion
+            ft_label = {"equity":"Cổ phiếu","bond":"Trái phiếu","balanced":"Cân bằng","money_market":"Tiền tệ"}.get(fund_type_str,"—")
+            tech_rel = s.get("tech_reliability","MEDIUM")
+            if fund_type_str == "money_market":
+                conclusion = "Quỹ tiền tệ (Money Market) — NAV tăng ổn định như gửi tiết kiệm. Phân tích kỹ thuật RSI/MACD không áp dụng. Phù hợp để đậu tiền ngắn hạn, không kỳ vọng tăng mạnh."
+            elif fund_type_str == "bond":
+                if score >= 2: conclusion = f"Score {score:+d} (quỹ TP) — NAV đang ở vùng hồi phục sau đợt giảm bất thường. Có thể cân nhắc mua vào. Lưu ý: độ tin cậy RSI/BB với quỹ TP thấp hơn quỹ cổ phiếu."
+                elif score <= -2: conclusion = f"Score {score:+d} (quỹ TP) — NAV đang ở vùng cao bất thường so với band. Cân nhắc chờ điều chỉnh trước khi mua thêm."
+                else: conclusion = f"Score {score:+d} (quỹ TP) — NAV tăng đều đặn, đúng bản chất quỹ trái phiếu. Không cần lo ngại. Tiếp tục DCA theo kế hoạch."
+            else:
+                if score >= 6: conclusion = f"Score {score:+d} — Tín hiệu MUA MẠNH. Cả RSI, BB và MACD đều chỉ vùng quá bán — đây là cơ hội mua vào tốt theo phân tích kỹ thuật. Tuy nhiên luôn cần kết hợp với phân tích cơ bản."
+                elif score >= 3: conclusion = f"Score {score:+d} — Tín hiệu MUA. Nhiều chỉ báo kỹ thuật tích cực. Phù hợp tăng tỷ trọng hoặc mua thêm theo lịch DCA."
+                elif score <= -6: conclusion = f"Score {score:+d} — Tín hiệu BÁN MẠNH. RSI và BB ở vùng quá mua cao, rủi ro điều chỉnh lớn. Cân nhắc chốt lời một phần."
+                elif score <= -3: conclusion = f"Score {score:+d} — Tín hiệu BÁN. Áp lực bán đang tăng. Nên theo dõi sát, hạn chế mua thêm."
+                else: conclusion = f"Score {score:+d} — Trung lập. Chưa có tín hiệu rõ ràng. Tiếp tục DCA theo kế hoạch, không cần hành động đột xuất."
+
+            # T+2 and T+5 ensemble prediction (fund-type-aware)
+            navs_raw = [p["nav"] for p in pts_all]
+            ft_r = s.get("fund_type", "equity")
+            t2 = calc_ensemble_predict(navs_raw, 2, ft_r)
+            t5 = calc_ensemble_predict(navs_raw, 5, ft_r)
+
+            # Fund metadata from DB
+            nav_conn = _nav_conn()
+            fund_row = nav_conn.execute(
+                "SELECT name, fund_type FROM funds WHERE code=?", (code,)
+            ).fetchone()
+            nav_conn.close()
+            fund_name = fund_row[0] if fund_row else code
+            fund_type_str = (fund_row[1] if fund_row else None) or s.get("fund_type","equity")
 
             return self._json({
-                "code": code, "name": code,
+                "code": code, "name": fund_name,
+                "fund_type": fund_type_str,
                 "signal": s["signal"], "score": score,
                 "nav": s["nav"], "nav_date": s["nav_date"],
-                "chg_pct": s["chg_pct"], "rsi": rsi, "bb": bb,
-                "macd": s["macd_hist"],
+                "chg_pct": s["chg_pct"],
+                "chg7": s.get("chg7"), "chg30": s.get("chg30"),
+                "chg90": s.get("chg90"), "chg1y": s.get("chg1y"),
+                "vol_ann": s.get("vol_ann"),
+                "tech_reliability": s.get("tech_reliability","MEDIUM"),
+                "rsi": rsi, "bb": bb, "macd": s["macd_hist"],
+                "t2_prediction": t2, "t5_prediction": t5,
                 "conclusion": conclusion,
+                "details": s.get("details",[]),
                 "nav_history": nav_hist,
+                "nav_history_count": len(nav_hist),
                 "schools": []
             })
 
@@ -676,8 +873,11 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith("/api/nav_history/"):
             code = path.split("/")[-1].upper()
             qs = self._qs()
-            limit = int(qs.get("limit", ["365"])[0])
-            pts = get_nav_series(code, limit)
+            raw_limit = qs.get("limit", ["0"])[0]
+            limit = int(raw_limit) if raw_limit else 0
+            # limit=0 hoặc không có → trả ALL (dùng số rất lớn)
+            pts = get_nav_series(code, limit if limit > 0 else 99999)
+            pts = filter_nav_anomalies(pts, get_fund_type(code))
             return self._json({"code": code, "history": pts})
 
         # ── Stubs ──

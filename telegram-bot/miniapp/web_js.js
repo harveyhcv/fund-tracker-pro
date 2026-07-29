@@ -2788,171 +2788,304 @@ function _checkPredAccuracy(code, actualPts) {
 }
 
 // ── Analysis panel below chart ─────────────────────────────────────────────────
+function _mkSect(title, icon, body) {
+  return `<div style="margin-bottom:14px">
+    <div style="font-size:10px;font-family:var(--mono);color:var(--txt2);letter-spacing:.08em;margin-bottom:8px;display:flex;align-items:center;gap:5px">
+      <span>${icon}</span><span>${title}</span>
+    </div>${body}</div>`;
+}
+function _mkRow(label, value, sub='') {
+  return `<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--bdr)">
+    <span style="font-size:11px;color:var(--txt2)">${label}</span>
+    <div style="text-align:right">
+      <div style="font-family:var(--mono);font-size:12px;font-weight:600">${value}</div>
+      ${sub?`<div style="font-size:9px;color:var(--txt3)">${sub}</div>`:''}
+    </div>
+  </div>`;
+}
+function _mkMetric(label, val, color, hint) {
+  return `<div style="background:var(--bg3);border-radius:8px;padding:10px;text-align:center">
+    <div style="font-size:9px;color:var(--txt3);margin-bottom:4px">${label}</div>
+    <div style="font-family:var(--mono);font-size:16px;font-weight:700;color:${color}">${val}</div>
+    ${hint?`<div style="font-size:9px;color:${color};margin-top:2px;line-height:1.2">${hint}</div>`:''}
+  </div>`;
+}
+
 function _renderHistAnalysis(code) {
   const panel = document.getElementById('hist-analysis-panel'); if(!panel) return;
   const s = (_signals?.[code]) || (_marketData?.[code]) || (MOCK_SIGNALS?.[code]);
   const pfItem = _me?.portfolio?.items?.find(h=>h.code===code);
   const pts = _histPageData || [];
 
-  if(!s && !pfItem && pts.length < 5) {
-    panel.innerHTML=`<div style="color:var(--txt2);font-size:12px;padding:16px;text-align:center;line-height:1.7">
-      <div style="font-size:22px;margin-bottom:8px">📊</div>
-      <div style="color:var(--txt1);font-weight:600;font-family:var(--mono);font-size:11px;margin-bottom:6px">${code}</div>
-      <div>Chưa đủ dữ liệu phân tích.<br><span style="font-size:10px">Cần ít nhất 20 ngày NAV.</span></div>
+  // Helper: colour a percentage
+  const pctColor = v => v == null ? 'var(--txt2)' : v >= 0 ? 'var(--buy)' : 'var(--sell)';
+  const pctFmt  = v => v == null ? '\u2013' : `${v >= 0 ? '+' : ''}${v.toFixed(2)}%`;
+  const pF = v => v == null
+    ? '<span style="color:var(--txt3)">\u2013</span>'
+    : `<span style="color:${pctColor(v)};font-family:var(--mono);font-weight:700">${pctFmt(v)}</span>`;
+
+  const curr = pts.length ? pts[pts.length - 1].nav : (s?.nav || 0);
+
+  if (!s && !pfItem && pts.length < 5) {
+    panel.innerHTML = `<div style="color:var(--txt2);font-size:12px;padding:24px;text-align:center;line-height:1.7">
+      <div style="font-size:28px;margin-bottom:10px">\u{1F4CA}</div>
+      <div style="color:var(--txt1);font-weight:600;font-family:var(--mono);font-size:13px;margin-bottom:8px">${code}</div>
+      <div>Ch\u01b0a \u0111\u1ee7 d\u1eef li\u1ec7u \u0111\u1ec3 ph\u00e2n t\u00edch.<br><span style="font-size:10px;color:var(--txt3)">C\u1ea7n \u00edt nh\u1ea5t 20 ng\u00e0y NAV l\u1ecbch s\u1eed.</span></div>
     </div>`;
     return;
   }
 
-  // ── P&L block ──
-  let pnlHtml='';
-  if(pfItem) {
-    const nav=s?.nav||pfItem.current_nav||0, units=pfItem.units||0, cost=pfItem.cost||0;
-    const mktVal=nav*units, pnl=mktVal-cost, pnlP=cost>0?pnl/cost*100:0;
-    pnlHtml=`<div style="background:var(--bg3);border-radius:8px;padding:10px 12px;margin-bottom:10px">
-      <div style="font-size:10px;font-family:var(--mono);color:var(--txt2);margin-bottom:6px;letter-spacing:.05em">DANH MỤC — ${code}</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
-        <div><div style="font-size:10px;color:var(--txt3)">Giá trị TT</div><div style="font-family:var(--mono);font-size:13px;font-weight:600">${(mktVal/1e6).toFixed(2)}M đ</div></div>
-        <div><div style="font-size:10px;color:var(--txt3)">Lãi/Lỗ</div><div class="pnl ${pnlC(pnlP)}" style="font-family:var(--mono);font-size:13px;font-weight:600">${pnl>=0?'+':''}${(pnl/1e6).toFixed(2)}M (${fmtP(pnlP)})</div></div>
-        <div><div style="font-size:10px;color:var(--txt3)">Số CCQ</div><div style="font-family:var(--mono);font-size:12px">${units.toFixed(2)}</div></div>
-        <div><div style="font-size:10px;color:var(--txt3)">Giá vốn TB</div><div style="font-family:var(--mono);font-size:12px">${fmt(units>0?cost/units:0)} đ</div></div>
+  // ── Fund type meta ──
+  const fundType = s?.fund_type || 'equity';
+  const techRel  = s?.tech_reliability || 'MEDIUM';
+  const ftLabel  = {equity:'Qu\u1ef9 C\u1ed5 Phi\u1ebfu',bond:'Qu\u1ef9 Tr\u00e1i Phi\u1ebfu',balanced:'Qu\u1ef9 C\u00e2n B\u1eb1ng',money_market:'Qu\u1ef9 Ti\u1ec1n T\u1ec7'}[fundType] || 'Qu\u1ef9 M\u1edf';
+  const ftColor  = {equity:'var(--buy)',bond:'#60a5fa',balanced:'#a78bfa',money_market:'#facc15'}[fundType] || 'var(--c0)';
+  const relColor = {HIGH:'var(--buy)',MEDIUM:'#facc15',LOW:'var(--sell)','N/A':'var(--txt2)'}[techRel] || '#facc15';
+  const relLabel = {HIGH:'Ph\u00f9 h\u1ee3p cao',MEDIUM:'Ph\u00f9 h\u1ee3p v\u1eeba',LOW:'Ph\u00f9 h\u1ee3p th\u1ea5p','N/A':'Kh\u00f4ng \u00e1p d\u1ee5ng'}[techRel] || 'V\u1eeba';
+
+  // ── 1. HEADER ──
+  const fundName = s?.name || code;
+  const headerHtml = `<div style="background:linear-gradient(135deg,var(--bg2),var(--bg3));border-radius:10px;padding:12px 14px;margin-bottom:12px;border-left:3px solid ${ftColor}">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start">
+      <div>
+        <div style="font-family:var(--mono);font-size:16px;font-weight:700;color:var(--c0)">${code}</div>
+        <div style="font-size:11px;color:var(--txt2);margin-top:2px">${fundName !== code ? fundName : ''}</div>
       </div>
-    </div>`;
+      <div style="text-align:right">
+        <div style="font-family:var(--mono);font-size:15px;font-weight:700">${fmt(Math.round(curr))} \u0111</div>
+        <div style="font-size:10px;color:var(--txt3)">${s?.nav_date || ''}</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+      <span style="font-size:10px;background:${ftColor}22;color:${ftColor};border:1px solid ${ftColor}44;border-radius:4px;padding:2px 7px;font-family:var(--mono)">${ftLabel}</span>
+      <span style="font-size:10px;background:${relColor}22;color:${relColor};border:1px solid ${relColor}44;border-radius:4px;padding:2px 7px">TA: ${relLabel}</span>
+      ${pts.length ? `<span style="font-size:10px;color:var(--txt3);padding:2px 7px">${pts.length} ng\u00e0y d\u1eef li\u1ec7u</span>` : ''}
+    </div>
+    ${techRel === 'LOW' ? `<div style="margin-top:8px;font-size:10px;color:#60a5fa;line-height:1.5;background:#60a5fa11;border-radius:6px;padding:6px 8px">\u2139 Qu\u1ef9 tr\u00e1i phi\u1ebfu NAV t\u0103ng \u0111\u1ec1u \u2014 RSI/BB/MACD k\u00e9m hi\u1ec7u qu\u1ea3 h\u01a1n qu\u1ef9 c\u1ed5 phi\u1ebfu. T\u00edn hi\u1ec7u ch\u1ec9 c\u00f3 gi\u00e1 tr\u1ecb khi c\u00f3 bi\u1ebfn \u0111\u1ed9ng b\u1ea5t th\u01b0\u1eddng.</div>` : ''}
+    ${techRel === 'N/A' ? `<div style="margin-top:8px;font-size:10px;color:#facc15;line-height:1.5;background:#facc1511;border-radius:6px;padding:6px 8px">\u2139 Qu\u1ef9 ti\u1ec1n t\u1ec7 ho\u1ea1t \u0111\u1ed9ng nh\u01b0 g\u1eedi ti\u1ebft ki\u1ec7m \u2014 NAV t\u0103ng \u1ed5n \u0111\u1ecbnh m\u1ed7i ng\u00e0y, ph\u00e2n t\u00edch k\u1ef9 thu\u1eadt kh\u00f4ng c\u00f3 \u00fd ngh\u0129a.</div>` : ''}
+  </div>`;
+
+  // ── 2. PORTFOLIO POSITION ──
+  let pnlHtml = '';
+  if (pfItem) {
+    const nav = curr || pfItem.nav || 0;
+    const units = pfItem.units || 0, cost = pfItem.cost || 0;
+    const avgCost = pfItem.avg_cost || (units > 0 ? cost / units : 0);
+    const mktVal = nav * units, pnl = mktVal - cost, pnlP = cost > 0 ? pnl / cost * 100 : 0;
+    const t2p = s?.t2_prediction;
+    pnlHtml = _mkSect('V\u1eca TH\u1ebeH \u0110ANG N\u1eaeM GI\u1eee', '\u{1F4BC}', `
+      <div style="background:var(--bg3);border-radius:8px;padding:12px 14px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 16px;margin-bottom:${t2p ? '10px' : '0'}">
+          <div><div style="font-size:9px;color:var(--txt3)">Gi\u00e1 tr\u1ecb th\u1ecb tr\u01b0\u1eddng</div><div style="font-family:var(--mono);font-size:14px;font-weight:700">${(mktVal / 1e6).toFixed(2)}M \u0111</div></div>
+          <div><div style="font-size:9px;color:var(--txt3)">L\u00e3i / L\u1ed7</div>
+            <div class="pnl ${pnlC(pnlP)}" style="font-family:var(--mono);font-size:14px;font-weight:700">${pnl >= 0 ? '+' : ''}${(pnl / 1e6).toFixed(2)}M</div>
+            <div style="font-size:9px;color:${pctColor(pnlP)}">(${pctFmt(pnlP)})</div>
+          </div>
+          <div><div style="font-size:9px;color:var(--txt3)">S\u1ed1 CCQ</div><div style="font-family:var(--mono);font-size:13px">${units.toFixed(4)}</div></div>
+          <div><div style="font-size:9px;color:var(--txt3)">Gi\u00e1 v\u1ed1n b\u00ecnh qu\u00e2n</div><div style="font-family:var(--mono);font-size:13px">${fmt(Math.round(avgCost))} \u0111/CCQ</div></div>
+        </div>
+        ${t2p ? `<div style="border-top:1px solid var(--bdr);padding-top:8px;display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:10px;color:var(--txt2)">D\u1ef1 b\u00e1o T+2 (gi\u00e1 tr\u1ecb danh m\u1ee5c)</span>
+          <span style="font-family:var(--mono);font-size:12px;font-weight:700;color:${pctColor(t2p.pct)}">${t2p.pct >= 0 ? '+' : ''}${(t2p.pct || 0).toFixed(2)}% \u2248 ${((mktVal * (1 + t2p.pct / 100)) / 1e6).toFixed(2)}M \u0111</span>
+        </div>` : ''}
+      </div>`);
   }
 
-  // ── Performance table ──
-  const p7=_perfReturn(pts,7),p30=_perfReturn(pts,30),p90=_perfReturn(pts,90);
-  const p180=_perfReturn(pts,180),p365=_perfReturn(pts,365),p3y=_perfReturn(pts,1095);
-  const pF=(v)=>v==null?'<span style="color:var(--txt3)">-</span>':`<span style="color:${v>=0?'var(--buy)':'var(--sell)'};font-weight:600">${v>=0?'+':''}${v.toFixed(2)}%</span>`;
-  const perfHtml=pts.length>5?`<div style="font-size:10px;font-family:var(--mono);color:var(--txt2);letter-spacing:.05em;margin-bottom:6px">HIỆU SUẤT</div>
-    <table style="width:100%;border-collapse:collapse;margin-bottom:10px;font-size:11px">
-      <tr><td style="color:var(--txt3);padding:3px 0">1 tuần</td><td style="text-align:right;font-family:var(--mono)">${pF(p7)}</td>
-          <td style="color:var(--txt3);padding:3px 0 3px 12px">1 tháng</td><td style="text-align:right;font-family:var(--mono)">${pF(p30)}</td></tr>
-      <tr><td style="color:var(--txt3);padding:3px 0">3 tháng</td><td style="text-align:right;font-family:var(--mono)">${pF(p90)}</td>
-          <td style="color:var(--txt3);padding:3px 0 3px 12px">6 tháng</td><td style="text-align:right;font-family:var(--mono)">${pF(p180)}</td></tr>
-      <tr><td style="color:var(--txt3);padding:3px 0">1 năm</td><td style="text-align:right;font-family:var(--mono)">${pF(p365)}</td>
-          <td style="color:var(--txt3);padding:3px 0 3px 12px">3 năm</td><td style="text-align:right;font-family:var(--mono)">${pF(p3y)}</td></tr>
-    </table>`:'';
+  // ── 3. PERFORMANCE ──
+  const p7=_perfReturn(pts,7), p30=_perfReturn(pts,30), p90=_perfReturn(pts,90);
+  const p180=_perfReturn(pts,180), p365=_perfReturn(pts,365), p3y=_perfReturn(pts,1095);
+  const d30  = p30  ?? s?.chg30;
+  const d90  = p90  ?? s?.chg90;
+  const d365 = p365 ?? s?.chg1y;
+  const perfHtml = _mkSect('HI\u1ec6U SU\u1ea4T \u0110\u1ea6U T\u01af', '\u{1F4C8}', `
+    <div style="background:var(--bg3);border-radius:8px;overflow:hidden">
+      ${_mkRow('7 ng\u00e0y g\u1ea7n nh\u1ea5t', pF(p7), 'T\u0103ng/gi\u1ea3m so v\u1edbi tu\u1ea7n tr\u01b0\u1edbc')}
+      ${_mkRow('1 th\u00e1ng', pF(d30), '~22 phi\u00ean giao d\u1ecbch')}
+      ${_mkRow('3 th\u00e1ng', pF(d90), 'Xu h\u01b0\u1edbng trung h\u1ea1n')}
+      ${_mkRow('6 th\u00e1ng', pF(p180), 'N\u1eeda n\u0103m')}
+      ${_mkRow('1 n\u0103m', pF(d365), 'Hi\u1ec7u su\u1ea5t d\u00e0i h\u1ea1n')}
+      ${p3y != null ? _mkRow('3 n\u0103m', pF(p3y), 'K\u1ec3 t\u1eeb khi c\u00f3 d\u1eef li\u1ec7u') : ''}
+    </div>
+    <div style="margin-top:6px;font-size:10px;color:var(--txt3);line-height:1.5">Hi\u1ec7u su\u1ea5t l\u00e0 % thay \u0111\u1ed5i NAV theo th\u1eddi gian. Ch\u01b0a t\u00ednh ph\u00ed mua/b\u00e1n ho\u1eb7c thu\u1ebf.</div>`);
 
-  // ── Risk metrics ──
-  const vol=_annVol(pts),mdd=_maxDrawdown(pts),sr=_sharpe(pts);
-  const volC=vol==null?'var(--txt2)':vol<10?'var(--buy)':vol<20?'#facc15':'var(--sell)';
-  const mddC=mdd<5?'var(--buy)':mdd<15?'#facc15':'var(--sell)';
-  const srC=sr==null?'var(--txt2)':sr>1?'var(--buy)':sr>0?'#facc15':'var(--sell)';
-  const riskHtml=pts.length>20?`<div style="font-size:10px;font-family:var(--mono);color:var(--txt2);letter-spacing:.05em;margin-bottom:6px">RỦI RO</div>
+  // ── 4. RISK METRICS ──
+  const vol = _annVol(pts) ?? s?.vol_ann;
+  const mdd = _maxDrawdown(pts);
+  const sr  = _sharpe(pts, 252, 4.5);
+  const volC = vol == null ? 'var(--txt2)' : vol < 8 ? 'var(--buy)' : vol < 18 ? '#facc15' : 'var(--sell)';
+  const mddC = mdd < 5 ? 'var(--buy)' : mdd < 15 ? '#facc15' : 'var(--sell)';
+  const srC  = sr == null ? 'var(--txt2)' : sr > 1 ? 'var(--buy)' : sr > 0 ? '#facc15' : 'var(--sell)';
+  const volDesc = vol == null ? '\u2014' : vol < 8 ? 'R\u1ea5t th\u1ea5p' : vol < 12 ? 'Th\u1ea5p' : vol < 20 ? 'Trung b\u00ecnh' : 'Cao';
+  const mddDesc = mdd < 5 ? 'R\u1ee7i ro th\u1ea5p' : mdd < 15 ? 'R\u1ee7i ro trung b\u00ecnh' : 'R\u1ee7i ro cao';
+  const srDesc  = sr == null ? '\u2014' : sr > 1.5 ? 'Xu\u1ea5t s\u1eafc' : sr > 1 ? 'T\u1ed1t' : sr > 0 ? 'Ch\u1ea5p nh\u1eadn \u0111\u01b0\u1ee3c' : 'K\u00e9m';
+  const riskHtml = pts.length > 30 ? _mkSect('R\u1ee6I RO & CH\u1ea4T L\u01af\u1ee2NG', '\u{1F6E1}\uFE0F', `
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:10px">
-      <div style="background:var(--bg3);border-radius:6px;padding:8px;text-align:center">
-        <div style="font-size:9px;color:var(--txt3);margin-bottom:3px">Biến động</div>
-        <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:${volC}">${vol!=null?vol.toFixed(1)+'%':'-'}</div>
-        <div style="font-size:9px;color:var(--txt3)">Hàng năm</div>
-      </div>
-      <div style="background:var(--bg3);border-radius:6px;padding:8px;text-align:center">
-        <div style="font-size:9px;color:var(--txt3);margin-bottom:3px">Max DD</div>
-        <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:${mddC}">-${mdd.toFixed(1)}%</div>
-        <div style="font-size:9px;color:var(--txt3)">Toàn LS</div>
-      </div>
-      <div style="background:var(--bg3);border-radius:6px;padding:8px;text-align:center">
-        <div style="font-size:9px;color:var(--txt3);margin-bottom:3px">Sharpe</div>
-        <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:${srC}">${sr!=null?sr.toFixed(2):'-'}</div>
-        <div style="font-size:9px;color:var(--txt3)">rf=3.5%</div>
-      </div>
-    </div>`:'';
+      ${_mkMetric('Bi\u1ebfn \u0111\u1ed9ng/n\u0103m', vol != null ? vol.toFixed(1) + '%' : '\u2013', volC, volDesc)}
+      ${_mkMetric('Drawdown t\u1ed1i \u0111a', mdd > 0 ? '-' + mdd.toFixed(1) + '%' : '\u2013', mddC, mddDesc)}
+      ${_mkMetric('Sharpe (rf 4.5%)', sr != null ? sr.toFixed(2) : '\u2013', srC, srDesc)}
+    </div>
+    <div style="background:var(--bg3);border-radius:8px;padding:10px 12px;font-size:10px;color:var(--txt2);line-height:1.7">
+      <b style="color:var(--txt1)">Bi\u1ebfn \u0111\u1ed9ng</b> \u2014 NAV dao \u0111\u1ed9ng bao nhi\u00eau % m\u1ed7i n\u0103m. Th\u1ea5p = \u1ed5n \u0111\u1ecbnh, Cao = nhi\u1ec1u c\u01a1 h\u1ed9i nh\u01b0ng c\u0169ng nhi\u1ec1u r\u1ee7i ro.<br>
+      <b style="color:var(--txt1)">Drawdown t\u1ed1i \u0111a</b> \u2014 M\u1ee9c gi\u1ea3m l\u1edbn nh\u1ea5t t\u1eeb \u0111\u1ec9nh xu\u1ed1ng \u0111\u00e1y trong l\u1ecbch s\u1eed. VD: -15% ngh\u0129a l\u00e0 \u0111\u00e3 c\u00f3 l\u00fac NAV gi\u1ea3m 15% tr\u01b0\u1edbc khi h\u1ed3i ph\u1ee5c.<br>
+      <b style="color:var(--txt1)">Sharpe Ratio</b> \u2014 L\u1ee3i nhu\u1eadn thu \u0111\u01b0\u1ee3c so v\u1edbi r\u1ee7i ro ch\u1ea5p nh\u1eadn. >1 = t\u1ed1t; <0 = kh\u00f4ng b\u00f9 \u0111\u1eafp \u0111\u01b0\u1ee3c l\u00e3i su\u1ea5t ng\u00e2n h\u00e0ng (4.5%/n\u0103m).
+    </div>`) : '';
 
-  // ── 52-week range ──
-  const cut52D=new Date(); cut52D.setDate(cut52D.getDate()-365);
-  const cut52=cut52D.toISOString().slice(0,10);
-  const nav52=pts.filter(p=>p.date>=cut52);
-  const curr=pts[pts.length-1]?.nav||0;
-  const hi52=nav52.length?Math.max(...nav52.map(p=>p.nav)):curr;
-  const lo52=nav52.length?Math.min(...nav52.map(p=>p.nav)):curr;
-  const pct52=hi52>lo52?Math.round((curr-lo52)/(hi52-lo52)*100):50;
-  const rangeHtml=nav52.length>5?`<div style="font-size:10px;font-family:var(--mono);color:var(--txt2);letter-spacing:.05em;margin-bottom:6px">VÙNG GIÁ 52 TUẦN</div>
-    <div style="margin-bottom:10px">
-      <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--txt3);margin-bottom:4px">
-        <span>Thấp: ${fmt(Math.round(lo52))}</span><span>Cao: ${fmt(Math.round(hi52))}</span>
+  // ── 5. 52-WEEK RANGE ──
+  const cut52D = new Date(); cut52D.setDate(cut52D.getDate() - 365);
+  const cut52 = cut52D.toISOString().slice(0, 10);
+  const nav52 = pts.filter(p => p.date >= cut52);
+  const hi52 = nav52.length ? Math.max(...nav52.map(p => p.nav)) : curr;
+  const lo52 = nav52.length ? Math.min(...nav52.map(p => p.nav)) : curr;
+  const pct52 = hi52 > lo52 ? Math.round((curr - lo52) / (hi52 - lo52) * 100) : 50;
+  const pct52Desc = pct52 < 20 ? 'V\u00f9ng \u0111\u00e1y \u2014 c\u01a1 h\u1ed9i mua (n\u1ebfu kh\u00f4ng c\u00f3 l\u00fd do c\u01a1 b\u1ea3n x\u1ea5u)' :
+                    pct52 > 80 ? 'V\u00f9ng \u0111\u1ec9nh 52 tu\u1ea7n \u2014 c\u1ea9n tr\u1ecdng khi mua th\u00eam' : 'V\u00f9ng gi\u1eefa c\u1ee7a d\u1ea3i gi\u00e1 52 tu\u1ea7n';
+  const rangeHtml = nav52.length > 10 ? _mkSect('V\u00d9NG GI\u00c1 52 TU\u1ea6N', '\u{1F4CF}', `
+    <div style="background:var(--bg3);border-radius:8px;padding:12px 14px">
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--txt3);margin-bottom:8px">
+        <span>\u0110\u00e1y: <b style="color:var(--sell);font-family:var(--mono)">${fmt(Math.round(lo52))}</b></span>
+        <span>Hi\u1ec7n t\u1ea1i: <b style="color:var(--c0);font-family:var(--mono)">${fmt(Math.round(curr))}</b></span>
+        <span>\u0110\u1ec9nh: <b style="color:var(--buy);font-family:var(--mono)">${fmt(Math.round(hi52))}</b></span>
       </div>
-      <div style="height:6px;background:var(--bdr);border-radius:3px;position:relative">
-        <div style="height:100%;width:${pct52}%;background:linear-gradient(90deg,var(--sell),#facc15,var(--buy));border-radius:3px"></div>
-        <div style="position:absolute;top:-3px;left:${pct52}%;transform:translateX(-50%);width:12px;height:12px;background:var(--c0);border-radius:50%;border:2px solid var(--bg)"></div>
+      <div style="height:10px;background:linear-gradient(90deg,var(--sell)33,#facc1533,var(--buy)33);border-radius:5px;position:relative;margin-bottom:8px">
+        <div style="position:absolute;top:-3px;left:calc(${pct52}% - 8px);width:16px;height:16px;background:var(--c0);border-radius:50%;border:2px solid var(--bg);box-shadow:0 0 6px var(--c0)"></div>
       </div>
-      <div style="text-align:center;font-size:10px;color:var(--txt2);margin-top:4px">Hiện tại: <span style="color:var(--c0);font-family:var(--mono)">${fmt(Math.round(curr))}</span> · <span style="color:var(--txt3)">${pct52}% từ đáy</span></div>
-    </div>`:'';
+      <div style="font-size:11px;color:var(--txt2);text-align:center">${pct52}% t\u1eeb \u0111\u00e1y \u2014 ${pct52Desc}</div>
+    </div>`) : '';
 
-  // ── Technical indicators ──
-  const rsi=s?.rsi||50,bb=s?.bb_pct??s?.bb??50,macd=s?.macd_hist??s?.macd??0,score=s?.score||0;
-  const rsiColor=rsi<35?'var(--buy)':rsi>65?'var(--sell)':'var(--txt2)';
-  const rsiLabel=rsi<30?'Quá bán':rsi<45?'Yếu':rsi>70?'Quá mua':rsi>55?'Mạnh':'Trung tính';
-  const bbColor=bb<30?'var(--buy)':bb>70?'var(--sell)':'var(--txt2)';
-  const macdColor=macd>0?'var(--buy)':macd<0?'var(--sell)':'var(--txt2)';
-  const dataWarn=pts.length>0&&pts.length<20?`<div style="background:#facc1511;border:1px solid #facc1533;border-radius:6px;padding:5px 8px;margin-bottom:8px;font-size:10px;color:#facc15">Chi co ${pts.length} diem NAV - tin hieu co the chua chinh xac</div>`:'';
-  const indHtml=s?`${dataWarn}<div style="font-size:10px;font-family:var(--mono);color:var(--txt2);letter-spacing:.05em;margin-bottom:6px">TÍN HIỆU KỸ THUẬT</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px">
-      <div style="background:var(--bg3);border-radius:6px;padding:8px 10px">
-        <div style="font-size:9px;color:var(--txt3);margin-bottom:3px">RSI (14)</div>
-        <div style="font-family:var(--mono);font-size:14px;font-weight:700;color:${rsiColor}">${rsi.toFixed(1)}</div>
-        <div style="font-size:9px;color:${rsiColor};margin-top:1px">${rsiLabel}</div>
-        <div style="height:3px;background:var(--bdr);border-radius:2px;margin-top:5px"><div style="height:100%;width:${Math.min(rsi,100)}%;background:${rsiColor};border-radius:2px"></div></div>
-      </div>
-      <div style="background:var(--bg3);border-radius:6px;padding:8px 10px">
-        <div style="font-size:9px;color:var(--txt3);margin-bottom:3px">BB %B</div>
-        <div style="font-family:var(--mono);font-size:14px;font-weight:700;color:${bbColor}">${bb.toFixed(1)}%</div>
-        <div style="font-size:9px;color:${bbColor};margin-top:1px">${bb<30?'Vùng mua':bb>70?'Vùng bán':'Trung tính'}</div>
-        <div style="height:3px;background:var(--bdr);border-radius:2px;margin-top:5px"><div style="height:100%;width:${Math.min(bb,100)}%;background:${bbColor};border-radius:2px"></div></div>
-      </div>
-      <div style="background:var(--bg3);border-radius:6px;padding:8px 10px">
-        <div style="font-size:9px;color:var(--txt3);margin-bottom:3px">MACD Hist</div>
-        <div style="font-family:var(--mono);font-size:14px;font-weight:700;color:${macdColor}">${macd>=0?'+':''}${(macd||0).toFixed(2)}</div>
-        <div style="font-size:9px;color:${macdColor};margin-top:1px">${macd>0?'Tăng':macd<0?'Giảm':'Trung tính'}</div>
-      </div>
-      <div style="background:var(--bg3);border-radius:6px;padding:8px 10px">
-        <div style="font-size:9px;color:var(--txt3);margin-bottom:3px">Smart Score</div>
-        <div style="font-family:var(--mono);font-size:14px;font-weight:700;color:${score>0?'var(--buy)':score<0?'var(--sell)':'var(--txt2)'}">${score>0?'+':''}${score}</div>
-        <div style="font-size:9px;color:var(--txt2);margin-top:1px">${score>=4?'MUA MẠNH':score>=2?'MUA':score<=-4?'BÁN MẠNH':score<=-2?'BÁN':'Chờ tín hiệu'}</div>
-      </div>
-    </div>`:'';
+  // ── 6. TECHNICAL INDICATORS ──
+  const rsi   = s?.rsi ?? 50;
+  const bb    = s?.bb_pct ?? s?.bb ?? 50;
+  const macd  = s?.macd_hist ?? s?.macd ?? 0;
+  const score = s?.score || 0;
+  const details = s?.details || [];
+  const rsiColor = rsi < 35 ? 'var(--buy)' : rsi > 65 ? 'var(--sell)' : 'var(--txt2)';
+  const bbColor  = bb  < 30 ? 'var(--buy)' : bb  > 70 ? 'var(--sell)' : 'var(--txt2)';
+  const macdColor= macd > 0 ? 'var(--buy)' : macd < 0 ? 'var(--sell)' : 'var(--txt2)';
+  const scoreColor = score >= 3 ? 'var(--buy)' : score <= -3 ? 'var(--sell)' : '#facc15';
+  const scoreLabel = score >= 6 ? 'MUA M\u1ea0NH' : score >= 3 ? 'MUA' : score <= -6 ? 'B\u00c1N M\u1ea0NH' : score <= -3 ? 'B\u00c1N' : 'TRUNG L\u1eacP';
+  const rsiInterp = rsi < 30 ? 'Qu\u00e1 b\u00e1n m\u1ea1nh \u2014 nh\u00e0 \u0111\u1ea7u t\u01b0 \u0111ang b\u00e1n th\u00e1o, c\u00f3 th\u1ec3 l\u00e0 \u0111\u00e1y ng\u1eafn h\u1ea1n' :
+                    rsi < 40 ? 'Qu\u00e1 b\u00e1n \u2014 \u00e1p l\u1ef1c b\u00e1n cao, xem x\u00e9t mua v\u00e0o' :
+                    rsi < 60 ? 'Trung t\u00ednh \u2014 th\u1ecb tr\u01b0\u1eddng c\u00e2n b\u1eb1ng' :
+                    rsi < 70 ? 'Qu\u00e1 mua \u2014 c\u00f3 th\u1ec3 \u0111ang ti\u1ebfn \u0111\u1ebfn \u0111\u1ec9nh' :
+                               'Qu\u00e1 mua m\u1ea1nh \u2014 r\u1ee7i ro \u0111i\u1ec1u ch\u1ec9nh cao';
+  const bbInterp  = bb < 20  ? 'D\u01b0\u1edbi band d\u01b0\u1edbi \u2014 NAV gi\u1ea3m b\u1ea5t th\u01b0\u1eddng, kh\u1ea3 n\u0103ng h\u1ed3i ph\u1ee5c' :
+                    bb < 40  ? 'V\u00f9ng mua \u2014 NAV \u0111ang th\u1ea5p trong d\u1ea3i bi\u1ebfn \u0111\u1ed9ng b\u00ecnh th\u01b0\u1eddng' :
+                    bb < 60  ? 'Trung t\u00ednh \u2014 NAV \u1edf v\u00f9ng gi\u1eefa' :
+                    bb < 80  ? 'V\u00f9ng b\u00e1n \u2014 NAV \u0111ang cao trong d\u1ea3i bi\u1ebfn \u0111\u1ed9ng' :
+                               'Tr\u00ean band tr\u00ean \u2014 NAV t\u0103ng b\u1ea5t th\u01b0\u1eddng, c\u1ea9n tr\u1ecdng';
+  const macdInterp= macd > 0 ? 'D\u01b0\u01a1ng \u2014 xu h\u01b0\u1edbng ng\u1eafn h\u1ea1n \u0111ang m\u1ea1nh h\u01a1n trung h\u1ea1n (t\u1ed1t)' :
+                               '\u00c2m \u2014 xu h\u01b0\u1edbng ng\u1eafn h\u1ea1n \u0111ang y\u1ebfu h\u01a1n trung h\u1ea1n (c\u1ea9n th\u1eadn)';
+  const techNotice = techRel === 'LOW' || techRel === 'N/A'
+    ? `<div style="background:#60a5fa11;border:1px solid #60a5fa33;border-radius:6px;padding:7px 10px;margin-bottom:10px;font-size:10px;color:#60a5fa">\u26a0 V\u1edbi qu\u1ef9 tr\u00e1i phi\u1ebfu/ti\u1ec1n t\u1ec7, c\u00e1c ch\u1ec9 s\u1ed1 k\u1ef9 thu\u1eadt c\u00f3 \u0111\u1ed9 tin c\u1eady th\u1ea5p h\u01a1n so v\u1edbi qu\u1ef9 c\u1ed5 phi\u1ebfu.</div>` : '';
 
-  // ── Smart Prediction ──
-  const predNav=_smartPredict(pts,2),predNav5=_smartPredict(pts,5);
-  const predPct=predNav&&curr?(predNav-curr)/curr*100:null;
-  const predPct5=predNav5&&curr?(predNav5-curr)/curr*100:null;
-  const acc=_checkPredAccuracy(code, pts);
-  if(predNav&&curr){
-    const pd=new Date(); pd.setDate(pd.getDate()+2);
-    _savePrediction(code, predNav, pd.toISOString().slice(0,10));
-  }
-  const t2ApiNav=s?.t2_prediction?.nav||s?.t2_nav;
-  const predHtml=predNav?`<div style="font-size:10px;font-family:var(--mono);color:var(--txt2);letter-spacing:.05em;margin-bottom:6px">DỰ BÁO THÔNG MINH</div>
-    <div style="background:var(--bg3);border:1px solid #facc1533;border-radius:8px;padding:10px 12px;margin-bottom:10px">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
-        <div><div style="font-size:9px;color:var(--txt3)">T+2 (2 ngày)</div>
-          <div style="font-family:var(--mono);font-size:14px;font-weight:700;color:#facc15">${fmt(Math.round(predNav))}</div>
-          ${predPct!=null?`<div class="pnl ${pnlC(predPct)}" style="font-size:10px">${predPct>=0?'+':''}${predPct.toFixed(2)}%</div>`:''}
+  const indHtml = s ? _mkSect('T\u00cdN HI\u1ec6U K\u1ef8 THU\u1eacT', '\u26a1', `
+    ${techNotice}
+    <div style="background:var(--bg3);border-radius:8px;padding:12px 14px;margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <div style="font-size:10px;color:var(--txt3)">Smart Score \u2014 T\u1ed5ng h\u1ee3p t\u1ea5t c\u1ea3 t\u00edn hi\u1ec7u</div>
+        <div style="font-family:var(--mono);font-size:18px;font-weight:700;color:${scoreColor}">${score > 0 ? '+' : ''}${score}</div>
+      </div>
+      <div style="height:8px;background:linear-gradient(90deg,var(--sell),#facc15,var(--buy));border-radius:4px;position:relative;margin-bottom:6px">
+        <div style="position:absolute;top:-3px;left:calc(${Math.round((score + 6) / 12 * 100)}% - 7px);width:14px;height:14px;background:var(--c0);border-radius:50%;border:2px solid var(--bg)"></div>
+      </div>
+      <div style="text-align:center;font-size:12px;font-weight:700;color:${scoreColor}">${scoreLabel}</div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr;gap:6px;margin-bottom:8px">
+      <div style="background:var(--bg3);border-radius:8px;padding:10px 12px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
+          <div><span style="font-size:10px;color:var(--txt3)">RSI (14 ng\u00e0y)</span><span style="margin-left:8px;font-family:var(--mono);font-size:14px;font-weight:700;color:${rsiColor}">${rsi.toFixed(1)}</span></div>
+          <span style="font-size:10px;color:${rsiColor}">${rsi < 35 ? '\u{1F7E2} QU\u00c1 B\u00c1N' : rsi > 65 ? '\u{1F534} QU\u00c1 MUA' : '\u26aa TRUNG T\u00cdNH'}</span>
         </div>
-        <div><div style="font-size:9px;color:var(--txt3)">T+5 (1 tuần)</div>
-          <div style="font-family:var(--mono);font-size:14px;font-weight:700;color:#facc15">${predNav5?fmt(Math.round(predNav5)):'-'}</div>
-          ${predPct5!=null?`<div class="pnl ${pnlC(predPct5)}" style="font-size:10px">${predPct5>=0?'+':''}${predPct5.toFixed(2)}%</div>`:''}
+        <div style="height:5px;background:linear-gradient(90deg,var(--buy),#facc15,var(--sell));border-radius:3px;position:relative;margin-bottom:6px">
+          <div style="position:absolute;top:-2px;left:${Math.min(rsi, 100)}%;width:9px;height:9px;background:var(--c0);border-radius:50%;transform:translateX(-50%)"></div>
+        </div>
+        <div style="font-size:10px;color:var(--txt2);line-height:1.5">${rsiInterp}</div>
+      </div>
+      <div style="background:var(--bg3);border-radius:8px;padding:10px 12px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
+          <div><span style="font-size:10px;color:var(--txt3)">BB %B (Bollinger Band)</span><span style="margin-left:8px;font-family:var(--mono);font-size:14px;font-weight:700;color:${bbColor}">${bb.toFixed(1)}%</span></div>
+          <span style="font-size:10px;color:${bbColor}">${bb < 30 ? '\u{1F7E2} V\u00d9NG MUA' : bb > 70 ? '\u{1F534} V\u00d9NG B\u00c1N' : '\u26aa TRUNG T\u00cdNH'}</span>
+        </div>
+        <div style="height:5px;background:linear-gradient(90deg,var(--buy),#facc15,var(--sell));border-radius:3px;position:relative;margin-bottom:6px">
+          <div style="position:absolute;top:-2px;left:${Math.min(Math.max(bb, 0), 100)}%;width:9px;height:9px;background:var(--c0);border-radius:50%;transform:translateX(-50%)"></div>
+        </div>
+        <div style="font-size:10px;color:var(--txt2);line-height:1.5">${bbInterp}</div>
+      </div>
+      <div style="background:var(--bg3);border-radius:8px;padding:10px 12px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start">
+          <div><span style="font-size:10px;color:var(--txt3)">MACD Histogram (12/26/9)</span><span style="margin-left:8px;font-family:var(--mono);font-size:14px;font-weight:700;color:${macdColor}">${macd >= 0 ? '+' : ''}${(macd || 0).toFixed(2)}</span></div>
+          <span style="font-size:10px;color:${macdColor}">${macd > 0 ? '\u25b2 T\u0102NG' : macd < 0 ? '\u25bc GI\u1ea2M' : '= TRUNG T\u00cdNH'}</span>
+        </div>
+        <div style="margin-top:6px;font-size:10px;color:var(--txt2);line-height:1.5">${macdInterp}</div>
+      </div>
+    </div>
+    ${details.length ? `<div style="background:var(--bg3);border-radius:6px;padding:8px 12px">
+      <div style="font-size:9px;color:var(--txt3);margin-bottom:4px">Chi ti\u1ebft t\u00ednh \u0111i\u1ec3m</div>
+      <div style="font-size:10px;color:var(--txt2);line-height:1.7">${details.join(' &nbsp;\u00b7&nbsp; ')}</div>
+    </div>` : ''}`) : '';
+
+  // ── 7. PREDICTION ──
+  const t2Api  = s?.t2_prediction;
+  const t5Api  = s?.t5_prediction;
+  const predNav  = t2Api?.nav  || _smartPredict(pts, 2);
+  const predNav5 = t5Api?.nav  || _smartPredict(pts, 5);
+  const predPct  = predNav && curr  ? (predNav  - curr) / curr * 100 : (t2Api?.pct || null);
+  const predPct5 = predNav5 && curr ? (predNav5 - curr) / curr * 100 : (t5Api?.pct || null);
+  const r2 = t2Api?.r2;
+  const confLabel = r2 == null ? '' : r2 > 0.8 ? '(\u0111\u1ed9 tin c\u1eady cao)' : r2 > 0.5 ? '(\u0111\u1ed9 tin c\u1eady trung b\u00ecnh)' : '(\u0111\u1ed9 tin c\u1eady th\u1ea5p)';
+  const acc = _checkPredAccuracy(code, pts);
+  if (predNav && curr) {
+    const pd = new Date(); pd.setDate(pd.getDate() + 2);
+    _savePrediction(code, predNav, pd.toISOString().slice(0, 10));
+  }
+  const predMethodLabel = fundType === 'bond'
+    ? 'H\u1ed3i quy 60 ng\u00e0y (70%) + Momentum 10 ng\u00e0y (20%) + 5 ng\u00e0y (10%)'
+    : 'H\u1ed3i quy 30 ng\u00e0y (40%) + Momentum 5 ng\u00e0y (35%) + 3 ng\u00e0y (25%)';
+
+  const predHtml = predNav ? _mkSect('D\u1ef0 B\u00c1O GI\u00c1 TR\u1eca (ENSEMBLE MODEL)', '\u{1F52E}', `
+    <div style="background:linear-gradient(135deg,var(--bg3),#0a1628);border:1px solid #facc1533;border-radius:10px;padding:14px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+        <div style="background:var(--bg2);border-radius:8px;padding:12px;text-align:center">
+          <div style="font-size:10px;color:var(--txt3);margin-bottom:4px">D\u1ef1 b\u00e1o T+2 (2 ng\u00e0y t\u1edbi)</div>
+          <div style="font-family:var(--mono);font-size:17px;font-weight:700;color:#facc15">${fmt(Math.round(predNav))}</div>
+          ${predPct != null ? `<div class="pnl ${pnlC(predPct)}" style="font-size:12px;font-weight:700;margin-top:4px">${predPct >= 0 ? '+' : ''}${predPct.toFixed(2)}%</div>` : ''}
+          <div style="font-size:9px;color:var(--txt3);margin-top:4px">NAV d\u1ef1 b\u00e1o khi l\u1ec7nh mua h\u00f4m nay kh\u1edbp T+2</div>
+        </div>
+        <div style="background:var(--bg2);border-radius:8px;padding:12px;text-align:center">
+          <div style="font-size:10px;color:var(--txt3);margin-bottom:4px">D\u1ef1 b\u00e1o T+5 (1 tu\u1ea7n)</div>
+          <div style="font-family:var(--mono);font-size:17px;font-weight:700;color:#facc15">${predNav5 ? fmt(Math.round(predNav5)) : '\u2013'}</div>
+          ${predPct5 != null ? `<div class="pnl ${pnlC(predPct5)}" style="font-size:12px;font-weight:700;margin-top:4px">${predPct5 >= 0 ? '+' : ''}${predPct5.toFixed(2)}%</div>` : ''}
+          <div style="font-size:9px;color:var(--txt3);margin-top:4px">Xu h\u01b0\u1edbng ng\u1eafn h\u1ea1n 1 tu\u1ea7n</div>
         </div>
       </div>
-      ${t2ApiNav?`<div style="border-top:1px solid var(--bdr);padding-top:6px;margin-top:2px;display:flex;align-items:center;gap:8px"><span style="font-size:9px;color:var(--txt3)">Server T+2:</span><span style="font-family:var(--mono);font-size:11px;color:#facc15">${fmt(t2ApiNav)}</span></div>`:''}
-      <div style="font-size:9px;color:var(--txt3);border-top:1px solid var(--bdr);padding-top:6px;margin-top:6px">LinReg 50% + Mom5N 30% + Mom3N 20%${acc?' · SAI SỐ: +-'+acc.mae.toFixed(2)+'% ('+acc.count+' lần)':''}</div>
-    </div>`:'';
+      ${r2 != null ? `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <span style="font-size:9px;color:var(--txt3)">\u0110\u1ed9 kh\u1edbp R\u00b2</span>
+        <div style="flex:1;margin:0 8px;height:4px;background:var(--bdr);border-radius:2px"><div style="height:100%;width:${(r2 * 100).toFixed(0)}%;background:${r2 > 0.7 ? 'var(--buy)' : '#facc15'};border-radius:2px"></div></div>
+        <span style="font-size:9px;font-family:var(--mono);color:${r2 > 0.7 ? 'var(--buy)' : '#facc15'}">${r2.toFixed(2)} ${confLabel}</span>
+      </div>` : ''}
+      <div style="border-top:1px solid var(--bdr);padding-top:8px">
+        <div style="font-size:9px;color:var(--txt3);margin-bottom:4px">M\u00f4 h\u00ecnh: ${predMethodLabel}</div>
+        ${acc ? `<div style="font-size:10px;color:var(--txt2)">\u{1F4CA} Sai s\u1ed1 l\u1ecbch s\u1eed: \u00b1${acc.mae.toFixed(2)}% tr\u00ean ${acc.count} d\u1ef1 b\u00e1o \u0111\u00e3 ki\u1ec3m ch\u1ee9ng</div>` : ''}
+      </div>
+    </div>
+    <div style="margin-top:6px;font-size:10px;color:var(--txt3);line-height:1.5">\u26a0 D\u1ef1 b\u00e1o d\u1ef1a tr\u00ean xu h\u01b0\u1edbng l\u1ecbch s\u1eed, kh\u00f4ng ph\u1ea3i \u0111\u1ea3m b\u1ea3o. C\u00e1c s\u1ef1 ki\u1ec7n b\u1ea5t ng\u1edd c\u00f3 th\u1ec3 l\u00e0m NAV l\u1ec7ch so v\u1edbi d\u1ef1 b\u00e1o.</div>`) : '';
 
-  // ── Conclusion ──
-  const scoreDesc=score>=4?'MUA MẠNH':score>=2?'MUA':score<=-4?'BÁN MẠNH':score<=-2?'BÁN':'TRUNG LẬP';
-  const scoreColor=score>=2?'var(--buy)':score<=-2?'var(--sell)':'var(--txt2)';
-  const reasons=[];
-  if(s){
-    if(rsi<35) reasons.push('RSI quá bán'); else if(rsi>65) reasons.push('RSI quá mua');
-    if(bb<25) reasons.push('BB% dưới band'); else if(bb>75) reasons.push('BB% trên band');
-    if(macd>0) reasons.push('MACD dương'); else if(macd<0) reasons.push('MACD âm');
-  }
-  if(p30!=null) reasons.push(`1T: ${p30>=0?'+':''}${p30.toFixed(1)}%`);
-  const conclusionHtml=s?`<div style="background:var(--bg3);border-radius:8px;padding:10px 12px;text-align:center">
-    <div style="font-size:9px;font-family:var(--mono);color:var(--txt3);letter-spacing:.06em;margin-bottom:4px">KẾT LUẬN</div>
-    <div style="font-family:var(--mono);font-size:14px;font-weight:700;color:${scoreColor};margin-bottom:4px">Score ${score>0?'+':''}${score} - ${scoreDesc}</div>
-    ${reasons.length?`<div style="font-size:10px;color:var(--txt3)">${reasons.join(' / ')}</div>`:''}
-  </div>`:'';
+  // ── 8. CONCLUSION ──
+  const apiConclusion = s?.conclusion || '';
+  const scoreDesc = score >= 6 ? 'MUA M\u1ea0NH' : score >= 3 ? 'MUA' : score <= -6 ? 'B\u00c1N M\u1ea0NH' : score <= -3 ? 'B\u00c1N' : 'TRUNG L\u1eacP';
+  const conclusionHtml = _mkSect('K\u1ebeT LU\u1eacN & KHUY\u1ebeN NGH\u1eca', '\u{1F4A1}', `
+    <div style="background:${score >= 3 ? '#4ade8011' : score <= -3 ? '#f8717111' : '#facc1511'};border:1px solid ${score >= 3 ? '#4ade8033' : score <= -3 ? '#f8717133' : '#facc1533'};border-radius:10px;padding:14px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        <div style="font-family:var(--mono);font-size:20px;font-weight:700;color:${scoreColor}">${score > 0 ? '+' : ''}${score}</div>
+        <div>
+          <div style="font-size:14px;font-weight:700;color:${scoreColor}">${scoreDesc}</div>
+          <div style="font-size:10px;color:var(--txt3)">${ftLabel} \u00b7 TA ${relLabel}</div>
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--txt1);line-height:1.7">${apiConclusion || 'Ch\u01b0a c\u00f3 k\u1ebft lu\u1eadn chi ti\u1ebft. Xem c\u00e1c ch\u1ec9 b\u00e1o b\u00ean tr\u00ean.'}</div>
+    </div>`);
 
-  panel.innerHTML=`<div style="padding:12px 0">${pnlHtml}${perfHtml}${riskHtml}${rangeHtml}${indHtml}${predHtml}${conclusionHtml}</div>`;
+  panel.innerHTML = `<div style="padding:8px 0 20px">${headerHtml}${pnlHtml}${perfHtml}${riskHtml}${rangeHtml}${indHtml}${predHtml}${conclusionHtml}</div>`;
 }
 
 // WEB-011: Gold analysis in Phân Tích tab ──────────────────────────────────────
