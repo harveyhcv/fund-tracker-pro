@@ -1444,6 +1444,21 @@ function goTab(name, btn) {
   if (name === 'user')    loadAccountTab();
 }
 
+function _quickTrade(code, type) {
+  const navBtn = document.querySelector('.nav-btn[onclick*="trade"]');
+  goTab('trade', navBtn);
+  setTimeout(() => {
+    // Switch to CCQ subtab
+    const ccqSubBtn = document.querySelector('[onclick*="order-sub-ccq"]') || document.querySelector('[onclick*="ccq"]');
+    // Set buy/sell type
+    const typeBtn = document.querySelector(`.type-btn.${type}[onclick*="setTradeType"]`);
+    if (typeBtn) { typeBtn.click(); }
+    // Pre-select fund
+    const sel = document.getElementById('trade-fund-select');
+    if (sel && code) { sel.value = code; sel.dispatchEvent(new Event('change')); }
+    document.getElementById('order-sub-ccq')?.scrollIntoView({behavior:'smooth',block:'start'});
+  }, 350);
+}
 function showSubtab(page, sub, el) {
   const prefix = {trade:'trade-sub-'}[page];
   if (!prefix) return;
@@ -1517,19 +1532,34 @@ function renderPfBanner() {
 }
 
 function renderPfAlloc() {
-  const ccqVal=_me?.portfolio?.total_value||0, goldVal=_goldData?.portfolio?.current_value||0, total=ccqVal+goldVal;
+  const items=_me?.portfolio?.items||[];
+  const goldVal=_goldData?.portfolio?.current_value||0;
+  const total=(items.reduce((s,h)=>s+(h.value||0),0))+goldVal;
   if (!total) return;
-  const ccqPct=Math.round(ccqVal/total*100), goldPct=100-ccqPct;
+  const FT_COLOR={equity:'var(--buy)',bond:'#60a5fa',balanced:'#a78bfa',money_market:'#facc15'};
+  const FT_LABEL={equity:'Cổ phiếu',bond:'Trái phiếu',balanced:'Cân bằng',money_market:'Tiền tệ'};
+  // Group by fund type
+  const byType={};
+  for (const h of items) {
+    const ft=_marketData?.[h.code]?.fund_type||'equity';
+    byType[ft]=(byType[ft]||0)+(h.value||0);
+  }
+  if (goldVal>0) byType['gold']=goldVal;
+  const segments=Object.entries(byType).map(([ft,val])=>({ft,val,pct:val/total*100}));
+  segments.sort((a,b)=>b.val-a.val);
+  const trackHtml=segments.map(seg=>{
+    const c=seg.ft==='gold'?'#fbbf24':(FT_COLOR[seg.ft]||'var(--c0)');
+    return `<div style="width:${seg.pct.toFixed(1)}%;background:${c};height:100%"></div>`;
+  }).join('');
+  const legendHtml=segments.map(seg=>{
+    const c=seg.ft==='gold'?'#fbbf24':(FT_COLOR[seg.ft]||'var(--c0)');
+    const lbl=seg.ft==='gold'?'Vàng':(FT_LABEL[seg.ft]||seg.ft);
+    return `<span style="color:${c};font-size:10px;font-family:var(--mono)">${lbl} ${seg.pct.toFixed(0)}%</span>`;
+  }).join('<span style="color:var(--txt3);margin:0 3px">·</span>');
   document.getElementById('pf-alloc').innerHTML=`<div class="alloc-wrap">
-    <div style="font-size:11px;color:var(--txt2);margin-bottom:2px">Phân bổ tài sản</div>
-    <div class="alloc-track">
-      <div class="alloc-ccq" style="width:${ccqPct}%"></div>
-      <div class="alloc-gold" style="width:${goldPct}%"></div>
-    </div>
-    <div style="display:flex;justify-content:space-between;font-size:11px;font-family:var(--mono)">
-      <span style="color:var(--c0)">CCQ ${ccqPct}% &mdash; ${(ccqVal/1e6).toFixed(1)}M</span>
-      <span style="color:#fbbf24">Vang ${goldPct}% &mdash; ${(goldVal/1e6).toFixed(1)}M</span>
-    </div>
+    <div style="font-size:10px;color:var(--txt3);margin-bottom:4px">Phân bổ tài sản</div>
+    <div style="height:6px;border-radius:3px;overflow:hidden;display:flex;margin-bottom:6px">${trackHtml}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:4px 10px">${legendHtml}</div>
   </div>`;
 }
 
@@ -1575,6 +1605,50 @@ function _calcPfWeightedPerf(items) {
   };
 }
 
+async function _buildPfMiniChart(items) {
+  if (!items || !items.length) return;
+  const canvasEl = document.getElementById('pf-mini-chart'); if (!canvasEl) return;
+  const results = (await Promise.all(items.map(h =>
+    fetch(`/api/nav_history/${h.code}?limit=60`).then(r=>r.json())
+      .then(d => ({ code:h.code, units:h.units, navs:(d.history||[]).slice().reverse() }))
+      .catch(()=>null)
+  ))).filter(Boolean);
+  if (!results.length) return;
+  // Build date union, sorted ascending, take last 30
+  const allDates = [...new Set(results.flatMap(r=>r.navs.map(p=>p.date)))].sort().slice(-30);
+  // For each fund, sorted ascending navs
+  const navMapArr = {};
+  for (const r of results) navMapArr[r.code] = r.navs.sort((a,b)=>a.date<b.date?-1:1);
+  function _navAt(code, date) {
+    let v=null;
+    for (const p of navMapArr[code]||[]) { if (p.date<=date) v=p.nav; else break; }
+    return v;
+  }
+  const values = allDates.map(date => {
+    let total=0;
+    for (const r of results) { const n=_navAt(r.code,date); if(n) total+=r.units*n; }
+    return total;
+  });
+  if (values.filter(v=>v>0).length < 2) return;
+  if (window._pfMiniChartInst) { window._pfMiniChartInst.destroy(); window._pfMiniChartInst=null; }
+  window._pfMiniChartInst = new Chart(canvasEl.getContext('2d'), {
+    type:'line',
+    data:{ labels:allDates.map(d=>d.slice(5)), datasets:[{
+      data:values, borderColor:'var(--c0)', backgroundColor:'rgba(0,229,255,0.07)',
+      fill:true, borderWidth:1.5, pointRadius:0, tension:0.3
+    }]},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>`${(c.raw/1e6).toFixed(2)}M đ`}}},
+      scales:{
+        x:{display:false},
+        y:{grid:{color:'rgba(255,255,255,0.04)'}, border:{display:false},
+           ticks:{color:'rgba(255,255,255,0.4)',font:{size:8,family:'IBM Plex Mono'},
+                  callback:v=>`${(v/1e6).toFixed(0)}M`,maxTicksLimit:3}}
+      }
+    }
+  });
+}
 function renderPortfolio(me) {
   renderPfBanner(); renderPfAlloc();
   const pf=me.portfolio;
@@ -1597,6 +1671,11 @@ function renderPortfolio(me) {
         <span style="font-family:var(--mono);font-size:13px;font-weight:600;color:${t2c}">${t2sign}${pfT2.pct.toFixed(2)}%</span>
       </div>`;
     }
+    // Portfolio mini chart (30-day value curve)
+    html+=`<div style="background:var(--bg2);border:1px solid var(--bdr);border-radius:8px;padding:10px 12px;margin-bottom:8px">
+      <div style="font-size:10px;color:var(--txt3);margin-bottom:6px">Giá trị danh mục 30 ngày</div>
+      <div style="height:70px;position:relative"><canvas id="pf-mini-chart"></canvas></div>
+    </div>`;
     // Portfolio weighted performance card
     const pfPerf = _calcPfWeightedPerf(pf.items);
     if (pfPerf && (pfPerf.m1 != null || pfPerf.m3 != null)) {
@@ -1651,6 +1730,7 @@ function renderPortfolio(me) {
     </div>`;
   }
   document.getElementById('pf-sub-ccq').innerHTML=html;
+  if (pf.items.length) setTimeout(() => _buildPfMiniChart(pf.items), 150);
 }
 
 function renderPfGoldSub() {
@@ -1731,15 +1811,21 @@ function renderMarket() {
     const alertIcon = (s.data_stale||s.nav_stale||s.alert||s.nav_jump_anomaly)
       ? `<span title="${s.alert||'Dữ liệu hoặc NAV có thể chưa cập nhật'}" style="color:#facc15;font-size:9px;line-height:1">⚠</span>` : '';
     const isWatched = (_me?.watched_funds||[]).includes(code);
-    html+=`<div class="sig-row" onclick="openResearch('${code}')" data-code="${code}">
+    const chg30Html = s.chg30 != null
+      ? `<span style="font-size:9px;color:${s.chg30>=0?'var(--buy)':'var(--sell)'};font-family:var(--mono)" title="Hiệu suất 1 tháng">1T:${s.chg30>=0?'+':''}${s.chg30.toFixed(1)}%</span>` : '';
+    const ftBorderColor = {equity:'var(--buy)',bond:'#60a5fa',balanced:'#a78bfa',money_market:'#facc15'}[s.fund_type||'equity']||'var(--c0)';
+    html+=`<div class="sig-row" onclick="openResearch('${code}')" data-code="${code}" style="border-left:2px solid ${ftBorderColor}">
       <div>
-        <div style="display:flex;align-items:center;gap:5px">
+        <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
           <span class="sig-code">${code}</span>
           <span class="pnl ${pnlC(chg)}" style="font-size:11px">${fmtP(chg)}</span>
           ${s.has_position?'<span style="font-size:9px;color:var(--c0);font-family:var(--mono)">&#x2022;NẮM</span>':''}
           ${alertIcon}
         </div>
-        <div style="font-size:11px;color:var(--txt2)">${fmt(s.nav)} đ</div>
+        <div style="display:flex;align-items:center;gap:6px;margin-top:2px">
+          <span style="font-size:11px;color:var(--txt2)">${fmt(s.nav)} đ</span>
+          ${chg30Html}
+        </div>
       </div>
       <div class="sig-meters">
         <div class="meter"><div class="meter-lbl">RSI</div><div class="meter-bar"><div class="meter-fill" style="width:${rsi}%;background:${rsiC}"></div></div><div class="meter-val">${rsi.toFixed?rsi.toFixed(0):rsi}</div></div>
@@ -1895,19 +1981,42 @@ function renderSignals(sigs) {
   const watched=Object.fromEntries(Object.entries(sigs).filter(([,s])=>s.has_position||s.watched));
   const codes=Object.keys(watched);
   if (!codes.length) { document.getElementById('sig-content').innerHTML='<div style="text-align:center;color:var(--txt2);padding:24px">Chưa có quỹ theo dõi.<br>Mua CCQ ở tab Giao Dịch.</div>'; return; }
-  let html='<div class="card">';
+  // Sort by score descending — strongest buy signals first
+  codes.sort((a,b)=>(watched[b].score||0)-(watched[a].score||0));
+  // Summary header
+  const nBuy=codes.filter(c=>(watched[c].score||0)>=3).length;
+  const nSell=codes.filter(c=>(watched[c].score||0)<=-3).length;
+  const nNeutral=codes.length-nBuy-nSell;
+  const summaryHtml=`<div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+    ${nBuy?`<span style="font-size:11px;background:#4ade8022;color:var(--buy);border:1px solid #4ade8044;border-radius:5px;padding:3px 10px;font-family:var(--mono)">● ${nBuy} MUA</span>`:''}
+    ${nNeutral?`<span style="font-size:11px;background:#facc1522;color:#facc15;border:1px solid #facc1544;border-radius:5px;padding:3px 10px;font-family:var(--mono)">● ${nNeutral} TRUNG LẬP</span>`:''}
+    ${nSell?`<span style="font-size:11px;background:#f8717122;color:var(--sell);border:1px solid #f8717144;border-radius:5px;padding:3px 10px;font-family:var(--mono)">● ${nSell} BÁN</span>`:''}
+  </div>`;
+  let html=summaryHtml+'<div class="card">';
   for (const code of codes) {
-    const s=sigs[code]; const rsi=s.rsi??50,bb=s.bb_pct??50,chg=s.chg_pct||0;
+    const s=sigs[code]; const rsi=s.rsi??50,bb=s.bb_pct??50,chg=s.chg_pct||0,sc=s.score||0;
     const rsiC=rsi<35?'var(--buy)':rsi>65?'var(--sell)':'var(--hold)';
     const bbC=bb<20?'var(--buy)':bb>80?'var(--sell)':'var(--hold)';
-    html+=`<div class="sig-row" onclick="openResearch('${code}')">
+    const scC=sc>=3?'var(--buy)':sc<=-3?'var(--sell)':'var(--txt2)';
+    const t2=s.t2_prediction;
+    const chg30Html = s.chg30 != null ? `<span style="font-size:9px;color:${s.chg30>=0?'var(--buy)':'var(--sell)'};font-family:var(--mono)" title="1 tháng">1T:${s.chg30>=0?'+':''}${s.chg30.toFixed(1)}%</span>` : '';
+    const sigFtBorder = {equity:'var(--buy)',bond:'#60a5fa',balanced:'#a78bfa',money_market:'#facc15'}[s.fund_type||'equity']||'var(--c0)';
+    html+=`<div class="sig-row" onclick="openResearch('${code}')" style="border-left:2px solid ${sigFtBorder}">
       <div>
-        <div style="display:flex;align-items:baseline;gap:6px"><span class="sig-code">${code}</span><span class="pnl ${pnlC(chg)}" style="font-size:11px">${fmtP(chg)}</span></div>
-        <div style="font-size:11px;color:var(--txt2)">${fmt(s.nav)} đ</div>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <span class="sig-code">${code}</span>
+          <span class="pnl ${pnlC(chg)}" style="font-size:11px">${fmtP(chg)}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;margin-top:2px">
+          <span style="font-size:11px;color:var(--txt2)">${fmt(s.nav)} đ</span>
+          ${chg30Html}
+        </div>
+        ${t2 ? `<div style="font-size:9px;font-family:var(--mono);color:${t2.pct>=0?'var(--buy)':'var(--sell)'};margin-top:2px" title="Dự báo T+2">T+2: ${t2.pct>=0?'+':''}${t2.pct.toFixed(2)}%</div>` : ''}
       </div>
       <div class="sig-meters">
         <div class="meter"><div class="meter-lbl">RSI</div><div class="meter-bar"><div class="meter-fill" style="width:${rsi}%;background:${rsiC}"></div></div><div class="meter-val">${rsi.toFixed?rsi.toFixed(0):rsi}</div></div>
         <div class="meter"><div class="meter-lbl">BB%</div><div class="meter-bar"><div class="meter-fill" style="width:${bb}%;background:${bbC}"></div></div><div class="meter-val">${bb.toFixed?bb.toFixed(0):bb}</div></div>
+        <div class="meter"><div class="meter-lbl">SCR</div><div class="meter-val" style="font-size:11px;color:${scC}">${sc>=0?'+':''}${sc}</div></div>
       </div>
       <div style="text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:4px">
         <div class="badge ${sigC(s.signal)}">${sigLabel(s.signal)}</div>
@@ -3142,6 +3251,17 @@ function _setHistSort(mode) {
   _renderHistFundList();
 }
 
+function _sparklineSvg(code) {
+  const pts = _histNavCache[code];
+  if (!pts || pts.length < 3) return '';
+  const last = pts.slice(-20);
+  const navs = last.map(p => p.nav);
+  const mn = Math.min(...navs), mx = Math.max(...navs), rng = mx - mn || 1;
+  const W = 40, H = 14, n = navs.length;
+  const pts2d = navs.map((v, i) => `${Math.round(i/(n-1)*W)},${Math.round(H-(v-mn)/rng*H)}`).join(' ');
+  const up = navs[n-1] >= navs[0];
+  return `<svg width="${W}" height="${H}" style="flex-shrink:0;opacity:.7;vertical-align:middle"><polyline points="${pts2d}" fill="none" stroke="${up?'var(--buy)':'var(--sell)'}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/></svg>`;
+}
 function _renderHistFundList() {
   const el = document.getElementById('hist-fund-list'); if (!el) return;
   const sigs = _signals || _marketData || MOCK_SIGNALS || {};
@@ -3178,7 +3298,20 @@ function _renderHistFundList() {
     <div class="hist-fund-nav">${goldPriceHtml} ${goldChgHtml}</div>
     ${goldSigLabel?`<span class="badge ${goldSigClass}" style="font-size:9px;padding:1px 5px">${goldSigLabel}</span>`:'<span style="font-size:9px;color:var(--txt3)">—</span>'}
   </div>`;
-  el.innerHTML = goldRow + funds.map(code => {
+  // "Cần chú ý" — oversold/overbought alerts shown above fund list
+  const alerts = funds.filter(c => {
+    const sv = sigs[c]; if (!sv) return false;
+    return (sv.rsi != null && (sv.rsi < 32 || sv.rsi > 68)) || Math.abs(sv.score||0) >= 4;
+  });
+  const alertHtml = alerts.length ? `<div style="background:#facc1511;border:1px solid #facc1533;border-radius:6px;padding:6px 8px;margin-bottom:6px;font-size:10px">
+    <span style="color:#facc15;margin-right:4px">⚠</span><b style="color:var(--txt1)">Cần chú ý:</b>
+    ${alerts.map(c=>{
+      const sv=sigs[c];
+      const note=sv.rsi<32?`RSI ${sv.rsi?.toFixed(0)} (quá bán)`:sv.rsi>68?`RSI ${sv.rsi?.toFixed(0)} (quá mua)`:sv.score>=4?`Score +${sv.score} (mua mạnh)`:sv.score<=-4?`Score ${sv.score} (bán mạnh)`:'';
+      return `<span onclick="_selectHistFund('${c}')" style="cursor:pointer;color:var(--c0);font-family:var(--mono)">${c}</span><span style="color:var(--txt3)"> ${note}</span>`;
+    }).join(', ')}
+  </div>` : '';
+  el.innerHTML = alertHtml + goldRow + funds.map(code => {
     const s = sigs[code] || {};
     const nav = s.nav ? fmt(s.nav)+' đ' : '—';
     const chg = s.chg_pct ?? s.change_pct ?? s.change ?? null;
@@ -3210,7 +3343,7 @@ function _renderHistFundList() {
         <div class="hist-fund-code">${code}</div>
         ${starBtn}${heldBadge}
       </div>
-      <div class="hist-fund-nav">${nav} ${chgHtml}</div>
+      <div class="hist-fund-nav" style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">${nav} ${chgHtml}${_sparklineSvg(code)}</div>
       <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">${sigHtml}${chg30Html}${rsiDot}${scBar}</div>
     </div>`;
   }).join('');
@@ -4286,6 +4419,10 @@ function _renderHistAnalysis(code) {
         </div>
       </div>
       <div style="font-size:11px;color:var(--txt1);line-height:1.7">${apiConclusion || 'Ch\u01b0a c\u00f3 k\u1ebft lu\u1eadn chi ti\u1ebft. Xem c\u00e1c ch\u1ec9 b\u00e1o b\u00ean tr\u00ean.'}</div>
+      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+        <button onclick="_quickTrade('${code}','buy')" style="flex:1;min-width:100px;background:${score>=3?'var(--buy)':'var(--bg3)'};color:${score>=3?'#000':'var(--txt1)'};border:1px solid ${score>=3?'var(--buy)':'var(--bdr)'};border-radius:7px;padding:9px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--sans)">\ud83d\udcc8 Mua ${code}</button>
+        ${pfItem ? `<button onclick="_quickTrade('${code}','sell')" style="flex:1;min-width:100px;background:${score<=-3?'var(--sell)':'var(--bg3)'};color:${score<=-3?'#fff':'var(--txt1)'};border:1px solid ${score<=-3?'var(--sell)':'var(--bdr)'};border-radius:7px;padding:9px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--sans)">\ud83d\udcc9 B\u00e1n b\u1edbt</button>` : ''}
+      </div>
     </div>`);
 
   panel.innerHTML = `<div style="padding:8px 0 20px">${headerHtml}${pnlHtml}${perfHtml}${riskHtml}${rangeHtml}${indHtml}${predHtml}${conclusionHtml}</div>`;

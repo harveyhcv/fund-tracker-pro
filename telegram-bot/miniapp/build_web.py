@@ -61,8 +61,8 @@ body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14p
 .col{border-right:1px solid var(--bdr);display:flex;flex-direction:column;height:100%;overflow:hidden}
 .col:last-child{border-right:none}
 .col-portfolio{width:270px;min-width:220px;overflow-y:auto}
-.col-chart{flex:1;min-width:360px;max-width:620px;display:flex;flex-direction:column;overflow:hidden}
-.col-market{flex:1;min-width:340px;max-width:480px;display:flex;flex-direction:column;overflow:hidden}
+.col-chart{flex:2;min-width:360px;display:flex;flex-direction:column;overflow:hidden}
+.col-market{flex:1.5;min-width:320px;display:flex;flex-direction:column;overflow:hidden}
 #chart-col-content{flex:1;overflow-y:auto;padding:0}
 #market-content{flex:1;overflow-y:auto}
 /* ── Chart time range bar ── */
@@ -85,14 +85,18 @@ body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14p
 .trade-col:last-child{border-right:none}
 .trade-col-left{background:var(--bg);overflow-y:auto;flex:1}
 .trade-col-mid{background:var(--bg4);flex:1}
-.trade-col-right{background:var(--bg);overflow-y:auto;flex:1}
+.trade-col-right{background:var(--bg);overflow:hidden;flex:1;display:flex;flex-direction:column}
+.trade-right-dca{flex:1;overflow-y:auto;min-height:0}
+.trade-right-gold{flex:0 0 52%;overflow-y:auto;border-top:2px solid #fbbf24}
+.col-head-gold{background:rgba(251,191,36,.06);border-bottom:1px solid rgba(251,191,36,.2);border-top:2px solid #fbbf24;flex-shrink:0}
 .trade-form-area{flex:1;display:flex;flex-direction:column;overflow:hidden}
 .trade-history-head{padding:8px 12px;border-bottom:1px solid var(--bdr);display:flex;justify-content:space-between;align-items:center;flex-shrink:0;background:var(--bg4);position:sticky;top:0;z-index:2}
 .trade-history-scroll{flex:1;overflow-y:auto}
 #order-sub-history{margin:0!important;padding:0!important}
 /* ── User page ────────────────────────────── */
 .user-page-scroll{overflow-y:auto;width:100%;height:100%;padding:20px}
-.user-page-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:1100px}
+.user-page-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:1400px}
+.admin-inline-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:1400px}
 .acct-card{background:var(--bg2);border:1px solid var(--bdr);border-radius:10px;padding:16px}
 .acct-card-title{font-family:var(--mono);font-size:10px;color:var(--txt3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px;display:flex;align-items:center;gap:6px}
 .acct-card-title svg{stroke:var(--txt3)}
@@ -100,8 +104,7 @@ body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14p
 /* ── Admin section (inline dưới user page) ── */
 .admin-section{margin-top:20px;padding-top:16px;border-top:1px solid var(--bdr)}
 .admin-section-hdr{font-family:var(--mono);font-size:10px;color:var(--c0);text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px;opacity:.8}
-.admin-inline-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:1100px}
-.au-card{max-width:1100px}
+.au-card{max-width:1400px}
 .au-search{background:var(--bg2);border:1px solid var(--bdr);border-radius:6px;color:var(--txt);font-family:var(--sans);font-size:12px;padding:5px 10px;outline:none;width:180px}
 .au-search:focus{border-color:var(--c0)}
 .au-table{width:100%;border-collapse:collapse;font-size:12px}
