@@ -663,9 +663,54 @@ async function loadMarket() {
   } catch(e) { document.getElementById('market-content').innerHTML=renderErr('Lỗi tải thị trường: '+e.message); }
 }
 
+let _marketBulkMode = false;
+let _marketBulkSet = new Set();
+function _toggleMarketBulkMode() {
+  _marketBulkMode = !_marketBulkMode;
+  if (!_marketBulkMode) _marketBulkSet.clear();
+  const btn = document.getElementById('market-bulk-toggle');
+  if (btn) { btn.classList.toggle('active', _marketBulkMode); btn.innerHTML = _marketBulkMode ? '&#x2715; Huỷ chọn' : '&#x2611; Chọn nhiều'; }
+  const bar = document.getElementById('market-bulk-bar');
+  if (bar) bar.style.display = _marketBulkMode ? 'flex' : 'none';
+  renderMarket();
+}
+function _toggleBulkPick(code, e) {
+  if (e) e.stopPropagation();
+  if (_marketBulkSet.has(code)) _marketBulkSet.delete(code); else _marketBulkSet.add(code);
+  const cnt = document.getElementById('market-bulk-count');
+  if (cnt) cnt.textContent = `Đã chọn ${_marketBulkSet.size} quỹ`;
+  const box = document.querySelector(`[data-code="${code}"] .bulk-check`);
+  if (box) box.classList.toggle('on', _marketBulkSet.has(code));
+}
+async function _bulkAddWatch() {
+  if (!_marketBulkSet.size) { toast('Chưa chọn quỹ nào'); return; }
+  const existing = new Set(_me?.watched_funds || []);
+  _marketBulkSet.forEach(c => existing.add(c));
+  const list = [...existing];
+  const n = _marketBulkSet.size;
+  if (_me) _me.watched_funds = list;
+  if (IS_DEV) { toast(`✓ DEV: Đã thêm ${n} quỹ vào theo dõi`); _toggleMarketBulkMode(); return; }
+  try {
+    await apiPost('/api/me/watched_funds', {telegram_id: USER_ID, watched_funds: list});
+    toast(`✓ Đã thêm ${n} quỹ vào danh sách theo dõi`);
+  } catch(e) { toast('Lỗi: '+(e.body?.error||e.message)); }
+  _toggleMarketBulkMode();
+  renderMarket();
+}
 function renderMarket() {
   if (!_marketData) return;
   const search=(document.getElementById('market-search').value||'').toUpperCase();
+  // Compute breadth counts for filter button labels
+  const allCodes = Object.keys(_marketData);
+  const nBuyM = allCodes.filter(c=>sigC(_marketData[c].signal)==='buy').length;
+  const nSellM = allCodes.filter(c=>sigC(_marketData[c].signal)==='sell').length;
+  const nHoldM = allCodes.length - nBuyM - nSellM;
+  const nHeld = allCodes.filter(c=>_marketData[c].has_position).length;
+  const btnLabels = {all:`Tất cả (${allCodes.length})`,buy:`MUA (${nBuyM})`,sell:`BÁN (${nSellM})`,hold:`TRUNG LẬP (${nHoldM})`,held:`Đang nắm (${nHeld})`};
+  document.querySelectorAll('.filter-btn').forEach(btn=>{
+    const m=btn.getAttribute('onclick')?.match(/setMarketFilter\('(\w+)'/);
+    if(m && btnLabels[m[1]]) btn.textContent=btnLabels[m[1]];
+  });
   const codes=Object.keys(_marketData).filter(code=>{
     if (search && !code.includes(search)) return false;
     const s=_marketData[code]; const sc=sigC(s.signal);
@@ -694,9 +739,12 @@ function renderMarket() {
     const chg30Html = s.chg30 != null
       ? `<span style="font-size:9px;color:${s.chg30>=0?'var(--buy)':'var(--sell)'};font-family:var(--mono)" title="Hiệu suất 1 tháng">1T:${s.chg30>=0?'+':''}${s.chg30.toFixed(1)}%</span>` : '';
     const ftBorderColor = {equity:'var(--buy)',bond:'#60a5fa',balanced:'#a78bfa',money_market:'#facc15'}[s.fund_type||'equity']||'var(--c0)';
-    html+=`<div class="sig-row" onclick="openResearch('${code}')" data-code="${code}" style="border-left:2px solid ${ftBorderColor}">
+    const bulkCheckHtml = _marketBulkMode
+      ? `<span class="bulk-check${_marketBulkSet.has(code)?' on':''}" onclick="event.stopPropagation();_toggleBulkPick('${code}',event)" style="cursor:pointer;width:15px;height:15px;border:1px solid var(--c0);border-radius:3px;display:inline-flex;align-items:center;justify-content:center;font-size:10px;color:var(--bg);background:${_marketBulkSet.has(code)?'var(--c0)':'transparent'};flex-shrink:0">${_marketBulkSet.has(code)?'✓':''}</span>` : '';
+    html+=`<div class="sig-row" onclick="${_marketBulkMode?`_toggleBulkPick('${code}',event)`:`openResearch('${code}')`}" data-code="${code}" style="border-left:2px solid ${ftBorderColor}">
       <div>
         <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
+          ${bulkCheckHtml}
           <span class="sig-code">${code}</span>
           <span class="pnl ${pnlC(chg)}" style="font-size:11px">${fmtP(chg)}</span>
           ${s.has_position?'<span style="font-size:9px;color:var(--c0);font-family:var(--mono)">&#x2022;NẮM</span>':''}
@@ -2817,36 +2865,60 @@ function _renderCmpSignals(code1, code2) {
   const s1 = (_signals?.[code1])||(_marketData?.[code1])||(MOCK_SIGNALS?.[code1]);
   const s2 = (_signals?.[code2])||(_marketData?.[code2])||(MOCK_SIGNALS?.[code2]);
   if(!s1 && !s2) { panel.innerHTML=''; return; }
-  const fmtI = (v,unit='')=>v!=null?v.toFixed(2)+unit:'—';
+  const fmtI = (v,dec=2)=>v!=null?v.toFixed(dec):'—';
   const sigBadge = sig=>{
-    const sc=sigC(sig); const label={'buy':'MUA','strong_buy':'MUA MẠNH','sell':'BÁN','strong_sell':'BÁN MẠNH'}[sig]||'TL';
-    return `<span class="sig-badge ${sc}" style="font-size:10px;padding:2px 6px">${label}</span>`;
+    const sc=sigC(sig); const label={'buy':'MUA','strong_buy':'MUA M','sell':'BÁN','strong_sell':'BÁN M'}[sig]||'TL';
+    return `<span class="sig-badge ${sc}" style="font-size:9px;padding:1px 5px">${label}</span>`;
   };
-  const row=(label,v1,v2)=>`<tr>
-    <td style="color:var(--txt2);font-size:10px;padding:4px 0">${label}</td>
-    <td style="font-family:var(--mono);font-size:11px;text-align:right;color:var(--c0);padding:4px 8px">${v1}</td>
-    <td style="font-family:var(--mono);font-size:11px;text-align:right;color:#fbbf24;padding:4px 0">${v2}</td>
-  </tr>`;
+  // Win indicator: highlight better metric
+  const win=(v1,v2,higherBetter=true)=>{
+    if(v1==null||v2==null) return ['',''];
+    const w1=higherBetter?v1>v2:v1<v2, w2=higherBetter?v2>v1:v1>v2;
+    return [w1?'font-weight:700':'opacity:.75',w2?'font-weight:700':'opacity:.75'];
+  };
+  const row=(label,v1,v2,higherBetter=true)=>{
+    const [sty1,sty2]=win(v1,v2,higherBetter);
+    const fmt1=typeof v1==='number'?fmtI(v1):v1||'—';
+    const fmt2=typeof v2==='number'?fmtI(v2):v2||'—';
+    return `<tr>
+      <td style="color:var(--txt3);font-size:10px;padding:4px 0">${label}</td>
+      <td style="font-family:var(--mono);font-size:11px;text-align:right;color:var(--c0);padding:4px 6px;${sty1}">${fmt1}</td>
+      <td style="font-family:var(--mono);font-size:11px;text-align:right;color:#fbbf24;padding:4px 0;${sty2}">${fmt2}</td>
+    </tr>`;
+  };
+  const chgRow=(label,v1,v2)=>{
+    const f=v=>`<span style="color:${v>=0?'var(--buy)':'var(--sell)'}">${v>=0?'+':''}${v?.toFixed(2)}%</span>`;
+    return `<tr>
+      <td style="color:var(--txt3);font-size:10px;padding:4px 0">${label}</td>
+      <td style="font-size:11px;text-align:right;padding:4px 6px">${v1!=null?f(v1):'—'}</td>
+      <td style="font-size:11px;text-align:right;padding:4px 0">${v2!=null?f(v2):'—'}</td>
+    </tr>`;
+  };
+  const t2_1=s1?.t2_prediction, t2_2=s2?.t2_prediction;
   panel.innerHTML=`
-  <div style="padding:12px 0 4px;font-family:var(--mono);font-size:10px;color:var(--txt2);letter-spacing:.06em">SO SÁNH TÍN HIỆU</div>
+  <div style="padding:12px 0 6px;font-family:var(--mono);font-size:9px;color:var(--txt3);letter-spacing:.08em">SO SÁNH TÍN HIỆU — TÔ ĐỬM = TỐT HƠN</div>
   <table style="width:100%;border-collapse:collapse">
     <thead><tr>
-      <th style="font-size:9px;color:var(--txt3);text-align:left;padding-bottom:4px;font-weight:400"></th>
-      <th style="font-size:10px;color:#00e5ff;text-align:right;padding-bottom:4px;font-family:var(--mono)">${code1}</th>
-      <th style="font-size:10px;color:#fbbf24;text-align:right;padding-bottom:4px;font-family:var(--mono)">${code2}</th>
+      <th style="font-size:9px;color:var(--txt3);text-align:left;padding-bottom:6px;font-weight:400">Chỉ số</th>
+      <th style="font-size:10px;color:var(--c0);text-align:right;padding-bottom:6px;font-family:var(--mono)">${code1}</th>
+      <th style="font-size:10px;color:#fbbf24;text-align:right;padding-bottom:6px;font-family:var(--mono)">${code2}</th>
     </tr></thead>
     <tbody>
-      ${row('NAV', s1?fmt(s1.nav)+'đ':'—', s2?fmt(s2.nav)+'đ':'—')}
-      ${row('Thay đổi 1N', s1?fmtP(s1.chg_pct):'—', s2?fmtP(s2.chg_pct):'—')}
-      ${row('RSI(14)', fmtI(s1?.rsi), fmtI(s2?.rsi))}
-      ${row('BB%B', fmtI(s1?.bb_pct??s1?.bb), fmtI(s2?.bb_pct??s2?.bb))}
-      ${row('MACD hist', fmtI(s1?.macd_hist??s1?.macd), fmtI(s2?.macd_hist??s2?.macd))}
+      ${chgRow('Hôm nay', s1?.chg_pct, s2?.chg_pct)}
+      ${chgRow('1 tháng', s1?.chg30, s2?.chg30)}
+      ${chgRow('3 tháng', s1?.chg90, s2?.chg90)}
+      <tr><td colspan="3" style="border-top:1px solid var(--bdr);padding:0"></td></tr>
+      ${row('RSI(14)', s1?.rsi, s2?.rsi, false)}
+      ${row('BB%B', s1?.bb_pct??s1?.bb, s2?.bb_pct??s2?.bb, false)}
+      ${row('Score', s1?.score, s2?.score, true)}
+      ${row('Biến động/năm', s1?.vol_ann!=null?-s1.vol_ann:null, s2?.vol_ann!=null?-s2.vol_ann:null, true)}
+      <tr><td colspan="3" style="border-top:1px solid var(--bdr);padding:0"></td></tr>
       <tr>
-        <td style="color:var(--txt2);font-size:10px;padding:6px 0 4px">Tín hiệu</td>
-        <td style="text-align:right;padding:6px 8px 4px">${s1?sigBadge(s1.signal):'—'}</td>
-        <td style="text-align:right;padding:6px 0 4px">${s2?sigBadge(s2.signal):'—'}</td>
+        <td style="color:var(--txt3);font-size:10px;padding:5px 0">Tín hiệu</td>
+        <td style="text-align:right;padding:5px 6px">${s1?sigBadge(s1.signal):'—'}</td>
+        <td style="text-align:right;padding:5px 0">${s2?sigBadge(s2.signal):'—'}</td>
       </tr>
-      ${row('Score', s1?.score!=null?s1.score.toFixed(1):'—', s2?.score!=null?s2.score.toFixed(1):'—')}
+      ${t2_1||t2_2?chgRow('Dự báo T+2', t2_1?.pct, t2_2?.pct):''}
     </tbody>
   </table>`;
 }
@@ -3025,6 +3097,21 @@ function _mkMetric(label, val, color, hint) {
     ${hint?`<div style="font-size:9px;color:${color};margin-top:2px;line-height:1.2">${hint}</div>`:''}
   </div>`;
 }
+function _mkPerfRow(label, pct, sub='') {
+  if (pct == null) return _mkRow(label, '—', sub);
+  const color = pct >= 0 ? 'var(--buy)' : 'var(--sell)';
+  const barW = Math.min(Math.abs(pct) / 25 * 50, 50);
+  return `<div style="padding:6px 0;border-bottom:1px solid var(--bdr)">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <span style="font-size:11px;color:var(--txt2)">${label}</span>
+      <span style="font-family:var(--mono);font-size:12px;font-weight:600;color:${color}">${pct>=0?'+':''}${pct.toFixed(2)}%</span>
+    </div>
+    <div style="height:3px;background:var(--bdr);border-radius:2px;margin-top:4px;position:relative">
+      <div style="position:absolute;${pct>=0?'left:50%':'right:50%'};width:${barW}%;height:100%;background:${color};border-radius:2px"></div>
+    </div>
+    ${sub?`<div style="font-size:9px;color:var(--txt3);margin-top:2px">${sub}</div>`:''}
+  </div>`;
+}
 
 function _renderHistAnalysis(code) {
   const panel = document.getElementById('hist-analysis-panel'); if(!panel) return;
@@ -3114,13 +3201,13 @@ function _renderHistAnalysis(code) {
   const d180 = p180 ?? s?.chg180;
   const d365 = p365 ?? s?.chg1y;
   const perfHtml = _mkSect('HI\u1ec6U SU\u1ea4T \u0110\u1ea6U T\u01af', '\u{1F4C8}', `
-    <div style="background:var(--bg3);border-radius:8px;overflow:hidden">
-      ${_mkRow('7 ng\u00e0y g\u1ea7n nh\u1ea5t', pF(p7), 'T\u0103ng/gi\u1ea3m so v\u1edbi tu\u1ea7n tr\u01b0\u1edbc')}
-      ${_mkRow('1 th\u00e1ng', pF(d30), '~22 phi\u00ean giao d\u1ecbch')}
-      ${_mkRow('3 th\u00e1ng', pF(d90), 'Xu h\u01b0\u1edbng trung h\u1ea1n')}
-      ${_mkRow('6 th\u00e1ng', pF(d180), 'N\u1eeda n\u0103m')}
-      ${_mkRow('1 n\u0103m', pF(d365), 'Hi\u1ec7u su\u1ea5t d\u00e0i h\u1ea1n')}
-      ${p3y != null ? _mkRow('3 n\u0103m', pF(p3y), 'K\u1ec3 t\u1eeb khi c\u00f3 d\u1eef li\u1ec7u') : ''}
+    <div style="background:var(--bg3);border-radius:8px;overflow:hidden;padding:2px 12px 4px">
+      ${_mkPerfRow('7 ng\u00e0y g\u1ea7n nh\u1ea5t', p7)}
+      ${_mkPerfRow('1 th\u00e1ng', d30)}
+      ${_mkPerfRow('3 th\u00e1ng', d90)}
+      ${_mkPerfRow('6 th\u00e1ng', d180)}
+      ${_mkPerfRow('1 n\u0103m', d365)}
+      ${p3y != null ? _mkPerfRow('3 n\u0103m', p3y) : ''}
     </div>
     <div style="margin-top:6px;font-size:10px;color:var(--txt3);line-height:1.5">Hi\u1ec7u su\u1ea5t l\u00e0 % thay \u0111\u1ed5i NAV theo th\u1eddi gian. Ch\u01b0a t\u00ednh ph\u00ed mua/b\u00e1n ho\u1eb7c thu\u1ebf.</div>`);
 
