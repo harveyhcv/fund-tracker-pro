@@ -279,7 +279,7 @@ canvas{width:100%!important;height:100%!important}
 /* ── History Page ────────────────────────── */
 .trade-form-inner{flex:1;overflow-y:auto;padding:0 14px;min-height:0}
 .hist-page-layout{display:flex;height:100%;overflow:hidden}
-.hist-page-left{width:300px;min-width:250px;border-right:1px solid var(--bdr);display:flex;flex-direction:column;overflow:hidden}
+.hist-page-left{width:360px;min-width:280px;border-right:1px solid var(--bdr);display:flex;flex-direction:column;overflow:hidden}
 .hist-page-right{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
 .hist-nav-header{padding:10px 14px 8px;border-bottom:1px solid var(--bdr);flex-shrink:0;background:var(--bg2)}
 .hist-nav-hval{font-family:var(--mono);font-size:18px;font-weight:700;color:var(--txt)}
@@ -3622,13 +3622,25 @@ function _renderHistFundList() {
     const sv = sigs[c]; if (!sv) return false;
     return (sv.rsi != null && (sv.rsi < 32 || sv.rsi > 68)) || Math.abs(sv.score||0) >= 4;
   });
-  const alertHtml = alerts.length ? `<div style="background:#facc1511;border:1px solid #facc1533;border-radius:6px;padding:6px 8px;margin-bottom:6px;font-size:10px">
-    <span style="color:#facc15;margin-right:4px">⚠</span><b style="color:var(--txt1)">Cần chú ý:</b>
-    ${alerts.map(c=>{
+  // Sort alerts: oversold first (lowest RSI), then high score
+  alerts.sort((a,b) => {
+    const sa = sigs[a], sb = sigs[b];
+    const rsA = sa.rsi ?? 50, rsB = sb.rsi ?? 50;
+    if (rsA < 32 && rsB >= 32) return -1;
+    if (rsB < 32 && rsA >= 32) return 1;
+    return rsA - rsB;
+  });
+  const TOP = 5;
+  const alertsShow = alerts.slice(0, TOP);
+  const alertsMore = alerts.length - TOP;
+  const alertHtml = alerts.length ? `<div style="background:#facc1511;border:1px solid #facc1533;border-radius:6px;padding:5px 8px;margin-bottom:6px;font-size:10px;line-height:1.7">
+    <span style="color:#facc15;font-size:9px;font-family:var(--mono);letter-spacing:.05em">⚠ CẦN CHÚ Ý</span>
+    <div style="display:flex;flex-wrap:wrap;gap:3px 6px;margin-top:3px">${alertsShow.map(c=>{
       const sv=sigs[c];
-      const note=sv.rsi<32?`RSI ${sv.rsi?.toFixed(0)} (quá bán)`:sv.rsi>68?`RSI ${sv.rsi?.toFixed(0)} (quá mua)`:sv.score>=4?`Score +${sv.score} (mua mạnh)`:sv.score<=-4?`Score ${sv.score} (bán mạnh)`:'';
-      return `<span onclick="_selectHistFund('${c}')" style="cursor:pointer;color:var(--c0);font-family:var(--mono)">${c}</span><span style="color:var(--txt3)"> ${note}</span>`;
-    }).join(', ')}
+      const note=sv.rsi<32?`RSI ${sv.rsi?.toFixed(0)} quá bán`:sv.rsi>68?`RSI ${sv.rsi?.toFixed(0)} quá mua`:sv.score>=4?`+${sv.score} mua`:sv.score<=-4?`${sv.score} bán`:'';
+      const col=sv.rsi<32||sv.score>=4?'var(--buy)':sv.rsi>68||sv.score<=-4?'var(--sell)':'#facc15';
+      return `<span onclick="_selectHistFund('${c}')" style="cursor:pointer;background:${col}18;border:1px solid ${col}44;border-radius:10px;padding:1px 6px;font-size:9px;font-family:var(--mono);color:${col};white-space:nowrap">${c} <span style="opacity:.8">${note}</span></span>`;
+    }).join('')}${alertsMore > 0 ? `<span style="font-size:9px;color:var(--txt3);padding:1px 4px">+${alertsMore} quỹ khác</span>` : ''}</div>
   </div>` : '';
   el.innerHTML = alertHtml + goldRow + funds.map(code => {
     const s = sigs[code] || {};
@@ -3729,7 +3741,10 @@ async function loadHistChart(code) {
     _renderHistFundList(); // re-render list so sparklines fill in now that cache exists
     // Store research metadata for analysis panel
     if (res) {
-      if (!_signals) _signals = {};
+      // Kế thừa toàn bộ signals từ _marketData trước khi ghi riêng từng fund
+      // để _renderHistFundList() không mất các quỹ khác
+      if (!_signals && _marketData) _signals = {..._marketData};
+      else if (!_signals) _signals = {};
       _signals[code] = {...(_signals[code]||{}), ...res, t2_prediction: res.t2_prediction};
     }
     // Update label with fund name if available
@@ -4157,6 +4172,15 @@ function setHistView(view, el) {
   const analysisPanel = document.getElementById('hist-analysis-panel');
   if(rangeBar) rangeBar.style.display = (view==='nav'||view==='cmp') ? 'flex' : 'none';
   if(analysisPanel) analysisPanel.style.display = (view==='nav') ? 'block' : 'none';
+  // Expand chart area to fill space when analysis panel hidden
+  const chartArea = document.getElementById('hist-chart-area');
+  if (chartArea) {
+    if (view === 'nav') {
+      chartArea.style.height = '280px'; chartArea.style.flex = '';
+    } else {
+      chartArea.style.height = ''; chartArea.style.flex = '1';
+    }
+  }
   if(view==='nav' && _histPageCode) {
     if (_histPageCode==='GOLD_SJC') loadGoldAnalysis(); else loadHistChart(_histPageCode);
   } else if(view==='t2') renderT2AccuracyChart(_histPageCode||Object.keys(MOCK_SIGNALS||{})[0]||'VESAF');
@@ -4616,7 +4640,7 @@ function _renderHistAnalysis(code) {
     const avgCost = pfItem.avg_cost || (units > 0 ? cost / units : 0);
     const mktVal = nav * units, pnl = mktVal - cost, pnlP = cost > 0 ? pnl / cost * 100 : 0;
     const t2p = s?.t2_prediction;
-    pnlHtml = _mkSect('V\u1eca TH\u1ebeH \u0110ANG N\u1eaeM GI\u1eee', '\u{1F4BC}', `
+    pnlHtml = _mkSect('V\u1ecb TH\u1ebe \u0110ANG N\u1eafM GI\u1eef', '\u{1F4BC}', `
       <div style="background:var(--bg3);border-radius:8px;padding:12px 14px">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 16px;margin-bottom:${t2p ? '10px' : '0'}">
           <div><div style="font-size:9px;color:var(--txt3)">Gi\u00e1 tr\u1ecb th\u1ecb tr\u01b0\u1eddng</div><div style="font-family:var(--mono);font-size:14px;font-weight:700">${(mktVal / 1e6).toFixed(2)}M \u0111</div></div>
@@ -5297,7 +5321,11 @@ async function renderT2AccuracyChart(code) {
       const hist=(d.history||[]).slice().reverse(); // API trả newest-first → oldest-first cho chart
       summary=d.summary||[];
       if (!hist.length) {
-        el.innerHTML='<div style="padding:24px;text-align:center;color:var(--txt2)">Chưa có dữ liệu dự báo T+2 để so sánh.<br><span style="font-size:11px;opacity:.7">Dữ liệu tích lũy sau khi pipeline T+2 chạy đủ ngày.</span></div>';
+        el.innerHTML=`<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:12px;padding:32px;text-align:center">
+          <div style="font-size:36px;opacity:.3">⏱</div>
+          <div style="font-size:13px;font-weight:600;color:var(--txt1)">${code} — Chưa có lịch sử T+2</div>
+          <div style="font-size:11px;color:var(--txt3);max-width:320px;line-height:1.7">Biểu đồ T+2 so sánh NAV dự báo vs thực tế. Dữ liệu tích lũy sau khi pipeline T+2 chạy đủ ngày trên Railway.<br>Trên môi trường local, dữ liệu T+2 chưa có.</div>
+        </div>`;
         const st=document.getElementById('hist-stats');
         if(st) st.innerHTML=`<div class="sum-row"><span class="sum-label">Quỹ</span><span class="sum-val">${code}</span></div><div style="font-size:11px;color:var(--txt2);margin-top:8px">Chưa có dữ liệu chấm điểm T+2</div>`;
         return;

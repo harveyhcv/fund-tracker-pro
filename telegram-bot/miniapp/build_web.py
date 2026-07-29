@@ -281,7 +281,7 @@ canvas{width:100%!important;height:100%!important}
 /* ── History Page ────────────────────────── */
 .trade-form-inner{flex:1;overflow-y:auto;padding:0 14px;min-height:0}
 .hist-page-layout{display:flex;height:100%;overflow:hidden}
-.hist-page-left{width:300px;min-width:250px;border-right:1px solid var(--bdr);display:flex;flex-direction:column;overflow:hidden}
+.hist-page-left{width:360px;min-width:280px;border-right:1px solid var(--bdr);display:flex;flex-direction:column;overflow:hidden}
 .hist-page-right{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
 .hist-nav-header{padding:10px 14px 8px;border-bottom:1px solid var(--bdr);flex-shrink:0;background:var(--bg2)}
 .hist-nav-hval{font-family:var(--mono);font-size:18px;font-weight:700;color:var(--txt)}
