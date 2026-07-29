@@ -3262,6 +3262,29 @@ function _sharpe(pts, n=252, rf=3.5) {
   if(s2<=0) return null;
   return m/Math.sqrt(s2)*Math.sqrt(252);
 }
+function _sortino(pts, n=252, rf=4.5) {
+  const tail = pts.slice(-Math.min(n,pts.length));
+  if (tail.length < 10) return null;
+  const rfD = rf/100/252;
+  const r = [];
+  for (let i=1;i<tail.length;i++) if(tail[i-1].nav>0) r.push((tail[i].nav-tail[i-1].nav)/tail[i-1].nav);
+  if (r.length < 5) return null;
+  const annRet = r.reduce((a,b)=>a+b,0)/r.length*252;
+  const downR = r.map(v => Math.min(v - rfD, 0));
+  const downVar = downR.reduce((a,v)=>a+v**2,0)/downR.length;
+  if (downVar <= 0) return null;
+  return (annRet - rf/100) / Math.sqrt(downVar * 252);
+}
+function _calmar(pts, n=756) {
+  const tail = pts.slice(-Math.min(n,pts.length));
+  if (tail.length < 10) return null;
+  const r = [];
+  for (let i=1;i<tail.length;i++) if(tail[i-1].nav>0) r.push((tail[i].nav-tail[i-1].nav)/tail[i-1].nav);
+  const annRet = r.reduce((a,b)=>a+b,0)/r.length*252;
+  const mdd = _maxDrawdown(tail);
+  if (mdd <= 0) return null;
+  return annRet / (mdd/100);
+}
 function _smartPredict(pts, horizon=2) {
   if(!pts||pts.length<10) return null;
   const tail = pts.slice(-30);
@@ -3485,28 +3508,50 @@ function _renderHistAnalysis(code) {
     <div style="margin-top:6px;font-size:10px;color:var(--txt3);line-height:1.5">Hiệu suất = % thay đổi NAV theo thời gian. Chưa tính phí mua/bán hoặc thuế. Xếp hạng so với các quỹ cùng loại trong danh sách đang theo dõi.</div>`);
 
   // ── 4. RISK METRICS ──
-  // ── 4. RISK METRICS ──
   const vol = _annVol(pts) ?? s?.vol_ann;
   const mdd = _maxDrawdown(pts);
-  const sr  = _sharpe(pts, 252, 4.5);
-  const volC = vol == null ? 'var(--txt2)' : vol < 8 ? 'var(--buy)' : vol < 18 ? '#facc15' : 'var(--sell)';
-  const mddC = mdd < 5 ? 'var(--buy)' : mdd < 15 ? '#facc15' : 'var(--sell)';
-  const srC  = sr == null ? 'var(--txt2)' : sr > 1 ? 'var(--buy)' : sr > 0 ? '#facc15' : 'var(--sell)';
-  const volDesc = vol == null ? '\u2014' : vol < 8 ? 'R\u1ea5t th\u1ea5p' : vol < 12 ? 'Th\u1ea5p' : vol < 20 ? 'Trung b\u00ecnh' : 'Cao';
-  const mddDesc = mdd < 5 ? 'R\u1ee7i ro th\u1ea5p' : mdd < 15 ? 'R\u1ee7i ro trung b\u00ecnh' : 'R\u1ee7i ro cao';
-  const srDesc  = sr == null ? '\u2014' : sr > 1.5 ? 'Xu\u1ea5t s\u1eafc' : sr > 1 ? 'T\u1ed1t' : sr > 0 ? 'Ch\u1ea5p nh\u1eadn \u0111\u01b0\u1ee3c' : 'K\u00e9m';
+  const sr      = _sharpe(pts, 252, 4.5);
+  const sortino = _sortino(pts, 252, 4.5);
+  const calmar  = _calmar(pts);
+  // Monthly VaR 95% — 5th percentile of 21-day rolling returns
+  const var95 = (() => {
+    const navs = pts.map(p=>p.nav);
+    if (navs.length < 25) return null;
+    const r21 = [];
+    for (let i=21; i<navs.length; i++) if(navs[i-21]>0) r21.push((navs[i]-navs[i-21])/navs[i-21]*100);
+    if (r21.length < 10) return null;
+    r21.sort((a,b)=>a-b);
+    return -r21[Math.floor(r21.length * 0.05)]; // positive = loss
+  })();
+  const volC     = vol == null     ? 'var(--txt2)' : vol < 8       ? 'var(--buy)' : vol < 18    ? '#facc15' : 'var(--sell)';
+  const mddC     = mdd < 5         ? 'var(--buy)'  : mdd < 15      ? '#facc15'    : 'var(--sell)';
+  const srC      = sr == null      ? 'var(--txt2)' : sr > 1        ? 'var(--buy)' : sr > 0      ? '#facc15' : 'var(--sell)';
+  const sortinoC = sortino == null ? 'var(--txt2)' : sortino > 1.5 ? 'var(--buy)' : sortino > 0.5 ? '#facc15' : 'var(--sell)';
+  const calmarC  = calmar == null  ? 'var(--txt2)' : calmar > 0.5  ? 'var(--buy)' : calmar > 0  ? '#facc15' : 'var(--sell)';
+  const var95C   = var95 == null   ? 'var(--txt2)' : var95 < 3     ? 'var(--buy)' : var95 < 8   ? '#facc15' : 'var(--sell)';
+  const volDesc    = vol == null    ? '\u2014' : vol < 8      ? 'R\u1ea5t th\u1ea5p'   : vol < 12    ? 'Th\u1ea5p'    : vol < 20  ? 'Trung b\u00ecnh' : 'Cao';
+  const mddDesc    = mdd < 5        ? 'R\u1ee7i ro th\u1ea5p' : mdd < 15    ? 'Trung b\u00ecnh' : 'R\u1ee7i ro cao';
+  const srDesc     = sr == null     ? '\u2014' : sr > 1.5     ? 'Xu\u1ea5t s\u1eafc'  : sr > 1      ? 'T\u1ed1t'     : sr > 0    ? 'Ch\u1ea5p nh\u1eadn' : 'K\u00e9m';
+  const sortinoDesc = sortino == null ? '\u2014' : sortino > 1.5 ? 'Xu\u1ea5t s\u1eafc (it l\u1ed7)' : sortino > 0.5 ? '\u1ed4n \u0111\u1ecbnh' : sortino > 0 ? 'Trung b\u00ecnh' : 'K\u00e9m';
+  const calmarDesc  = calmar == null  ? '\u2014' : calmar > 1  ? 'R\u1ea5t t\u1ed1t' : calmar > 0 ? 'Ch\u1ea5p nh\u1eadn' : 'K\u00e9m';
+  const var95Desc   = var95 == null   ? '\u2014' : var95 < 3   ? 'R\u1ee7i ro th\u1ea5p' : var95 < 8 ? 'Trung b\u00ecnh' : 'C\u1ea7n ch\u00fa \u00fd';
   const riskHtml = pts.length > 30 ? _mkSect('R\u1ee6I RO & CH\u1ea4T L\u01af\u1ee2NG', '\u{1F6E1}\uFE0F', `
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:10px">
       ${_mkMetric('Bi\u1ebfn \u0111\u1ed9ng/n\u0103m', vol != null ? vol.toFixed(1) + '%' : '\u2013', volC, volDesc)}
       ${_mkMetric('Drawdown t\u1ed1i \u0111a', mdd > 0 ? '-' + mdd.toFixed(1) + '%' : '\u2013', mddC, mddDesc)}
       ${_mkMetric('Sharpe (rf 4.5%)', sr != null ? sr.toFixed(2) : '\u2013', srC, srDesc)}
+      ${_mkMetric('Sortino Ratio', sortino != null ? sortino.toFixed(2) : '\u2013', sortinoC, sortinoDesc)}
+      ${_mkMetric('Calmar Ratio', calmar != null ? calmar.toFixed(2) : '\u2013', calmarC, calmarDesc)}
+      ${_mkMetric('VaR 95% (1T)', var95 != null ? '-' + var95.toFixed(1) + '%' : '\u2013', var95C, var95Desc)}
     </div>
-    <div style="background:var(--bg3);border-radius:8px;padding:10px 12px;font-size:10px;color:var(--txt2);line-height:1.7">
-      <b style="color:var(--txt1)">Bi\u1ebfn \u0111\u1ed9ng</b> \u2014 NAV dao \u0111\u1ed9ng bao nhi\u00eau % m\u1ed7i n\u0103m. Th\u1ea5p = \u1ed5n \u0111\u1ecbnh, Cao = nhi\u1ec1u c\u01a1 h\u1ed9i nh\u01b0ng c\u0169ng nhi\u1ec1u r\u1ee7i ro.<br>
-      <b style="color:var(--txt1)">Drawdown t\u1ed1i \u0111a</b> \u2014 M\u1ee9c gi\u1ea3m l\u1edbn nh\u1ea5t t\u1eeb \u0111\u1ec9nh xu\u1ed1ng \u0111\u00e1y trong l\u1ecbch s\u1eed. VD: -15% ngh\u0129a l\u00e0 \u0111\u00e3 c\u00f3 l\u00fac NAV gi\u1ea3m 15% tr\u01b0\u1edbc khi h\u1ed3i ph\u1ee5c.<br>
-      <b style="color:var(--txt1)">Sharpe Ratio</b> \u2014 L\u1ee3i nhu\u1eadn thu \u0111\u01b0\u1ee3c so v\u1edbi r\u1ee7i ro ch\u1ea5p nh\u1eadn. >1 = t\u1ed1t; <0 = kh\u00f4ng b\u00f9 \u0111\u1eafp \u0111\u01b0\u1ee3c l\u00e3i su\u1ea5t ng\u00e2n h\u00e0ng (4.5%/n\u0103m).
+    <div style="background:var(--bg3);border-radius:8px;padding:10px 12px;font-size:10px;color:var(--txt2);line-height:1.8">
+      <b style="color:var(--txt1)">Bi\u1ebfn \u0111\u1ed9ng</b> \u2014 NAV dao \u0111\u1ed9ng bao nhi\u00eau % m\u1ed7i n\u0103m. Th\u1ea5p = \u1ed5n \u0111\u1ecbnh, Cao = nhi\u1ec1u c\u01a1 h\u1ed9i nh\u01b0ng nhi\u1ec1u r\u1ee7i ro.<br>
+      <b style="color:var(--txt1)">Drawdown t\u1ed1i \u0111a</b> \u2014 M\u1ee9c gi\u1ea3m l\u1edbn nh\u1ea5t t\u1eeb \u0111\u1ec9nh xu\u1ed1ng \u0111\u00e1y trong l\u1ecbch s\u1eed. VD: -15% = \u0111\u00e3 c\u00f3 l\u00fac NAV gi\u1ea3m 15% tr\u01b0\u1edbc khi h\u1ed3i ph\u1ee5c.<br>
+      <b style="color:var(--txt1)">Sharpe Ratio</b> \u2014 L\u1ee3i nhu\u1eadn thu \u0111\u01b0\u1ee3c so v\u1edbi r\u1ee7i ro ch\u1ea5p nh\u1eadn (c\u1ea3 l\u00ean l\u1eabn xu\u1ed1ng). >1 = t\u1ed1t; <0 = kh\u00f4ng b\u00f9 \u0111\u1eafp l\u00e3i su\u1ea5t ng\u00e2n h\u00e0ng (4.5%/n\u0103m).<br>
+      <b style="color:var(--txt1)">Sortino Ratio</b> \u2014 Gi\u1ed1ng Sharpe nh\u01b0ng <i>ch\u1ec9 t\u00ednh r\u1ee7i ro gi\u1ea3m</i> (downside). >1.5 = xu\u1ea5t s\u1eafc \u2014 qu\u1ef9 t\u0103ng \u0111\u1ec1u, \u00edt gi\u1ea3m m\u1ea1nh. \u01afu ti\u00ean Sortino cao khi ch\u1ecdn qu\u1ef9 tr\u00e1i phi\u1ebfu.<br>
+      <b style="color:var(--txt1)">Calmar Ratio</b> \u2014 L\u1ee3i nhu\u1eadn n\u0103m \u00f7 drawdown t\u1ed1i \u0111a. >1 = h\u1ed3i ph\u1ee5c nhanh h\u01a1n m\u1ee9c l\u1ed7 t\u1eebng ch\u1ecbu. <0 = \u0111ang l\u1ed7 so v\u1edbi l\u00e3i su\u1ea5t ng\u00e2n h\u00e0ng.<br>
+      <b style="color:var(--txt1)">VaR 95% (1 th\u00e1ng)</b> \u2014 Trong 5% tr\u01b0\u1eddng h\u1ee3p x\u1ea5u nh\u1ea5t, qu\u1ef9 c\u00f3 th\u1ec3 m\u1ea5t bao nhi\u00eau % trong 1 th\u00e1ng. D\u1ef1a tr\u00ean l\u1ecbch s\u1eed NAV.
     </div>`) : '';
-
   // ── 5. 52-WEEK RANGE ──
   const cut52D = new Date(); cut52D.setDate(cut52D.getDate() - 365);
   const cut52 = cut52D.toISOString().slice(0, 10);
