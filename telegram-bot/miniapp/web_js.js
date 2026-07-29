@@ -3292,18 +3292,27 @@ function _renderHistAnalysis(code) {
   const macdColor= macd > 0 ? 'var(--buy)' : macd < 0 ? 'var(--sell)' : 'var(--txt2)';
   const scoreColor = score >= 3 ? 'var(--buy)' : score <= -3 ? 'var(--sell)' : '#facc15';
   const scoreLabel = score >= 6 ? 'MUA M\u1ea0NH' : score >= 3 ? 'MUA' : score <= -6 ? 'B\u00c1N M\u1ea0NH' : score <= -3 ? 'B\u00c1N' : 'TRUNG L\u1eacP';
-  const rsiInterp = rsi < 30 ? 'Qu\u00e1 b\u00e1n m\u1ea1nh \u2014 nh\u00e0 \u0111\u1ea7u t\u01b0 \u0111ang b\u00e1n th\u00e1o, c\u00f3 th\u1ec3 l\u00e0 \u0111\u00e1y ng\u1eafn h\u1ea1n' :
-                    rsi < 40 ? 'Qu\u00e1 b\u00e1n \u2014 \u00e1p l\u1ef1c b\u00e1n cao, xem x\u00e9t mua v\u00e0o' :
-                    rsi < 60 ? 'Trung t\u00ednh \u2014 th\u1ecb tr\u01b0\u1eddng c\u00e2n b\u1eb1ng' :
-                    rsi < 70 ? 'Qu\u00e1 mua \u2014 c\u00f3 th\u1ec3 \u0111ang ti\u1ebfn \u0111\u1ebfn \u0111\u1ec9nh' :
-                               'Qu\u00e1 mua m\u1ea1nh \u2014 r\u1ee7i ro \u0111i\u1ec1u ch\u1ec9nh cao';
-  const bbInterp  = bb < 20  ? 'D\u01b0\u1edbi band d\u01b0\u1edbi \u2014 NAV gi\u1ea3m b\u1ea5t th\u01b0\u1eddng, kh\u1ea3 n\u0103ng h\u1ed3i ph\u1ee5c' :
-                    bb < 40  ? 'V\u00f9ng mua \u2014 NAV \u0111ang th\u1ea5p trong d\u1ea3i bi\u1ebfn \u0111\u1ed9ng b\u00ecnh th\u01b0\u1eddng' :
-                    bb < 60  ? 'Trung t\u00ednh \u2014 NAV \u1edf v\u00f9ng gi\u1eefa' :
-                    bb < 80  ? 'V\u00f9ng b\u00e1n \u2014 NAV \u0111ang cao trong d\u1ea3i bi\u1ebfn \u0111\u1ed9ng' :
-                               'Tr\u00ean band tr\u00ean \u2014 NAV t\u0103ng b\u1ea5t th\u01b0\u1eddng, c\u1ea9n tr\u1ecdng';
-  const macdInterp= macd > 0 ? 'D\u01b0\u01a1ng \u2014 xu h\u01b0\u1edbng ng\u1eafn h\u1ea1n \u0111ang m\u1ea1nh h\u01a1n trung h\u1ea1n (t\u1ed1t)' :
-                               '\u00c2m \u2014 xu h\u01b0\u1edbng ng\u1eafn h\u1ea1n \u0111ang y\u1ebfu h\u01a1n trung h\u1ea1n (c\u1ea9n th\u1eadn)';
+  const rsiInterp = rsi < 30
+    ? `<b>B\u00e1n th\u00e1o m\u1ea1nh.</b> Trong 14 ng\u00e0y qua, \u00e1p l\u1ef1c b\u00e1n r\u1ea5t l\u1edbn \u0111\u1ea9y gi\u00e1 xu\u1ed1ng th\u1ea5p b\u1ea5t th\u01b0\u1eddng. L\u1ecbch s\u1eed cho th\u1ea5y \u0111\u00e2y th\u01b0\u1eddng l\u00e0 <b style="color:var(--buy)">v\u00f9ng \u0111\u00e1y ng\u1eafn h\u1ea1n t\u1ed1t \u0111\u1ec3 b\u1eaft \u0111\u1ea7u mua d\u1ea7n</b>. Tuy nhi\u00ean: n\u1ebfu c\u00f3 tin x\u1ea5u c\u01a1 b\u1ea3n (th\u1ecb tr\u01b0\u1eddng chung suy gi\u1ea3m, ch\u00ednh s\u00e1ch th\u1eaft ch\u1eb7t), xu h\u01b0\u1edbng gi\u1ea3m c\u00f3 th\u1ec3 k\u00e9o d\u00e0i h\u01a1n. <i>Khuy\u1ebfn ngh\u1ecb: chia 2\u20133 l\u1ea7n mua thay v\u00ec mua m\u1ed9t l\u1ea7n.</i>`
+    : rsi < 40
+    ? `<b>\u00c1p l\u1ef1c b\u00e1n l\u1ea5n \u00e1t.</b> NAV \u0111\u00e3 gi\u1ea3m trong 2 tu\u1ea7n qua. \u0110\u00e2y l\u00e0 <b style="color:var(--buy)">v\u00f9ng t\u01b0\u01a1ng \u0111\u1ed1i r\u1ebb</b> \u0111\u1ec3 mua th\u00eam n\u1ebfu b\u1ea1n tin v\u00e0o qu\u1ef9 d\u00e0i h\u1ea1n. R\u1ee7i ro ng\u1eafn h\u1ea1n v\u1eabn c\u00f2n \u2014 n\u00ean mua chia nh\u1ecf. Khi RSI h\u1ed3i v\u1ec1 45\u201350, xu h\u01b0\u1edbng \u0111ang \u0111\u1ea3o chi\u1ec1u.`
+    : rsi < 60
+    ? `<b>C\u00e2n b\u1eb1ng, kh\u00f4ng c\u00f3 t\u00edn hi\u1ec7u r\u00f5.</b> L\u1ef1c mua v\u00e0 b\u00e1n \u0111ang t\u01b0\u01a1ng \u0111\u01b0\u01a1ng nhau. NAV dao \u0111\u1ed9ng trung t\u00ednh. Ch\u1ec9 s\u1ed1 RSI kh\u00f4ng cho t\u00edn hi\u1ec7u r\u00f5 r\u00e0ng \u1edf v\u00f9ng n\u00e0y \u2014 h\u00e3y d\u1ef1a th\u00eam v\u00e0o BB%B v\u00e0 MACD \u0111\u1ec3 quy\u1ebft \u0111\u1ecbnh.`
+    : rsi < 70
+    ? `<b>Xu h\u01b0\u1edbng t\u0103ng t\u1ed1t.</b> L\u1ef1c mua \u0111ang th\u1ed1ng tr\u1ecb. N\u1ebfu ch\u01b0a c\u00f3 v\u1ecb th\u1ebf: gi\u00e1 \u0111ang trong xu h\u01b0\u1edbng t\u1ed1t nh\u01b0ng <i>kh\u00f4ng c\u00f2n r\u1ebb</i>. N\u1ebfu \u0111ang n\u1eafm: \u0111\u00e2y l\u00e0 <b style="color:var(--buy)">t\u00edn hi\u1ec7u gi\u1eef</b>, kh\u00f4ng c\u1ea7n v\u1ed9i b\u00e1n. Khi RSI v\u01b0\u1ee3t 70 th\u00ec b\u1eaft \u0111\u1ea7u th\u1eadn tr\u1ecdng h\u01a1n.`
+    : `<b>T\u0103ng qu\u00e1 nhanh, r\u1ee7i ro \u0111i\u1ec1u ch\u1ec9nh.</b> Gi\u00e1 \u0111\u00e3 t\u0103ng m\u1ea1nh li\u00ean t\u1ee5c trong 2 tu\u1ea7n \u2014 nhi\u1ec1u ng\u01b0\u1eddi \u0111ang tranh nhau mua theo \u0111\u00e0. \u1ede v\u00f9ng RSI > 70, x\u00e1c su\u1ea5t \u0111i\u1ec1u ch\u1ec9nh ng\u1eafn h\u1ea1n cao. <b style="color:var(--sell)">Tr\u00e1nh mua th\u00eam nhi\u1ec1u m\u1ed9t l\u00fac</b>; n\u1ebfu \u0111ang n\u1eafm l\u00e3i, c\u00e2n nh\u1eafc ch\u1ed1t m\u1ed9t ph\u1ea7n.`;
+  const bbInterp = bb < 20
+    ? `<b>D\u01b0\u1edbi d\u1ea3i d\u01b0\u1edbi \u2014 b\u1ea5t th\u01b0\u1eddng gi\u1ea3m.</b> NAV xu\u1ed1ng d\u01b0\u1edbi Bollinger Band d\u01b0\u1edbi, th\u1ea5p h\u01a1n 95% c\u00e1c ng\u00e0y b\u00ecnh th\u01b0\u1eddng trong 20 ng\u00e0y qua. Theo th\u1ed1ng k\u00ea, th\u01b0\u1eddng s\u1ebd h\u1ed3i ph\u1ee5c v\u1ec1 gi\u1eefa d\u1ea3i. <b style="color:var(--buy)">T\u00edn hi\u1ec7u mua k\u1ef9 thu\u1eadt m\u1ea1nh</b> \u2014 nh\u01b0ng c\u1ea7n k\u1ebft h\u1ee3p v\u1edbi RSI v\u00e0 b\u1ed1i c\u1ea3nh th\u1ecb tr\u01b0\u1eddng \u0111\u1ec3 x\u00e1c nh\u1eadn.`
+    : bb < 40
+    ? `<b>Ph\u1ea7n th\u1ea5p c\u1ee7a d\u1ea3i \u2014 v\u00f9ng mua h\u1ea5p d\u1eabn.</b> NAV \u0111ang <i>t\u01b0\u01a1ng \u0111\u1ed1i r\u1ebb</i> so v\u1edbi xu h\u01b0\u1edbng ng\u1eafn h\u1ea1n. K\u1ebft h\u1ee3p RSI th\u1ea5p + BB%B th\u1ea5p = <b style="color:var(--buy)">t\u00edn hi\u1ec7u mua kh\u00e1 m\u1ea1nh</b>. D\u1ea3i Bollinger \u0111\u01b0\u1ee3c t\u00ednh t\u1eeb MA20 \u00b1 2 \u0111\u1ed9 l\u1ec7ch chu\u1ea9n.`
+    : bb < 60
+    ? `<b>V\u00f9ng gi\u1eefa d\u1ea3i \u2014 trung t\u00ednh.</b> NAV kh\u00f4ng r\u1ebb c\u0169ng kh\u00f4ng \u0111\u1eaft theo k\u1ef9 thu\u1eadt. Kh\u00f4ng c\u00f3 t\u00edn hi\u1ec7u \u0111\u1ecbnh h\u01b0\u1edbng t\u1eeb BB%B. K\u1ebft h\u1ee3p v\u1edbi c\u00e1c ch\u1ec9 s\u1ed1 kh\u00e1c \u0111\u1ec3 c\u00f3 b\u1ee9c tranh \u0111\u1ea7y \u0111\u1ee7 h\u01a1n.`
+    : bb < 80
+    ? `<b>Ph\u1ea7n cao c\u1ee7a d\u1ea3i \u2014 ti\u1ebfp c\u1eadn v\u00f9ng b\u00e1n.</b> NAV \u0111ang t\u01b0\u01a1ng \u0111\u1ed1i \u0111\u1eaft so v\u1edbi xu h\u01b0\u1edbng ng\u1eafn h\u1ea1n. N\u1ebfu \u0111ang c\u00f3 l\u00e3i, \u0111\u00e2y l\u00e0 l\u00fac c\u00f3 th\u1ec3 xem x\u00e9t ch\u1ed1t m\u1ed9t ph\u1ea7n. N\u1ebfu ch\u01b0a c\u00f3 v\u1ecb th\u1ebf: ch\u1edd NAV \u0111i\u1ec1u ch\u1ec9nh v\u1ec1 v\u00f9ng gi\u1eefa (40\u201360) s\u1ebd thu\u1eadn l\u1ee3i h\u01a1n.`
+    : `<b>Tr\u00ean d\u1ea3i tr\u00ean \u2014 t\u0103ng b\u1ea5t th\u01b0\u1eddng.</b> NAV v\u01b0\u1ee3t Bollinger Band tr\u00ean, cao h\u01a1n 95% c\u00e1c ng\u00e0y b\u00ecnh th\u01b0\u1eddng. Kh\u1ea3 n\u0103ng \u0111i\u1ec1u ch\u1ec9nh v\u1ec1 gi\u1eefa d\u1ea3i r\u1ea5t cao. <b style="color:var(--sell)">Kh\u00f4ng n\u00ean mua th\u00eam</b> \u1edf v\u00f9ng n\u00e0y; c\u00e2n nh\u1eafc ch\u1ed1t l\u1eddi n\u1ebfu \u0111ang n\u1eafm.`;
+  const macdInterp = macd > 0
+    ? `<b>MACD d\u01b0\u01a1ng \u2014 \u0111\u00e0 t\u0103ng.</b> \u0110\u01b0\u1eddng trung b\u00ecnh ng\u1eafn h\u1ea1n (EMA 12) \u0111ang cao h\u01a1n trung h\u1ea1n (EMA 26), cho th\u1ea5y \u0111\u00e0 t\u0103ng \u0111ang m\u1ea1nh l\u00ean. Histogram ${macd > 0.5 ? 'kh\u00e1 l\u1edbn = \u0111\u00e0 m\u1ea1nh' : 'nh\u1ecf = \u0111\u00e0 y\u1ebfu, c\u1ea7n quan s\u00e1t th\u00eam'}. T\u00edn hi\u1ec7u t\u1ed1t khi MACD v\u1eeba t\u1eeb \u00e2m chuy\u1ec3n sang d\u01b0\u01a1ng (giao c\u1eaft t\u0103ng).`
+    : `<b>MACD \u00e2m \u2014 \u0111\u00e0 gi\u1ea3m.</b> \u0110\u01b0\u1eddng trung b\u00ecnh ng\u1eafn h\u1ea1n (EMA 12) th\u1ea5p h\u01a1n trung h\u1ea1n (EMA 26), cho th\u1ea5y \u0111\u00e0 gi\u1ea3m \u0111ang m\u1ea1nh l\u00ean. <b style="color:var(--sell)">Ch\u01b0a n\u00ean mua th\u00eam</b> khi MACD c\u00f2n \u00e2m v\u00e0 ch\u01b0a c\u00f3 d\u1ea5u hi\u1ec7u quay \u0111\u1ea7u. Ch\u1edd MACD t\u1ea1o \u0111\u00e1y v\u00e0 b\u1eaft \u0111\u1ea7u h\u1ed3i ph\u1ee5c l\u00e0 th\u1eddi \u0111i\u1ec3m t\u1ed1t h\u01a1n.`;
   const techNotice = techRel === 'LOW' || techRel === 'N/A'
     ? `<div style="background:#60a5fa11;border:1px solid #60a5fa33;border-radius:6px;padding:7px 10px;margin-bottom:10px;font-size:10px;color:#60a5fa">\u26a0 V\u1edbi qu\u1ef9 tr\u00e1i phi\u1ebfu/ti\u1ec1n t\u1ec7, c\u00e1c ch\u1ec9 s\u1ed1 k\u1ef9 thu\u1eadt c\u00f3 \u0111\u1ed9 tin c\u1eady th\u1ea5p h\u01a1n so v\u1edbi qu\u1ef9 c\u1ed5 phi\u1ebfu.</div>` : '';
 
@@ -3407,21 +3416,75 @@ function _renderHistAnalysis(code) {
 
   // ── 8. CONCLUSION ──
   const apiConclusion = s?.conclusion || '';
-  const scoreDesc = score >= 6 ? 'MUA M\u1ea0NH' : score >= 3 ? 'MUA' : score <= -6 ? 'B\u00c1N M\u1ea0NH' : score <= -3 ? 'B\u00c1N' : 'TRUNG L\u1eacP';
-  const conclusionHtml = _mkSect('K\u1ebeT LU\u1eacN & KHUY\u1ebeN NGH\u1eca', '\u{1F4A1}', `
-    <div style="background:${score >= 3 ? '#4ade8011' : score <= -3 ? '#f8717111' : '#facc1511'};border:1px solid ${score >= 3 ? '#4ade8033' : score <= -3 ? '#f8717133' : '#facc1533'};border-radius:10px;padding:14px">
+  const scoreDesc = score >= 6 ? 'MUA MẠNH' : score >= 3 ? 'MUA' : score <= -6 ? 'BÁN MẠNH' : score <= -3 ? 'BÁN' : 'TRUNG LẬP';
+  const summaryLine = (() => {
+    const cheapTech = rsi < 42 && bb < 42;
+    const expTech   = rsi > 62 && bb > 62;
+    if (score >= 5 && cheapTech) return `Tín hiệu kỹ thuật rất tích cực: giá đang ở vùng rẻ (RSI ${rsi.toFixed(0)}, BB ${bb.toFixed(0)}%) và đà tăng đang hình thành.`;
+    if (score >= 3 && macd > 0)  return `Tín hiệu mua — đà tăng đang mạnh${cheapTech ? ', giá còn ở vùng hấp dẫn' : ''}.`;
+    if (score <= -5 && expTech)  return `Tín hiệu kỹ thuật tiêu cực: giá đang ở vùng đắt (RSI ${rsi.toFixed(0)}, BB ${bb.toFixed(0)}%) và đà giảm đang hình thành.`;
+    if (score <= -3 && macd < 0) return `Tín hiệu bán — đà giảm đang mạnh${expTech ? ', giá ở vùng cao' : ''}. Thận trọng khi mua thêm.`;
+    if (score === 0)             return `Tín hiệu trung lập. Các chỉ số kỹ thuật không nghiêng hẳn về chiều nào.`;
+    return score > 0 ? `Tín hiệu nhẹ nghiêng về mua — chưa đủ điều kiện mua mạnh.` : `Tín hiệu nhẹ nghiêng về bán — chờ thêm xác nhận.`;
+  })();
+  const strategyHtml = (() => {
+    const cheapTech = rsi < 45 && bb < 45;
+    const expTech   = rsi > 60 && bb > 65;
+    const isBond    = fundType === 'bond' || fundType === 'money_market';
+    let rows = [];
+    if (score >= 3) {
+      rows.push(['ℹ️ Chưa có vị thế', cheapTech
+        ? `Thời điểm tốt để mua vào — kỹ thuật thuận chiều, giá đang ở vùng hấp dẫn. Có thể mua 1 lần hoặc chia 2 lần trong 2 tuần.`
+        : `Xu hướng tốt nhưng giá không còn rẻ. Nên mua chia nhỏ 2–3 lần để giảm rủi ro thời điểm.`]);
+    } else if (score <= -3) {
+      rows.push(['ℹ️ Chưa có vị thế', `Chờ tín hiệu đảo chiều rõ hơn (RSI hồi về 40–50, MACD cắt lên) trước khi mua vào. Không nên bắt dao đang rơi.`]);
+    } else {
+      rows.push(['ℹ️ Chưa có vị thế', `Tín hiệu trung lập — có thể mua một phần nhỏ (thử nghiệm) nếu đây là quỹ bạn muốn tích lũy dài hạn.`]);
+    }
+    if (pfItem) {
+      const pnlPct = pfItem.avg_cost > 0 ? (curr - pfItem.avg_cost) / pfItem.avg_cost * 100 : 0;
+      if (score <= -3 && expTech) {
+        rows.push(['💼 Đang nắm giữ', `Cân nhắc chốt một phần lời${pnlPct > 5 ? ` (hiện đang lãi ${pnlPct.toFixed(1)}%)` : ''}. Kỹ thuật đang tiêu cực và giá ở vùng cao.`]);
+      } else if (score >= 3 && cheapTech) {
+        rows.push(['💼 Đang nắm giữ', `Tiếp tục nắm — tín hiệu kỹ thuật tốt. Có thể mua thêm để tăng vị thế${isBond ? ' (quỹ trái phiếu phù hợp tích lũy đều)' : ''}.`]);
+      } else {
+        rows.push(['💼 Đang nắm giữ', `Giữ vị thế hiện tại. Chưa có lý do kỹ thuật rõ ràng để mua thêm hoặc bán bớt.`]);
+      }
+    }
+    const watchConds = [];
+    if (rsi < 50 && macd < 0) watchConds.push('MACD cắt lên 0 (đà giảm kết thúc)');
+    if (rsi > 65)             watchConds.push('RSI giảm về dưới 60 (áp lực mua hạ nhiệt)');
+    if (bb < 30 || bb > 80)  watchConds.push('BB%B về vùng 30–70 (giá trở về bình thường)');
+    if (Math.abs(score) <= 2) watchConds.push('Score đạt ≥3 hoặc ≤−3');
+    if (watchConds.length) rows.push(['👀 Theo dõi khi', watchConds.join('; ')]);
+    return rows.map(([lbl, txt]) => `
+      <div style="border-top:1px solid var(--bdr);padding:8px 0">
+        <div style="font-size:10px;font-weight:700;color:var(--txt3);margin-bottom:3px;font-family:var(--mono);letter-spacing:.04em">${lbl}</div>
+        <div style="font-size:11px;color:var(--txt1);line-height:1.6">${txt}</div>
+      </div>`).join('');
+  })();
+  const conclusionHtml = _mkSect('KẾT LUẬN & KHUYẾN NGHỊ', '💡', `
+    <div style="background:${score >= 3 ? '#4ade8011' : score <= -3 ? '#f8717111' : '#facc1511'};border:1px solid ${score >= 3 ? '#4ade8033' : score <= -3 ? '#f8717133' : '#facc1533'};border-radius:10px;padding:14px;margin-bottom:10px">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
         <div style="font-family:var(--mono);font-size:20px;font-weight:700;color:${scoreColor}">${score > 0 ? '+' : ''}${score}</div>
         <div>
-          <div style="font-size:14px;font-weight:700;color:${scoreColor}">${scoreDesc}</div>
-          <div style="font-size:10px;color:var(--txt3)">${ftLabel} \u00b7 TA ${relLabel}</div>
+          <div style="font-size:15px;font-weight:700;color:${scoreColor}">${scoreDesc}</div>
+          <div style="font-size:10px;color:var(--txt3)">${ftLabel} · TA ${relLabel}</div>
         </div>
       </div>
-      <div style="font-size:11px;color:var(--txt1);line-height:1.7">${apiConclusion || 'Ch\u01b0a c\u00f3 k\u1ebft lu\u1eadn chi ti\u1ebft. Xem c\u00e1c ch\u1ec9 b\u00e1o b\u00ean tr\u00ean.'}</div>
-      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
-        <button onclick="_quickTrade('${code}','buy')" style="flex:1;min-width:100px;background:${score>=3?'var(--buy)':'var(--bg3)'};color:${score>=3?'#000':'var(--txt1)'};border:1px solid ${score>=3?'var(--buy)':'var(--bdr)'};border-radius:7px;padding:9px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--sans)">\ud83d\udcc8 Mua ${code}</button>
-        ${pfItem ? `<button onclick="_quickTrade('${code}','sell')" style="flex:1;min-width:100px;background:${score<=-3?'var(--sell)':'var(--bg3)'};color:${score<=-3?'#fff':'var(--txt1)'};border:1px solid ${score<=-3?'var(--sell)':'var(--bdr)'};border-radius:7px;padding:9px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--sans)">\ud83d\udcc9 B\u00e1n b\u1edbt</button>` : ''}
-      </div>
+      <div style="font-size:12px;color:var(--txt1);line-height:1.7;font-weight:500${apiConclusion ? ';margin-bottom:10px' : ''}">${summaryLine}</div>
+      ${apiConclusion ? `<div style="font-size:11px;color:var(--txt2);line-height:1.7;border-top:1px solid var(--bdr);padding-top:8px">${apiConclusion}</div>` : ''}
+    </div>
+    <div style="background:var(--bg3);border-radius:8px;padding:10px 14px">
+      <div style="font-size:10px;color:var(--txt3);font-family:var(--mono);letter-spacing:.06em">CHIẾN LƯỢC GỢI Ý</div>
+      ${strategyHtml}
+    </div>
+    <div style="margin-top:8px;background:#facc1511;border:1px solid #facc1522;border-radius:6px;padding:8px 12px;font-size:10px;color:var(--txt3);line-height:1.6">
+      ⚠️ Phân tích dựa trên dữ liệu kỹ thuật lịch sử NAV. Không phải lời khuyên đầu tư tài chính. Quỹ mở có thể bị ảnh hưởng bởi thị trường chung, chính sách tiền tệ, và yếu tố vĩ mô ngoài tầm dự báo của chỉ báo kỹ thuật.
+    </div>
+    <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+      <button onclick="_quickTrade('${code}','buy')" style="flex:1;min-width:100px;background:${score>=3?'var(--buy)':'var(--bg3)'};color:${score>=3?'#000':'var(--txt1)'};border:1px solid ${score>=3?'var(--buy)':'var(--bdr)'};border-radius:7px;padding:9px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--sans)">📈 Mua ${code}</button>
+      ${pfItem ? `<button onclick="_quickTrade('${code}','sell')" style="flex:1;min-width:100px;background:${score<=-3?'var(--sell)':'var(--bg3)'};color:${score<=-3?'#fff':'var(--txt1)'};border:1px solid ${score<=-3?'var(--sell)':'var(--bdr)'};border-radius:7px;padding:9px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--sans)">📉 Bán bớt</button>` : ''}
     </div>`);
 
   panel.innerHTML = `<div style="padding:8px 0 20px">${headerHtml}${pnlHtml}${perfHtml}${riskHtml}${rangeHtml}${indHtml}${predHtml}${conclusionHtml}</div>`;
