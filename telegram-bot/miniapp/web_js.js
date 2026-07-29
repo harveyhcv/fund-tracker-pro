@@ -122,6 +122,7 @@ let _goldSchool = 'dca';
 // History page state
 let _histPageCode = '', _histPageData = null, _histPageChart = null;
 let _histNavCache = {};  // code → sorted [{date,nav}] cached per fund for sparklines
+let _histFundSort = 'default';  // 'default' | 'score' | 'rsi' | 'm1'
 // Payment state
 let _paymentMethod = 'stars', _sepayRef = null, _sepayTimer = null;
 // Easter egg state
@@ -2008,6 +2009,19 @@ async function loadHistoryPage() {
   const _firstCode = _all0.find(c=>_held0.has(c)||_watched0.has(c)) || _all0[0];
   if (_firstCode) loadHistChart(_firstCode);
 }
+function _setHistSort(mode) {
+  _histFundSort = mode;
+  ['default','score','rsi','m1'].forEach(m => {
+    const btn = document.getElementById('hsort-'+m);
+    if (!btn) return;
+    const active = m === mode;
+    btn.style.background = active ? 'var(--c0)' : '';
+    btn.style.color       = active ? 'var(--bg)' : '';
+    btn.style.borderColor = active ? 'var(--c0)' : '';
+  });
+  _renderHistFundList();
+}
+
 function _renderHistFundList() {
   const el = document.getElementById('hist-fund-list'); if (!el) return;
   const sigs = _signals || _marketData || MOCK_SIGNALS || {};
@@ -2016,8 +2030,17 @@ function _renderHistFundList() {
   // Show ALL funds — held/watched pinned at top, rest sorted alphabetically
   const allCodes = Object.keys(sigs);
   const priority = allCodes.filter(c => held.has(c) || watched.has(c));
-  const rest = allCodes.filter(c => !held.has(c) && !watched.has(c)).sort();
-  const funds = [...priority, ...rest];
+  const rest = allCodes.filter(c => !held.has(c) && !watched.has(c));
+  // Apply sort mode
+  const sortFn = {
+    score: (a, b) => (sigs[b]?.score || 0) - (sigs[a]?.score || 0),
+    rsi:   (a, b) => (sigs[a]?.rsi ?? 50) - (sigs[b]?.rsi ?? 50),  // lowest RSI first (oversold)
+    m1:    (a, b) => (sigs[b]?.chg30 ?? -999) - (sigs[a]?.chg30 ?? -999),  // best 1M return first
+    default: (a, b) => a.localeCompare(b),
+  }[_histFundSort] || ((a, b) => a.localeCompare(b));
+  const funds = _histFundSort === 'default'
+    ? [...priority, ...rest.sort()]
+    : [...allCodes].sort(sortFn);  // ignore held/watched pin when user picks explicit sort
   const countEl = document.getElementById('hist-fund-count');
   if (countEl) countEl.textContent = funds.length + ' quỹ';
   if (!allCodes.length) { el.innerHTML='<div style="color:var(--txt2);font-size:12px;padding:16px;text-align:center">Đang tải dữ liệu...</div>'; return; }
@@ -3411,4 +3434,16 @@ document.addEventListener('DOMContentLoaded', () => {
   if (tradeDateEl) tradeDateEl.addEventListener('change', checkNavMismatch);
   loadMe();
   loadMarket();
+  // Keyboard shortcut: '/' focuses market search (skip if already in input)
+  document.addEventListener('keydown', e => {
+    if (e.key === '/' && !['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)) {
+      const search = document.getElementById('market-search');
+      if (search) { e.preventDefault(); search.focus(); search.select(); }
+    }
+    // Escape clears search
+    if (e.key === 'Escape') {
+      const search = document.getElementById('market-search');
+      if (search && document.activeElement === search) { search.value = ''; search.blur(); renderMarket(); }
+    }
+  });
 });

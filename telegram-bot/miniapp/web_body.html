@@ -332,27 +332,41 @@
       </div><!-- /.trade-form-area -->
     </div>
 
-    <!-- CỘT PHẢI: DCA + Dự báo vàng -->
+    <!-- CỘT PHẢI: DCA (mở rộng) + Dự báo vàng (riêng biệt) -->
     <div class="trade-col trade-col-right">
-      <div class="col-head"><div class="col-title">KẾ HOẠCH ĐẦU TƯ</div></div>
-      <div style="padding:0 12px 16px">
-        <div style="font-family:var(--mono);font-size:9px;color:var(--txt3);text-transform:uppercase;letter-spacing:.08em;padding:10px 0 6px">Chiến lược DCA</div>
-        <div class="style-grid">
-          <button class="style-btn active" onclick="setDcaStyle('dca',this)">DCA<span>Cố định</span></button>
-          <button class="style-btn" onclick="setDcaStyle('vca',this)">VCA<span>Linh hoạt</span></button>
-          <button class="style-btn" onclick="setDcaStyle('ca',this)">CA<span>Trung bình</span></button>
-          <button class="style-btn" onclick="setDcaStyle('lump',this)">LUMP<span>1 lần</span></button>
-          <button class="style-btn" onclick="setDcaStyle('smart',this)">SMART<span>AI mix</span></button>
-        </div>
-        <div id="dca-style-desc" class="style-desc"></div>
-        <div class="budget-row">
-          <input type="text" id="dca-budget" placeholder="Tổng ngân sách (₫)">
-          <button class="btn btn-primary" onclick="calcDCA()" style="margin:0;width:auto;padding:10px 16px">Tính</button>
-        </div>
-        <div id="dca-content"><div style="font-size:12px;color:var(--txt2);text-align:center;padding:16px">Nhập ngân sách và nhấn Tính</div></div>
 
-        <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--bdr)">
-          <div class="col-title" style="font-size:10px;margin-bottom:8px">DỰ BÁO &amp; PHÂN TÍCH VÀNG</div>
+      <!-- ── SECTION A: KẾ HOẠCH ĐẦU TƯ CCQ ── -->
+      <div class="col-head">
+        <div class="col-head-row">
+          <div class="col-title">KẾ HOẠCH ĐẦU TƯ</div>
+          <button onclick="openWatchModal()" title="Quản lý quỹ theo dõi" style="background:none;border:none;color:var(--txt3);cursor:pointer;font-size:15px;line-height:1;padding:2px 4px">&#x1F441;</button>
+        </div>
+      </div>
+      <div class="trade-right-dca">
+        <div style="padding:10px 12px">
+          <div style="font-family:var(--mono);font-size:9px;color:var(--txt3);text-transform:uppercase;letter-spacing:.08em;padding:2px 0 6px">Chiến lược DCA</div>
+          <div class="style-grid">
+            <button class="style-btn active" onclick="setDcaStyle('dca',this)">DCA<span>Cố định</span></button>
+            <button class="style-btn" onclick="setDcaStyle('vca',this)">VCA<span>Linh hoạt</span></button>
+            <button class="style-btn" onclick="setDcaStyle('ca',this)">CA<span>Trung bình</span></button>
+            <button class="style-btn" onclick="setDcaStyle('lump',this)">LUMP<span>1 lần</span></button>
+            <button class="style-btn" onclick="setDcaStyle('smart',this)">SMART<span>AI mix</span></button>
+          </div>
+          <div id="dca-style-desc" class="style-desc"></div>
+          <div class="budget-row">
+            <input type="text" id="dca-budget" placeholder="Tổng ngân sách (₫)">
+            <button class="btn btn-primary" onclick="calcDCA()" style="margin:0;width:auto;padding:10px 16px">Tính</button>
+          </div>
+          <div id="dca-content"><div style="font-size:12px;color:var(--txt3);text-align:center;padding:24px 0">Nhập ngân sách và nhấn <b style="color:var(--txt2)">Tính</b></div></div>
+        </div>
+      </div>
+
+      <!-- ── SECTION B: DỰ BÁO & PHÂN TÍCH VÀNG ── -->
+      <div class="col-head col-head-gold">
+        <div class="col-title" style="color:#fbbf24">DỰ BÁO &amp; PHÂN TÍCH VÀNG</div>
+      </div>
+      <div class="trade-right-gold">
+        <div style="padding:10px 12px 12px">
           <!-- Gold school selector -->
           <div class="type-toggle" style="margin-bottom:8px;grid-template-columns:1fr 1fr 1fr">
             <button class="type-btn gp-school-btn" onclick="setGoldSchool('short',this)">Lướt sóng</button>
@@ -366,17 +380,14 @@
             <div><label style="font-size:9px">BTC/USD</label><input type="text" id="gp-btc" placeholder="95000" style="font-size:11px;padding:5px 8px"></div>
             <div><label style="font-size:9px">Lạm phát %</label><input type="text" id="gp-inflation" placeholder="4" style="font-size:11px;padding:5px 8px"></div>
           </div>
-          <div style="display:flex;gap:6px;margin-bottom:6px">
+          <div style="display:flex;gap:6px;margin-bottom:8px">
             <button class="btn btn-primary" onclick="runGoldPrediction()" style="flex:1;margin:0;padding:8px">Tính</button>
             <button onclick="autoFillMarketData()" style="padding:8px 10px;background:var(--bg3);border:1px solid var(--bdr);color:var(--txt2);border-radius:8px;cursor:pointer;font-size:11px;white-space:nowrap">&#x21BB; Auto-fill</button>
           </div>
           <div id="gold-dca-content"></div>
         </div>
-        <!-- Watch funds shortcut -->
-        <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--bdr)">
-          <button onclick="openWatchModal()" style="width:100%;padding:9px;background:var(--bg3);border:1px solid var(--bdr);color:var(--txt2);border-radius:8px;cursor:pointer;font-size:12px;font-family:var(--sans)">&#x1F441; Quản lý quỹ theo dõi</button>
-        </div>
       </div>
+
     </div>
 
   </div><!-- /.trade-grid -->
@@ -419,7 +430,7 @@
             <div class="card-title" style="margin-bottom:8px">MÃ ƯU ĐÃI</div>
             <div style="display:flex;gap:8px">
               <input type="text" id="acc-promo-input" placeholder="Nhập mã..." style="text-transform:uppercase">
-              <button class="btn btn-primary" style="width:auto;margin:0;padding:0 14px" onclick="redeemPromoCode('acc')">Áp dụng</button>
+              <button class="btn btn-primary" style="width:auto;margin:0;padding:0 14px;white-space:nowrap;flex-shrink:0" onclick="redeemPromoCode('acc')">Áp dụng</button>
             </div>
             <div id="acc-promo-status" style="font-size:12px;margin-top:6px"></div>
           </div>
@@ -539,6 +550,12 @@
         <div class="col-head-row">
           <div class="col-title">CHỌN QUỸ PHÂN TÍCH</div>
           <span id="hist-fund-count" style="font-size:10px;color:var(--txt2)"></span>
+        </div>
+        <div style="display:flex;gap:4px;padding:4px 0 2px;flex-wrap:wrap">
+          <button onclick="_setHistSort('default')" id="hsort-default" class="col-action" style="font-size:9px;padding:2px 7px;border-radius:4px;background:var(--c0);color:var(--bg)">Mặc định</button>
+          <button onclick="_setHistSort('score')"   id="hsort-score"   class="col-action" style="font-size:9px;padding:2px 7px;border-radius:4px">Score ↓</button>
+          <button onclick="_setHistSort('rsi')"     id="hsort-rsi"     class="col-action" style="font-size:9px;padding:2px 7px;border-radius:4px">RSI quá bán</button>
+          <button onclick="_setHistSort('m1')"      id="hsort-m1"      class="col-action" style="font-size:9px;padding:2px 7px;border-radius:4px">1T tốt nhất</button>
         </div>
       </div>
       <!-- Fund signal rows — JS renders -->
