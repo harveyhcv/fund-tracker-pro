@@ -2392,18 +2392,44 @@ function renderHistChart(pts, code) {
   grad.addColorStop(0,'rgba(0,229,255,.3)'); grad.addColorStop(1,'rgba(0,229,255,0)');
   const _ma=(arr,n)=>arr.map((_,i)=>i<n-1?null:arr.slice(i-n+1,i+1).reduce((a,b)=>a+b,0)/n);
   const ma20=_ma(vals,20), ma50=_ma(vals,50);
+  // Transaction overlays: use cached _tradeLog (loaded when Giao Dịch tab opened)
+  const txBuy = [], txSell = [];
+  if (Array.isArray(_tradeLog)) {
+    const labelSet = new Set(labels);
+    _tradeLog.filter(t => t.fund_code === code).forEach(t => {
+      const d = (t.date||'').slice(0,10);
+      if (!labelSet.has(d)) return;
+      const navAtDate = filtered[labels.indexOf(d)]?.nav ?? vals[labels.indexOf(d)];
+      if (navAtDate == null) return;
+      const pt = {x: d, y: navAtDate};
+      if (t.type === 'buy') txBuy.push(pt); else txSell.push(pt);
+    });
+  }
+  const txDatasets = [
+    ...(txBuy.length ? [{
+      type:'scatter', label:'Mua', data:txBuy,
+      backgroundColor:'rgba(74,222,128,0.9)', borderColor:'#4ade80', borderWidth:1.5,
+      pointRadius:5, pointStyle:'triangle', pointHoverRadius:7, order:0
+    }] : []),
+    ...(txSell.length ? [{
+      type:'scatter', label:'Bán', data:txSell,
+      backgroundColor:'rgba(248,113,113,0.9)', borderColor:'#f87171', borderWidth:1.5,
+      pointRadius:5, pointStyle:'triangle', rotation:180, pointHoverRadius:7, order:0
+    }] : [])
+  ];
   _histPageChart = new Chart(ctx, {
     type:'line',
     data:{labels, datasets:[
       {data:vals, label:'NAV', borderColor:'#00e5ff', borderWidth:1.5, fill:true, backgroundColor:grad, tension:0.35, pointRadius:0, pointHoverRadius:4},
       {data:ma20, label:'MA20', borderColor:'rgba(250,204,21,0.7)', borderWidth:1, fill:false, tension:0.3, pointRadius:0, spanGaps:true},
-      {data:ma50, label:'MA50', borderColor:'rgba(74,222,128,0.7)', borderWidth:1, fill:false, tension:0.3, pointRadius:0, spanGaps:true}
+      {data:ma50, label:'MA50', borderColor:'rgba(74,222,128,0.7)', borderWidth:1, fill:false, tension:0.3, pointRadius:0, spanGaps:true},
+      ...txDatasets
     ]},
     options:{responsive:true, maintainAspectRatio:false, animation:false,
-      plugins:{legend:{display:vals.length>50, labels:{color:'#6b7280',font:{size:9},boxWidth:12,padding:8}},
+      plugins:{legend:{display:vals.length>50||(txBuy.length+txSell.length>0), labels:{color:'#6b7280',font:{size:9},boxWidth:12,padding:8, filter:(item)=>item.text!=='NAV'||vals.length>50}},
         tooltip:{mode:'index',intersect:false, callbacks:{label:(c)=>c.dataset.label==='NAV'?`NAV: ${fmt(Math.round(c.parsed.y))} đ`:`${c.dataset.label}: ${fmt(Math.round(c.parsed.y))}`}},
         crosshair:_crosshairPlugin},
-      scales:{x:{ticks:{maxTicksLimit:8,color:'#6b7280',font:{size:10}},grid:{color:'rgba(255,255,255,.04)'}}, y:{ticks:{color:'#6b7280',font:{size:10}, callback:v=>fmt(Math.round(v))},grid:{color:'rgba(255,255,255,.04)'}}}}
+      scales:{x:{type:'category',ticks:{maxTicksLimit:8,color:'#6b7280',font:{size:10}},grid:{color:'rgba(255,255,255,.04)'}}, y:{ticks:{color:'#6b7280',font:{size:10}, callback:v=>fmt(Math.round(v))},grid:{color:'rgba(255,255,255,.04)'}}}}
   });
 }
 function applyHistDateRange() {
@@ -3323,8 +3349,14 @@ function _renderHistAnalysis(code) {
       </div>
     </div>
     ${details.length ? `<div style="background:var(--bg3);border-radius:6px;padding:8px 12px">
-      <div style="font-size:9px;color:var(--txt3);margin-bottom:4px">Chi ti\u1ebft t\u00ednh \u0111i\u1ec3m</div>
-      <div style="font-size:10px;color:var(--txt2);line-height:1.7">${details.join(' &nbsp;\u00b7&nbsp; ')}</div>
+      <div style="font-size:9px;color:var(--txt3);margin-bottom:6px">Chi ti\u1ebft t\u00ednh \u0111i\u1ec3m</div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px">${details.map(d => {
+        const isBull = /qu\u00e1 b\u00e1n|\u0111\u00e1y|\u25b2|mua|t\u00edch c\u1ef1c|h\u1ed7 tr\u1ee3/.test(d);
+        const isBear = /qu\u00e1 mua|\u0111\u1ec9nh|\u25bc|b\u00e1n|c\u1ea9n th\u1eadn|cao|tr\u00ean band/.test(d);
+        const bg = isBull ? '#4ade8022' : isBear ? '#f8717122' : 'var(--bg2)';
+        const col = isBull ? 'var(--buy)' : isBear ? 'var(--sell)' : 'var(--txt2)';
+        return `<span style="display:inline-block;background:${bg};color:${col};border:1px solid ${col}44;border-radius:12px;padding:2px 8px;font-size:10px;font-family:var(--mono)">${d}</span>`;
+      }).join('')}</div>
     </div>` : ''}`) : '';
 
   // ── 7. PREDICTION ──
