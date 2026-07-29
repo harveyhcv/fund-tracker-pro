@@ -2690,85 +2690,162 @@ function renderUnifiedHistory() {
   all.sort((a,b)=>(b.trade_date||b.date||'').localeCompare(a.trade_date||a.date||''));
   if(!all.length) { el.innerHTML='<div style="text-align:center;color:var(--txt2);padding:24px">Không có giao dịch nào.</div>'; return; }
 
-  // ── Fund summary cards ──
-  const fundStats = _buildTradeSummary(all);
+  // ── Lookup helpers ──
+  const pfItems = _me?.portfolio?.items || _me?.items || [];
   const pfByCode = {};
-  (_me?.items||[]).forEach(it=>{ pfByCode[it.fund_code]=it; });
-  const mktByCode = {};
-  (_marketData?.signals||[]).forEach(s=>{ mktByCode[s.code]=s; });
-  let summaryHtml = '';
-  const fundCodes = Object.keys(fundStats).sort();
-  if (fundCodes.length && assetF !== 'gold' && !codeF) {
-    let totalNetInvested=0, totalUnrealPnl=0, totalRealizedPnl=0;
-    const cards = fundCodes.map(c => {
-      const s = fundStats[c];
-      const pf = pfByCode[c];
-      const currNav = pf?.current_nav || mktByCode[c]?.nav || 0;
-      const netUnits = s.buyUnits - s.sellUnits;
-      const netInvested = s.buyAmt - s.sellAmt; // remaining cost basis approx
-      const mktVal = currNav > 0 && netUnits > 0 ? netUnits * currNav : 0;
-      const unrealPnl = pf ? (pf.pnl_amount || (mktVal - (pf.avg_cost||0) * netUnits)) : (mktVal - Math.max(0, netInvested));
-      const realizedPnl = s.sellAmt - (s.sellUnits / Math.max(s.buyUnits, 0.0001)) * s.buyAmt;
-      totalNetInvested += s.buyAmt;
-      totalUnrealPnl   += (mktVal > 0 ? unrealPnl : 0);
-      totalRealizedPnl += realizedPnl;
-      const holding = netUnits > 0.001;
-      const pnlColor = unrealPnl >= 0 ? 'var(--buy)' : 'var(--sell)';
-      const sig = mktByCode[c];
-      const sigBadge = sig?.signal ? `<span style="font-size:9px;padding:1px 5px;border-radius:3px;background:${sig.signal==='buy'?'#4ade8022':sig.signal==='sell'?'#f8717122':'#facc1522'};color:${sig.signal==='buy'?'var(--buy)':sig.signal==='sell'?'var(--sell)':'#facc15'};border:1px solid currentColor">${sig.signal==='buy'?'MUA':sig.signal==='sell'?'BÁN':'HOLD'}</span>` : '';
-      return `<div style="background:var(--bg3);border-radius:8px;padding:10px 12px;min-width:130px;flex:1">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-          <span style="font-family:var(--mono);font-size:12px;font-weight:700;color:var(--txt1)">${c}</span>
-          ${sigBadge}
-        </div>
-        <div style="font-size:9px;color:var(--txt3);margin-bottom:6px">${s.txCount} giao dịch · ${holding?'Đang nắm':'Đã đóng'}</div>
-        <div style="font-size:10px;color:var(--txt2)">Đã mua: <b style="color:var(--txt1);font-family:var(--mono)">${(s.buyAmt/1e6).toFixed(1)}M</b></div>
-        ${holding && mktVal > 0 ? `<div style="font-size:10px;color:var(--txt2)">Giá trị hiện tại: <b style="font-family:var(--mono);color:var(--c0)">${(mktVal/1e6).toFixed(1)}M</b></div>
-        <div style="font-size:11px;font-weight:700;color:${pnlColor};margin-top:4px">${unrealPnl>=0?'+':''}${(unrealPnl/1e6).toFixed(2)}M (${unrealPnl/Math.max(s.buyAmt,1)*100>=0?'+':''}${(unrealPnl/Math.max(s.buyAmt,1)*100).toFixed(1)}%)</div>` : ''}
-        ${realizedPnl !== 0 ? `<div style="font-size:10px;color:${realizedPnl>=0?'var(--buy)':'var(--sell)'}">Thực hiện: ${realizedPnl>=0?'+':''}${(realizedPnl/1e3).toFixed(0)}k</div>` : ''}
-      </div>`;
-    });
-    const totPnlC = totalUnrealPnl >= 0 ? 'var(--buy)' : 'var(--sell)';
-    summaryHtml = `<div style="margin-bottom:12px">
-      <div style="font-size:10px;color:var(--txt3);font-family:var(--mono);letter-spacing:.07em;margin-bottom:8px">TỔNG KẾT THEO QUỸ</div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;margin-bottom:10px">${cards.join('')}</div>
-      <div style="background:var(--bg3);border-radius:8px;padding:10px 14px;display:flex;gap:24px;flex-wrap:wrap">
-        <div><div style="font-size:9px;color:var(--txt3)">Tổng đã mua</div><div style="font-family:var(--mono);font-size:13px;font-weight:700">${(totalNetInvested/1e6).toFixed(1)}M đ</div></div>
-        <div><div style="font-size:9px;color:var(--txt3)">Lãi/lỗ chưa thực hiện</div><div style="font-family:var(--mono);font-size:13px;font-weight:700;color:${totPnlC}">${totalUnrealPnl>=0?'+':''}${(totalUnrealPnl/1e6).toFixed(2)}M đ</div></div>
-        ${totalRealizedPnl !== 0 ? `<div><div style="font-size:9px;color:var(--txt3)">Lãi/lỗ đã thực hiện</div><div style="font-family:var(--mono);font-size:13px;font-weight:700;color:${totalRealizedPnl>=0?'var(--buy)':'var(--sell)'}">${totalRealizedPnl>=0?'+':''}${(totalRealizedPnl/1e3).toFixed(0)}k đ</div></div>` : ''}
-      </div>
-      <div style="font-size:10px;color:var(--txt3);margin-top:6px;margin-bottom:12px;border-bottom:1px solid var(--bdr);padding-bottom:12px">LỊCH SỬ GIAO DỊCH</div>
-    </div>`;
+  pfItems.forEach(it => { pfByCode[it.code || it.fund_code] = it; });
+  const sigByCode = _signals || _marketData || {};
+
+  // ── Build per-fund grouped transactions ──
+  const ccqTrades = all.filter(t => t._asset === 'ccq');
+  const goldTrades = all.filter(t => t._asset === 'gold');
+  const fundGroups = {}; // { code: [trades...] }
+  for (const t of ccqTrades) {
+    const c = t.fund_code || '?';
+    if (!fundGroups[c]) fundGroups[c] = [];
+    fundGroups[c].push(t);
   }
-  let html = summaryHtml;
-  for (const t of all) {
-    const isGold=t._asset==='gold';
-    const code=isGold?(t.gold_product||'VÀNG'):t.fund_code||'';
-    const date=t.trade_date||t.date||'';
-    const typeLabel=t.trade_type==='buy'?'MUA':t.trade_type==='sell'?'BÁN':t.trade_type==='dividend'?'LỢI TỨC':(t.trade_type||'').toUpperCase();
-    const typeC=t.trade_type==='buy'?'var(--buy)':t.trade_type==='sell'?'var(--sell)':'var(--c0)';
-    const amt=isGold?`${t.units||t.qty||0}L × ${fmt(t.price||t.price_per_luong)}`:`${fmt(t.amount)} đ`;
-    const isVirtual=!!t._virtual;
-    const mismatch=(!isGold&&!t.trade_type?.includes('dividend')&&t.nav_mismatch)?'<div style="font-size:10px;color:#facc15;margin-top:2px">⚠ Giá lệch NAV DB</div>':'';
-    const navInfo=(!isGold&&t.nav&&t.trade_type!=='dividend')?`<span style="font-family:var(--mono);font-size:10px;color:var(--txt2)"> · NAV ${fmt(t.nav)}</span>`:'';
-    const virtualBadge=isVirtual?`<span style="font-size:9px;color:var(--txt2);border:1px solid var(--bdr);border-radius:3px;padding:0 3px;margin-left:4px">Nhập từ Bot</span>`:'';
-    const actions=isVirtual
-      ? `<div class="tlog-actions"><span style="font-size:10px;color:var(--txt2)">—</span></div>`
+  const fundStats = _buildTradeSummary(all);
+
+  // ── Global totals ──
+  let totalInvested = 0, totalUnreal = 0, totalRealized = 0;
+  for (const [c, s] of Object.entries(fundStats)) {
+    const pf = pfByCode[c];
+    const sig = sigByCode[c];
+    const currNav = pf?.current_nav || pf?.nav || sig?.nav || 0;
+    const netUnits = s.buyUnits - s.sellUnits;
+    const mktVal = currNav > 0 && netUnits > 0 ? netUnits * currNav : 0;
+    const unrealPnl = pf?.pnl_amount != null
+      ? pf.pnl_amount
+      : mktVal > 0 ? mktVal - Math.max(0, s.buyAmt - s.sellAmt) : 0;
+    const realPnl = s.sellUnits > 0
+      ? s.sellAmt - (s.sellUnits / Math.max(s.buyUnits, 0.0001)) * s.buyAmt
+      : 0;
+    totalInvested += s.buyAmt;
+    if (mktVal > 0) totalUnreal += unrealPnl;
+    totalRealized += realPnl;
+  }
+
+  // ── Render one transaction row ──
+  function _txRow(t) {
+    const isGold = t._asset === 'gold';
+    const code = isGold ? (t.gold_product || 'VÀNG') : t.fund_code || '';
+    const date = t.trade_date || t.date || '';
+    const typeLabel = t.trade_type === 'buy' ? 'MUA' : t.trade_type === 'sell' ? 'BÁN' : t.trade_type === 'dividend' ? 'LỢI TỨC' : (t.trade_type||'').toUpperCase();
+    const typeC = t.trade_type === 'buy' ? 'var(--buy)' : t.trade_type === 'sell' ? 'var(--sell)' : 'var(--c0)';
+    const amt = isGold ? `${t.units||t.qty||0}L × ${fmt(t.price||t.price_per_luong)}` : `${fmt(t.amount)} đ`;
+    const isVirtual = !!t._virtual;
+    const mismatch = (!isGold && !t.trade_type?.includes('dividend') && t.nav_mismatch) ? '<div style="font-size:10px;color:#facc15;margin-top:2px">⚠ Giá lệch NAV DB</div>' : '';
+    const navInfo = (!isGold && t.nav && t.trade_type !== 'dividend') ? `<span style="font-family:var(--mono);font-size:10px;color:var(--txt3)"> · NAV ${fmt(t.nav)}</span>` : '';
+    const virtualBadge = isVirtual ? `<span style="font-size:9px;color:var(--txt2);border:1px solid var(--bdr);border-radius:3px;padding:0 3px;margin-left:4px">Bot</span>` : '';
+    const actions = isVirtual
+      ? `<span style="font-size:10px;color:var(--txt2)">—</span>`
       : isGold
-        ? `<div class="tlog-actions"><button class="tlog-btn" onclick="openEditGoldModal(${t.id||t._idx})" title="Sửa">✏️</button><button class="tlog-btn tlog-del" onclick="confirmDeleteGoldTrade(${t.id||t._idx})" title="Xoá">🗑️</button></div>`
-        : `<div class="tlog-actions"><button class="tlog-btn" onclick="openEditModal(${t.id||t._idx})" title="Sửa">✏️</button><button class="tlog-btn tlog-del" onclick="confirmDeleteTrade(${t.id||t._idx})" title="Xoá">🗑️</button></div>`;
-    html+=`<div class="tlog-row">
-      <div class="tlog-left">
-        <div class="tlog-code">${code}${virtualBadge} <span style="font-size:11px;color:${typeC}">${typeLabel}</span></div>
-        <div class="tlog-meta">${date} · ${amt}${navInfo}</div>
-        ${t.note||t.name?`<div class="tlog-meta" style="color:var(--txt2)">${t.note||t.name}</div>`:''}
+        ? `<div style="display:flex;gap:4px"><button class="tlog-btn" onclick="openEditGoldModal(${t.id||t._idx})" title="Sửa">✏️</button><button class="tlog-btn tlog-del" onclick="confirmDeleteGoldTrade(${t.id||t._idx})" title="Xoá">🗑️</button></div>`
+        : `<div style="display:flex;gap:4px"><button class="tlog-btn" onclick="openEditModal(${t.id||t._idx})" title="Sửa">✏️</button><button class="tlog-btn tlog-del" onclick="confirmDeleteTrade(${t.id||t._idx})" title="Xoá">🗑️</button></div>`;
+    return `<div style="display:flex;align-items:flex-start;justify-content:space-between;padding:8px 14px;border-bottom:1px solid var(--bdr);gap:8px">
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <span style="font-size:11px;font-weight:700;color:${typeC}">${typeLabel}</span>
+          ${virtualBadge}
+          <span style="font-family:var(--mono);font-size:11px;color:var(--txt1)">${amt}</span>
+          ${navInfo}
+        </div>
+        <div style="font-size:10px;color:var(--txt3);margin-top:2px">${date}${t.note||t.name?` · <span style="color:var(--txt2)">${t.note||t.name}</span>`:''}</div>
         ${mismatch}
       </div>
-      ${actions}
+      <div style="flex-shrink:0;margin-top:2px">${actions}</div>
     </div>`;
   }
-  el.innerHTML = html;
+
+  // ── Render per-fund group card ──
+  function _fundGroupCard(c) {
+    const s = fundStats[c] || {buyAmt:0,buyUnits:0,sellAmt:0,sellUnits:0,divAmt:0,txCount:0};
+    const pf = pfByCode[c];
+    const sig = sigByCode[c];
+    const currNav = pf?.current_nav || pf?.nav || sig?.nav || 0;
+    const netUnits = s.buyUnits - s.sellUnits;
+    const netInvested = s.buyAmt - s.sellAmt;
+    const mktVal = currNav > 0 && netUnits > 0 ? netUnits * currNav : 0;
+    const unrealPnl = pf?.pnl_amount != null
+      ? pf.pnl_amount
+      : mktVal > 0 ? mktVal - Math.max(0, netInvested) : 0;
+    const unrealPct = mktVal > 0 ? unrealPnl / Math.max(mktVal - unrealPnl, 1) * 100 : 0;
+    const realPnl = s.sellUnits > 0
+      ? s.sellAmt - (s.sellUnits / Math.max(s.buyUnits, 0.0001)) * s.buyAmt
+      : 0;
+    const holding = netUnits > 0.001;
+    const pnlC = unrealPnl >= 0 ? 'var(--buy)' : 'var(--sell)';
+    const sigVal = sig?.signal || '';
+    const sigClass = sigVal.includes('MUA') ? 'buy' : sigVal.includes('BÁN') ? 'sell' : 'hold';
+    const sigBadge = sigVal && sigVal !== 'N/A' ? `<span class="badge ${sigClass}" style="font-size:9px;padding:1px 6px">${sigVal}</span>` : '';
+    const rsi = sig?.rsi;
+    const rsiHint = rsi != null ? `RSI ${rsi.toFixed(0)}` : '';
+    const chg30 = sig?.chg30;
+    const chg30Html = chg30 != null
+      ? `<span style="font-size:9px;font-family:var(--mono);color:${chg30>=0?'var(--buy)':'var(--sell)'}">${chg30>=0?'+':''}${chg30.toFixed(1)}% 1T</span>`
+      : '';
+    const trades = fundGroups[c] || [];
+    const gid = 'fg_' + c.replace(/[^a-z0-9]/gi, '_');
+    return `<div style="background:var(--bg2);border-radius:10px;overflow:hidden;border:1px solid var(--bdr);margin-bottom:10px">
+      <!-- Fund group header -->
+      <div onclick="(function(){var el=document.getElementById('${gid}');if(el){var open=el.style.display==='none';el.style.display=open?'block':'none';var arr=document.getElementById('${gid}_arr');if(arr)arr.textContent=open?'▲':'▼'}})()" style="cursor:pointer;padding:12px 14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;border-left:3px solid ${holding?'var(--c0)':'var(--bdr)'}">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">
+            <span style="font-family:var(--mono);font-size:14px;font-weight:700;color:var(--c0)">${c}</span>
+            ${sigBadge}
+            <span style="font-size:9px;color:var(--txt3)">${s.txCount} giao dịch · ${holding?'Đang nắm':'Đã đóng'}</span>
+          </div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+            <span style="font-size:11px;color:var(--txt2)">Đã mua: <b style="font-family:var(--mono);color:var(--txt1)">${(s.buyAmt/1e6).toFixed(1)}M</b></span>
+            ${holding && mktVal > 0 ? `<span style="font-size:11px;color:var(--txt2)">Hiện tại: <b style="font-family:var(--mono);color:var(--c0)">${(mktVal/1e6).toFixed(1)}M</b></span>` : ''}
+            ${holding && mktVal > 0 ? `<span style="font-size:12px;font-weight:700;color:${pnlC}">${unrealPnl>=0?'+':''}${(unrealPnl/1e6).toFixed(2)}M (${unrealPct>=0?'+':''}${unrealPct.toFixed(1)}%)</span>` : ''}
+            ${realPnl !== 0 ? `<span style="font-size:10px;color:${realPnl>=0?'var(--buy)':'var(--sell)'}">Thực hiện: ${realPnl>=0?'+':''}${(realPnl/1e3).toFixed(0)}k</span>` : ''}
+            ${chg30Html}
+            ${rsiHint ? `<span style="font-size:9px;color:var(--txt3);font-family:var(--mono)">${rsiHint}</span>` : ''}
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+          <button onclick="event.stopPropagation();openResearch('${c}')" style="background:none;border:1px solid var(--bdr);color:var(--txt2);border-radius:5px;padding:3px 8px;font-size:10px;cursor:pointer">📊 Phân tích</button>
+          <span id="${gid}_arr" style="color:var(--txt3);font-size:11px">▼</span>
+        </div>
+      </div>
+      <!-- Transactions list (collapsed by default if >3 trades) -->
+      <div id="${gid}" style="display:${trades.length > 3 ? 'none' : 'block'}">
+        ${trades.map(_txRow).join('')}
+      </div>
+      ${trades.length > 3 ? `<div onclick="(function(){var el=document.getElementById('${gid}');var arr=document.getElementById('${gid}_arr');if(el.style.display==='none'){el.style.display='block';if(arr)arr.textContent='▲'}else{el.style.display='none';if(arr)arr.textContent='▼'}})()" style="cursor:pointer;padding:6px 14px;font-size:10px;color:var(--txt3);text-align:center;border-top:1px solid var(--bdr)">▼ ${trades.length} giao dịch — bấm để xem</div>` : ''}
+    </div>`;
+  }
+
+  // ── Gold group ──
+  function _goldGroup() {
+    if (!goldTrades.length) return '';
+    return `<div style="background:var(--bg2);border-radius:10px;overflow:hidden;border:1px solid #fbbf2433;margin-bottom:10px">
+      <div style="padding:12px 14px;border-left:3px solid #fbbf24;display:flex;align-items:center;gap:8px">
+        <span style="font-size:14px;font-weight:700;color:#fbbf24;font-family:var(--mono)">🥇 VÀNG</span>
+        <span style="font-size:9px;color:var(--txt3)">${goldTrades.length} giao dịch</span>
+      </div>
+      ${goldTrades.map(_txRow).join('')}
+    </div>`;
+  }
+
+  // ── Global summary bar ──
+  const totPnlC = totalUnreal >= 0 ? 'var(--buy)' : 'var(--sell)';
+  const summaryBar = (assetF !== 'gold' && !codeF) ? `<div style="background:var(--bg3);border-radius:8px;padding:10px 14px;margin-bottom:14px;display:flex;gap:20px;flex-wrap:wrap">
+    <div><div style="font-size:9px;color:var(--txt3)">Tổng đã mua (CCQ)</div><div style="font-family:var(--mono);font-size:14px;font-weight:700">${(totalInvested/1e6).toFixed(1)}M đ</div></div>
+    ${totalUnreal !== 0 ? `<div><div style="font-size:9px;color:var(--txt3)">Lãi/lỗ chưa thực hiện</div><div style="font-family:var(--mono);font-size:14px;font-weight:700;color:${totPnlC}">${totalUnreal>=0?'+':''}${(totalUnreal/1e6).toFixed(2)}M đ</div></div>` : ''}
+    ${totalRealized !== 0 ? `<div><div style="font-size:9px;color:var(--txt3)">Lãi/lỗ đã thực hiện</div><div style="font-family:var(--mono);font-size:13px;font-weight:700;color:${totalRealized>=0?'var(--buy)':'var(--sell)'}">${totalRealized>=0?'+':''}${(totalRealized/1e3).toFixed(0)}k đ</div></div>` : ''}
+  </div>` : '';
+
+  // ── Render ──
+  const fundCodes = Object.keys(fundGroups).sort();
+  const fundHtml = (assetF !== 'gold' && ccqTrades.length)
+    ? fundCodes.map(_fundGroupCard).join('')
+    : '';
+  el.innerHTML = summaryBar + fundHtml + _goldGroup();
 }
+
 
 // ── DCA ────────────────────────────────────────────────────────────────────────
 function setDcaStyle(style, el) {
