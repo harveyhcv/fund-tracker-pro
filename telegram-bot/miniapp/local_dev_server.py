@@ -302,10 +302,11 @@ def calc_signal(code: str, pts: list) -> dict:
     last = navs[-1]; prev = navs[-2] if len(navs)>=2 else last
     chg_pct = round((last-prev)/prev*100, 2) if prev else 0
     # chg7: 7 trading days = index -8 (8th from last = 7 intervals)
-    chg7  = round((last/navs[-8] -1)*100, 2) if len(navs)>=8  else None
-    chg30 = round((last/navs[-22]-1)*100, 2) if len(navs)>=22 else None
-    chg90 = round((last/navs[-65]-1)*100, 2) if len(navs)>=65 else None
-    chg1y = round((last/navs[-252]-1)*100,2) if len(navs)>=252 else None
+    chg7   = round((last/navs[-8]  -1)*100, 2) if len(navs)>=8   else None
+    chg30  = round((last/navs[-22] -1)*100, 2) if len(navs)>=22  else None
+    chg90  = round((last/navs[-65] -1)*100, 2) if len(navs)>=65  else None
+    chg180 = round((last/navs[-130]-1)*100, 2) if len(navs)>=130 else None
+    chg1y  = round((last/navs[-252]-1)*100, 2) if len(navs)>=252 else None
 
     # Volatility (annualized 20-day std of daily returns)
     vol_ann = None
@@ -323,7 +324,7 @@ def calc_signal(code: str, pts: list) -> dict:
     if fund_type == "money_market":
         return {"signal":"TRUNG LẬP","score":0,"rsi":None,"bb_pct":None,"macd_hist":None,
                 "nav":last,"nav_date":pts_clean[-1]["date"],"chg_pct":chg_pct,
-                "chg7":chg7,"chg30":chg30,"chg90":chg90,"chg1y":chg1y,
+                "chg7":chg7,"chg30":chg30,"chg90":chg90,"chg180":chg180,"chg1y":chg1y,
                 "vol_ann":vol_ann,"tech_reliability":"N/A","fund_type":fund_type,
                 "details":["Quỹ tiền tệ — NAV tăng ổn định, phân tích kỹ thuật không áp dụng"]}
 
@@ -332,7 +333,7 @@ def calc_signal(code: str, pts: list) -> dict:
     if prev > 0 and abs(chg_pct) > anomaly_threshold:
         return {"signal":"N/A","score":0,"rsi":None,"bb_pct":None,"macd_hist":None,
                 "nav":last,"nav_date":pts_clean[-1]["date"],"chg_pct":chg_pct,
-                "chg7":chg7,"chg30":chg30,"chg90":chg90,"chg1y":chg1y,
+                "chg7":chg7,"chg30":chg30,"chg90":chg90,"chg180":chg180,"chg1y":chg1y,
                 "vol_ann":vol_ann,"tech_reliability":tech_reliability,"fund_type":fund_type,
                 "nav_jump_anomaly":True,"details":[f"NAV jump {chg_pct:+.1f}% — có thể do sáp nhập/chia tách"]}
     score = 0; details = []
@@ -391,7 +392,7 @@ def calc_signal(code: str, pts: list) -> dict:
 
     return {"signal":sig, "score":score, "rsi":rsi, "bb_pct":bb_pct, "macd_hist":macd_hist,
             "nav":last, "nav_date":pts_clean[-1]["date"], "chg_pct":chg_pct,
-            "chg7":chg7, "chg30":chg30, "chg90":chg90, "chg1y":chg1y,
+            "chg7":chg7, "chg30":chg30, "chg90":chg90, "chg180":chg180, "chg1y":chg1y,
             "vol_ann":vol_ann, "tech_reliability":tech_reliability,
             "details":details, "fund_type":fund_type}
 
@@ -777,7 +778,7 @@ class Handler(BaseHTTPRequestHandler):
                 "nav": s["nav"], "nav_date": s["nav_date"],
                 "chg_pct": s["chg_pct"],
                 "chg7": s.get("chg7"), "chg30": s.get("chg30"),
-                "chg90": s.get("chg90"), "chg1y": s.get("chg1y"),
+                "chg90": s.get("chg90"), "chg180": s.get("chg180"), "chg1y": s.get("chg1y"),
                 "vol_ann": s.get("vol_ann"),
                 "tech_reliability": s.get("tech_reliability","MEDIUM"),
                 "rsi": rsi, "bb": bb, "macd": s["macd_hist"],

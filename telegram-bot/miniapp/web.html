@@ -1235,6 +1235,7 @@ let _allFundsList = {}, _watchToggleSet = new Set();
 let _goldSchool = 'dca';
 // History page state
 let _histPageCode = '', _histPageData = null, _histPageChart = null;
+let _histNavCache = {};  // code → sorted [{date,nav}] cached per fund for sparklines
 // Payment state
 let _paymentMethod = 'stars', _sepayRef = null, _sepayTimer = null;
 // Easter egg state
@@ -1543,6 +1544,30 @@ function _pfT2Summary(items) {
   return {pct: weightedPct/totalVal, count};
 }
 
+function _calcPfWeightedPerf(items) {
+  const totalVal = items.reduce((s, h) => s + (h.value || 0), 0);
+  if (!totalVal) return null;
+  let s1d = 0, s30 = 0, s90 = 0, s180 = 0, s1y = 0;
+  let n1d = 0, n30 = 0, n90 = 0, n180 = 0, n1y = 0;
+  for (const h of items) {
+    const v = h.value || 0; if (!v) continue;
+    const sig = _marketData?.[h.code] || _signals?.[h.code] || {};
+    const wt = v / totalVal;
+    if (sig.chg_pct != null) { s1d  += sig.chg_pct * wt;  n1d++;  }
+    if (sig.chg30   != null) { s30  += sig.chg30   * wt;  n30++;  }
+    if (sig.chg90   != null) { s90  += sig.chg90   * wt;  n90++;  }
+    if (sig.chg180  != null) { s180 += sig.chg180  * wt;  n180++; }
+    if (sig.chg1y   != null) { s1y  += sig.chg1y   * wt;  n1y++;  }
+  }
+  return {
+    d1:   n1d  ? s1d  : null,
+    m1:   n30  ? s30  : null,
+    m3:   n90  ? s90  : null,
+    m6:   n180 ? s180 : null,
+    y1:   n1y  ? s1y  : null,
+  };
+}
+
 function renderPortfolio(me) {
   renderPfBanner(); renderPfAlloc();
   const pf=me.portfolio;
@@ -1563,6 +1588,23 @@ function renderPortfolio(me) {
       html+=`<div style="background:rgba(0,229,255,.06);border:1px solid rgba(0,229,255,.2);border-radius:8px;padding:8px 12px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between">
         <span style="font-size:11px;color:var(--txt2)">Dự báo T+2 danh mục (${pfT2.count} quỹ)</span>
         <span style="font-family:var(--mono);font-size:13px;font-weight:600;color:${t2c}">${t2sign}${pfT2.pct.toFixed(2)}%</span>
+      </div>`;
+    }
+    // Portfolio weighted performance card
+    const pfPerf = _calcPfWeightedPerf(pf.items);
+    if (pfPerf && (pfPerf.m1 != null || pfPerf.m3 != null)) {
+      const _pc = v => v == null
+        ? '<span style="color:var(--txt3)">—</span>'
+        : `<span style="font-family:var(--mono);font-weight:700;color:${v>=0?'var(--buy)':'var(--sell)'}">${v>=0?'+':''}${v.toFixed(2)}%</span>`;
+      html+=`<div style="background:var(--bg2);border:1px solid var(--bdr);border-radius:8px;padding:10px 12px;margin-bottom:8px">
+        <div style="font-size:10px;color:var(--txt3);margin-bottom:8px">Hiệu suất danh mục (bình quân theo giá trị)</div>
+        <div style="display:grid;grid-template-columns:repeat(${[pfPerf.d1,pfPerf.m1,pfPerf.m3,pfPerf.m6,pfPerf.y1].filter(v=>v!=null).length},1fr);gap:8px;text-align:center">
+          ${pfPerf.d1!=null?`<div><div style="font-size:9px;color:var(--txt3)">Hôm nay</div>${_pc(pfPerf.d1)}</div>`:''}
+          ${pfPerf.m1!=null?`<div><div style="font-size:9px;color:var(--txt3)">1 tháng</div>${_pc(pfPerf.m1)}</div>`:''}
+          ${pfPerf.m3!=null?`<div><div style="font-size:9px;color:var(--txt3)">3 tháng</div>${_pc(pfPerf.m3)}</div>`:''}
+          ${pfPerf.m6!=null?`<div><div style="font-size:9px;color:var(--txt3)">6 tháng</div>${_pc(pfPerf.m6)}</div>`:''}
+          ${pfPerf.y1!=null?`<div><div style="font-size:9px;color:var(--txt3)">1 năm</div>${_pc(pfPerf.y1)}</div>`:''}
+        </div>
       </div>`;
     }
     html+='<div class="card">';
@@ -1649,6 +1691,8 @@ async function loadMarket() {
     _marketData = d.signals||d;
     _watchedSet = new Set(Object.keys(_marketData).filter(k=>_marketData[k].has_position));
     renderMarket();
+    // Re-render portfolio now that market data (chg30/chg90/t2_prediction) is available
+    if (_me) renderPortfolio(_me);
   } catch(e) { document.getElementById('market-content').innerHTML=renderErr('Lỗi tải thị trường: '+e.message); }
 }
 
@@ -3118,13 +3162,27 @@ function _renderHistFundList() {
     const isWatched = watched.has(code);
     const starBtn = `<span onclick="event.stopPropagation();_toggleWatchFund('${code}')" title="${isWatched?'Bỏ theo dõi':'Thêm theo dõi'}" style="cursor:pointer;font-size:10px;color:${isWatched?'var(--c0)':'var(--txt3)'};padding:0 1px;line-height:1;flex-shrink:0">${isWatched?'★':'☆'}</span>`;
     const heldBadge = held.has(code) ? `<span class="hist-fund-held">NẮM</span>` : '';
+    // Score mini-bar (−6 to +6 range shown as 12-slot bar)
+    const sc = s.score || 0;
+    const scColor = sc >= 3 ? 'var(--buy)' : sc <= -3 ? 'var(--sell)' : '#facc15';
+    const scBarW = Math.round(Math.abs(sc) / 6 * 20); // max 20px
+    const scBarLeft = sc < 0; // grows left from center
+    const scBar = `<div style="display:flex;align-items:center;gap:3px;flex-shrink:0" title="Score ${sc >= 0 ? '+' : ''}${sc}">
+      <div style="width:20px;height:3px;background:var(--bg3);border-radius:2px;position:relative;overflow:hidden">
+        <div style="position:absolute;${scBarLeft?'right':'left'}:${scBarLeft?0:0}px;width:${scBarW}px;height:100%;background:${scColor};border-radius:2px;${scBarLeft?'right:0':'left:0'}"></div>
+      </div>
+      <span style="font-size:9px;font-family:var(--mono);color:${scColor};min-width:16px">${sc >= 0 ? '+' : ''}${sc}</span>
+    </div>`;
+    // RSI dot
+    const rsiDotC = (s.rsi != null) ? (s.rsi < 35 ? 'var(--buy)' : s.rsi > 65 ? 'var(--sell)' : 'var(--txt3)') : 'transparent';
+    const rsiDot = s.rsi != null ? `<span style="width:6px;height:6px;background:${rsiDotC};border-radius:50%;display:inline-block;flex-shrink:0" title="RSI ${s.rsi?.toFixed(0)}"></span>` : '';
     return `<div class="hist-fund-row ${_histPageCode===code?'active':''}" onclick="_selectHistFund('${code}',this)">
       <div style="display:flex;align-items:center;gap:3px;min-width:0">
         <div class="hist-fund-code">${code}</div>
         ${starBtn}${heldBadge}
       </div>
       <div class="hist-fund-nav">${nav} ${chgHtml}</div>
-      <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">${sigHtml}${chg30Html}</div>
+      <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">${sigHtml}${chg30Html}${rsiDot}${scBar}</div>
     </div>`;
   }).join('');
 }
@@ -3186,6 +3244,7 @@ async function loadHistChart(code) {
       apiFetch(`/api/research/${code}`).catch(()=>null)
     ]);
     _histPageData = (d.history || d).sort((a,b)=>a.date<b.date?-1:1);
+    _histNavCache[code] = _histPageData;  // cache for sparklines / portfolio chart
     // Store research metadata for analysis panel
     if (res) {
       if (!_signals) _signals = {};
@@ -4010,13 +4069,14 @@ function _renderHistAnalysis(code) {
   const p180=_perfReturn(pts,180), p365=_perfReturn(pts,365), p3y=_perfReturn(pts,1095);
   const d30  = p30  ?? s?.chg30;
   const d90  = p90  ?? s?.chg90;
+  const d180 = p180 ?? s?.chg180;
   const d365 = p365 ?? s?.chg1y;
   const perfHtml = _mkSect('HI\u1ec6U SU\u1ea4T \u0110\u1ea6U T\u01af', '\u{1F4C8}', `
     <div style="background:var(--bg3);border-radius:8px;overflow:hidden">
       ${_mkRow('7 ng\u00e0y g\u1ea7n nh\u1ea5t', pF(p7), 'T\u0103ng/gi\u1ea3m so v\u1edbi tu\u1ea7n tr\u01b0\u1edbc')}
       ${_mkRow('1 th\u00e1ng', pF(d30), '~22 phi\u00ean giao d\u1ecbch')}
       ${_mkRow('3 th\u00e1ng', pF(d90), 'Xu h\u01b0\u1edbng trung h\u1ea1n')}
-      ${_mkRow('6 th\u00e1ng', pF(p180), 'N\u1eeda n\u0103m')}
+      ${_mkRow('6 th\u00e1ng', pF(d180), 'N\u1eeda n\u0103m')}
       ${_mkRow('1 n\u0103m', pF(d365), 'Hi\u1ec7u su\u1ea5t d\u00e0i h\u1ea1n')}
       ${p3y != null ? _mkRow('3 n\u0103m', pF(p3y), 'K\u1ec3 t\u1eeb khi c\u00f3 d\u1eef li\u1ec7u') : ''}
     </div>
