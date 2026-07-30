@@ -5052,11 +5052,11 @@ function _renderHistAnalysis(code) {
     }
     return rsiArr;
   };
-  const histPatternHtml = (() => {
-    if (!s || pts.length < 120) return '';
+  // histPatternData: computed once, used by histPatternHtml AND conclusion
+  const histPatternData = (() => {
+    if (!s || pts.length < 120) return null;
     const apiRSI = s.rsi ?? 50;
-    // Only show in extreme zones
-    if (apiRSI >= 35 && apiRSI <= 65) return '';
+    if (apiRSI >= 35 && apiRSI <= 65) return null;
     const rsiArr = _rollingRSI(navVals, 14);
     const rsiRange = 8;
     const instances = [];
@@ -5068,21 +5068,27 @@ function _renderHistAnalysis(code) {
         instances.push({rsi: rsiArr[i], ret30, ret60});
       }
     }
-    if (instances.length < 5) return '';
+    if (instances.length < 5) return null;
     const n30pos = instances.filter(x => x.ret30 > 0).length;
     const n60pos = instances.filter(x => x.ret60 > 0).length;
-    const avg30 = instances.reduce((a,x)=>a+x.ret30,0)/instances.length;
-    const avg60 = instances.reduce((a,x)=>a+x.ret60,0)/instances.length;
-    const best30 = Math.max(...instances.map(x=>x.ret30));
-    const worst30 = Math.min(...instances.map(x=>x.ret30));
-    const winRate30 = Math.round(n30pos/instances.length*100);
-    const winRate60 = Math.round(n60pos/instances.length*100);
+    return {
+      n: instances.length,
+      apiRSI,
+      avg30:    instances.reduce((a,x)=>a+x.ret30,0)/instances.length,
+      avg60:    instances.reduce((a,x)=>a+x.ret60,0)/instances.length,
+      best30:   Math.max(...instances.map(x=>x.ret30)),
+      worst30:  Math.min(...instances.map(x=>x.ret30)),
+      winRate30: Math.round(n30pos/instances.length*100),
+      winRate60: Math.round(n60pos/instances.length*100),
+    };
+  })();
+  const histPatternHtml = histPatternData ? (() => {
+    const {n, apiRSI, avg30, avg60, best30, worst30, winRate30, winRate60} = histPatternData;
     const avgC30 = avg30 >= 0 ? 'var(--buy)' : 'var(--sell)';
     const avgC60 = avg60 >= 0 ? 'var(--buy)' : 'var(--sell)';
     const winC30 = winRate30 >= 60 ? 'var(--buy)' : winRate30 >= 40 ? '#facc15' : 'var(--sell)';
     const winC60 = winRate60 >= 60 ? 'var(--buy)' : winRate60 >= 40 ? '#facc15' : 'var(--sell)';
-    const zone = apiRSI < 35
-      ? `RSI < 35 (vùng quá bán)` : `RSI > 65 (vùng quá mua)`;
+    const zone = apiRSI < 35 ? `RSI < 35 (vùng quá bán)` : `RSI > 65 (vùng quá mua)`;
     const insight = avg30 >= 0 && winRate30 >= 60
       ? `⚡ Tín hiệu lịch sử tích cực: trong ${winRate30}% trường hợp, quỹ đã phục hồi sau 30 ngày (TB ${avg30.toFixed(1)}%). Tích lũy dần có thể hiệu quả.`
       : avg30 < 0 && winRate30 <= 40
@@ -5091,7 +5097,7 @@ function _renderHistAnalysis(code) {
       ? `ℹ️ Nhẹ nghiêng phục hồi: ${winRate30}% lần tăng, TB ${avg30>=0?'+':''}${avg30.toFixed(1)}% sau 30 ngày. Không đủ mạnh để kết luận rõ ràng.`
       : `ℹ️ Kết quả lịch sử hỗn hợp (${winRate30}% lần tăng, TB ${avg30>=0?'+':''}${avg30.toFixed(1)}%) — khó dự đoán dựa trên RSI đơn thuần.`;
     return _mkSect('LỊCH SỬ TÍN HIỆU TƯƠNG TỰ', '📊', `
-      <div style="font-size:10px;color:var(--txt3);margin-bottom:8px">Trong ${instances.length} lần lịch sử có ${zone} — hiệu suất ${instances.length > 1 ? 'trung bình' : ''} của quỹ trong các giai đoạn tiếp theo:</div>
+      <div style="font-size:10px;color:var(--txt3);margin-bottom:8px">Trong ${n} lần lịch sử có ${zone} — hiệu suất trung bình của quỹ trong các giai đoạn tiếp theo:</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">
         <div style="background:var(--bg3);border-radius:8px;padding:10px 12px;text-align:center">
           <div style="font-size:9px;color:var(--txt3);margin-bottom:4px;font-family:var(--mono)">SAU 30 NGÀY</div>
@@ -5116,10 +5122,10 @@ function _renderHistAnalysis(code) {
           <span style="font-family:var(--mono);color:var(--sell);margin-left:5px">${worst30.toFixed(1)}%</span>
         </div>
       </div>
-      <div style="background:${avg30>=0&&winRate30>=60?'#4ade8011':avg30<=-2&&winRate30<=40?'#f8717111':'var(--bg3)'};border:1px solid ${avg30>=0&&winRate30>=60?'#4ade8033':avg30<=-2&&winRate30<=40?'#f8717133':'var(--bdr)'};border-radius:6px;padding:7px 10px;font-size:10px;color:var(--txt2);line-height:1.5">${insight}</div>
+      <div style="background:${avg30>=0&&winRate30>=60?'#4ade8011':avg30<0&&winRate30<=40?'#f8717111':'var(--bg3)'};border:1px solid ${avg30>=0&&winRate30>=60?'#4ade8033':avg30<0&&winRate30<=40?'#f8717133':'var(--bdr)'};border-radius:6px;padding:7px 10px;font-size:10px;color:var(--txt2);line-height:1.5">${insight}</div>
       <div style="font-size:9px;color:var(--txt3);margin-top:6px;line-height:1.5">Dựa trên NAV lịch sử của chính quỹ này. Quá khứ không đảm bảo tương lai — bối cảnh thị trường thay đổi có thể tạo ra kết quả khác.</div>
     `);
-  })();
+  })() : '';
   const predHtml = predNav ? _mkSect('DỰ BÁO GIÁ TRỊ (ENSEMBLE MODEL)', '🔮', `
     <div style="background:linear-gradient(135deg,var(--bg3),#0a1628);border:1px solid #facc1533;border-radius:10px;padding:14px">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
@@ -5195,15 +5201,23 @@ function _renderHistAnalysis(code) {
   // ── 8. CONCLUSION ──
   const apiConclusion = s?.conclusion || '';
   const scoreDesc = score >= 6 ? 'MUA MẠNH' : score >= 3 ? 'MUA' : score <= -6 ? 'BÁN MẠNH' : score <= -3 ? 'BÁN' : 'TRUNG LẬP';
+  // histConf: one-sentence confirmation from historical pattern (appended to summaryLine)
+  const histConf = histPatternData && histPatternData.n >= 10
+    ? (histPatternData.winRate30 >= 65 && histPatternData.avg30 >= 0.3
+       ? ` Lịch sử xác nhận: ${histPatternData.winRate30}% khả năng tăng sau 30 ngày (TB +${histPatternData.avg30.toFixed(1)}%).`
+       : histPatternData.winRate30 <= 35 || (histPatternData.avg30 < -0.5 && histPatternData.winRate30 < 45)
+       ? ` Lịch sử cảnh báo: chỉ ${histPatternData.winRate30}% khả năng tăng sau 30 ngày (TB ${histPatternData.avg30.toFixed(1)}%).`
+       : '')
+    : '';
   const summaryLine = (() => {
     const cheapTech = rsi < 42 && bb < 42;
     const expTech   = rsi > 62 && bb > 62;
-    if (score >= 5 && cheapTech) return `Tín hiệu kỹ thuật rất tích cực: giá đang ở vùng rẻ (RSI ${rsi.toFixed(0)}, BB ${bb.toFixed(0)}%) và đà tăng đang hình thành.`;
-    if (score >= 3 && macd > 0)  return `Tín hiệu mua — đà tăng đang mạnh${cheapTech ? ', giá còn ở vùng hấp dẫn' : ''}.`;
+    if (score >= 5 && cheapTech) return `Tín hiệu kỹ thuật rất tích cực: giá đang ở vùng rẻ (RSI ${rsi.toFixed(0)}, BB ${bb.toFixed(0)}%) và đà tăng đang hình thành.${histConf}`;
+    if (score >= 3 && macd > 0)  return `Tín hiệu mua — đà tăng đang mạnh${cheapTech ? ', giá còn ở vùng hấp dẫn' : ''}.${histConf}`;
     if (score <= -5 && expTech)  return `Tín hiệu kỹ thuật tiêu cực: giá đang ở vùng đắt (RSI ${rsi.toFixed(0)}, BB ${bb.toFixed(0)}%) và đà giảm đang hình thành.`;
     if (score <= -3 && macd < 0) return `Tín hiệu bán — đà giảm đang mạnh${expTech ? ', giá ở vùng cao' : ''}. Thận trọng khi mua thêm.`;
-    if (score === 0)             return `Tín hiệu trung lập. Các chỉ số kỹ thuật không nghiêng hẳn về chiều nào.`;
-    return score > 0 ? `Tín hiệu nhẹ nghiêng về mua — chưa đủ điều kiện mua mạnh.` : `Tín hiệu nhẹ nghiêng về bán — chờ thêm xác nhận.`;
+    if (score === 0)             return `Tín hiệu trung lập. Các chỉ số kỹ thuật không nghiêng hẳn về chiều nào.${histConf}`;
+    return score > 0 ? `Tín hiệu nhẹ nghiêng về mua — chưa đủ điều kiện mua mạnh.${histConf}` : `Tín hiệu nhẹ nghiêng về bán — chờ thêm xác nhận.`;
   })();
   const strategyHtml = (() => {
     const cheapTech = rsi < 45 && bb < 45;
@@ -5231,6 +5245,11 @@ function _renderHistAnalysis(code) {
         ? `Thời điểm tốt để mua vào — kỹ thuật thuận chiều, giá đang ở vùng hấp dẫn. Có thể mua 1 lần hoặc chia 2 lần trong 2 tuần.`
         : `Xu hướng tốt nhưng giá không còn rẻ. Nên mua chia nhỏ 2–3 lần để giảm rủi ro thời điểm.`]);
       if (sizingHint) rows.push(['📐 Gợi ý tỷ trọng', sizingHint]);
+      if (histPatternData && histPatternData.n >= 10 && histPatternData.winRate30 >= 60) {
+        rows.push(['📊 Xác suất lịch sử', `${histPatternData.n} lần trong quá khứ có RSI tương tự: ${histPatternData.winRate30}% lần tăng sau 30 ngày, TB ${histPatternData.avg30>=0?'+':''}${histPatternData.avg30.toFixed(1)}%. Dữ liệu lịch sử ủng hộ việc mua vào.`]);
+      } else if (histPatternData && histPatternData.n >= 10 && histPatternData.winRate30 <= 40) {
+        rows.push(['📊 Cảnh báo lịch sử', `${histPatternData.n} lần trong quá khứ có RSI tương tự: chỉ ${histPatternData.winRate30}% lần tăng sau 30 ngày, TB ${histPatternData.avg30.toFixed(1)}%. Lịch sử không ủng hộ — nên thận trọng.`]);
+      }
     } else if (score <= -3) {
       rows.push(['ℹ️ Chưa có vị thế', `Chờ tín hiệu đảo chiều rõ hơn (RSI hồi về 40–50, MACD cắt lên) trước khi mua vào. Không nên bắt dao đang rơi.`]);
     } else {
