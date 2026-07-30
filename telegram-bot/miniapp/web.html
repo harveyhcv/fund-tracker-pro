@@ -4771,8 +4771,14 @@ function _renderHistAnalysis(code) {
   const hi52 = nav52.length ? Math.max(...nav52.map(p => p.nav)) : curr;
   const lo52 = nav52.length ? Math.min(...nav52.map(p => p.nav)) : curr;
   const pct52 = hi52 > lo52 ? Math.round((curr - lo52) / (hi52 - lo52) * 100) : 50;
-  const pct52Desc = pct52 < 20 ? 'V\u00f9ng \u0111\u00e1y \u2014 c\u01a1 h\u1ed9i mua (n\u1ebfu kh\u00f4ng c\u00f3 l\u00fd do c\u01a1 b\u1ea3n x\u1ea5u)' :
-                    pct52 > 80 ? 'V\u00f9ng \u0111\u1ec9nh 52 tu\u1ea7n \u2014 c\u1ea9n tr\u1ecdng khi mua th\u00eam' : 'V\u00f9ng gi\u1eefa c\u1ee7a d\u1ea3i gi\u00e1 52 tu\u1ea7n';
+  const _up52 = hi52 > curr ? ((hi52 - curr) / curr * 100) : 0;
+  const _dn52 = curr > lo52 ? ((curr - lo52) / curr * 100) : 0;
+  const _rr52 = _dn52 > 0.1 ? (_up52 / _dn52) : null;
+  const pct52Desc = pct52 < 20
+    ? `Vùng đáy 52T — upside đến đỉnh: +${_up52.toFixed(1)}%, downside về đáy: −${_dn52.toFixed(1)}%${_rr52 ? `. Tỷ lệ R/R ${_rr52.toFixed(1)}x (upside > rủi ro về đáy)` : ''}. Cơ hội mua (nếu không có lý do cơ bản xấu).`
+    : pct52 > 80
+    ? `Gần đỉnh 52T — upside còn lại: +${_up52.toFixed(1)}%, downside về đáy: −${_dn52.toFixed(1)}%. Tỷ lệ R/R ${_rr52 ? _rr52.toFixed(1)+'x — không hấp dẫn' : 'thấp'}. Cẩn trọng khi mua thêm.`
+    : `Vùng giữa — upside đến đỉnh: +${_up52.toFixed(1)}%, downside về đáy: −${_dn52.toFixed(1)}%${_rr52 ? `. R/R ${_rr52.toFixed(1)}x${_rr52>=1.5?' (thuận lợi)':_rr52<1?' (không thuận lợi)':''}` : '.'}`
   const rangeHtml = nav52.length > 10 ? _mkSect('V\u00d9NG GI\u00c1 52 TU\u1ea6N', '\u{1F4CF}', `
     <div style="background:var(--bg3);border-radius:8px;padding:12px 14px">
       <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--txt3);margin-bottom:8px">
@@ -5298,6 +5304,14 @@ function _renderHistAnalysis(code) {
     if (bb < 30 || bb > 80)  watchConds.push('BB%B về vùng 30–70 (giá trở về bình thường)');
     if (Math.abs(score) <= 2) watchConds.push('Score đạt ≥3 hoặc ≤−3');
     if (typeof maCrossSignal !== 'undefined' && maCrossSignal === 'below') watchConds.push('MA20 cắt lên MA50 (Golden Cross)');
+    if (typeof fibResist !== 'undefined' && fibResist.length && score >= 2) {
+      const _fr = fibResist[0]; const _pctFr = ((_fr.nav-curr)/curr*100).toFixed(1);
+      watchConds.push(`NAV vượt kháng cự ${_fr.label} (+${_pctFr}% = ${fmt(Math.round(_fr.nav))}đ) → xác nhận breakout tăng`);
+    }
+    if (typeof bbW !== 'undefined' && bbW && bbW.curr < 4 && bbW.expanding === false) {
+      const _macdDir = (s?.macd_hist??s?.macd??0);
+      watchConds.push(`Breakout từ dải hẹp (BB Width ${bbW.curr.toFixed(1)}%) — MACD ${_macdDir>0?'dương → hướng tăng khả thi':_macdDir<0?'âm → cẩn thận hướng giảm':'gần 0 → hướng chưa rõ'}`);
+    }
     if (watchConds.length) rows.push(['👀 Theo dõi khi', watchConds.join('; ')]);
     return rows.map(([lbl, txt]) => `
       <div style="border-top:1px solid var(--bdr);padding:8px 0">
