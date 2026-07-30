@@ -4818,14 +4818,49 @@ function _renderHistAnalysis(code) {
     label: f===0?'Đáy 52T':f===100?'Đỉnh 52T':`Fib ${f}%`
   })) : [];
   const nearFib = fibLevels.filter(fl => Math.abs(curr-fl.nav)/Math.max(curr,1) < 0.015);
-  // RSI divergence (simple: compare last local price low vs RSI low)
-  let rsiDivergence = null;
-  if (pts.length >= 30 && s) {
-    const last30nav = navVals.slice(-30);
-    const minIdx = last30nav.indexOf(Math.min(...last30nav));
-    // If current RSI is higher than typical at price bottom (approx)
-    if (minIdx < 20 && rsi > 40 && curr < lo52 * 1.05) {
-      rsiDivergence = 'bullish'; // price near low but RSI recovered = bullish divergence
+  // RSI Divergence — proper implementation using historical RSI at local extrema
+  const _rsiAt = (arr, endIdx, period=14) => {
+    const slice = arr.slice(Math.max(0, endIdx - period - 1), endIdx + 1);
+    if (slice.length < period + 1) return null;
+    let gains = 0, losses = 0;
+    for (let i = 1; i <= period; i++) {
+      const d = slice[i] - slice[i-1];
+      if (d > 0) gains += d; else losses -= d;
+    }
+    const avgG = gains / period, avgL = losses / period;
+    return avgL === 0 ? 100 : 100 - 100 / (1 + avgG / avgL);
+  };
+  const _findExtrema = (arr, lookback=5) => {
+    const minima = [], maxima = [];
+    for (let i = lookback; i < arr.length - lookback; i++) {
+      let isMin = true, isMax = true;
+      for (let j = i - lookback; j <= i + lookback; j++) {
+        if (j !== i) { if (arr[j] <= arr[i]) isMin = false; if (arr[j] >= arr[i]) isMax = false; }
+      }
+      if (isMin) minima.push(i);
+      if (isMax) maxima.push(i);
+    }
+    return {minima, maxima};
+  };
+  let rsiDivergence = null, rsiDivergenceDesc = '';
+  if (pts.length >= 40) {
+    const _d60 = navVals.slice(-60), _d60off = navVals.length - _d60.length;
+    const {minima: _dMin, maxima: _dMax} = _findExtrema(_d60, 5);
+    if (_dMin.length >= 2) {
+      const m1 = _dMin[_dMin.length-2], m2 = _dMin[_dMin.length-1];
+      const r1 = _rsiAt(navVals, _d60off+m1), r2 = _rsiAt(navVals, _d60off+m2);
+      if (r1!=null && r2!=null && _d60[m2] < _d60[m1]*0.998 && r2 > r1+4) {
+        rsiDivergence = 'bullish';
+        rsiDivergenceDesc = `Áp lực bán suy yếu: giá tạo đáy mới thấp hơn nhưng RSI ở đáy mới cao hơn (${r2.toFixed(0)} > ${r1.toFixed(0)}) — tín hiệu đảo chiều tăng.`;
+      }
+    }
+    if (!rsiDivergence && _dMax.length >= 2) {
+      const mx1 = _dMax[_dMax.length-2], mx2 = _dMax[_dMax.length-1];
+      const r1 = _rsiAt(navVals, _d60off+mx1), r2 = _rsiAt(navVals, _d60off+mx2);
+      if (r1!=null && r2!=null && _d60[mx2] > _d60[mx1]*1.002 && r2 < r1-4) {
+        rsiDivergence = 'bearish';
+        rsiDivergenceDesc = `Đà mua cạn kiệt: giá tạo đỉnh mới cao hơn nhưng RSI ở đỉnh mới thấp hơn (${r2.toFixed(0)} < ${r1.toFixed(0)}) — cảnh báo đảo chiều giảm.`;
+      }
     }
   }
   const advHtml = pts.length >= 20 ? _mkSect('PHÂN TÍCH KỸ THUẬT NÂNG CAO', '🔬', `
@@ -4867,7 +4902,7 @@ function _renderHistAnalysis(code) {
       </div>
       <div style="font-size:9px;color:var(--txt3);margin-top:8px;line-height:1.4">Fibonacci: các mức hỗ trợ/kháng cự tự nhiên. Giá thường "bật" tại các mức 38.2%, 50%, 61.8%. Mức hiện tại (${pct52}% từ đáy) ${nearFib.length ? `gần Fib ${nearFib[0].f}% — vùng quan trọng.` : 'giữa các mức Fib.'}</div>
     </div>` : ''}
-    ${rsiDivergence === 'bullish' ? `<div style="background:#4ade8011;border:1px solid #4ade8033;border-radius:6px;padding:8px 12px;font-size:10px;color:var(--buy)">📊 Phân kỳ dương (Bullish Divergence): Giá đang ở vùng thấp nhưng RSI (${rsi.toFixed(0)}) đã hồi phục — tín hiệu đảo chiều tăng. Nhà giao dịch kỹ thuật coi đây là cơ hội mua.</div>` : ''}
+    ${rsiDivergence === 'bullish' ? `<div style="background:#4ade8011;border:1px solid #4ade8033;border-radius:6px;padding:8px 12px;font-size:10px;line-height:1.6"><div style="color:var(--buy);font-weight:700;margin-bottom:4px">📊 PHÂN KỲ DƯƠNG (Bullish Divergence)</div><div style="color:var(--txt2)">${rsiDivergenceDesc}</div><div style="color:var(--txt3);font-size:9px;margin-top:4px">Phân kỳ dương — giá tạo đáy mới thấp hơn nhưng lực bán suy yếu dần. Kết hợp với RSI < 40 và MACD bắt đầu quay đầu để có xác nhận mạnh hơn.</div></div>` : rsiDivergence === 'bearish' ? `<div style="background:#f8717111;border:1px solid #f8717133;border-radius:6px;padding:8px 12px;font-size:10px;line-height:1.6"><div style="color:var(--sell);font-weight:700;margin-bottom:4px">⚠️ PHÂN KỲ ÂM (Bearish Divergence)</div><div style="color:var(--txt2)">${rsiDivergenceDesc}</div><div style="color:var(--txt3);font-size:9px;margin-top:4px">Phân kỳ âm — giá tạo đỉnh mới cao hơn nhưng lực mua cạn kiệt dần. Không nên mua thêm; nếu đang có lãi, cân nhắc chốt một phần.</div></div>` : ''}
   `) : '';
 
   // ── 6. TECHNICAL INDICATORS ──
@@ -5001,6 +5036,90 @@ function _renderHistAnalysis(code) {
   const bullNav = predNav && ciRange ? Math.round(predNav * (1 + ciRange/100)) : null;
   const bearNav = predNav && ciRange ? Math.round(predNav * (1 - ciRange/100)) : null;
 
+
+  // ── 7b. HISTORICAL PATTERN ANALYSIS ──
+  // Rolling RSI (Cutler's simple method, O(n*period), consistent with _rsiAt)
+  const _rollingRSI = (arr, period=14) => {
+    const rsiArr = new Array(arr.length).fill(null);
+    for (let i = period; i < arr.length; i++) {
+      let g = 0, l = 0;
+      for (let j = i - period + 1; j <= i; j++) {
+        const d = arr[j] - arr[j-1];
+        if (d > 0) g += d; else l -= d;
+      }
+      const ag = g/period, al = l/period;
+      rsiArr[i] = al === 0 ? 100 : 100 - 100/(1 + ag/al);
+    }
+    return rsiArr;
+  };
+  const histPatternHtml = (() => {
+    if (!s || pts.length < 120) return '';
+    const apiRSI = s.rsi ?? 50;
+    // Only show in extreme zones
+    if (apiRSI >= 35 && apiRSI <= 65) return '';
+    const rsiArr = _rollingRSI(navVals, 14);
+    const rsiRange = 8;
+    const instances = [];
+    for (let i = 14; i < navVals.length - 62; i++) {
+      if (rsiArr[i] == null) continue;
+      if (Math.abs(rsiArr[i] - apiRSI) <= rsiRange) {
+        const ret30 = (navVals[i+30] - navVals[i]) / navVals[i] * 100;
+        const ret60 = (navVals[i+60] - navVals[i]) / navVals[i] * 100;
+        instances.push({rsi: rsiArr[i], ret30, ret60});
+      }
+    }
+    if (instances.length < 5) return '';
+    const n30pos = instances.filter(x => x.ret30 > 0).length;
+    const n60pos = instances.filter(x => x.ret60 > 0).length;
+    const avg30 = instances.reduce((a,x)=>a+x.ret30,0)/instances.length;
+    const avg60 = instances.reduce((a,x)=>a+x.ret60,0)/instances.length;
+    const best30 = Math.max(...instances.map(x=>x.ret30));
+    const worst30 = Math.min(...instances.map(x=>x.ret30));
+    const winRate30 = Math.round(n30pos/instances.length*100);
+    const winRate60 = Math.round(n60pos/instances.length*100);
+    const avgC30 = avg30 >= 0 ? 'var(--buy)' : 'var(--sell)';
+    const avgC60 = avg60 >= 0 ? 'var(--buy)' : 'var(--sell)';
+    const winC30 = winRate30 >= 60 ? 'var(--buy)' : winRate30 >= 40 ? '#facc15' : 'var(--sell)';
+    const winC60 = winRate60 >= 60 ? 'var(--buy)' : winRate60 >= 40 ? '#facc15' : 'var(--sell)';
+    const zone = apiRSI < 35
+      ? `RSI < 35 (vùng quá bán)` : `RSI > 65 (vùng quá mua)`;
+    const insight = avg30 >= 0 && winRate30 >= 60
+      ? `⚡ Tín hiệu lịch sử tích cực: trong ${winRate30}% trường hợp, quỹ đã phục hồi sau 30 ngày (TB ${avg30.toFixed(1)}%). Tích lũy dần có thể hiệu quả.`
+      : avg30 < 0 && winRate30 <= 40
+      ? `⚠ Lịch sử cho thấy quỹ tiếp tục giảm sau 30 ngày trong ${100-winRate30}% trường hợp (TB ${avg30.toFixed(1)}%). Cẩn trọng khi mua thêm.`
+      : winRate30 >= 55
+      ? `ℹ️ Nhẹ nghiêng phục hồi: ${winRate30}% lần tăng, TB ${avg30>=0?'+':''}${avg30.toFixed(1)}% sau 30 ngày. Không đủ mạnh để kết luận rõ ràng.`
+      : `ℹ️ Kết quả lịch sử hỗn hợp (${winRate30}% lần tăng, TB ${avg30>=0?'+':''}${avg30.toFixed(1)}%) — khó dự đoán dựa trên RSI đơn thuần.`;
+    return _mkSect('LỊCH SỬ TÍN HIỆU TƯƠNG TỰ', '📊', `
+      <div style="font-size:10px;color:var(--txt3);margin-bottom:8px">Trong ${instances.length} lần lịch sử có ${zone} — hiệu suất ${instances.length > 1 ? 'trung bình' : ''} của quỹ trong các giai đoạn tiếp theo:</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">
+        <div style="background:var(--bg3);border-radius:8px;padding:10px 12px;text-align:center">
+          <div style="font-size:9px;color:var(--txt3);margin-bottom:4px;font-family:var(--mono)">SAU 30 NGÀY</div>
+          <div style="font-family:var(--mono);font-size:18px;font-weight:700;color:${avgC30}">${avg30>=0?'+':''}${avg30.toFixed(1)}%</div>
+          <div style="font-size:9px;color:var(--txt3);margin-top:2px">trung bình</div>
+          <div style="font-size:11px;color:${winC30};margin-top:5px;font-family:var(--mono)">${winRate30}% lần tăng</div>
+        </div>
+        <div style="background:var(--bg3);border-radius:8px;padding:10px 12px;text-align:center">
+          <div style="font-size:9px;color:var(--txt3);margin-bottom:4px;font-family:var(--mono)">SAU 60 NGÀY</div>
+          <div style="font-family:var(--mono);font-size:18px;font-weight:700;color:${avgC60}">${avg60>=0?'+':''}${avg60.toFixed(1)}%</div>
+          <div style="font-size:9px;color:var(--txt3);margin-top:2px">trung bình</div>
+          <div style="font-size:11px;color:${winC60};margin-top:5px;font-family:var(--mono)">${winRate60}% lần tăng</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:5px;margin-bottom:8px">
+        <div style="background:var(--bg3);border-radius:6px;padding:5px 10px;font-size:10px;flex:1;text-align:center">
+          <span style="color:var(--txt3);font-size:9px">Tốt nhất (30N)</span>
+          <span style="font-family:var(--mono);color:var(--buy);margin-left:5px">${best30>=0?'+':''}${best30.toFixed(1)}%</span>
+        </div>
+        <div style="background:var(--bg3);border-radius:6px;padding:5px 10px;font-size:10px;flex:1;text-align:center">
+          <span style="color:var(--txt3);font-size:9px">Xấu nhất (30N)</span>
+          <span style="font-family:var(--mono);color:var(--sell);margin-left:5px">${worst30.toFixed(1)}%</span>
+        </div>
+      </div>
+      <div style="background:${avg30>=0&&winRate30>=60?'#4ade8011':avg30<=-2&&winRate30<=40?'#f8717111':'var(--bg3)'};border:1px solid ${avg30>=0&&winRate30>=60?'#4ade8033':avg30<=-2&&winRate30<=40?'#f8717133':'var(--bdr)'};border-radius:6px;padding:7px 10px;font-size:10px;color:var(--txt2);line-height:1.5">${insight}</div>
+      <div style="font-size:9px;color:var(--txt3);margin-top:6px;line-height:1.5">Dựa trên NAV lịch sử của chính quỹ này. Quá khứ không đảm bảo tương lai — bối cảnh thị trường thay đổi có thể tạo ra kết quả khác.</div>
+    `);
+  })();
   const predHtml = predNav ? _mkSect('DỰ BÁO GIÁ TRỊ (ENSEMBLE MODEL)', '🔮', `
     <div style="background:linear-gradient(135deg,var(--bg3),#0a1628);border:1px solid #facc1533;border-radius:10px;padding:14px">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
@@ -5181,7 +5300,7 @@ function _renderHistAnalysis(code) {
       ${pfItem ? `<button onclick="_quickTrade('${code}','sell')" style="flex:1;min-width:100px;background:${score<=-3?'var(--sell)':'var(--bg3)'};color:${score<=-3?'#fff':'var(--txt1)'};border:1px solid ${score<=-3?'var(--sell)':'var(--bdr)'};border-radius:7px;padding:9px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--sans)">📉 Bán bớt</button>` : ''}
     </div>`);
 
-  panel.innerHTML = `<div style="padding:8px 0 20px">${headerHtml}${pnlHtml}${perfHtml}${riskHtml}${rangeHtml}${advHtml}${indHtml}${predHtml}${conclusionHtml}</div>`;
+  panel.innerHTML = `<div style="padding:8px 0 20px">${headerHtml}${pnlHtml}${perfHtml}${riskHtml}${rangeHtml}${advHtml}${indHtml}${histPatternHtml}${predHtml}${conclusionHtml}</div>`;
 }
 
 // WEB-011: Gold analysis in Phân Tích tab ──────────────────────────────────────
