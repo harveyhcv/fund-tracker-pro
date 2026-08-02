@@ -4664,7 +4664,11 @@ function _renderHistAnalysis(code) {
             ? ' Tín hiệu kỹ thuật tích cực — có thể DCA thêm để giảm giá vốn bình quân.'
             : _sc <= -3 ? ' Tín hiệu tiêu cực — chưa nên mua thêm, chờ xác nhận đảo chiều.'
             : ' Tín hiệu trung lập — chỉ DCA lượng nhỏ nếu tin vào quỹ dài hạn.';
-          return `<div style="background:var(--sell)11;border:1px solid var(--sell)33;border-radius:8px;padding:8px 12px;margin-top:8px;font-size:10px;color:var(--txt2)"><b style="color:var(--sell)">Hòa vốn:</b> cần NAV tăng +${_toBreak.toFixed(1)}% (về ${fmt(Math.round(avgCost))}đ/CCQ).${_dcaHint}</div>`;
+          const _recovMo = s?.chg30 != null && s.chg30 > 0.1 ? Math.ceil(_toBreak / s.chg30) : null;
+          const _recovNote = _recovMo != null
+            ? ` Ở đà hiện tại (+${s.chg30.toFixed(1)}%/tháng), ước tính ~${_recovMo} tháng để hoà vốn.`
+            : (s?.chg30 != null && s.chg30 < -0.05 ? ' Quỹ đang tiếp tục giảm — chưa thể ước tính thời gian phục hồi.' : '');
+          return `<div style="background:var(--sell)11;border:1px solid var(--sell)33;border-radius:8px;padding:8px 12px;margin-top:8px;font-size:10px;color:var(--txt2)"><b style="color:var(--sell)">Hòa vốn:</b> cần NAV tăng +${_toBreak.toFixed(1)}% (về ${fmt(Math.round(avgCost))}đ/CCQ).${_dcaHint}${_recovNote}</div>`;
         }
         if (pnlP > 15 && _sc <= -3) return `<div style="background:#facc1511;border:1px solid #facc1533;border-radius:8px;padding:8px 12px;margin-top:8px;font-size:10px;color:var(--txt2)"><b style="color:#facc15">Đang lãi ${pnlP.toFixed(1)}%</b> — tín hiệu kỹ thuật đang tiêu cực. Cân nhắc chốt lời một phần để bảo vệ thành quả.</div>`;
         if (pnlP > 20) return `<div style="background:#4ade8011;border:1px solid #4ade8033;border-radius:8px;padding:8px 12px;margin-top:8px;font-size:10px;color:var(--txt2)"><b style="color:var(--buy)">Lãi tốt (${pnlP.toFixed(1)}%)</b>${_sc >= 3 ? ' — tín hiệu vẫn tốt, có thể tiếp tục nắm.' : ' — cân nhắc đặt mức chốt lời bảo vệ (trailing stop).'}</div>`;
