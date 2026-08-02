@@ -5233,12 +5233,22 @@ function _renderHistAnalysis(code) {
   const summaryLine = (() => {
     const cheapTech = rsi < 42 && bb < 42;
     const expTech   = rsi > 62 && bb > 62;
-    if (score >= 5 && cheapTech) return `Tín hiệu kỹ thuật rất tích cực: giá đang ở vùng rẻ (RSI ${rsi.toFixed(0)}, BB ${bb.toFixed(0)}%) và đà tăng đang hình thành.${histConf}`;
-    if (score >= 3 && macd > 0)  return `Tín hiệu mua — đà tăng đang mạnh${cheapTech ? ', giá còn ở vùng hấp dẫn' : ''}.${histConf}`;
-    if (score <= -5 && expTech)  return `Tín hiệu kỹ thuật tiêu cực: giá đang ở vùng đắt (RSI ${rsi.toFixed(0)}, BB ${bb.toFixed(0)}%) và đà giảm đang hình thành.`;
-    if (score <= -3 && macd < 0) return `Tín hiệu bán — đà giảm đang mạnh${expTech ? ', giá ở vùng cao' : ''}. Thận trọng khi mua thêm.`;
-    if (score === 0)             return `Tín hiệu trung lập. Các chỉ số kỹ thuật không nghiêng hẳn về chiều nào.${histConf}`;
-    return score > 0 ? `Tín hiệu nhẹ nghiêng về mua — chưa đủ điều kiện mua mạnh.${histConf}` : `Tín hiệu nhẹ nghiêng về bán — chờ thêm xác nhận.`;
+    const _mac = typeof maCrossSignal !== 'undefined' ? maCrossSignal : '';
+    const _maCtx = _mac === 'golden' ? ' Golden Cross MA vừa xuất hiện — xác nhận xu hướng tăng mạnh.'
+      : _mac === 'death' ? ' Death Cross MA vừa xuất hiện — cẩn thận rủi ro giảm tiếp.'
+      : _mac === 'above' && ma20val && ma50val ? ` MA20 trên MA50 (+${((ma20val-ma50val)/ma50val*100).toFixed(1)}%) — xu hướng tăng duy trì.`
+      : _mac === 'below' && ma20val && ma50val ? ` MA20 dưới MA50 (−${Math.abs((ma20val-ma50val)/ma50val*100).toFixed(1)}%) — xu hướng giảm trung hạn.`
+      : '';
+    const _nf = typeof nearFib !== 'undefined' && nearFib.length ? nearFib[0] : null;
+    const _fibCtx = _nf ? (_nf.nav <= curr ? ` Fib ${_nf.f}% hỗ trợ gần đây.` : ` Fib ${_nf.f}% kháng cự phía trên.`) : '';
+    const _p52 = typeof pct52 !== 'undefined' ? pct52 : 50;
+    const _rangeCtx = _p52 < 15 ? ' Giá đang ở vùng đáy 52 tuần — cơ hội tích lũy dài hạn.' : _p52 > 85 ? ' Giá gần đỉnh 52 tuần — hạn chế mua thêm lớn.' : '';
+    if (score >= 5 && cheapTech) return `Tín hiệu kỹ thuật rất tích cực: giá đang ở vùng rẻ (RSI ${rsi.toFixed(0)}, BB ${bb.toFixed(0)}%) và đà tăng đang hình thành.${_maCtx}${_rangeCtx}${histConf}`;
+    if (score >= 3 && macd > 0)  return `Tín hiệu mua — đà tăng đang mạnh${cheapTech ? ', giá còn ở vùng hấp dẫn' : ''}.${_maCtx}${_fibCtx}${histConf}`;
+    if (score <= -5 && expTech)  return `Tín hiệu kỹ thuật tiêu cực: giá đang ở vùng đắt (RSI ${rsi.toFixed(0)}, BB ${bb.toFixed(0)}%) và đà giảm đang hình thành.${_maCtx}${_rangeCtx}`;
+    if (score <= -3 && macd < 0) return `Tín hiệu bán — đà giảm đang mạnh${expTech ? ', giá ở vùng cao' : ''}. Thận trọng khi mua thêm.${_maCtx}${_fibCtx}`;
+    if (score === 0)             return `Tín hiệu trung lập. Các chỉ số kỹ thuật không nghiêng hẳn về chiều nào.${_maCtx}${histConf}`;
+    return score > 0 ? `Tín hiệu nhẹ nghiêng về mua — chưa đủ điều kiện mua mạnh.${_maCtx}${_fibCtx}${histConf}` : `Tín hiệu nhẹ nghiêng về bán — chờ thêm xác nhận.${_maCtx}${_fibCtx}`;
   })();
   const strategyHtml = (() => {
     const cheapTech = rsi < 45 && bb < 45;
