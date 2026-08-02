@@ -4270,6 +4270,7 @@ function _renderHistAnalysis(code) {
       <div style="font-size:12px;color:var(--txt1);line-height:1.7;font-weight:500${apiConclusion ? ';margin-bottom:10px' : ''}">${summaryLine}</div>
       ${apiConclusion ? `<div style="font-size:11px;color:var(--txt2);line-height:1.7;border-top:1px solid var(--bdr);padding-top:8px">${apiConclusion}</div>` : ''}
     </div>
+    ${s?.tech_reliability === 'LOW' ? `<div style="background:#facc1511;border:1px solid #facc1533;border-radius:8px;padding:8px 12px;margin-bottom:8px;display:flex;gap:8px;align-items:flex-start"><span style="font-size:13px">⚠️</span><div style="font-size:10px;color:var(--txt2);line-height:1.6"><b style="color:#facc15">TA độ tin cậy THẤP</b> — ${s?.fund_type === 'bond' ? 'Quỹ trái phiếu có NAV biến động nhỏ và phân phối đều: RSI/MACD/BB được thiết kế cho cổ phiếu, ít hiệu quả hơn với trái phiếu. Ưu tiên xem Hiệu suất dài hạn và Sharpe ratio; tín hiệu kỹ thuật chỉ mang tính tham khảo.' : 'Tín hiệu kỹ thuật hiện ít tin cậy — cân nhắc thêm yếu tố cơ bản.'}</div></div>` : ''}
     <div style="background:var(--bg3);border-radius:8px;padding:10px 14px">
       <div style="font-size:10px;color:var(--txt3);font-family:var(--mono);letter-spacing:.06em">CHIẾN LƯỢC GỢI Ý</div>
       ${strategyHtml}
