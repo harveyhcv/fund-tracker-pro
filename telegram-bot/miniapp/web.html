@@ -4690,6 +4690,8 @@ function _renderHistAnalysis(code) {
   const rankPctile30 = rank30 != null && total30 > 0 ? Math.round((1 - rank30/total30) * 100) : null;
   const rankLabel30  = rankPctile30 == null ? '' : rankPctile30 >= 80 ? 'Top 20%' : rankPctile30 >= 60 ? 'Trên trung bình' : rankPctile30 >= 40 ? 'Trung bình' : rankPctile30 >= 20 ? 'Dưới trung bình' : 'Thấp';
   const rankC30 = rankPctile30 == null ? 'var(--txt2)' : rankPctile30 >= 80 ? 'var(--buy)' : rankPctile30 >= 40 ? '#facc15' : 'var(--sell)';
+  const _vsBankDiff = d365 != null ? d365 - 4.5 : null;
+  const _vsBankC = _vsBankDiff == null ? 'var(--txt2)' : _vsBankDiff >= 2 ? 'var(--buy)' : _vsBankDiff >= 0 ? '#facc15' : 'var(--sell)';
   const perfHtml = _mkSect('HIỆU SUẤT ĐẦU TƯ', '📈', `
     <div style="background:var(--bg3);border-radius:8px;overflow:hidden;padding:2px 12px 4px">
       ${_mkPerfRow('7 ngày gần nhất', p7, rank7 != null && total7 > 1 ? `Hạng #${rank7}/${total7} ${ftLabel.replace('Quỹ ','')}` : '')}
@@ -4699,6 +4701,7 @@ function _renderHistAnalysis(code) {
       ${_mkPerfRow('1 năm', d365, ann1y != null ? `Lợi nhuận hàng năm (không ghép lãi)` : '')}
       ${p3y != null ? _mkPerfRow('3 năm (gộp)', p3y, ann3y != null ? `Kép: ${ann3y>=0?'+':''}${ann3y.toFixed(1)}%/năm` : '') : ''}
     </div>
+    ${_vsBankDiff != null ? `<div style="background:${_vsBankC}11;border:1px solid ${_vsBankC}33;border-radius:8px;padding:8px 12px;margin-top:8px;display:flex;justify-content:space-between;align-items:center"><div><div style="font-size:10px;color:var(--txt2)">So với lãi tiết kiệm 4.5%/năm</div><div style="font-size:9px;color:var(--txt3)">Benchmark phi rủi ro · lãi ngân hàng kỳ hạn 12T ước tính</div></div><div style="text-align:right"><div style="font-family:var(--mono);font-size:14px;font-weight:700;color:${_vsBankC}">${_vsBankDiff >= 0 ? '+' : ''}${_vsBankDiff.toFixed(1)}%</div><div style="font-size:9px;color:${_vsBankC}">${_vsBankDiff >= 5 ? 'Vượt trội rõ ràng — đáng đầu tư hơn gửi tiết kiệm' : _vsBankDiff >= 0 ? 'Nhỉnh hơn lãi ngân hàng' : 'Kém lãi ngân hàng — xem xét lại hiệu quả'}</div></div></div>` : ''}
     ${(rank30 != null && total30 > 1) ? `<div style="background:${rankC30}11;border:1px solid ${rankC30}33;border-radius:8px;padding:10px 12px;margin-top:8px;display:flex;align-items:center;gap:10px">
       <div style="font-size:22px;font-family:var(--mono);font-weight:700;color:${rankC30}">#${rank30}</div>
       <div>
@@ -4763,7 +4766,9 @@ function _renderHistAnalysis(code) {
       <b style="color:var(--txt1)">Sortino Ratio</b> \u2014 Gi\u1ed1ng Sharpe nh\u01b0ng <i>ch\u1ec9 t\u00ednh r\u1ee7i ro gi\u1ea3m</i> (downside). >1.5 = xu\u1ea5t s\u1eafc \u2014 qu\u1ef9 t\u0103ng \u0111\u1ec1u, \u00edt gi\u1ea3m m\u1ea1nh. \u01afu ti\u00ean Sortino cao khi ch\u1ecdn qu\u1ef9 tr\u00e1i phi\u1ebfu.<br>
       <b style="color:var(--txt1)">Calmar Ratio</b> \u2014 L\u1ee3i nhu\u1eadn n\u0103m \u00f7 drawdown t\u1ed1i \u0111a. >1 = h\u1ed3i ph\u1ee5c nhanh h\u01a1n m\u1ee9c l\u1ed7 t\u1eebng ch\u1ecbu. <0 = \u0111ang l\u1ed7 so v\u1edbi l\u00e3i su\u1ea5t ng\u00e2n h\u00e0ng.<br>
       <b style="color:var(--txt1)">VaR 95% (1 th\u00e1ng)</b> \u2014 Trong 5% tr\u01b0\u1eddng h\u1ee3p x\u1ea5u nh\u1ea5t, qu\u1ef9 c\u00f3 th\u1ec3 m\u1ea5t bao nhi\u00eau % trong 1 th\u00e1ng. D\u1ef1a tr\u00ean l\u1ecbch s\u1eed NAV.
-    </div>`) : '';
+    </div>
+    ${sr != null ? `<div style="background:${sr>1?'var(--buy)':sr>0?'#facc15':'var(--sell)'}11;border:1px solid ${sr>1?'var(--buy)':sr>0?'#facc15':'var(--sell)'}33;border-radius:8px;padding:10px 12px;margin-top:8px"><div style="font-size:10px;font-weight:600;color:${sr>1?'var(--buy)':sr>0?'#facc15':'var(--sell)'};margin-bottom:4px">Nhận định chất lượng rủi ro</div><div style="font-size:10px;color:var(--txt2);line-height:1.7">${sr > 1 ? 'Sharpe > 1 — quỹ tạo ra alpha thực sự so với lãi suất căn bản 4.5%/năm.' : sr > 0 ? 'Sharpe dương nhưng < 1 — bù được lãi ngân hàng nhưng biến động chưa được đền bù tốt.' : '⚠️ Sharpe âm — quỹ chưa bù đắp được lãi suất ngân hàng 4.5%/năm. Cân nhắc chuyển sang quỹ hiệu quả hơn hoặc giảm tỷ trọng.'}${mdd > 20 ? ` Drawdown lớn (${mdd.toFixed(1)}%) — từng chịu lỗ nặng, cần tâm lý vững.` : mdd > 10 ? ` Drawdown vừa (${mdd.toFixed(1)}%) — chịu được với nhà đầu tư trung hạn.` : ` Drawdown thấp (${mdd.toFixed(1)}%) — ổn định tốt.`}${sortino != null && sortino > 1.5 ? ' Sortino cao — quỹ tăng đều, ít gặp tình huống giảm mạnh.' : sortino != null && sortino < 0 ? ' Sortino âm — đà giảm lớn hơn đà tăng.' : ''}</div></div>` : ''}
+`) : '';
   // ── 5. 52-WEEK RANGE ──
   const cut52D = new Date(); cut52D.setDate(cut52D.getDate() - 365);
   const cut52 = cut52D.toISOString().slice(0, 10);
