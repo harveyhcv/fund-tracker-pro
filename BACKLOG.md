@@ -4,7 +4,54 @@
 # Priority: P0 (blocker) / P1 (important) / P2 (nice-to-have)
 # Claude đọc file này ĐẦU TIÊN mỗi session. Pick task IN_PROGRESS nếu có, nếu không pick P0 cao nhất.
 #
-# Last updated: 2026-07-30 (autonomous 0:00 continuation: WEB-019..023 + iOS check)
+# Last updated: 2026-08-02 (autonomous ca sáng: verify baseline, WEB-018 confirmed DONE)
+
+## Session (autonomous, scheduled) — Ca sáng 2026-08-02: verify baseline + WEB-018 confirm
+# Tình trạng đầu session: tất cả P0/P1 đã DONE. Điều kiện dừng: "Hết P0+P1".
+# Baseline: py_compile 5 file chính OK, 367/367 tests pass.
+# WEB-018 DONE (confirmed): bookmarklet cross-login TCInvest đã tồn tại trong code:
+#   _buildBookmarklet() trong web_js.js (line 2062) + bm-slot div trong web_body.html (line 459)
+#   + _buildBookmarklet() gọi trong loadAdminTab(). Người dùng kéo bookmarklet vào Bookmarks Bar
+#   → mở TCInvest → nhấn bookmark → token tự điền. WEB-018 thực ra đã DONE từ GOV-020 (21/07).
+# Harvey uncommitted changes trong web_js.js + web.html (7 dòng mỗi file):
+#   (1) _vsBankDiff: so sánh lợi nhuận 1 năm vs lãi tiết kiệm 4.5%/năm trong HIỆU SUẤT ĐẦU TƯ
+#   (2) "Nhận định chất lượng rủi ro": đánh giá Sharpe + Drawdown + Sortino tổng hợp cuối risk section
+#   → Chờ Harvey commit + push (web_js.js + web.html đã in sync qua build_web.py).
+# Việc cần Harvey:
+#   (1) Commit + push web_js.js / web.html (vs-bank comparison + risk quality assessment)
+#   (2) WEB-017 BLOCKED: cấp JWT tcinvest mới để backfill NAV bulk
+#   (3) WEB-014 P2: cần Harvey clarify backend field cần expose (nav_jump_anomaly trong analysis panel)
+
+## Session (autonomous, continuation) — 2026-07-30: WEB-023/024 analysis panel expert detail
+# WEB-023 DONE: MA cross, Fibonacci, BB squeeze — chi tiết expert cấp độ quản lý tài sản
+#   - WEB-023a: MA cross 'above'/'below' — thêm gap% (MA20-MA50/MA50*100) + vị trí giá vs MA
+#     → 3 sub-cases per direction: giá trên cả 2 MA / giữa 2 MA / dưới cả 2 MA
+#   - WEB-023b: Fibonacci description — thêm label "hỗ trợ/kháng cự" + giá đồng (fmt) +
+#     RSI cross-reference (RSI<40+Fib support="vùng mua kỹ thuật", RSI>60+Fib resist="chốt lời")
+#   - WEB-023c: BB Width squeeze — thêm MACD direction hint khi BB < 3%
+#     (MACD+ → breakout tăng khả thi, MACD- → cẩn thận hướng giảm, MACD≈0 → chờ xác nhận)
+#   Verified: ESSCF hiện MA cross gap%, Fib "hỗ trợ bên dưới + RSI thấp = vùng mua kỹ thuật tốt"
+# WEB-024 DONE: 52W range R/R ratio + watchConds Fib breakout + BB squeeze direction
+#   - WEB-024a: 52W range section — thêm upside/downside % và Risk/Reward ratio (_rr52)
+#     (pct52<20: "Cơ hội mua", pct52>80: "Cẩn trọng", giữa: "R/R Xx (thuận/không thuận lợi)")
+#   - WEB-024b: watchConds — thêm 2 điều kiện kỹ thuật cụ thể:
+#     (1) Fib resistance breakout: khi score>=2 và có fibResist → "NAV vượt kháng cự Fib X% (+Y% = Zđ)"
+#     (2) BB squeeze direction: khi bbW<4% và đang co lại → gợi ý hướng breakout từ MACD
+#   Verified: ESSCF "upside +24.7%, downside −0.0%. Cơ hội mua" + "NAV vượt Fib 23.6% (+5.8% = 18.996đ)"
+#   Commit: 21cbc43. 0 console errors.
+
+## Session (autonomous, continuation) — 2026-07-30: WEB-021/022 analysis panel expert enhancements
+# WEB-021 DONE: histPatternData refactor — split IIFE into data object + HTML renderer
+#   histPatternData computed once, reused by: (1) histPatternHtml display block,
+#   (2) histConf sentence appended to summaryLine (fires when n>=10 + winRate30>=65 bullish
+#   or <=35 bearish), (3) "Xác suất lịch sử" strategyHtml row (winRate30>=60 bullish /
+#   <=40 bearish). Verified: ESSCF shows "68% khả năng tăng sau 30 ngày" in conclusion.
+# WEB-022 DONE: MACD NAV-normalized strength classification
+#   _macdPctNAV = |macd|/curr*100 (comparable across funds regardless of NAV price).
+#   4-level classification for negative MACD: >0.5% = âm mạnh (DCA 3-4 lần cảnh báo),
+#   >0.1% = âm vừa (chờ thu hẹp), <0.1% = gần 0 (sắp cạn kiệt - theo dõi sát).
+#   Positive branch shows histogram magnitude + Golden Cross guidance.
+#   Commit: 5d764b0. Verified: ESSCF "MACD âm mạnh (0.96% NAV)", 0 console errors.
 
 ## Session (autonomous, scheduled) — 0:00 2026-07-30: WEB-019..023, iOS check
 # ⚠️ Phát hiện: 1 session autonomous KHÁC đã chạy song song trong cùng thư mục cùng lúc
@@ -123,9 +170,9 @@
 # WEB-016 DONE: Fund watchlist ★/☆ quick-toggle trên mỗi market row (Trang Chủ) — _quickWatch()
 # WEB-017 TODO P1: NAV data completeness — nhiều quỹ chỉ 3 ngày data → cần bulk backfill
 #   → BLOCKED: TCInvest JWT hết hạn từ 2026-07-16, Harvey cần cấp token mới trên Railway
-# WEB-018 TODO P3: TCInvest cross-fetch helper (CORS ngăn browser đọc cookie TCInvest tự động)
-#   → Giải pháp hiện có: TCInvest modal (showTcbsMiniModal) để paste JWT thủ công
-#   → Giải pháp tốt hơn: bookmarklet hoặc extension để extract token → đã có bookmarklet từ 21/07?
+# WEB-018 DONE: TCInvest cross-fetch helper — bookmarklet đã có trong GOV-020 (21/07):
+#   _buildBookmarklet() (web_js.js:2062) + bm-slot div (web_body.html:459), gọi trong loadAdminTab()
+#   Confirm 2026-08-02: code tồn tại, logic hoàn chỉnh (scan localStorage + postMessage → token fill)
 #
 # Việc cần Harvey:
 #   (1) Cấp JWT tcinvest mới → Railway sẽ tự backfill lại NAV cho tất cả quỹ (fix WEB-017)
