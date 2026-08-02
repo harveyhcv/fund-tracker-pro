@@ -4,7 +4,21 @@
 # Priority: P0 (blocker) / P1 (important) / P2 (nice-to-have)
 # Claude đọc file này ĐẦU TIÊN mỗi session. Pick task IN_PROGRESS nếu có, nếu không pick P0 cao nhất.
 #
-# Last updated: 2026-08-02 (autonomous ca sáng: verify baseline, WEB-018 confirmed DONE)
+# Last updated: 2026-08-02 (autonomous ca chiều: verify baseline — all P0/P1 DONE, stop condition applies)
+
+## Session (autonomous, scheduled) — Ca chiều 2026-08-02: verify baseline, không code thêm
+# Tình trạng đầu session: tất cả P0/P1 đã DONE. Điều kiện dừng: "Hết P0+P1".
+# Baseline: py_compile 5 file chính OK, 367/367 tests pass (1.24s).
+# Harvey uncommitted changes vẫn chưa push: web_js.js + web.html (7 dòng mỗi file):
+#   (1) _vsBankDiff: so sánh lợi nhuận 1 năm vs lãi tiết kiệm 4.5%/năm trong HIỆU SUẤT ĐẦU TƯ
+#   (2) "Nhận định chất lượng rủi ro": đánh giá Sharpe + Drawdown + Sortino tổng hợp cuối risk section
+#   → Các changes này complete và in sync giữa web_js.js và web.html (đều +7 dòng, khớp nhau).
+#   → web_new.html chỉ là placeholder "placeholder" 1 dòng — không liên quan.
+# Việc cần Harvey:
+#   (1) Commit + push web_js.js / web.html (vs-bank comparison + risk quality assessment)
+#   (2) WEB-017 BLOCKED: cấp JWT tcinvest mới để backfill NAV bulk
+#   (3) WEB-014 P2: cần Harvey clarify backend field cần expose (nav_jump_anomaly trong analysis panel)
+# Notion sync không khả dụng (MCP chưa authed).
 
 ## Session (autonomous, scheduled) — Ca sáng 2026-08-02: verify baseline + WEB-018 confirm
 # Tình trạng đầu session: tất cả P0/P1 đã DONE. Điều kiện dừng: "Hết P0+P1".
