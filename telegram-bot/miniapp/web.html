@@ -4798,12 +4798,15 @@ function _renderHistAnalysis(code) {
     : pct52 > 80
     ? `Gần đỉnh 52T — upside còn lại: +${_up52.toFixed(1)}%, downside về đáy: −${_dn52.toFixed(1)}%. Tỷ lệ R/R ${_rr52 ? _rr52.toFixed(1)+'x — không hấp dẫn' : 'thấp'}. Cẩn trọng khi mua thêm.`
     : `Vùng giữa — upside đến đỉnh: +${_up52.toFixed(1)}%, downside về đáy: −${_dn52.toFixed(1)}%${_rr52 ? `. R/R ${_rr52.toFixed(1)}x${_rr52>=1.5?' (thuận lợi)':_rr52<1?' (không thuận lợi)':''}` : '.'}`
+  const _lo52Pt = nav52.length ? nav52.reduce((m,p) => p.nav <= m.nav ? p : m, nav52[0]) : null;
+  const _hi52Pt = nav52.length ? nav52.reduce((m,p) => p.nav >= m.nav ? p : m, nav52[0]) : null;
+  const _fmtD52 = d => d && d.length >= 10 ? d.slice(8,10)+'/'+d.slice(5,7) : '';
   const rangeHtml = nav52.length > 10 ? _mkSect('V\u00d9NG GI\u00c1 52 TU\u1ea6N', '\u{1F4CF}', `
     <div style="background:var(--bg3);border-radius:8px;padding:12px 14px">
       <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--txt3);margin-bottom:8px">
-        <span>\u0110\u00e1y: <b style="color:var(--sell);font-family:var(--mono)">${fmt(Math.round(lo52))}</b></span>
+        <span style="display:inline-flex;flex-direction:column"><span>\u0110\u00e1y: <b style="color:var(--sell);font-family:var(--mono)">${fmt(Math.round(lo52))}</b></span><span style="font-size:9px;color:var(--txt3);font-family:var(--mono)">${_fmtD52(_lo52Pt?.date)}</span></span>
         <span>Hi\u1ec7n t\u1ea1i: <b style="color:var(--c0);font-family:var(--mono)">${fmt(Math.round(curr))}</b></span>
-        <span>\u0110\u1ec9nh: <b style="color:var(--buy);font-family:var(--mono)">${fmt(Math.round(hi52))}</b></span>
+        <span style="display:inline-flex;flex-direction:column;align-items:flex-end"><span>\u0110\u1ec9nh: <b style="color:var(--buy);font-family:var(--mono)">${fmt(Math.round(hi52))}</b></span><span style="font-size:9px;color:var(--txt3);font-family:var(--mono);text-align:right">${_fmtD52(_hi52Pt?.date)}</span></span>
       </div>
       <div style="height:10px;background:linear-gradient(90deg,var(--sell)33,#facc1533,var(--buy)33);border-radius:5px;position:relative;margin-bottom:8px">
         <div style="position:absolute;top:-3px;left:calc(${pct52}% - 8px);width:16px;height:16px;background:var(--c0);border-radius:50%;border:2px solid var(--bg);box-shadow:0 0 6px var(--c0)"></div>
