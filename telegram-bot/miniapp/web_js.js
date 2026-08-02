@@ -3579,6 +3579,21 @@ function _renderHistAnalysis(code) {
   const rankPctile30 = rank30 != null && total30 > 0 ? Math.round((1 - rank30/total30) * 100) : null;
   const rankLabel30  = rankPctile30 == null ? '' : rankPctile30 >= 80 ? 'Top 20%' : rankPctile30 >= 60 ? 'Trên trung bình' : rankPctile30 >= 40 ? 'Trung bình' : rankPctile30 >= 20 ? 'Dưới trung bình' : 'Thấp';
   const rankC30 = rankPctile30 == null ? 'var(--txt2)' : rankPctile30 >= 80 ? 'var(--buy)' : rankPctile30 >= 40 ? '#facc15' : 'var(--sell)';
+  const _d30ann = d30 != null ? d30 * 12 : null;
+  const _d90ann = d90 != null ? d90 *  4 : null;
+  const _momTrend = (_d30ann != null && _d90ann != null && Math.abs(_d30ann - _d90ann) > 1)
+    ? (_d30ann > _d90ann ? 'accelerating' : 'decelerating') : null;
+  const _momC = _momTrend === 'accelerating' ? 'var(--buy)' : 'var(--sell)';
+  const _momLabel = _momTrend === 'accelerating' ? '▲ Đà tăng tốc' : '▼ Đà giảm tốc';
+  const _momDesc = _momTrend === 'accelerating'
+    ? (_d30ann > 0 && _d90ann <= 0
+      ? `Đảo chiều tích cực: ngắn hạn dương (+${_d30ann.toFixed(1)}%/năm) sau giai đoạn kém hiệu quả (${_d90ann.toFixed(1)}%/năm).`
+      : `Ngắn hạn (${_d30ann>=0?'+':''}${_d30ann.toFixed(1)}%/năm) vượt trung hạn (${_d90ann>=0?'+':''}${_d90ann.toFixed(1)}%/năm) — quỹ đang lấy lại đà.`)
+    : _momTrend === 'decelerating'
+    ? (_d30ann <= 0 && _d90ann > 0
+      ? `Cảnh báo: ngắn hạn (${_d30ann.toFixed(1)}%/năm) đã âm trong khi trung hạn vẫn dương (${_d90ann>=0?'+':''}${_d90ann.toFixed(1)}%/năm). Theo dõi kỹ.`
+      : `Ngắn hạn (${_d30ann>=0?'+':''}${_d30ann.toFixed(1)}%/năm) kém trung hạn (${_d90ann>=0?'+':''}${_d90ann.toFixed(1)}%/năm) — đà tăng đang giảm dần.`)
+    : '';
   const _vsBankDiff = d365 != null ? d365 - 4.5 : null;
   const _vsBankC = _vsBankDiff == null ? 'var(--txt2)' : _vsBankDiff >= 2 ? 'var(--buy)' : _vsBankDiff >= 0 ? '#facc15' : 'var(--sell)';
   const perfHtml = _mkSect('HIỆU SUẤT ĐẦU TƯ', '📈', `
@@ -3590,6 +3605,7 @@ function _renderHistAnalysis(code) {
       ${_mkPerfRow('1 năm', d365, ann1y != null ? `Lợi nhuận hàng năm (không ghép lãi)` : '')}
       ${p3y != null ? _mkPerfRow('3 năm (gộp)', p3y, ann3y != null ? `Kép: ${ann3y>=0?'+':''}${ann3y.toFixed(1)}%/năm` : '') : ''}
     </div>
+    ${_momTrend ? `<div style="background:${_momC}11;border:1px solid ${_momC}33;border-radius:8px;padding:8px 12px;margin-top:8px;display:flex;justify-content:space-between;align-items:center;gap:10px"><div style="flex:1"><div style="font-size:10px;font-weight:600;color:${_momC};margin-bottom:2px">${_momLabel}</div><div style="font-size:9px;color:var(--txt2);line-height:1.4">${_momDesc}</div></div><div style="text-align:right;flex-shrink:0"><div style="font-size:9px;color:var(--txt3)">1 tháng (quy đổi/năm)</div><div style="font-family:var(--mono);font-size:13px;font-weight:700;color:${_momC}">${_d30ann>=0?'+':''}${_d30ann.toFixed(1)}%</div></div></div>` : ''}
     ${_vsBankDiff != null ? `<div style="background:${_vsBankC}11;border:1px solid ${_vsBankC}33;border-radius:8px;padding:8px 12px;margin-top:8px;display:flex;justify-content:space-between;align-items:center"><div><div style="font-size:10px;color:var(--txt2)">So với lãi tiết kiệm 4.5%/năm</div><div style="font-size:9px;color:var(--txt3)">Benchmark phi rủi ro · lãi ngân hàng kỳ hạn 12T ước tính</div></div><div style="text-align:right"><div style="font-family:var(--mono);font-size:14px;font-weight:700;color:${_vsBankC}">${_vsBankDiff >= 0 ? '+' : ''}${_vsBankDiff.toFixed(1)}%</div><div style="font-size:9px;color:${_vsBankC}">${_vsBankDiff >= 5 ? 'Vượt trội rõ ràng — đáng đầu tư hơn gửi tiết kiệm' : _vsBankDiff >= 0 ? 'Nhỉnh hơn lãi ngân hàng' : 'Kém lãi ngân hàng — xem xét lại hiệu quả'}</div></div></div>` : ''}
     ${(rank30 != null && total30 > 1) ? `<div style="background:${rankC30}11;border:1px solid ${rankC30}33;border-radius:8px;padding:10px 12px;margin-top:8px;display:flex;align-items:center;gap:10px">
       <div style="font-size:22px;font-family:var(--mono);font-weight:700;color:${rankC30}">#${rank30}</div>
