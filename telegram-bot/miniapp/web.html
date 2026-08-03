@@ -1159,6 +1159,9 @@ function _clearWebSession() {
 
 if (_tg) { _tg.ready(); _tg.expand(); }
 
+// HTML-escape utility — dùng cho mọi dữ liệu API trước khi inject vào innerHTML
+const esc = s => { const d = document.createElement('div'); d.textContent = String(s ?? ''); return d.innerHTML; };
+
 // ── Web standalone login (Telegram Login Widget) ──────────────────────────────
 // Chỉ dùng khi mở trong browser thường (không phải Telegram Mini App).
 // Flow: user click "Đăng nhập với Telegram" → widget popup → callback _onTelegramLogin
@@ -3176,7 +3179,7 @@ function renderAdminUsers(users) {
   const rows = users.map(u=>`
     <tr class="au-row">
       <td class="au-id">${u.telegram_id}</td>
-      <td class="au-name">${u.name||'—'}${u.is_admin?'<span class="au-badge-admin">ADMIN</span>':''}</td>
+      <td class="au-name">${esc(u.name)||'—'}${u.is_admin?'<span class="au-badge-admin">ADMIN</span>':''}</td>
       <td>${TIER[u.tier]||u.tier}</td>
       <td style="text-align:right;font-family:var(--mono);font-size:11px">${u.trade_count||0}</td>
       <td style="font-size:10px;color:var(--txt2)">${(u.created_at||'').slice(0,10)}</td>
@@ -4616,7 +4619,7 @@ function _renderHistAnalysis(code) {
     <div style="display:flex;justify-content:space-between;align-items:flex-start">
       <div>
         <div style="font-family:var(--mono);font-size:16px;font-weight:700;color:var(--c0)">${code}</div>
-        <div style="font-size:11px;color:var(--txt2);margin-top:2px">${fundName !== code ? fundName : ''}</div>
+        <div style="font-size:11px;color:var(--txt2);margin-top:2px">${fundName !== code ? esc(fundName) : ''}</div>
       </div>
       <div style="text-align:right">
         <div style="font-family:var(--mono);font-size:15px;font-weight:700">${fmt(Math.round(curr))} \u0111</div>
@@ -4740,7 +4743,25 @@ function _renderHistAnalysis(code) {
   // Extreme 7-day move alert (bond: >8%, equity/balanced: >15%)
   const _extremeThresh = (fundType === 'bond' || fundType === 'money_market') ? 8 : 15;
   const _extremeMove7 = p7 != null && Math.abs(p7) > _extremeThresh;
-  const perfHtml = _mkSect('HIỆU SUẤT ĐẦU TƯ', '📈', `
+  // WEB-044: 5-day regression trend forecast (linear regression on last 30 pts)
+  const _fcast5d = (() => {
+    if (pts.length < 15) return null;
+    const _t = pts.slice(-30), _n = _t.length;
+    const _xs = _t.map((_,i)=>i), _ys = _t.map(p=>p.nav);
+    const _mx = _xs.reduce((a,b)=>a+b,0)/_n, _my = _ys.reduce((a,b)=>a+b,0)/_n;
+    const _cov = _xs.reduce((s,x,i)=>s+(x-_mx)*(_ys[i]-_my),0);
+    const _vx = _xs.reduce((s,x)=>s+(x-_mx)**2,0);
+    if (!_vx) return null;
+    return _my + (_cov/_vx)*(_n-1+5-_mx);
+  })();
+  const _fcast5Pct = (_fcast5d && curr > 0) ? (_fcast5d - curr) / curr * 100 : null;
+  const _fcast5C = _fcast5Pct == null ? 'var(--txt2)' : _fcast5Pct > 0 ? 'var(--buy)' : 'var(--sell)';
+  // WEB-047: Multi-timeframe return consistency
+  const _tfRets = [p7, d30, d90, d365].filter(v => v != null);
+  const _tfPos = _tfRets.filter(v => v > 0).length;
+  const _tfNeg = _tfRets.filter(v => v < 0).length;
+  const _tfTotal = _tfRets.length;
+  const perfHtml = _mkSect('HIỆU SUẤT ĐẦU TƯ', '\u{1F4C8}', `
     <div style="background:var(--bg3);border-radius:8px;overflow:hidden;padding:2px 12px 4px">
       ${_mkPerfRow('7 ngày gần nhất', p7, rank7 != null && total7 > 1 ? `Hạng #${rank7}/${total7} ${ftLabel.replace('Quỹ ','')}` : '')}
       ${_mkPerfRow('1 tháng', d30, rank30 != null && total30 > 1 ? `Hạng #${rank30}/${total30} ${ftLabel.replace('Quỹ ','')} · ${rankLabel30}` : '')}
@@ -4773,6 +4794,20 @@ function _renderHistAnalysis(code) {
       <div style="font-size:11px;font-weight:700;color:var(--sell)">⚠️ BIẾN ĐỘNG BẤT THƯỜNG 7 NGÀY</div>
       <div style="font-size:10px;color:var(--txt2);margin-top:4px">NAV ${p7 != null && p7 > 0 ? 'tăng vọt' : 'giảm mạnh'} ${p7 != null ? Math.abs(p7).toFixed(1) : '?'}% trong 7 ngày — vượt xa mức bình thường của quỹ loại này (ngưỡng ${_extremeThresh}%). Kiểm tra nguyên nhân (thị trường chung, thay đổi fund manager, corporate action) trước khi ra quyết định giao dịch.</div>
     </div>` : ''}
+    ${_fcast5Pct != null ? '<div style="background:' + _fcast5C + '11;border:1px solid ' + _fcast5C + '33;border-radius:8px;padding:8px 12px;margin-top:8px;display:flex;justify-content:space-between;align-items:center">'
+      + '<div><div style="font-size:10px;color:var(--txt2)">Dự báo xu hướng 5 ngày</div><div style="font-size:9px;color:var(--txt3)">Hồi quy tuyến tính 30 điểm NAV · tham khảo, không phải dự báo chính thức</div></div>'
+      + '<div style="text-align:right"><div style="font-family:var(--mono);font-size:14px;font-weight:700;color:' + _fcast5C + '">' + (_fcast5Pct >= 0 ? '+' : '') + _fcast5Pct.toFixed(2) + '%</div>'
+      + '<div style="font-size:9px;color:' + _fcast5C + '">≈ ' + fmt(Math.round(_fcast5d)) + ' đ</div></div></div>' : ''}
+    ${_tfTotal >= 2 ? (() => {
+      const _frames = [['7 ngày', p7], ['1 tháng', d30], ['3 tháng', d90], ['1 năm', d365]].filter(([, v]) => v != null);
+      const _vC = _tfPos === _tfTotal ? 'var(--buy)' : _tfNeg === _tfTotal ? 'var(--sell)' : _tfPos > _tfNeg ? 'var(--buy)' : _tfPos < _tfNeg ? 'var(--sell)' : '#facc15';
+      const _verdict = _tfPos === _tfTotal ? 'Nhất quán tăng trên tất cả khung' : _tfNeg === _tfTotal ? 'Nhất quán giảm trên tất cả khung' : _tfPos > _tfNeg ? 'Nghiêng về tăng (' + _tfPos + '/' + _tfTotal + ' khung dương)' : _tfPos < _tfNeg ? 'Nghiêng về giảm (' + _tfNeg + '/' + _tfTotal + ' khung âm)' : 'Tín hiệu hỗn hợp — phân kỳ ngắn/dài hạn';
+      return '<div style="background:var(--bg3);border-radius:8px;padding:8px 12px;margin-top:8px">'
+        + '<div style="font-size:10px;color:var(--txt2);margin-bottom:5px">Đồng thuận đa khung thời gian</div>'
+        + '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:4px">'
+        + _frames.map(([l, v]) => '<span style="font-size:10px;background:' + (v > 0 ? '#4ade8022' : '#f8717122') + ';color:' + (v > 0 ? 'var(--buy)' : 'var(--sell)') + ';border-radius:4px;padding:2px 7px;font-family:var(--mono)">' + l + ' ' + (v > 0 ? '▲' : '▼') + '</span>').join('')
+        + '</div><div style="font-size:9px;color:' + _vC + '">' + _verdict + '</div></div>';
+    })() : ''}
     <div style="margin-top:6px;font-size:10px;color:var(--txt3);line-height:1.5">Hiệu suất = % thay đổi NAV theo thời gian. Chưa tính phí mua/bán hoặc thuế. Xếp hạng so với các quỹ cùng loại trong danh sách đang theo dõi.</div>`);
 
   // ── 4. RISK METRICS ──
@@ -4812,6 +4847,32 @@ function _renderHistAnalysis(code) {
   // WEB-041: Volatility regime \u2014 short-term vs long-term vol comparison
   const _vol30d    = pts.length >= 32 ? _annVol(pts.slice(-30)) : null;
   const _volRegime = (vol != null && _vol30d != null && vol > 1.5) ? _vol30d / vol : null;
+  // WEB-046: Drawdown recovery statistics — identify historical episodes ≥5%
+  const _ddStats = (() => {
+    if (pts.length < 60) return null;
+    const navs = pts.map(p => p.nav);
+    const eps = [];
+    let pk = navs[0], pkI = 0, trN = navs[0], trI = 0, inDD = false;
+    for (let i = 1; i < navs.length; i++) {
+      if (navs[i] > pk) {
+        if (inDD) {
+          const dp = (pk - trN) / pk * 100;
+          if (dp >= 5) eps.push({ dp, dur: trI - pkI, rec: i - trI });
+          inDD = false;
+        }
+        pk = navs[i]; pkI = i; trN = navs[i]; trI = i;
+      } else if (navs[i] < trN) {
+        trN = navs[i]; trI = i;
+        if ((pk - trN) / pk * 100 >= 5) inDD = true;
+      }
+    }
+    if (inDD) { const dp = (pk - trN) / pk * 100; if (dp >= 5) eps.push({ dp, dur: trI - pkI, rec: null }); }
+    if (!eps.length) return null;
+    const wR = eps.filter(e => e.rec !== null);
+    return { count: eps.length, avgDp: eps.reduce((s,e)=>s+e.dp,0)/eps.length,
+      maxDp: Math.max(...eps.map(e=>e.dp)), avgRec: wR.length ? Math.round(wR.reduce((s,e)=>s+e.rec,0)/wR.length) : null,
+      maxDur: Math.max(...eps.map(e=>e.dur)), hasOpen: eps.some(e=>e.rec===null) };
+  })();
   const riskHtml = pts.length > 30 ? _mkSect('R\u1ee6I RO & CH\u1ea4T L\u01af\u1ee2NG', '\u{1F6E1}\uFE0F', `
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:10px">
       ${_mkMetric('Bi\u1ebfn \u0111\u1ed9ng/n\u0103m', vol != null ? vol.toFixed(1) + '%' : '\u2013', volC, volDesc)}
@@ -4832,6 +4893,18 @@ function _renderHistAnalysis(code) {
     ${sr != null ? `<div style="background:${sr>1?'var(--buy)':sr>0?'#facc15':'var(--sell)'}11;border:1px solid ${sr>1?'var(--buy)':sr>0?'#facc15':'var(--sell)'}33;border-radius:8px;padding:10px 12px;margin-top:8px"><div style="font-size:10px;font-weight:600;color:${sr>1?'var(--buy)':sr>0?'#facc15':'var(--sell)'};margin-bottom:4px">Nhận định chất lượng rủi ro</div><div style="font-size:10px;color:var(--txt2);line-height:1.7">${sr > 1 ? 'Sharpe > 1 — quỹ tạo ra alpha thực sự so với lãi suất căn bản 4.5%/năm.' : sr > 0 ? 'Sharpe dương nhưng < 1 — bù được lãi ngân hàng nhưng biến động chưa được đền bù tốt.' : '⚠️ Sharpe âm — quỹ chưa bù đắp được lãi suất ngân hàng 4.5%/năm. Cân nhắc chuyển sang quỹ hiệu quả hơn hoặc giảm tỷ trọng.'}${mdd > 20 ? ` Drawdown lớn (${mdd.toFixed(1)}%) — từng chịu lỗ nặng, cần tâm lý vững.` : mdd > 10 ? ` Drawdown vừa (${mdd.toFixed(1)}%) — chịu được với nhà đầu tư trung hạn.` : ` Drawdown thấp (${mdd.toFixed(1)}%) — ổn định tốt.`}${sortino != null && sortino > 1.5 ? ' Sortino cao — quỹ tăng đều, ít gặp tình huống giảm mạnh.' : sortino != null && sortino < 0 ? ' Sortino âm — đà giảm lớn hơn đà tăng.' : ''}${_curDD52 > 5 ? ` Đang trong drawdown <b style="color:var(--sell)">−${_curDD52.toFixed(1)}%</b> từ đỉnh 52 tuần — đây là mức lỗ thực tế hiện tại (so với đỉnh lịch sử: −${mdd.toFixed(1)}%).` : _curDD52 > 1 ? ` Drawdown hiện tại nhỏ (−${_curDD52.toFixed(1)}% từ đỉnh 52T).` : ''}${calmar != null && calmar < 10 ? (calmar > 1 ? ` Calmar ${calmar.toFixed(2)} — lợi nhuận năm vượt drawdown tối đa (${mdd.toFixed(1)}%): quỹ phục hồi nhanh sau mỗi đợt giảm.` : calmar > 0.3 ? ` Calmar ${calmar.toFixed(2)} — chấp nhận được, nhưng lợi nhuận năm chưa gấp đôi mức drawdown tối đa (${mdd.toFixed(1)}%).` : calmar >= 0 ? ` Calmar ${calmar.toFixed(2)} thấp — lợi nhuận năm hiện chưa bù được rủi ro drawdown tối đa (${mdd.toFixed(1)}%).` : '') : ''}</div></div>` : ''}
     ${var95 != null ? `<div style="background:var(--bg3);border-radius:8px;padding:8px 12px;margin-top:8px;font-size:10px;color:var(--txt2);line-height:1.6"><b style="color:var(--txt1)">Định cỡ vị thế (Position Sizing)</b> — VaR 95% = <b style="color:${var95C}">${var95.toFixed(1)}%</b>/tháng: trong 5% kịch bản xấu nhất, quỹ có thể mất tới <b>${var95.toFixed(1)}%</b> giá trị trong 1 tháng. Để ảnh hưởng không vượt 2% tổng danh mục: nên giới hạn tỷ trọng tối đa <b style="color:var(--c0)">~${Math.min(99, Math.round(2/var95*100))}%</b>.</div>` : ''}
     ${_volRegime != null && _volRegime > 1.4 ? `<div style="background:#f8717111;border:1px solid #f8717133;border-radius:8px;padding:8px 12px;margin-top:8px;font-size:10px;color:var(--txt2);line-height:1.6">⚡ <b style="color:var(--sell)">Biến động đang tăng cao</b> — vol 30 ngày gần nhất <b style="color:var(--sell)">${_vol30d.toFixed(1)}%/năm</b> (${_volRegime.toFixed(1)}x mức trung bình dài hạn ${vol.toFixed(1)}%). Nên chia nhỏ lệnh và không mua/bán số lượng lớn trong giai đoạn này.</div>` : _volRegime != null && _volRegime < 0.6 ? `<div style="background:#4ade8011;border:1px solid #4ade8033;border-radius:8px;padding:8px 12px;margin-top:8px;font-size:10px;color:var(--txt2);line-height:1.6">✅ <b style="color:var(--buy)">Biến động hiện tại thấp</b> — vol 30 ngày <b style="color:var(--buy)">${_vol30d.toFixed(1)}%/năm</b> (chỉ ${_volRegime.toFixed(1)}x mức dài hạn ${vol.toFixed(1)}%). Môi trường ổn định — thuận lợi để vào lệnh.</div>` : ''}
+    ${_ddStats ? '<div style="background:var(--bg3);border-radius:8px;padding:10px 12px;margin-top:8px">'
+      + '<div style="font-size:10px;font-weight:600;color:var(--txt1);margin-bottom:6px">📉 Lịch sử Drawdown (≥5%)</div>'
+      + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">'
+      + _mkMetric('Số đợt', String(_ddStats.count), 'var(--c0)', _ddStats.hasOpen ? 'Có đợt đang mở' : 'Đã hồi phục hết')
+      + _mkMetric('Sâu nhất', '-' + _ddStats.maxDp.toFixed(1) + '%', 'var(--sell)', 'Đỉnh → Đáy')
+      + _mkMetric('Phục hồi TB', _ddStats.avgRec != null ? _ddStats.avgRec + ' ngày' : '—', 'var(--buy)', _ddStats.avgRec != null ? 'Sau khi chạm đáy' : 'Chưa có dữ liệu')
+      + '</div>'
+      + '<div style="font-size:10px;color:var(--txt2);margin-top:6px;line-height:1.5">'
+      + (_ddStats.avgRec != null
+        ? 'TB mỗi đợt giảm <b style="color:var(--sell)">' + _ddStats.avgDp.toFixed(1) + '%</b>, kéo dài <b>' + _ddStats.maxDur + ' ngày</b>. Phục hồi trung bình <b style="color:var(--buy)">' + _ddStats.avgRec + ' ngày</b> sau đáy' + (_ddStats.hasOpen ? ' (đang có đợt chưa phục hồi).' : '.')
+        : (_ddStats.hasOpen ? 'Đang trong đợt drawdown chưa phục hồi hoàn toàn trong dữ liệu lịch sử.' : ''))
+      + '</div></div>' : ''}
 `) : '';
   // ── 5. 52-WEEK RANGE ──
   const cut52D = new Date(); cut52D.setDate(cut52D.getDate() - 365);
@@ -5505,6 +5578,27 @@ function _renderHistAnalysis(code) {
       + '<br><span style="color:var(--txt3)">Dựa trên lịch sử NAV — không đảm bảo lặp lại.</span>'
       + '</div>');
   })() : '';
+  // WEB-045: Entry Zone Quality Score — composite 0-100 from RSI/BB/52W/vol
+  const _entryQualHtml = (s && techRel !== 'N/A' && pts.length >= 30) ? (() => {
+    const _rsiQ = (s.rsi ?? 50) < 30 ? 100 : (s.rsi ?? 50) < 40 ? 80 : (s.rsi ?? 50) < 50 ? 60 : (s.rsi ?? 50) < 60 ? 40 : (s.rsi ?? 50) < 70 ? 20 : 5;
+    const _bbQ  = (s.bb_pct ?? 50) < 10 ? 100 : (s.bb_pct ?? 50) < 25 ? 80 : (s.bb_pct ?? 50) < 40 ? 65 : (s.bb_pct ?? 50) < 60 ? 45 : (s.bb_pct ?? 50) < 75 ? 20 : 5;
+    const _52Q  = pct52 < 10 ? 100 : pct52 < 25 ? 80 : pct52 < 40 ? 65 : pct52 < 60 ? 45 : pct52 < 75 ? 25 : 10;
+    const _vBn  = _volRegime == null ? 0 : _volRegime < 0.6 ? 8 : _volRegime > 1.4 ? -8 : 0;
+    const _eq   = Math.min(100, Math.max(0, Math.round(_rsiQ * 0.38 + _bbQ * 0.27 + _52Q * 0.27 + (_vBn * 0.08 + 4))));
+    const _eqC  = _eq >= 70 ? 'var(--buy)' : _eq >= 50 ? '#facc15' : 'var(--sell)';
+    const _eqLb = _eq >= 75 ? 'Xuất sắc — vùng tích lũy tốt' : _eq >= 60 ? 'Tốt — đáng cân nhắc mua vào' : _eq >= 45 ? 'Trung bình — nên chờ thêm tín hiệu' : 'Thấp — chưa phải vùng mua tốt';
+    return '<div style="background:var(--bg3);border-radius:8px;padding:10px 12px;margin-bottom:10px">'
+      + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
+      + '<div style="font-size:10px;color:var(--txt2)">Chất lượng vùng mua hiện tại</div>'
+      + '<div style="font-family:var(--mono);font-size:18px;font-weight:700;color:' + _eqC + '">' + _eq + '<span style="font-size:10px;font-weight:400;color:var(--txt3)">/100</span></div>'
+      + '</div>'
+      + '<div style="height:5px;background:var(--bdr);border-radius:3px;margin-bottom:5px">'
+      + '<div style="height:100%;width:' + _eq + '%;background:' + _eqC + ';border-radius:3px"></div>'
+      + '</div>'
+      + '<div style="font-size:10px;color:' + _eqC + ';margin-bottom:3px">' + _eqLb + '</div>'
+      + '<div style="font-size:9px;color:var(--txt3)">RSI ' + ((s.rsi ?? 50)).toFixed(0) + ' (38%) · BB% ' + ((s.bb_pct ?? 50)).toFixed(0) + '% (27%) · Vị trí 52T: ' + pct52 + '% (27%) · Biến động (8%)</div>'
+      + '</div>';
+  })() : '';
   const conclusionHtml = _mkSect('KẾT LUẬN & KHUYẾN NGHỊ', '💡', `
     <div style="background:${score >= 3 ? '#4ade8011' : score <= -3 ? '#f8717111' : '#facc1511'};border:1px solid ${score >= 3 ? '#4ade8033' : score <= -3 ? '#f8717133' : '#facc1533'};border-radius:10px;padding:14px;margin-bottom:10px">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
@@ -5515,9 +5609,10 @@ function _renderHistAnalysis(code) {
         </div>
       </div>
       <div style="font-size:12px;color:var(--txt1);line-height:1.7;font-weight:500${apiConclusion ? ';margin-bottom:10px' : ''}">${summaryLine}${_summaryRsiCtx}</div>
-      ${apiConclusion ? `<div style="font-size:11px;color:var(--txt2);line-height:1.7;border-top:1px solid var(--bdr);padding-top:8px">${apiConclusion}</div>` : ''}
+      ${apiConclusion ? `<div style="font-size:11px;color:var(--txt2);line-height:1.7;border-top:1px solid var(--bdr);padding-top:8px">${esc(apiConclusion)}</div>` : ''}
     </div>
     ${s?.tech_reliability === 'LOW' ? `<div style="background:#facc1511;border:1px solid #facc1533;border-radius:8px;padding:8px 12px;margin-bottom:8px;display:flex;gap:8px;align-items:flex-start"><span style="font-size:13px">⚠️</span><div style="font-size:10px;color:var(--txt2);line-height:1.6"><b style="color:#facc15">TA độ tin cậy THẤP</b> — ${s?.fund_type === 'bond' ? 'Quỹ trái phiếu có NAV biến động nhỏ và phân phối đều: RSI/MACD/BB được thiết kế cho cổ phiếu, ít hiệu quả hơn với trái phiếu. Ưu tiên xem Hiệu suất dài hạn và Sharpe ratio; tín hiệu kỹ thuật chỉ mang tính tham khảo.' : 'Tín hiệu kỹ thuật hiện ít tin cậy — cân nhắc thêm yếu tố cơ bản.'}</div></div>` : ''}
+    ${_entryQualHtml}
     <div style="background:var(--bg3);border-radius:8px;padding:10px 14px">
       <div style="font-size:10px;color:var(--txt3);font-family:var(--mono);letter-spacing:.06em">CHIẾN LƯỢC GỢI Ý</div>
       ${strategyHtml}
