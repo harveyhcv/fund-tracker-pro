@@ -4,7 +4,25 @@
 # Priority: P0 (blocker) / P1 (important) / P2 (nice-to-have)
 # Claude đọc file này ĐẦU TIÊN mỗi session. Pick task IN_PROGRESS nếu có, nếu không pick P0 cao nhất.
 #
-# Last updated: 2026-08-03 (autonomous continuation: WEB-038 — extreme 7-day move alert in perfHtml)
+# Last updated: 2026-08-03 (autonomous ca chiều: WEB-044..047 — forecast + entry quality + drawdown recovery + multi-timeframe)
+
+## Session (autonomous, ca chiều) — 2026-08-03: WEB-044..047 frontend depth
+# WEB-044 DONE: 5-day linear regression trend forecast in HIỆU SUẤT section
+#   - linear regression on last 30 pts → project 5 trading days forward
+#   - Card: "Dự báo xu hướng 5 ngày" with green/red directional % and projected NAV
+#   - Fires only when pts.length >= 15
+# WEB-045 DONE: Entry Zone Quality Score (0-100) in KẾT LUẬN section
+#   - Composite: RSI (38%) + BB% (27%) + 52W position (27%) + vol regime bonus/penalty (8%)
+#   - Progress bar + label: >=75 "Xuất sắc", >=60 "Tốt", >=45 "Trung bình", else "Thấp"
+#   - Inserted before strategy box in conclusionHtml
+# WEB-046 DONE: Drawdown Recovery Statistics in RỦI RO section
+#   - Scans full history for episodes >= 5% drawdown
+#   - Shows: count, deepest drop, avg recovery time (days), open episodes
+#   - Fires only when pts.length >= 60
+# WEB-047 DONE: Multi-timeframe Return Consistency in HIỆU SUẤT section
+#   - Checks 7d / 1m / 3m / 1y — arrows green/red per direction
+#   - Verdict: "Nhất quán tăng" / "Nhất quán giảm" / "X/Y khung tăng (hỗn hợp)"
+# Build: 400,591 chars. 367/367 tests pass. Commit dc2a57e, pushed to staging.
 
 ## Session (autonomous, continuation) — 2026-08-03: WEB-038..043 expert analysis series
 # WEB-043 DONE: DCA Entry Ladder in strategyHtml
