@@ -1220,3 +1220,29 @@ proxy code. py_compile pass.
 4. Commit `web_js.js` + `web_body.html` + `build_web.py` + `local_dev_server.py` uncommitted
 5. Commit `ios/` + `dashboard/portfolio.html` + `scripts/*`
 6. Xác nhận `prediction_actuals` đủ ngày cho T2-008 `--reweight` lần đầu
+
+---
+
+## ✅ Session (autonomous, ca chiều) — 2026-08-03: WEB-044..053 — 10 features, analysis panel depth
+
+**Baseline**: 367/367 tests pass. Port 8443 conflict (live server) — browser verification bị bỏ qua.
+**Trước khi bắt đầu**: commit morning session (WEB-034..043) chưa commit → đã commit trước.
+
+**10 features implemented (tất cả frontend-only, dùng `pts[]` đã có sẵn, không cần API mới):**
+
+| Task | Section | Feature |
+|------|---------|---------|
+| WEB-044 | HIỆU SUẤT | 5-day linear regression forecast (last 30 pts) |
+| WEB-045 | KẾT LUẬN | Entry Zone Quality Score 0-100 (RSI 38%+BB% 27%+52W 27%+vol 8%) |
+| WEB-046 | RỦI RO | Drawdown recovery stats — episodes ≥5%, count/depth/avg-recovery |
+| WEB-047 | HIỆU SUẤT | Multi-timeframe consistency — 7d/1m/3m/1y arrows + verdict |
+| WEB-048 | RỦI RO | Return distribution: skewness + excess kurtosis, fat-tail warning |
+| WEB-049 | VÙNG GIÁ | Best/worst 30-day rolling windows with date ranges |
+| WEB-050 | RỦI RO | Daily win rate + Gain/Pain ratio (avgUp/avgDown per session) |
+| WEB-051 | RỦI RO | Historical vol percentile — current 30d vol vs full history |
+| WEB-052 | HIỆU SUẤT | Consecutive gain/loss streaks + current active streak |
+| WEB-053 | KẾT LUẬN | Lag-1 autocorrelation ρ — momentum vs mean-reversion signal |
+
+**Build**: 410,510 chars (web.html). Commits dc2a57e..4f84a5d, all pushed to `staging`.
+**WEB-017 (P1)** vẫn BLOCKED: JWT tcinvest mới cần từ Harvey.
+**Notion sync không khả dụng** (MCP chưa authed).
