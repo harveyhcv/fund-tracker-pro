@@ -4737,6 +4737,9 @@ function _renderHistAnalysis(code) {
     : '';
   const _vsBankDiff = d365 != null ? d365 - 4.5 : null;
   const _vsBankC = _vsBankDiff == null ? 'var(--txt2)' : _vsBankDiff >= 2 ? 'var(--buy)' : _vsBankDiff >= 0 ? '#facc15' : 'var(--sell)';
+  // Extreme 7-day move alert (bond: >8%, equity/balanced: >15%)
+  const _extremeThresh = (fundType === 'bond' || fundType === 'money_market') ? 8 : 15;
+  const _extremeMove7 = p7 != null && Math.abs(p7) > _extremeThresh;
   const perfHtml = _mkSect('HIỆU SUẤT ĐẦU TƯ', '📈', `
     <div style="background:var(--bg3);border-radius:8px;overflow:hidden;padding:2px 12px 4px">
       ${_mkPerfRow('7 ngày gần nhất', p7, rank7 != null && total7 > 1 ? `Hạng #${rank7}/${total7} ${ftLabel.replace('Quỹ ','')}` : '')}
@@ -4766,10 +4769,20 @@ function _renderHistAnalysis(code) {
         <div style="font-size:9px;color:${consistencyC}">${consistencyLabel}</div>
       </div>
     </div>` : ''}
+    ${_extremeMove7 ? `<div style="background:#f8717111;border:1px solid #f8717133;border-radius:8px;padding:10px 12px;margin-top:8px">
+      <div style="font-size:11px;font-weight:700;color:var(--sell)">⚠️ BIẾN ĐỘNG BẤT THƯỜNG 7 NGÀY</div>
+      <div style="font-size:10px;color:var(--txt2);margin-top:4px">NAV ${p7 != null && p7 > 0 ? 'tăng vọt' : 'giảm mạnh'} ${p7 != null ? Math.abs(p7).toFixed(1) : '?'}% trong 7 ngày — vượt xa mức bình thường của quỹ loại này (ngưỡng ${_extremeThresh}%). Kiểm tra nguyên nhân (thị trường chung, thay đổi fund manager, corporate action) trước khi ra quyết định giao dịch.</div>
+    </div>` : ''}
     <div style="margin-top:6px;font-size:10px;color:var(--txt3);line-height:1.5">Hiệu suất = % thay đổi NAV theo thời gian. Chưa tính phí mua/bán hoặc thuế. Xếp hạng so với các quỹ cùng loại trong danh sách đang theo dõi.</div>`);
 
   // ── 4. RISK METRICS ──
   const vol = _annVol(pts) ?? s?.vol_ann;
+  // Current drawdown from 52-week peak (different from all-time mdd)
+  const _cutDd52 = new Date(); _cutDd52.setDate(_cutDd52.getDate()-365);
+  const _cutDd52S = _cutDd52.toISOString().slice(0,10);
+  const _pts52r   = pts.filter(p => p.date >= _cutDd52S);
+  const _peak52r  = _pts52r.length ? _pts52r.reduce((m,p)=>p.nav>m?p.nav:m,0) : 0;
+  const _curDD52  = _peak52r > curr && curr > 0 ? (_peak52r - curr) / _peak52r * 100 : 0;
   const mdd = _maxDrawdown(pts);
   const sr      = _sharpe(pts, 252, 4.5);
   const sortino = _sortino(pts, 252, 4.5);
@@ -4796,6 +4809,9 @@ function _renderHistAnalysis(code) {
   const sortinoDesc = sortino == null ? '\u2014' : sortino > 1.5 ? 'Xu\u1ea5t s\u1eafc (it l\u1ed7)' : sortino > 0.5 ? '\u1ed4n \u0111\u1ecbnh' : sortino > 0 ? 'Trung b\u00ecnh' : 'K\u00e9m';
   const calmarDesc  = calmar == null  ? '\u2014' : calmar > 1  ? 'R\u1ea5t t\u1ed1t' : calmar > 0 ? 'Ch\u1ea5p nh\u1eadn' : 'K\u00e9m';
   const var95Desc   = var95 == null   ? '\u2014' : var95 < 3   ? 'R\u1ee7i ro th\u1ea5p' : var95 < 8 ? 'Trung b\u00ecnh' : 'C\u1ea7n ch\u00fa \u00fd';
+  // WEB-041: Volatility regime \u2014 short-term vs long-term vol comparison
+  const _vol30d    = pts.length >= 32 ? _annVol(pts.slice(-30)) : null;
+  const _volRegime = (vol != null && _vol30d != null && vol > 1.5) ? _vol30d / vol : null;
   const riskHtml = pts.length > 30 ? _mkSect('R\u1ee6I RO & CH\u1ea4T L\u01af\u1ee2NG', '\u{1F6E1}\uFE0F', `
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:10px">
       ${_mkMetric('Bi\u1ebfn \u0111\u1ed9ng/n\u0103m', vol != null ? vol.toFixed(1) + '%' : '\u2013', volC, volDesc)}
@@ -4813,7 +4829,9 @@ function _renderHistAnalysis(code) {
       <b style="color:var(--txt1)">Calmar Ratio</b> \u2014 L\u1ee3i nhu\u1eadn n\u0103m \u00f7 drawdown t\u1ed1i \u0111a. >1 = h\u1ed3i ph\u1ee5c nhanh h\u01a1n m\u1ee9c l\u1ed7 t\u1eebng ch\u1ecbu. <0 = \u0111ang l\u1ed7 so v\u1edbi l\u00e3i su\u1ea5t ng\u00e2n h\u00e0ng.<br>
       <b style="color:var(--txt1)">VaR 95% (1 th\u00e1ng)</b> \u2014 Trong 5% tr\u01b0\u1eddng h\u1ee3p x\u1ea5u nh\u1ea5t, qu\u1ef9 c\u00f3 th\u1ec3 m\u1ea5t bao nhi\u00eau % trong 1 th\u00e1ng. D\u1ef1a tr\u00ean l\u1ecbch s\u1eed NAV.
     </div>
-    ${sr != null ? `<div style="background:${sr>1?'var(--buy)':sr>0?'#facc15':'var(--sell)'}11;border:1px solid ${sr>1?'var(--buy)':sr>0?'#facc15':'var(--sell)'}33;border-radius:8px;padding:10px 12px;margin-top:8px"><div style="font-size:10px;font-weight:600;color:${sr>1?'var(--buy)':sr>0?'#facc15':'var(--sell)'};margin-bottom:4px">Nhận định chất lượng rủi ro</div><div style="font-size:10px;color:var(--txt2);line-height:1.7">${sr > 1 ? 'Sharpe > 1 — quỹ tạo ra alpha thực sự so với lãi suất căn bản 4.5%/năm.' : sr > 0 ? 'Sharpe dương nhưng < 1 — bù được lãi ngân hàng nhưng biến động chưa được đền bù tốt.' : '⚠️ Sharpe âm — quỹ chưa bù đắp được lãi suất ngân hàng 4.5%/năm. Cân nhắc chuyển sang quỹ hiệu quả hơn hoặc giảm tỷ trọng.'}${mdd > 20 ? ` Drawdown lớn (${mdd.toFixed(1)}%) — từng chịu lỗ nặng, cần tâm lý vững.` : mdd > 10 ? ` Drawdown vừa (${mdd.toFixed(1)}%) — chịu được với nhà đầu tư trung hạn.` : ` Drawdown thấp (${mdd.toFixed(1)}%) — ổn định tốt.`}${sortino != null && sortino > 1.5 ? ' Sortino cao — quỹ tăng đều, ít gặp tình huống giảm mạnh.' : sortino != null && sortino < 0 ? ' Sortino âm — đà giảm lớn hơn đà tăng.' : ''}</div></div>` : ''}
+    ${sr != null ? `<div style="background:${sr>1?'var(--buy)':sr>0?'#facc15':'var(--sell)'}11;border:1px solid ${sr>1?'var(--buy)':sr>0?'#facc15':'var(--sell)'}33;border-radius:8px;padding:10px 12px;margin-top:8px"><div style="font-size:10px;font-weight:600;color:${sr>1?'var(--buy)':sr>0?'#facc15':'var(--sell)'};margin-bottom:4px">Nhận định chất lượng rủi ro</div><div style="font-size:10px;color:var(--txt2);line-height:1.7">${sr > 1 ? 'Sharpe > 1 — quỹ tạo ra alpha thực sự so với lãi suất căn bản 4.5%/năm.' : sr > 0 ? 'Sharpe dương nhưng < 1 — bù được lãi ngân hàng nhưng biến động chưa được đền bù tốt.' : '⚠️ Sharpe âm — quỹ chưa bù đắp được lãi suất ngân hàng 4.5%/năm. Cân nhắc chuyển sang quỹ hiệu quả hơn hoặc giảm tỷ trọng.'}${mdd > 20 ? ` Drawdown lớn (${mdd.toFixed(1)}%) — từng chịu lỗ nặng, cần tâm lý vững.` : mdd > 10 ? ` Drawdown vừa (${mdd.toFixed(1)}%) — chịu được với nhà đầu tư trung hạn.` : ` Drawdown thấp (${mdd.toFixed(1)}%) — ổn định tốt.`}${sortino != null && sortino > 1.5 ? ' Sortino cao — quỹ tăng đều, ít gặp tình huống giảm mạnh.' : sortino != null && sortino < 0 ? ' Sortino âm — đà giảm lớn hơn đà tăng.' : ''}${_curDD52 > 5 ? ` Đang trong drawdown <b style="color:var(--sell)">−${_curDD52.toFixed(1)}%</b> từ đỉnh 52 tuần — đây là mức lỗ thực tế hiện tại (so với đỉnh lịch sử: −${mdd.toFixed(1)}%).` : _curDD52 > 1 ? ` Drawdown hiện tại nhỏ (−${_curDD52.toFixed(1)}% từ đỉnh 52T).` : ''}${calmar != null && calmar < 10 ? (calmar > 1 ? ` Calmar ${calmar.toFixed(2)} — lợi nhuận năm vượt drawdown tối đa (${mdd.toFixed(1)}%): quỹ phục hồi nhanh sau mỗi đợt giảm.` : calmar > 0.3 ? ` Calmar ${calmar.toFixed(2)} — chấp nhận được, nhưng lợi nhuận năm chưa gấp đôi mức drawdown tối đa (${mdd.toFixed(1)}%).` : calmar >= 0 ? ` Calmar ${calmar.toFixed(2)} thấp — lợi nhuận năm hiện chưa bù được rủi ro drawdown tối đa (${mdd.toFixed(1)}%).` : '') : ''}</div></div>` : ''}
+    ${var95 != null ? `<div style="background:var(--bg3);border-radius:8px;padding:8px 12px;margin-top:8px;font-size:10px;color:var(--txt2);line-height:1.6"><b style="color:var(--txt1)">Định cỡ vị thế (Position Sizing)</b> — VaR 95% = <b style="color:${var95C}">${var95.toFixed(1)}%</b>/tháng: trong 5% kịch bản xấu nhất, quỹ có thể mất tới <b>${var95.toFixed(1)}%</b> giá trị trong 1 tháng. Để ảnh hưởng không vượt 2% tổng danh mục: nên giới hạn tỷ trọng tối đa <b style="color:var(--c0)">~${Math.min(99, Math.round(2/var95*100))}%</b>.</div>` : ''}
+    ${_volRegime != null && _volRegime > 1.4 ? `<div style="background:#f8717111;border:1px solid #f8717133;border-radius:8px;padding:8px 12px;margin-top:8px;font-size:10px;color:var(--txt2);line-height:1.6">⚡ <b style="color:var(--sell)">Biến động đang tăng cao</b> — vol 30 ngày gần nhất <b style="color:var(--sell)">${_vol30d.toFixed(1)}%/năm</b> (${_volRegime.toFixed(1)}x mức trung bình dài hạn ${vol.toFixed(1)}%). Nên chia nhỏ lệnh và không mua/bán số lượng lớn trong giai đoạn này.</div>` : _volRegime != null && _volRegime < 0.6 ? `<div style="background:#4ade8011;border:1px solid #4ade8033;border-radius:8px;padding:8px 12px;margin-top:8px;font-size:10px;color:var(--txt2);line-height:1.6">✅ <b style="color:var(--buy)">Biến động hiện tại thấp</b> — vol 30 ngày <b style="color:var(--buy)">${_vol30d.toFixed(1)}%/năm</b> (chỉ ${_volRegime.toFixed(1)}x mức dài hạn ${vol.toFixed(1)}%). Môi trường ổn định — thuận lợi để vào lệnh.</div>` : ''}
 `) : '';
   // ── 5. 52-WEEK RANGE ──
   const cut52D = new Date(); cut52D.setDate(cut52D.getDate() - 365);
@@ -5007,6 +5025,9 @@ function _renderHistAnalysis(code) {
     : _macdPctNAV > 0.1
     ? `<b>MACD \u00e2m v\u1eeba</b> (${_macdPctNAV.toFixed(2)}% NAV) \u2014 \u0111\u00e0 gi\u1ea3m \u0111ang ho\u1ea1t \u0111\u1ed9ng nh\u01b0ng kh\u00f4ng qu\u00e1 m\u1ea1nh. <b style="color:var(--sell)">Ch\u01b0a n\u00ean mua nhi\u1ec1u</b>. Ch\u1edd histogram thu h\u1eb9p v\u00e0 MACD ti\u1ec7m c\u1eadn 0 \u0111\u1ec3 x\u00e1c nh\u1eadn \u0111\u1ea3o chi\u1ec1u.`
     : `<b>MACD g\u1ea7n 0</b> (histogram ${Math.abs(macd).toFixed(2)}, nh\u1ecf h\u01a1n 0.1% NAV) \u2014 \u0111\u00e0 gi\u1ea3m s\u1eafp c\u1ea1n ki\u1ec7t. <i style="color:#facc15">Theo d\u00f5i s\u00e1t: MACD chuy\u1ec3n d\u01b0\u01a1ng l\u00e0 t\u00edn hi\u1ec7u mua m\u1ea1nh, \u0111\u1eb7c bi\u1ec7t khi RSI c\u0169ng \u0111ang t\u0103ng.</i>`;
+  const _rsiCurr  = _rsiAt(navVals, navVals.length - 1);
+  const _rsiPrev7 = navVals.length > 22 ? _rsiAt(navVals, navVals.length - 1 - 7) : null;
+  const _rsiDelta  = (_rsiCurr != null && _rsiPrev7 != null) ? Math.round(_rsiCurr - _rsiPrev7) : null;
   const techNotice = techRel === 'LOW' || techRel === 'N/A'
     ? `<div style="background:#60a5fa11;border:1px solid #60a5fa33;border-radius:6px;padding:7px 10px;margin-bottom:10px;font-size:10px;color:#60a5fa">\u26a0 V\u1edbi qu\u1ef9 tr\u00e1i phi\u1ebfu/ti\u1ec1n t\u1ec7, c\u00e1c ch\u1ec9 s\u1ed1 k\u1ef9 thu\u1eadt c\u00f3 \u0111\u1ed9 tin c\u1eady th\u1ea5p h\u01a1n so v\u1edbi qu\u1ef9 c\u1ed5 phi\u1ebfu.</div>` : '';
 
@@ -5032,6 +5053,7 @@ function _renderHistAnalysis(code) {
           <div style="position:absolute;top:-2px;left:${Math.min(rsi, 100)}%;width:9px;height:9px;background:var(--c0);border-radius:50%;transform:translateX(-50%)"></div>
         </div>
         <div style="font-size:10px;color:var(--txt2);line-height:1.5">${rsiInterp}</div>
+        ${_rsiDelta != null && Math.abs(_rsiDelta) >= 2 ? ('<div style="margin-top:5px;font-size:9px;color:'+(_rsiDelta>0?'var(--buy)':'var(--sell)')+'">'+(_rsiDelta>0?'↑ ':'↓ ')+'7 ngày: RSI '+(_rsiDelta>0?'tăng +':'giảm ')+Math.abs(_rsiDelta)+'pts — '+(_rsiDelta>0?'lực mua đang gia tăng.':'áp lực bán gia tăng.')+'</div>') : ''}
       </div>
       <div style="background:var(--bg3);border-radius:8px;padding:10px 12px">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
@@ -5292,13 +5314,36 @@ function _renderHistAnalysis(code) {
     const _fibCtx = _nf ? (_nf.nav <= curr ? ` Fib ${_nf.f}% hỗ trợ gần đây.` : ` Fib ${_nf.f}% kháng cự phía trên.`) : '';
     const _p52 = typeof pct52 !== 'undefined' ? pct52 : 50;
     const _rangeCtx = _p52 < 15 ? ' Giá đang ở vùng đáy 52 tuần — cơ hội tích lũy dài hạn.' : _p52 > 85 ? ' Giá gần đỉnh 52 tuần — hạn chế mua thêm lớn.' : '';
-    if (score >= 5 && cheapTech) return `Tín hiệu kỹ thuật rất tích cực: giá đang ở vùng rẻ (RSI ${rsi.toFixed(0)}, BB ${bb.toFixed(0)}%) và đà tăng đang hình thành.${_maCtx}${_rangeCtx}${histConf}`;
-    if (score >= 3 && macd > 0)  return `Tín hiệu mua — đà tăng đang mạnh${cheapTech ? ', giá còn ở vùng hấp dẫn' : ''}.${_maCtx}${_fibCtx}${histConf}`;
-    if (score <= -5 && expTech)  return `Tín hiệu kỹ thuật tiêu cực: giá đang ở vùng đắt (RSI ${rsi.toFixed(0)}, BB ${bb.toFixed(0)}%) và đà giảm đang hình thành.${_maCtx}${_rangeCtx}`;
-    if (score <= -3 && macd < 0) return `Tín hiệu bán — đà giảm đang mạnh${expTech ? ', giá ở vùng cao' : ''}. Thận trọng khi mua thêm.${_maCtx}${_fibCtx}`;
-    if (score === 0)             return `Tín hiệu trung lập. Các chỉ số kỹ thuật không nghiêng hẳn về chiều nào.${_maCtx}${histConf}`;
-    return score > 0 ? `Tín hiệu nhẹ nghiêng về mua — chưa đủ điều kiện mua mạnh.${_maCtx}${_fibCtx}${histConf}` : `Tín hiệu nhẹ nghiêng về bán — chờ thêm xác nhận.${_maCtx}${_fibCtx}`;
+    // RSI divergence — strong reversal signal
+    const _divCtx = typeof rsiDivergence !== 'undefined' && rsiDivergence === 'bullish'
+      ? ' ⚡ Phân kỳ dương RSI — lực bán đang suy yếu dù giá tạo đáy mới: khả năng đảo chiều tăng cao hơn bình thường.'
+      : typeof rsiDivergence !== 'undefined' && rsiDivergence === 'bearish'
+      ? ' ⚠️ Phân kỳ âm RSI — lực mua cạn kiệt dù giá tạo đỉnh mới: rủi ro đảo chiều giảm tăng cao.'
+      : '';
+    // Volatility regime context
+    const _volRCtx = typeof _volRegime !== 'undefined' && _volRegime != null && _volRegime > 1.5
+      ? ` Biến động đang tăng cao (${_volRegime.toFixed(1)}x bình thường) — chia nhỏ lệnh thay vì mua/bán một lần lớn.`
+      : '';
+    if (score >= 5 && cheapTech) return `Tín hiệu kỹ thuật rất tích cực: giá đang ở vùng rẻ (RSI ${rsi.toFixed(0)}, BB ${bb.toFixed(0)}%) và đà tăng đang hình thành.${_maCtx}${_rangeCtx}${_divCtx}${histConf}${_volRCtx}`;
+    if (score >= 3 && macd > 0)  return `Tín hiệu mua — đà tăng đang mạnh${cheapTech ? ', giá còn ở vùng hấp dẫn' : ''}.${_maCtx}${_fibCtx}${_divCtx}${histConf}${_volRCtx}`;
+    if (score <= -5 && expTech)  return `Tín hiệu kỹ thuật tiêu cực: giá đang ở vùng đắt (RSI ${rsi.toFixed(0)}, BB ${bb.toFixed(0)}%) và đà giảm đang hình thành.${_maCtx}${_rangeCtx}${_divCtx}${_volRCtx}`;
+    if (score <= -3 && macd < 0) return `Tín hiệu bán — đà giảm đang mạnh${expTech ? ', giá ở vùng cao' : ''}. Thận trọng khi mua thêm.${_maCtx}${_fibCtx}${_divCtx}${_volRCtx}`;
+    if (score === 0)             return `Tín hiệu trung lập. Các chỉ số kỹ thuật không nghiêng hẳn về chiều nào.${_maCtx}${_divCtx}${histConf}`;
+    return score > 0 ? `Tín hiệu nhẹ nghiêng về mua — chưa đủ điều kiện mua mạnh.${_maCtx}${_fibCtx}${_divCtx}${histConf}${_volRCtx}` : `Tín hiệu nhẹ nghiêng về bán — chờ thêm xác nhận.${_maCtx}${_fibCtx}${_divCtx}${_volRCtx}`;
   })();
+  const _summaryRsiCtx = _rsiDelta != null && Math.abs(_rsiDelta) >= 5
+    ? (_rsiDelta >= 8 && rsi < 50
+      ? ` RSI đang phục hồi mạnh (<b style="color:var(--buy)">+${_rsiDelta}pts/7 ngày</b>) từ vùng ${rsi.toFixed(0)} — đà bán đang suy yếu, chuẩn bị đảo chiều.`
+      : _rsiDelta <= -5 && rsi <= 20
+      ? ` RSI cực kỳ quá bán (${rsi.toFixed(0)}) vẫn đang giảm (<b style="color:var(--sell)">−${Math.abs(_rsiDelta)}pts/7 ngày</b>) — chờ RSI ổn định hoặc bật lên trước khi mua mạnh.`
+      : _rsiDelta <= -8 && rsi > 45
+      ? ` RSI đang giảm nhanh (<b style="color:var(--sell)">−${Math.abs(_rsiDelta)}pts/7 ngày</b>) — cẩn thận áp lực bán gia tăng.`
+      : _rsiDelta >= 5 && rsi < 40
+      ? ` RSI bắt đầu hồi từ đáy (<b style="color:var(--buy)">+${_rsiDelta}pts/7 ngày</b>) — dấu hiệu áp lực bán suy yếu.`
+      : _rsiDelta <= -5 && rsi > 62
+      ? ` RSI rời vùng quá mua (<b style="color:var(--sell)">−${Math.abs(_rsiDelta)}pts/7 ngày</b>) — cẩn thận chốt lời.`
+      : '')
+    : '';
   const strategyHtml = (() => {
     const cheapTech = rsi < 45 && bb < 45;
     const expTech   = rsi > 60 && bb > 65;
@@ -5325,6 +5370,17 @@ function _renderHistAnalysis(code) {
         ? `Thời điểm tốt để mua vào — kỹ thuật thuận chiều, giá đang ở vùng hấp dẫn. Có thể mua 1 lần hoặc chia 2 lần trong 2 tuần.`
         : `Xu hướng tốt nhưng giá không còn rẻ. Nên mua chia nhỏ 2–3 lần để giảm rủi ro thời điểm.`]);
       if (sizingHint) rows.push(['📐 Gợi ý tỷ trọng', sizingHint]);
+      // DCA ladder: specific Fib support levels as entry price targets
+      if (rsi < 50 && fibSupport.length >= 1 && !isBond) {
+        const _lvls = fibSupport.slice(-2).reverse(); // nearest support first
+        const _alloc = _lvls.length >= 2 ? ['50%','30%','20%'] : ['60%','40%'];
+        let _dcaStr = `Lần 1 — NAV hiện tại ${fmt(Math.round(curr))}đ (${_alloc[0]} vốn dự kiến).`;
+        _lvls.forEach((fl, i) => {
+          const _dp = ((curr - fl.nav) / curr * 100).toFixed(1);
+          _dcaStr += ` Lần ${i+2} — ${fl.label}: ${fmt(Math.round(fl.nav))}đ (−${_dp}%) = ${_alloc[i+1]||'20%'} vốn nếu NAV giảm tới mức hỗ trợ này.`;
+        });
+        rows.push(['📉 Lịch DCA theo Fibonacci', _dcaStr + ' Chia vốn theo thang để tối ưu giá vốn bình quân.']);
+      }
       if (histPatternData && histPatternData.n >= 10 && histPatternData.winRate30 >= 60) {
         rows.push(['📊 Xác suất lịch sử', `${histPatternData.n} lần trong quá khứ có RSI tương tự: ${histPatternData.winRate30}% lần tăng sau 30 ngày, TB ${histPatternData.avg30>=0?'+':''}${histPatternData.avg30.toFixed(1)}%. Dữ liệu lịch sử ủng hộ việc mua vào.`]);
       } else if (histPatternData && histPatternData.n >= 10 && histPatternData.winRate30 <= 40) {
@@ -5353,6 +5409,22 @@ function _renderHistAnalysis(code) {
           rows.push(['🛑 Mức tham khảo thoát', `Hỗ trợ Fibonacci ${stopLevel.label}: ${fmt(Math.round(stopLevel.nav))} đ${stopPct < 0 ? ` (−${Math.abs(stopPct).toFixed(1)}% so với giá vốn)` : ''}. Nếu NAV phá xuống vùng này, đáng xem xét cắt lỗ một phần.`]);
         }
       }
+      // WEB-044: Forward P&L scenarios — show concrete gain/loss at key Fib levels
+      if (pfItem.units > 0 && pfItem.avg_cost > 0 && pfItem.cost > 0) {
+        const _u = pfItem.units, _c = pfItem.cost, _ac = pfItem.avg_cost;
+        const _scen = [];
+        if (fibResist.length) {
+          const _t = fibResist[0];
+          const _tP = (_t.nav - _ac) / _ac * 100, _tV = (_t.nav * _u - _c) / 1e6;
+          if (Math.abs(_tP) < 50) _scen.push('Đạt ' + _t.label + ' (' + fmt(Math.round(_t.nav)) + 'đ): <b style="color:' + (_tP>=0?'var(--buy)':'var(--sell)') + '">' + (_tP>=0?'+':'') + _tP.toFixed(1) + '% (' + (_tV>=0?'+':'') + _tV.toFixed(2) + 'M₫)</b>');
+        }
+        if (fibSupport.length) {
+          const _s = fibSupport[0];
+          const _sP = (_s.nav - _ac) / _ac * 100, _sV = (_s.nav * _u - _c) / 1e6;
+          if (Math.abs(_sP) < 50) _scen.push('Về ' + _s.label + ' (' + fmt(Math.round(_s.nav)) + 'đ): <b style="color:' + (_sP>=0?'var(--buy)':'var(--sell)') + '">' + (_sP>=0?'+':'') + _sP.toFixed(1) + '% (' + (_sV>=0?'+':'') + _sV.toFixed(2) + 'M₫)</b>');
+        }
+        if (_scen.length) rows.push(['📊 Kịch bản P&L', _scen.join('  •  ')]);
+      }
     }
     // Target price (upside) from Fibonacci resistance
     if (score >= 2 && fibResist.length) {
@@ -5363,6 +5435,9 @@ function _renderHistAnalysis(code) {
       }
     }
     const watchConds = [];
+    if (rsi < 20)              watchConds.push(`RSI vượt 25 từ vùng cực quá bán (hiện ${rsi.toFixed(0)}) — xác nhận lực bán suy yếu, dấu hiệu đảo chiều sắp xảy ra`);
+    else if (rsi < 35)         watchConds.push(`RSI hồi về 40–45 từ vùng quá bán (hiện ${rsi.toFixed(0)}) — xác nhận đảo chiều ngắn hạn`);
+    if (_rsiDelta != null && _rsiDelta <= -8) watchConds.push(`RSI đang giảm nhanh (−${Math.abs(_rsiDelta)}pts/7 ngày) — chờ đà giảm RSI chậm lại trước khi mua vào`);
     if (rsi < 50 && macd < 0) watchConds.push('MACD cắt lên 0 (đà giảm kết thúc)');
     if (rsi > 65)             watchConds.push('RSI giảm về dưới 60 (áp lực mua hạ nhiệt)');
     if (bb < 30 || bb > 80)  watchConds.push('BB%B về vùng 30–70 (giá trở về bình thường)');
@@ -5383,6 +5458,53 @@ function _renderHistAnalysis(code) {
         <div style="font-size:11px;color:var(--txt1);line-height:1.6">${txt}</div>
       </div>`).join('');
   })();
+  // WEB-040: Monthly seasonality — avg return per calendar month from historical NAV
+  const _seasonData = (() => {
+    if (pts.length < 120) return null;
+    const ymMap = {};
+    for (const p of pts) {
+      const ym = p.date.slice(0, 7);
+      if (!ymMap[ym]) ymMap[ym] = {first: p.nav, last: p.nav, m: parseInt(p.date.slice(5, 7))};
+      else ymMap[ym].last = p.nav;
+    }
+    const buckets = {};
+    for (const {first, last, m} of Object.values(ymMap)) {
+      if (first > 0) { if (!buckets[m]) buckets[m] = []; buckets[m].push((last - first) / first * 100); }
+    }
+    const rows = [];
+    for (let m = 1; m <= 12; m++) {
+      const rets = buckets[m];
+      if (rets && rets.length >= 2) rows.push({m, n: rets.length, avg: rets.reduce((a,b)=>a+b,0)/rets.length, winRate: Math.round(rets.filter(r=>r>0).length/rets.length*100)});
+    }
+    return rows.length >= 8 ? rows : null;
+  })();
+  const seasonHtml = _seasonData ? (() => {
+    const ML = ['T1','T2','T3','T4','T5','T6','T7','T8','T9','T10','T11','T12'];
+    const curM = new Date().getMonth() + 1;
+    const sorted = [..._seasonData].sort((a,b) => b.avg - a.avg);
+    const bestMs = sorted.slice(0, 2).map(r => r.m);
+    const worstMs = sorted.slice(-2).map(r => r.m);
+    const cells = _seasonData.map(r => {
+      const isCur = r.m === curM, isBest = bestMs.includes(r.m), isWorst = worstMs.includes(r.m);
+      const c  = isCur ? 'var(--c0)' : isBest ? 'var(--buy)' : isWorst ? 'var(--sell)' : r.avg >= 0 ? '#4ade8088' : '#f8717188';
+      const bg = isCur ? '#00e5ff22' : isBest ? '#4ade8022' : isWorst ? '#f8717122' : 'var(--bg2)';
+      return '<div style="background:' + bg + ';border:1px solid ' + c + '33;border-radius:6px;padding:5px 4px;text-align:center">'
+        + '<div style="font-size:9px;color:' + (isCur ? 'var(--c0)' : 'var(--txt3)') + ';font-family:var(--mono)">' + ML[r.m-1] + '</div>'
+        + '<div style="font-size:10px;font-weight:700;color:' + c + ';font-family:var(--mono);margin-top:2px">' + (r.avg >= 0 ? '+' : '') + r.avg.toFixed(1) + '%</div>'
+        + '<div style="font-size:8px;color:var(--txt3)">' + r.winRate + '%↑</div>'
+        + '</div>';
+    }).join('');
+    const bestDesc  = sorted.slice(0, 2).map(r => ML[r.m-1] + ' (' + (r.avg >= 0 ? '+' : '') + r.avg.toFixed(1) + '%)').join(', ');
+    const worstDesc = sorted.slice(-2).reverse().map(r => ML[r.m-1] + ' (' + r.avg.toFixed(1) + '%)').join(', ');
+    const curRow = _seasonData.find(r => r.m === curM);
+    const curDesc = curRow ? (curRow.avg >= 0 ? '+' : '') + curRow.avg.toFixed(1) + '% trung bình · ' + curRow.winRate + '% số năm tăng (' + curRow.n + ' năm dữ liệu)' : 'chưa đủ dữ liệu';
+    return _mkSect('MÙA VỤ THEO THÁNG', '\u{1F4C5}', '<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:4px;margin-bottom:10px">' + cells + '</div>'
+      + '<div style="font-size:10px;color:var(--txt2);line-height:1.8">'
+      + '<span style="color:var(--buy)">▲ Mạnh nhất:</span> ' + bestDesc + '  ·  <span style="color:var(--sell)">▼ Yếu nhất:</span> ' + worstDesc + '.<br>'
+      + 'Tháng này (<b style="color:var(--c0)">' + ML[curM-1] + '</b>): ' + curDesc + '.'
+      + '<br><span style="color:var(--txt3)">Dựa trên lịch sử NAV — không đảm bảo lặp lại.</span>'
+      + '</div>');
+  })() : '';
   const conclusionHtml = _mkSect('KẾT LUẬN & KHUYẾN NGHỊ', '💡', `
     <div style="background:${score >= 3 ? '#4ade8011' : score <= -3 ? '#f8717111' : '#facc1511'};border:1px solid ${score >= 3 ? '#4ade8033' : score <= -3 ? '#f8717133' : '#facc1533'};border-radius:10px;padding:14px;margin-bottom:10px">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
@@ -5392,7 +5514,7 @@ function _renderHistAnalysis(code) {
           <div style="font-size:10px;color:var(--txt3)">${ftLabel} · TA ${relLabel}</div>
         </div>
       </div>
-      <div style="font-size:12px;color:var(--txt1);line-height:1.7;font-weight:500${apiConclusion ? ';margin-bottom:10px' : ''}">${summaryLine}</div>
+      <div style="font-size:12px;color:var(--txt1);line-height:1.7;font-weight:500${apiConclusion ? ';margin-bottom:10px' : ''}">${summaryLine}${_summaryRsiCtx}</div>
       ${apiConclusion ? `<div style="font-size:11px;color:var(--txt2);line-height:1.7;border-top:1px solid var(--bdr);padding-top:8px">${apiConclusion}</div>` : ''}
     </div>
     ${s?.tech_reliability === 'LOW' ? `<div style="background:#facc1511;border:1px solid #facc1533;border-radius:8px;padding:8px 12px;margin-bottom:8px;display:flex;gap:8px;align-items:flex-start"><span style="font-size:13px">⚠️</span><div style="font-size:10px;color:var(--txt2);line-height:1.6"><b style="color:#facc15">TA độ tin cậy THẤP</b> — ${s?.fund_type === 'bond' ? 'Quỹ trái phiếu có NAV biến động nhỏ và phân phối đều: RSI/MACD/BB được thiết kế cho cổ phiếu, ít hiệu quả hơn với trái phiếu. Ưu tiên xem Hiệu suất dài hạn và Sharpe ratio; tín hiệu kỹ thuật chỉ mang tính tham khảo.' : 'Tín hiệu kỹ thuật hiện ít tin cậy — cân nhắc thêm yếu tố cơ bản.'}</div></div>` : ''}
@@ -5408,7 +5530,7 @@ function _renderHistAnalysis(code) {
       ${pfItem ? `<button onclick="_quickTrade('${code}','sell')" style="flex:1;min-width:100px;background:${score<=-3?'var(--sell)':'var(--bg3)'};color:${score<=-3?'#fff':'var(--txt1)'};border:1px solid ${score<=-3?'var(--sell)':'var(--bdr)'};border-radius:7px;padding:9px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--sans)">📉 Bán bớt</button>` : ''}
     </div>`);
 
-  panel.innerHTML = `<div style="padding:8px 0 20px">${headerHtml}${pnlHtml}${perfHtml}${riskHtml}${rangeHtml}${advHtml}${indHtml}${histPatternHtml}${predHtml}${conclusionHtml}</div>`;
+  panel.innerHTML = `<div style="padding:8px 0 20px">${headerHtml}${pnlHtml}${perfHtml}${riskHtml}${rangeHtml}${seasonHtml}${advHtml}${indHtml}${histPatternHtml}${predHtml}${conclusionHtml}</div>`;
 }
 
 // WEB-011: Gold analysis in Phân Tích tab ──────────────────────────────────────

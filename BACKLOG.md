@@ -4,7 +4,101 @@
 # Priority: P0 (blocker) / P1 (important) / P2 (nice-to-have)
 # Claude đọc file này ĐẦU TIÊN mỗi session. Pick task IN_PROGRESS nếu có, nếu không pick P0 cao nhất.
 #
-# Last updated: 2026-08-02 (autonomous ca chiều: verify baseline — all P0/P1 DONE, stop condition applies)
+# Last updated: 2026-08-03 (autonomous continuation: WEB-038 — extreme 7-day move alert in perfHtml)
+
+## Session (autonomous, continuation) — 2026-08-03: WEB-038..043 expert analysis series
+# WEB-043 DONE: DCA Entry Ladder in strategyHtml
+#   - Fires when: score >= 3 AND rsi < 50 AND fibSupport.length >= 1 AND NOT bond/money_market
+#   - "📉 Lịch DCA theo Fibonacci" row in strategy section
+#   - Lần 1: current NAV (50% or 60% of capital)
+#   - Lần 2+: Fib support levels below (−X% from current) with remaining allocation
+#   - 2 supports → [50%, 30%, 20%]; 1 support → [60%, 40%]
+#   - Gives investor specific "buy at these prices" guidance, not just "buy small"
+#   - Build: 391,506 chars.
+
+## Session (autonomous, continuation) — 2026-08-03: WEB-038..042 risk + position sizing + seasonality + vol regime + divergence
+# WEB-042 DONE: RSI Divergence + Volatility Regime in summaryLine (conclusionHtml)
+#   - _divCtx: "⚡ Phân kỳ dương RSI — lực bán suy yếu..." / "⚠️ Phân kỳ âm RSI — lực mua cạn kiệt..."
+#     Only fires when rsiDivergence === 'bullish' or 'bearish' (detected in advHtml section 5b)
+#   - _volRCtx: "Biến động đang tăng cao (1.8x bình thường) — chia nhỏ lệnh..."
+#     Only fires when _volRegime > 1.5 (WEB-041)
+#   Both appended to all 7 summaryLine branches. Now conclusion references:
+#   MA cross + Fib context + 52W range + RSI divergence + vol regime + historical pattern
+#   Build: 390,732 chars.
+
+## Session (autonomous, continuation) — 2026-08-03: WEB-038..041 risk + position sizing + seasonality + vol regime
+# WEB-041 DONE: Volatility Regime Detection in riskHtml
+#   - _vol30d = _annVol(pts.slice(-30)) — short-term 30-day annualized vol
+#   - _volRegime = _vol30d / vol (long-term 252-day vol), only when vol > 1.5% (excludes money market)
+#   - HIGH regime (ratio > 1.4): red card "⚡ Biến động đang tăng cao — Xgần Xt mức dài hạn → chia nhỏ lệnh"
+#   - LOW regime (ratio < 0.6): green card "✅ Biến động hiện tại thấp → thuận lợi để vào lệnh"
+#   - Between 0.6-1.4: nothing shown (normal regime)
+#   - Displayed after position sizing card at end of riskHtml
+#   Build: 389,891 chars. Present in web.html at line 4814.
+
+## Session (autonomous, continuation) — 2026-08-03: WEB-038..040 risk detail + position sizing + seasonality
+# WEB-040 DONE: Monthly Seasonality section "MÙA VỤ THEO THÁNG" (📅)
+#   - Computes avg monthly NAV return per calendar month (T1..T12) from pts history
+#   - Needs >= 120 pts and >= 8 months with >= 2 years data each
+#   - 6-column grid: each month cell shows label, avg return %, win rate (% positive years)
+#   - Current month: cyan highlight; best 2 months: green; worst 2: red
+#   - Caption: "Mạnh nhất: T4 (+1.8%), T11 (+1.5%) · Yếu nhất: T8 (-0.7%), T2 (-0.4%)"
+#   - Current month context: avg return + win rate + n years of data
+#   - Inserted between rangeHtml and advHtml in assembly line (line 4320)
+#   - Uses string concat (not template literal) inside IIFE to avoid nesting issues
+#   Build: 388,697 chars. Section present in web.html.
+
+## Session (autonomous, continuation) — 2026-08-03: WEB-038..039 risk detail + position sizing
+# WEB-039 DONE: Calmar interpretation + Position Sizing box in riskHtml
+#   1. Calmar sentence appended to "Nhận định chất lượng rủi ro" box:
+#      calmar>1: "Calmar X.XX — lợi nhuận năm vượt drawdown tối đa (Y%): quỹ phục hồi nhanh"
+#      calmar>0.3: "chấp nhận được, nhưng chưa gấp đôi mức drawdown"
+#      calmar>=0: "thấp — lợi nhuận chưa bù được rủi ro drawdown tối đa"
+#   2. New "Định cỡ vị thế (Position Sizing)" box after quality assessment:
+#      "VaR 95% = X%/tháng → giới hạn tỷ trọng tối đa ~Y% để ảnh hưởng <2% danh mục"
+#      Formula: Y = round(2/var95*100), capped at 99%
+#      VCBFTBF example: var95=~high% bond → specific allocation cap shown
+#   Variables used: calmar (line 3664, _calmar(pts)), var95 (IIFE line 3666), mdd, var95C
+#   Build: 385,415 chars. Zero JS parse errors.
+
+## Session (autonomous, continuation) — 2026-08-03: WEB-038 extreme 7-day move banner
+# WEB-038 DONE: Extreme 7-day move alert banner in perfHtml
+#   Variables _extremeThresh (bond/mm: 8%, equity/balanced: 15%) and _extremeMove7 added before perfHtml.
+#   Banner inserted after consistency card, before footnote:
+#   "⚠️ BIẾN ĐỘNG BẤT THƯỜNG 7 NGÀY — NAV giảm mạnh X% trong 7 ngày — vượt xa mức bình thường (ngưỡng Y%)."
+#   Alerts user to investigate cause before trading. Red-tinted box, --sell color.
+#   Applies to VCBFTBF: chg7=-18.41% > threshold=8% → banner shows.
+#   Build: web.html rebuilt (384406 chars). Syntax OK (no JS parse error).
+# Files: telegram-bot/miniapp/web_js.js + web.html (rebuilt)
+
+## Session (autonomous, continuation) — 2026-08-02: WEB-029..034 analysis panel "asset mgmt expert"
+# Harvey directive: "Phân tích cần chi tiết hơn nữa, giải thích cụ thể hơn hơn."
+# WEB-029 DONE: 52W high/low date labels — _lo52Pt / _hi52Pt → hiển thị ngày đáy/đỉnh dưới giá (dd/mm)
+# WEB-030 DONE: Momentum trend card in perfHtml — so sánh 30d vs 90d annualised return
+#   _d30ann / _d90ann / _momTrend (accelerating/decelerating) + card giải thích cụ thể
+# WEB-031 DONE: Time-to-recover estimate in breakeven box — khi pnlP < -5 và chg30 > 0.1:
+#   _recovMo = ceil(_toBreak / s.chg30) → "Ở đà hiện tại, ước tính ~N tháng để hoà vốn."
+# WEB-032 DONE: Portfolio peer comparison bar in pnlHtml — danh sách các quỹ khác đang nắm
+#   + P&L % mỗi quỹ. Fixed: dùng h.nav + h.pnl_pct từ /api/me (không dùng _signals).
+# WEB-033 DONE: tech_reliability LOW warning in conclusionHtml — bond funds note
+#   "TA độ tin cậy THẤP" badge với giải thích vì sao RSI/MACD/BB ít phù hợp với quỹ trái phiếu.
+# WEB-034 DONE: RSI 7-day trend direction in indHtml — "↓ 7 ngày: RSI giảm 15pts — áp lực bán gia tăng."
+# WEB-035 DONE: RSI momentum context appended to conclusionHtml summaryLine
+# WEB-036 DONE: Current drawdown from 52W peak in risk quality assessment box
+#   _curDD52 = (peak52r - curr) / peak52r — shows CURRENT drawdown vs mdd (historical max).
+#   VCBFTBF: "Đang trong drawdown −26.0% từ đỉnh 52 tuần — đây là mức lỗ thực tế hiện tại"
+# WEB-037 DONE: RSI-level trigger watchConds in conclusion strategy section
+#   + "RSI vượt 25 từ vùng cực quá bán (hiện X)" when rsi < 20
+#   + "RSI đang giảm nhanh (−Xpts/7 ngày) — chờ đà giảm chậm lại" when _rsiDelta <= -8
+#   VCBFTBF now has 5 specific triggers to watch vs 2 before.
+#   _summaryRsiCtx: 5 branches covering extreme oversold (rsi<=20 still falling), rapid fall,
+#   recovery from bottom, rapid rise, leaving overbought. Uses _rsiCurr/_rsiPrev7 (same algo → meaningful delta).
+#   Bug found+fixed: new extreme-oversold branch (rsi<=20) needed since all other branches required rsi>45.
+#   _rsiCurr = _rsiAt(navVals, last) vs _rsiPrev7 = _rsiAt(navVals, last-7)
+#   → "↓ 7 ngày: RSI giảm 15pts — áp lực bán gia tăng." (cùng thuật toán, delta có nghĩa)
+#   Bug fix: không dùng s?.rsi (API smoothed EWM) làm baseline — so sánh không đồng nhất → delta ~0.
+# Files: telegram-bot/miniapp/web_js.js + web.html (rebuilt)
+# Verified: zero console errors, VCBFTBF shows -15pts, TCBF shows -5pts
 
 ## Session (autonomous, scheduled) — Ca chiều 2026-08-02: verify baseline, không code thêm
 # Tình trạng đầu session: tất cả P0/P1 đã DONE. Điều kiện dừng: "Hết P0+P1".
