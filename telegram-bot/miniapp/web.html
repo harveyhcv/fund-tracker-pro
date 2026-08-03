@@ -1542,28 +1542,15 @@ function renderPfBanner() {
 function renderPfAlloc() {
   const items=_me?.portfolio?.items||[];
   const goldVal=_goldData?.portfolio?.current_value||0;
-  const total=(items.reduce((s,h)=>s+(h.value||0),0))+goldVal;
+  const ccqVal=items.reduce((s,h)=>s+(h.value||0),0);
+  const total=ccqVal+goldVal;
   if (!total) return;
-  const FT_COLOR={equity:'var(--buy)',bond:'#60a5fa',balanced:'#a78bfa',money_market:'#facc15'};
-  const FT_LABEL={equity:'Cổ phiếu',bond:'Trái phiếu',balanced:'Cân bằng',money_market:'Tiền tệ'};
-  // Group by fund type
-  const byType={};
-  for (const h of items) {
-    const ft=_marketData?.[h.code]?.fund_type||'equity';
-    byType[ft]=(byType[ft]||0)+(h.value||0);
-  }
-  if (goldVal>0) byType['gold']=goldVal;
-  const segments=Object.entries(byType).map(([ft,val])=>({ft,val,pct:val/total*100}));
-  segments.sort((a,b)=>b.val-a.val);
-  const trackHtml=segments.map(seg=>{
-    const c=seg.ft==='gold'?'#fbbf24':(FT_COLOR[seg.ft]||'var(--c0)');
-    return `<div style="width:${seg.pct.toFixed(1)}%;background:${c};height:100%"></div>`;
-  }).join('');
-  const legendHtml=segments.map(seg=>{
-    const c=seg.ft==='gold'?'#fbbf24':(FT_COLOR[seg.ft]||'var(--c0)');
-    const lbl=seg.ft==='gold'?'Vàng':(FT_LABEL[seg.ft]||seg.ft);
-    return `<span style="color:${c};font-size:10px;font-family:var(--mono)">${lbl} ${seg.pct.toFixed(0)}%</span>`;
-  }).join('<span style="color:var(--txt3);margin:0 3px">·</span>');
+  // Chỉ hiện 2 loại: CCQ và Vàng
+  const segments=[];
+  if (ccqVal>0) segments.push({lbl:'CCQ',val:ccqVal,c:'var(--c0)'});
+  if (goldVal>0) segments.push({lbl:'Vàng',val:goldVal,c:'#fbbf24'});
+  const trackHtml=segments.map(seg=>`<div style="width:${(seg.val/total*100).toFixed(1)}%;background:${seg.c};height:100%"></div>`).join('');
+  const legendHtml=segments.map(seg=>`<span style="color:${seg.c};font-size:10px;font-family:var(--mono)">${seg.lbl} ${(seg.val/total*100).toFixed(0)}%</span>`).join('<span style="color:var(--txt3);margin:0 3px">·</span>');
   document.getElementById('pf-alloc').innerHTML=`<div class="alloc-wrap">
     <div style="font-size:10px;color:var(--txt3);margin-bottom:4px">Phân bổ tài sản</div>
     <div style="height:6px;border-radius:3px;overflow:hidden;display:flex;margin-bottom:6px">${trackHtml}</div>
@@ -1669,19 +1656,12 @@ function renderPortfolio(me) {
   if (!pf.items.length) {
     html=`<div class="card" style="text-align:center;color:var(--txt2);padding:24px">Chưa có giao dịch CCQ.<br>Thêm ở tab Giao Dịch.</div>`;
   } else {
-    // Portfolio T+2 aggregate insight
-    const pfT2 = _pfT2Summary(pf.items);
-    if (pfT2) {
-      const t2c = pfT2.pct>=0.3?'var(--buy)':pfT2.pct<=-0.3?'var(--sell)':'var(--txt2)';
-      const t2sign = pfT2.pct>=0?'+':'';
-      html+=`<div style="background:rgba(0,229,255,.06);border:1px solid rgba(0,229,255,.2);border-radius:8px;padding:8px 12px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between">
-        <span style="font-size:11px;color:var(--txt2)">Dự báo T+2 danh mục (${pfT2.count} quỹ)</span>
-        <span style="font-family:var(--mono);font-size:13px;font-weight:600;color:${t2c}">${t2sign}${pfT2.pct.toFixed(2)}%</span>
-      </div>`;
-    }
     // Portfolio mini chart (30-day value curve)
     html+=`<div style="background:var(--bg2);border:1px solid var(--bdr);border-radius:8px;padding:10px 12px;margin-bottom:8px">
-      <div style="font-size:10px;color:var(--txt3);margin-bottom:6px">Giá trị danh mục 30 ngày</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <span style="font-size:10px;color:var(--txt3)">Giá trị danh mục</span>
+        <span id="pf-chart-daterange" style="font-size:9px;color:var(--txt3);font-family:var(--mono)"></span>
+      </div>
       <div style="height:70px;position:relative"><canvas id="pf-mini-chart"></canvas></div>
     </div>`;
     // Portfolio weighted performance card
@@ -2117,7 +2097,7 @@ function renderSignals(sigs) {
     const rsi=s.rsi??50, bb=s.bb_pct??50, macdH=s.macd_hist??0, chg=s.chg_pct||0, sc=s.score||0;
     const scC=sc>=3?'var(--buy)':sc<=-3?'var(--sell)':'#facc15';
     const sigFtColor={equity:'var(--buy)',bond:'#60a5fa',balanced:'#a78bfa',money_market:'#facc15'}[s.fund_type||'equity']||'var(--c0)';
-    const sigFtLabel={equity:'Cổ phiếu',bond:'Trái phiếu',balanced:'Cân bằng',money_market:'Tiền tệ'}[s.fund_type||'equity']||'Quỹ mở';
+    const sigFtLabel={equity:'Quỹ CP',bond:'Quỹ TP',balanced:'Quỹ CB',money_market:'Tiền tệ'}[s.fund_type||'equity']||'Quỹ mở';
     const t2=s.t2_prediction;
     const details=Array.isArray(s.details)?s.details:[];
     // RSI interpretation
@@ -4902,6 +4882,34 @@ function _renderHistAnalysis(code) {
     const _fd = d => d && d.length >= 10 ? d.slice(8,10)+'/'+d.slice(5,7)+'/'+d.slice(2,4) : '';
     return { bR, wR, bFrom: _fd(pts[bI-30]?.date), bTo: _fd(pts[bI]?.date), wFrom: _fd(pts[wI-30]?.date), wTo: _fd(pts[wI]?.date) };
   })();
+  // WEB-050: Daily win rate + gain-pain ratio
+  const _winRate = (() => {
+    if (pts.length < 30) return null;
+    const navs = pts.map(p => p.nav);
+    let ups = 0, downs = 0, sumUp = 0, sumDown = 0;
+    for (let i = 1; i < navs.length; i++) {
+      if (navs[i-1] <= 0) continue;
+      const r = (navs[i] - navs[i-1]) / navs[i-1] * 100;
+      if (r > 0) { ups++; sumUp += r; }
+      else if (r < 0) { downs++; sumDown += Math.abs(r); }
+    }
+    const total = ups + downs;
+    if (total < 10) return null;
+    const avgUp = ups > 0 ? sumUp / ups : 0;
+    const avgDown = downs > 0 ? sumDown / downs : 0;
+    return { winRate: ups / total * 100, avgUp, avgDown, gainPain: avgDown > 0 ? avgUp / avgDown : null, ups, total };
+  })();
+  // WEB-051: Historical vol percentile \u2014 where current 30d vol sits vs full history
+  const _volPctile = (() => {
+    if (pts.length < 90 || _vol30d == null) return null;
+    const vols = [];
+    for (let i = 30; i <= pts.length; i += 5) vols.push(_annVol(pts.slice(i - 30, i)));
+    const valid = vols.filter(v => v != null);
+    if (valid.length < 5) return null;
+    valid.sort((a, b) => a - b);
+    const pctile = valid.filter(v => v <= _vol30d).length / valid.length * 100;
+    return { pctile: Math.round(pctile), min: valid[0], max: valid[valid.length - 1] };
+  })();
   const riskHtml = pts.length > 30 ? _mkSect('R\u1ee6I RO & CH\u1ea4T L\u01af\u1ee2NG', '\u{1F6E1}\uFE0F', `
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:10px">
       ${_mkMetric('Bi\u1ebfn \u0111\u1ed9ng/n\u0103m', vol != null ? vol.toFixed(1) + '%' : '\u2013', volC, volDesc)}
@@ -4944,6 +4952,25 @@ function _renderHistAnalysis(code) {
       + (_retDist.skew < -0.5 ? '⚠️ Lệch âm (Skew ' + _retDist.skew.toFixed(2) + ') — rủi ro đuôi trái: cú giảm mạnh đột ngột xảy ra thường hơn cú tăng đột biến.' : _retDist.skew > 0.5 ? '✅ Lệch dương (Skew ' + _retDist.skew.toFixed(2) + ') — cú tăng đột biến thỉnh thoảng xảy ra, không bị chi phối bởi đuôi giảm.' : 'Phân phối lợi nhuận gần đối xứng (Skew ' + _retDist.skew.toFixed(2) + ') — rủi ro cân đối 2 chiều.')
       + (_retDist.kurt > 1 ? ' Kurtosis cao (' + _retDist.kurt.toFixed(2) + ') — fat-tailed: cú sốc cực đoan xảy ra thường hơn phân phối chuẩn dự báo.' : _retDist.kurt < -1 ? ' Kurtosis thấp (' + _retDist.kurt.toFixed(2) + ') — ít cú sốc cực đoan.' : '')
       + '</div></div>' : ''}
+    ${_winRate ? '<div style="background:var(--bg3);border-radius:8px;padding:10px 12px;margin-top:8px">'
+      + '<div style="font-size:10px;font-weight:600;color:var(--txt1);margin-bottom:6px">🏆 Tỷ lệ thắng/thua hàng ngày</div>'
+      + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">'
+      + _mkMetric('Ngày tăng', _winRate.winRate.toFixed(0) + '%', _winRate.winRate >= 55 ? 'var(--buy)' : _winRate.winRate >= 45 ? '#facc15' : 'var(--sell)', _winRate.ups + '/' + _winRate.total + ' ngày')
+      + _mkMetric('Lãi TB ngày +', '+' + _winRate.avgUp.toFixed(3) + '%', 'var(--buy)', 'Mỗi ngày tăng')
+      + _mkMetric('Gain/Pain', _winRate.gainPain != null ? _winRate.gainPain.toFixed(2) : '—', _winRate.gainPain == null ? 'var(--txt2)' : _winRate.gainPain >= 1.2 ? 'var(--buy)' : _winRate.gainPain >= 0.8 ? '#facc15' : 'var(--sell)', _winRate.gainPain == null ? '' : _winRate.gainPain >= 1.2 ? 'Hiệu quả tốt' : _winRate.gainPain >= 0.8 ? 'Trung bình' : 'Kém hiệu quả')
+      + '</div>'
+      + '<div style="font-size:10px;color:var(--txt2);margin-top:6px;line-height:1.5">'
+      + (_winRate.gainPain != null
+        ? (_winRate.gainPain >= 1.2 ? 'Gain/Pain ' + _winRate.gainPain.toFixed(2) + ' — quỹ kiếm nhiều hơn lỗ trên từng ngày giao dịch: mỗi ngày tăng bù đắp tốt các ngày giảm.'
+          : _winRate.gainPain >= 0.8 ? 'Gain/Pain ' + _winRate.gainPain.toFixed(2) + ' — gần cân bằng: lãi và lỗ hàng ngày bù trừ tương đương nhau.'
+          : 'Gain/Pain ' + _winRate.gainPain.toFixed(2) + ' — mỗi ngày giảm gây thiệt hại lớn hơn lợi ích từ ngày tăng: quỹ cần nhiều ngày xanh để bù đắp.')
+        : '')
+      + '</div></div>' : ''}
+    ${_volPctile ? '<div style="background:var(--bg3);border-radius:8px;padding:8px 12px;margin-top:8px;font-size:10px;color:var(--txt2);line-height:1.6">'
+      + '<b style="color:var(--txt1)">Phân vị biến động lịch sử</b> — Biến động 30 ngày hiện tại <b style="color:' + (_volPctile.pctile >= 75 ? 'var(--sell)' : _volPctile.pctile <= 25 ? 'var(--buy)' : '#facc15') + '">' + _vol30d.toFixed(1) + '%/năm</b> cao hơn <b>' + _volPctile.pctile + '%</b> giai đoạn lịch sử của quỹ'
+      + ' (min: ' + _volPctile.min.toFixed(1) + '%, max: ' + _volPctile.max.toFixed(1) + '%).'
+      + (_volPctile.pctile >= 75 ? ' Đang ở vùng biến động cao — rủi ro lớn hơn bình thường.' : _volPctile.pctile <= 25 ? ' Đang ở vùng biến động thấp — ổn định hơn lịch sử.' : ' Biến động ở mức trung bình so với lịch sử.')
+      + '</div>' : ''}
 `) : '';
   // ── 5. 52-WEEK RANGE ──
   const cut52D = new Date(); cut52D.setDate(cut52D.getDate() - 365);
