@@ -4579,6 +4579,21 @@ function _renderHistAnalysis(code) {
       + '<div style="font-size:9px;color:var(--txt3)">RSI ' + ((s.rsi ?? 50)).toFixed(0) + ' (38%) · BB% ' + ((s.bb_pct ?? 50)).toFixed(0) + '% (27%) · Vị trí 52T: ' + pct52 + '% (27%) · Biến động (8%)</div>'
       + '</div>';
   })() : '';
+  // WEB-053: Lag-1 return autocorrelation — momentum vs mean-reversion signal
+  const _autoCorr = (() => {
+    if (pts.length < 40) return null;
+    const navs = pts.map(p => p.nav);
+    const rets = [];
+    for (let i = 1; i < navs.length; i++) if (navs[i-1] > 0) rets.push((navs[i] - navs[i-1]) / navs[i-1]);
+    const n = rets.length - 1;
+    if (n < 20) return null;
+    const mu = rets.reduce((s,r) => s+r, 0) / rets.length;
+    const v = rets.reduce((s,r) => s + (r-mu)**2, 0) / rets.length;
+    if (v < 1e-12) return null;
+    let cov = 0;
+    for (let i = 0; i < n; i++) cov += (rets[i] - mu) * (rets[i+1] - mu);
+    return (cov / n) / v;
+  })();
   const conclusionHtml = _mkSect('KẾT LUẬN & KHUYẾN NGHỊ', '💡', `
     <div style="background:${score >= 3 ? '#4ade8011' : score <= -3 ? '#f8717111' : '#facc1511'};border:1px solid ${score >= 3 ? '#4ade8033' : score <= -3 ? '#f8717133' : '#facc1533'};border-radius:10px;padding:14px;margin-bottom:10px">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
@@ -4593,6 +4608,12 @@ function _renderHistAnalysis(code) {
     </div>
     ${s?.tech_reliability === 'LOW' ? `<div style="background:#facc1511;border:1px solid #facc1533;border-radius:8px;padding:8px 12px;margin-bottom:8px;display:flex;gap:8px;align-items:flex-start"><span style="font-size:13px">⚠️</span><div style="font-size:10px;color:var(--txt2);line-height:1.6"><b style="color:#facc15">TA độ tin cậy THẤP</b> — ${s?.fund_type === 'bond' ? 'Quỹ trái phiếu có NAV biến động nhỏ và phân phối đều: RSI/MACD/BB được thiết kế cho cổ phiếu, ít hiệu quả hơn với trái phiếu. Ưu tiên xem Hiệu suất dài hạn và Sharpe ratio; tín hiệu kỹ thuật chỉ mang tính tham khảo.' : 'Tín hiệu kỹ thuật hiện ít tin cậy — cân nhắc thêm yếu tố cơ bản.'}</div></div>` : ''}
     ${_entryQualHtml}
+    ${_autoCorr != null ? `<div style="background:var(--bg3);border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:10px;color:var(--txt2);line-height:1.6">
+      <b style="color:var(--txt1)">Tính dai dẳng xu hướng (ρ=${_autoCorr.toFixed(2)})</b> —
+      ${Math.abs(_autoCorr) <= 0.1 ? 'Biến động gần như ngẫu nhiên (random walk) — không có xu hướng rõ ràng trong ngắn hạn, cần dựa vào tín hiệu kỹ thuật trung hạn.'
+        : _autoCorr > 0.1 ? 'Xu hướng dai dẳng — quỹ có xu hướng tiếp tục chiều hướng hiện tại. Tránh mua/bán ngược chiều khi chưa có tín hiệu đảo chiều rõ ràng.'
+        : 'Xu hướng đảo chiều (mean-reverting) — quỹ có xu hướng phục hồi sau các cú giảm. Cú giảm mạnh thường được hấp thụ nhanh hơn bình thường.'}
+    </div>` : ''}
     <div style="background:var(--bg3);border-radius:8px;padding:10px 14px">
       <div style="font-size:10px;color:var(--txt3);font-family:var(--mono);letter-spacing:.06em">CHIẾN LƯỢC GỢI Ý</div>
       ${strategyHtml}
