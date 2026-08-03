@@ -3622,6 +3622,28 @@ function _renderHistAnalysis(code) {
   const _tfPos = _tfRets.filter(v => v > 0).length;
   const _tfNeg = _tfRets.filter(v => v < 0).length;
   const _tfTotal = _tfRets.length;
+  // WEB-052: Longest consecutive gain/loss streaks + current streak
+  const _streaks = (() => {
+    if (pts.length < 20) return null;
+    const navs = pts.map(p => p.nav);
+    let wS = 0, lS = 0, mW = 0, mL = 0, mWE = -1, mLE = -1;
+    for (let i = 1; i < navs.length; i++) {
+      if (navs[i] > navs[i-1]) { wS++; lS = 0; if (wS > mW) { mW = wS; mWE = i; } }
+      else if (navs[i] < navs[i-1]) { lS++; wS = 0; if (lS > mL) { mL = lS; mLE = i; } }
+      else { wS = 0; lS = 0; }
+    }
+    let cS = 0, cDir = 0;
+    for (let i = navs.length - 1; i >= 1; i--) {
+      const d = navs[i] > navs[i-1] ? 1 : navs[i] < navs[i-1] ? -1 : 0;
+      if (i === navs.length - 1) { cDir = d; cS = d !== 0 ? 1 : 0; }
+      else if (d === cDir && d !== 0) cS++;
+      else break;
+    }
+    const _fd = d => d && d.length >= 10 ? d.slice(8,10)+'/'+d.slice(5,7)+'/'+d.slice(2,4) : '';
+    return { mW, mL, cS, cDir,
+      mWFrom: mWE >= mW ? _fd(pts[mWE - mW]?.date) : '', mWTo: mWE >= 0 ? _fd(pts[mWE]?.date) : '',
+      mLFrom: mLE >= mL ? _fd(pts[mLE - mL]?.date) : '', mLTo: mLE >= 0 ? _fd(pts[mLE]?.date) : '' };
+  })();
   const perfHtml = _mkSect('HIỆU SUẤT ĐẦU TƯ', '\u{1F4C8}', `
     <div style="background:var(--bg3);border-radius:8px;overflow:hidden;padding:2px 12px 4px">
       ${_mkPerfRow('7 ngày gần nhất', p7, rank7 != null && total7 > 1 ? `Hạng #${rank7}/${total7} ${ftLabel.replace('Quỹ ','')}` : '')}
@@ -3669,6 +3691,13 @@ function _renderHistAnalysis(code) {
         + _frames.map(([l, v]) => '<span style="font-size:10px;background:' + (v > 0 ? '#4ade8022' : '#f8717122') + ';color:' + (v > 0 ? 'var(--buy)' : 'var(--sell)') + ';border-radius:4px;padding:2px 7px;font-family:var(--mono)">' + l + ' ' + (v > 0 ? '▲' : '▼') + '</span>').join('')
         + '</div><div style="font-size:9px;color:' + _vC + '">' + _verdict + '</div></div>';
     })() : ''}
+    ${_streaks ? `<div style="background:var(--bg3);border-radius:8px;padding:8px 12px;margin-top:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">
+        <div style="font-size:10px;color:var(--txt2)">Chuỗi tăng dài nhất: <b style="color:var(--buy)">${_streaks.mW} ngày</b>${_streaks.mWFrom ? ' (' + _streaks.mWFrom + ' → ' + _streaks.mWTo + ')' : ''}</div>
+        <div style="font-size:10px;color:var(--txt2)">Chuỗi giảm dài nhất: <b style="color:var(--sell)">${_streaks.mL} ngày</b>${_streaks.mLFrom ? ' (' + _streaks.mLFrom + ' → ' + _streaks.mLTo + ')' : ''}</div>
+      </div>
+      ${_streaks.cS >= 2 ? `<div style="font-size:10px;color:var(--txt3);margin-top:4px">Đang trong chuỗi <b style="color:${_streaks.cDir > 0 ? 'var(--buy)' : 'var(--sell)'}">${_streaks.cDir > 0 ? 'tăng' : 'giảm'} ${_streaks.cS} ngày liên tiếp</b></div>` : ''}
+    </div>` : ''}
     <div style="margin-top:6px;font-size:10px;color:var(--txt3);line-height:1.5">Hiệu suất = % thay đổi NAV theo thời gian. Chưa tính phí mua/bán hoặc thuế. Xếp hạng so với các quỹ cùng loại trong danh sách đang theo dõi.</div>`);
 
   // ── 4. RISK METRICS ──
