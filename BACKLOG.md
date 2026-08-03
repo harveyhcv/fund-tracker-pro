@@ -4,25 +4,32 @@
 # Priority: P0 (blocker) / P1 (important) / P2 (nice-to-have)
 # Claude đọc file này ĐẦU TIÊN mỗi session. Pick task IN_PROGRESS nếu có, nếu không pick P0 cao nhất.
 #
-# Last updated: 2026-08-03 (autonomous ca chiều: WEB-044..047 — forecast + entry quality + drawdown recovery + multi-timeframe)
+# Last updated: 2026-08-03 (autonomous ca chiều: WEB-044..053 — 10 features, analysis panel depth)
 
-## Session (autonomous, ca chiều) — 2026-08-03: WEB-044..047 frontend depth
-# WEB-044 DONE: 5-day linear regression trend forecast in HIỆU SUẤT section
-#   - linear regression on last 30 pts → project 5 trading days forward
-#   - Card: "Dự báo xu hướng 5 ngày" with green/red directional % and projected NAV
-#   - Fires only when pts.length >= 15
-# WEB-045 DONE: Entry Zone Quality Score (0-100) in KẾT LUẬN section
-#   - Composite: RSI (38%) + BB% (27%) + 52W position (27%) + vol regime bonus/penalty (8%)
+## Session (autonomous, ca chiều) — 2026-08-03: WEB-044..053 frontend depth
+# WEB-044 DONE: 5-day linear regression trend forecast in HIỆU SUẤT
+#   - linear regression on last 30 pts → project 5 trading days forward; fires when pts >= 15
+# WEB-045 DONE: Entry Zone Quality Score (0-100) in KẾT LUẬN
+#   - Composite: RSI (38%) + BB% (27%) + 52W position (27%) + vol regime (8%)
 #   - Progress bar + label: >=75 "Xuất sắc", >=60 "Tốt", >=45 "Trung bình", else "Thấp"
-#   - Inserted before strategy box in conclusionHtml
-# WEB-046 DONE: Drawdown Recovery Statistics in RỦI RO section
-#   - Scans full history for episodes >= 5% drawdown
-#   - Shows: count, deepest drop, avg recovery time (days), open episodes
-#   - Fires only when pts.length >= 60
-# WEB-047 DONE: Multi-timeframe Return Consistency in HIỆU SUẤT section
-#   - Checks 7d / 1m / 3m / 1y — arrows green/red per direction
-#   - Verdict: "Nhất quán tăng" / "Nhất quán giảm" / "X/Y khung tăng (hỗn hợp)"
-# Build: 400,591 chars. 367/367 tests pass. Commit dc2a57e, pushed to staging.
+# WEB-046 DONE: Drawdown Recovery Statistics in RỦI RO (pts >= 60, episodes >= 5%)
+#   - count, deepest, avg recovery days, open episodes flag
+# WEB-047 DONE: Multi-timeframe Return Consistency in HIỆU SUẤT
+#   - 7d/1m/3m/1y arrow tags + "Nhất quán tăng/giảm/hỗn hợp" verdict
+# WEB-048 DONE: Return distribution moments in RỦI RO (pts >= 60)
+#   - Skewness + excess kurtosis. Fat-left-tail warning, fat-tailed kurtosis alert
+# WEB-049 DONE: Best/worst 30-day rolling windows in VÙNG GIÁ 52 TUẦN
+#   - Scans full pts history for extreme 30-day periods, shows date ranges
+# WEB-050 DONE: Daily win rate + Gain/Pain ratio in RỦI RO
+#   - % days positive, avg gain/loss per day, Gain/Pain = avgUp/avgDown (>1.2=good)
+# WEB-051 DONE: Historical volatility percentile in RỦI RO
+#   - Rolling 30d vol vs distribution: "Cao hơn X% giai đoạn lịch sử"
+# WEB-052 DONE: Consecutive NAV streak analysis in HIỆU SUẤT
+#   - Longest win/loss streaks with date ranges + current active streak if >= 2 days
+# WEB-053 DONE: Lag-1 return autocorrelation in KẾT LUẬN
+#   - ρ > 0.1 = trending/momentum, ρ < -0.1 = mean-reverting, else = random walk
+#   - Actionable: "tránh mua ngược chiều" vs "cú giảm phục hồi nhanh"
+# Build: 410,510 chars. 367/367 tests pass. Commits dc2a57e..184b9e4, pushed to staging.
 
 ## Session (autonomous, continuation) — 2026-08-03: WEB-038..043 expert analysis series
 # WEB-043 DONE: DCA Entry Ladder in strategyHtml
