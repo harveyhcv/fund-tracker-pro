@@ -3748,6 +3748,35 @@ function _renderHistAnalysis(code) {
       maxDp: Math.max(...eps.map(e=>e.dp)), avgRec: wR.length ? Math.round(wR.reduce((s,e)=>s+e.rec,0)/wR.length) : null,
       maxDur: Math.max(...eps.map(e=>e.dur)), hasOpen: eps.some(e=>e.rec===null) };
   })();
+  // WEB-048: Return distribution moments \u2014 skewness and excess kurtosis of daily returns
+  const _retDist = (() => {
+    if (pts.length < 60) return null;
+    const navs = pts.map(p => p.nav);
+    const rets = [];
+    for (let i = 1; i < navs.length; i++) if (navs[i-1] > 0) rets.push((navs[i] - navs[i-1]) / navs[i-1]);
+    const n = rets.length;
+    if (n < 30) return null;
+    const mu = rets.reduce((s,r) => s+r, 0) / n;
+    const sd = Math.sqrt(rets.reduce((s,r) => s + (r-mu)**2, 0) / n);
+    if (sd < 1e-10) return null;
+    const skew = rets.reduce((s,r) => s + ((r-mu)/sd)**3, 0) / n;
+    const kurt = rets.reduce((s,r) => s + ((r-mu)/sd)**4, 0) / n - 3;
+    return { skew, kurt };
+  })();
+  // WEB-049: Best and worst 30-day rolling windows across full history
+  const _bestWorst30 = (() => {
+    if (pts.length < 35) return null;
+    let bR = -Infinity, wR = Infinity, bI = -1, wI = -1;
+    for (let i = 30; i < pts.length; i++) {
+      if (pts[i-30].nav <= 0) continue;
+      const r = (pts[i].nav - pts[i-30].nav) / pts[i-30].nav * 100;
+      if (r > bR) { bR = r; bI = i; }
+      if (r < wR) { wR = r; wI = i; }
+    }
+    if (bI < 0 || wI < 0) return null;
+    const _fd = d => d && d.length >= 10 ? d.slice(8,10)+'/'+d.slice(5,7)+'/'+d.slice(2,4) : '';
+    return { bR, wR, bFrom: _fd(pts[bI-30]?.date), bTo: _fd(pts[bI]?.date), wFrom: _fd(pts[wI-30]?.date), wTo: _fd(pts[wI]?.date) };
+  })();
   const riskHtml = pts.length > 30 ? _mkSect('R\u1ee6I RO & CH\u1ea4T L\u01af\u1ee2NG', '\u{1F6E1}\uFE0F', `
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:10px">
       ${_mkMetric('Bi\u1ebfn \u0111\u1ed9ng/n\u0103m', vol != null ? vol.toFixed(1) + '%' : '\u2013', volC, volDesc)}
@@ -3780,6 +3809,16 @@ function _renderHistAnalysis(code) {
         ? 'TB mỗi đợt giảm <b style="color:var(--sell)">' + _ddStats.avgDp.toFixed(1) + '%</b>, kéo dài <b>' + _ddStats.maxDur + ' ngày</b>. Phục hồi trung bình <b style="color:var(--buy)">' + _ddStats.avgRec + ' ngày</b> sau đáy' + (_ddStats.hasOpen ? ' (đang có đợt chưa phục hồi).' : '.')
         : (_ddStats.hasOpen ? 'Đang trong đợt drawdown chưa phục hồi hoàn toàn trong dữ liệu lịch sử.' : ''))
       + '</div></div>' : ''}
+    ${_retDist ? '<div style="background:var(--bg3);border-radius:8px;padding:10px 12px;margin-top:8px">'
+      + '<div style="font-size:10px;font-weight:600;color:var(--txt1);margin-bottom:6px">📊 Phân phối lợi nhuận hàng ngày</div>'
+      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">'
+      + _mkMetric('Skewness', _retDist.skew.toFixed(2), Math.abs(_retDist.skew) < 0.5 ? 'var(--txt2)' : _retDist.skew > 0 ? 'var(--buy)' : 'var(--sell)', Math.abs(_retDist.skew) < 0.5 ? 'Gần chuẩn' : _retDist.skew > 0.5 ? 'Lệch dương' : 'Lệch âm')
+      + _mkMetric('Excess Kurtosis', _retDist.kurt.toFixed(2), Math.abs(_retDist.kurt) < 1 ? 'var(--txt2)' : _retDist.kurt > 0 ? '#facc15' : 'var(--buy)', _retDist.kurt > 1 ? 'Fat-tailed' : _retDist.kurt < -1 ? 'Thin-tailed' : 'Bình thường')
+      + '</div>'
+      + '<div style="font-size:10px;color:var(--txt2);margin-top:6px;line-height:1.5">'
+      + (_retDist.skew < -0.5 ? '⚠️ Lệch âm (Skew ' + _retDist.skew.toFixed(2) + ') — rủi ro đuôi trái: cú giảm mạnh đột ngột xảy ra thường hơn cú tăng đột biến.' : _retDist.skew > 0.5 ? '✅ Lệch dương (Skew ' + _retDist.skew.toFixed(2) + ') — cú tăng đột biến thỉnh thoảng xảy ra, không bị chi phối bởi đuôi giảm.' : 'Phân phối lợi nhuận gần đối xứng (Skew ' + _retDist.skew.toFixed(2) + ') — rủi ro cân đối 2 chiều.')
+      + (_retDist.kurt > 1 ? ' Kurtosis cao (' + _retDist.kurt.toFixed(2) + ') — fat-tailed: cú sốc cực đoan xảy ra thường hơn phân phối chuẩn dự báo.' : _retDist.kurt < -1 ? ' Kurtosis thấp (' + _retDist.kurt.toFixed(2) + ') — ít cú sốc cực đoan.' : '')
+      + '</div></div>' : ''}
 `) : '';
   // ── 5. 52-WEEK RANGE ──
   const cut52D = new Date(); cut52D.setDate(cut52D.getDate() - 365);
@@ -3810,6 +3849,10 @@ function _renderHistAnalysis(code) {
         <div style="position:absolute;top:-3px;left:calc(${pct52}% - 8px);width:16px;height:16px;background:var(--c0);border-radius:50%;border:2px solid var(--bg);box-shadow:0 0 6px var(--c0)"></div>
       </div>
       <div style="font-size:11px;color:var(--txt2);text-align:center">${pct52}% t\u1eeb \u0111\u00e1y \u2014 ${pct52Desc}</div>
+      ${_bestWorst30 ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px">
+        ${_mkMetric('30 ng\u00e0y t\u1ed1t nh\u1ea5t', '+' + _bestWorst30.bR.toFixed(1) + '%', 'var(--buy)', _bestWorst30.bFrom + ' \u2192 ' + _bestWorst30.bTo)}
+        ${_mkMetric('30 ng\u00e0y t\u1ec7 nh\u1ea5t', _bestWorst30.wR.toFixed(1) + '%', 'var(--sell)', _bestWorst30.wFrom + ' \u2192 ' + _bestWorst30.wTo)}
+      </div>` : ''}
     </div>`) : '';
 
   // ── 5b. ADVANCED TECHNICAL ANALYSIS ──
