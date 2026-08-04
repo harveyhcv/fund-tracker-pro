@@ -195,6 +195,7 @@ details .collapsible-body{padding-bottom:4px}
 .tab.active{background:var(--c0);color:#000;border-color:var(--c0)}
 input:not([type=checkbox]),select,textarea{width:100%;padding:10px 12px;background:var(--bg3);border:1px solid var(--bdr);border-radius:8px;color:var(--txt);font-family:var(--mono);font-size:13px;outline:none;-webkit-appearance:none}
 input:focus,select:focus,textarea:focus{border-color:var(--c0)}
+.header-search input[type=text]{padding:7px 10px 7px 34px;font-size:12px;width:100%}
 label{display:block;color:var(--txt2);font-size:11px;margin:10px 0 4px;text-transform:uppercase;letter-spacing:.05em}
 .btn{width:100%;padding:13px;border:none;border-radius:10px;font-family:var(--sans);font-size:15px;font-weight:600;cursor:pointer;transition:opacity .15s;margin-top:8px}
 .btn-buy{background:var(--buy);color:#000}.btn-sell{background:var(--sell);color:#000}.btn-primary{background:var(--c0);color:#000}

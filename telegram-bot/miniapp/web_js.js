@@ -1129,23 +1129,19 @@ function renderSignals(sigs) {
           <div style="display:flex;justify-content:space-between;font-size:8px;color:var(--txt3);margin-top:2px"><span>BÁN −6</span><span>TRUNG LẬP 0</span><span>MUA +6</span></div>
         </div>
       </div>
-      <!-- Indicator row -->
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;border-bottom:1px solid var(--bdr)">
-        ${[
-          {lbl:'RSI',val:rsi.toFixed(0),interp:rsiInterp,barPct:rsi,barC:rsiInterp.c},
-          {lbl:'BB%B',val:bb.toFixed(0)+'%',interp:bbInterp,barPct:bb,barC:bbInterp.c},
-          {lbl:'MACD',val:macdH.toFixed(1),interp:macdInterp,barPct:macdPct,barC:macdC,centered:true},
-        ].map(({lbl,val,interp,barPct,barC,centered}) => `
-          <div style="padding:8px 10px;border-right:1px solid var(--bdr)">
-            <div style="font-size:9px;color:var(--txt3);font-family:var(--mono);letter-spacing:.05em">${lbl}</div>
-            <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:${interp.c};margin:2px 0">${val}</div>
-            <div style="height:3px;background:var(--bdr);border-radius:2px;position:relative;margin-bottom:3px">
-              ${centered
-                ? `<div style="position:absolute;${macdH>=0?'left:50%':'right:50%'};width:${barPct}%;height:100%;background:${barC};border-radius:2px"></div><div style="position:absolute;left:50%;transform:translateX(-50%);width:1px;height:100%;background:var(--txt3)"></div>`
-                : `<div style="position:absolute;left:0;width:${barPct}%;height:100%;background:${barC};border-radius:2px"></div>`}
-            </div>
-            <div style="font-size:9px;color:${interp.c}">${interp.txt}</div>
-          </div>`).join('')}
+      <!-- Compact indicator row: RSI | BB | MACD in one line -->
+      <div style="display:flex;align-items:center;gap:0;border-bottom:1px solid var(--bdr);padding:7px 14px;background:var(--bg3)">
+        <span style="font-size:11px;color:var(--txt3);font-family:var(--mono);margin-right:4px">RSI</span>
+        <span style="font-family:var(--mono);font-size:13px;font-weight:700;color:${rsiInterp.c};margin-right:3px">${rsi.toFixed(0)}</span>
+        <span style="font-size:10px;color:${rsiInterp.c};margin-right:12px">${rsiInterp.txt}</span>
+        <span style="color:var(--bdr);margin-right:12px">│</span>
+        <span style="font-size:11px;color:var(--txt3);font-family:var(--mono);margin-right:4px">BB</span>
+        <span style="font-family:var(--mono);font-size:13px;font-weight:700;color:${bbInterp.c};margin-right:3px">${bb.toFixed(0)}%</span>
+        <span style="font-size:10px;color:${bbInterp.c};margin-right:12px">${bbInterp.txt}</span>
+        <span style="color:var(--bdr);margin-right:12px">│</span>
+        <span style="font-size:11px;color:var(--txt3);font-family:var(--mono);margin-right:4px">MACD</span>
+        <span style="font-family:var(--mono);font-size:13px;font-weight:700;color:${macdInterp.c};margin-right:3px">${macdH>0?'+':''}${macdH.toFixed(1)}</span>
+        <span style="font-size:10px;color:${macdInterp.c}">${macdInterp.txt}</span>
       </div>
       <!-- Signal details + T+2 -->
       <div style="padding:8px 12px;display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap">
@@ -3596,40 +3592,40 @@ function _checkPredAccuracy(code, actualPts) {
 
 // ── Analysis panel below chart ─────────────────────────────────────────────────
 function _mkSect(title, icon, body) {
-  return `<div style="margin-bottom:14px">
-    <div style="font-size:10px;font-family:var(--mono);color:var(--txt2);letter-spacing:.08em;margin-bottom:8px;display:flex;align-items:center;gap:5px">
-      <span>${icon}</span><span>${title}</span>
+  return `<div style="margin-bottom:16px">
+    <div style="font-size:12px;font-family:var(--mono);color:var(--txt1);letter-spacing:.06em;margin-bottom:10px;display:flex;align-items:center;gap:6px;border-bottom:1px solid var(--bdr);padding-bottom:6px">
+      <span>${icon}</span><span style="font-weight:600">${title}</span>
     </div>${body}</div>`;
 }
 function _mkRow(label, value, sub='') {
-  return `<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--bdr)">
-    <span style="font-size:11px;color:var(--txt2)">${label}</span>
+  return `<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--bdr)">
+    <span style="font-size:12px;color:var(--txt2)">${label}</span>
     <div style="text-align:right">
-      <div style="font-family:var(--mono);font-size:12px;font-weight:600">${value}</div>
-      ${sub?`<div style="font-size:9px;color:var(--txt3)">${sub}</div>`:''}
+      <div style="font-family:var(--mono);font-size:13px;font-weight:600">${value}</div>
+      ${sub?`<div style="font-size:11px;color:var(--txt3);margin-top:1px">${sub}</div>`:''}
     </div>
   </div>`;
 }
 function _mkMetric(label, val, color, hint) {
-  return `<div style="background:var(--bg3);border-radius:8px;padding:10px;text-align:center">
-    <div style="font-size:9px;color:var(--txt3);margin-bottom:4px">${label}</div>
-    <div style="font-family:var(--mono);font-size:16px;font-weight:700;color:${color}">${val}</div>
-    ${hint?`<div style="font-size:9px;color:${color};margin-top:2px;line-height:1.2">${hint}</div>`:''}
+  return `<div style="background:var(--bg3);border-radius:8px;padding:12px 8px;text-align:center">
+    <div style="font-size:11px;color:var(--txt3);margin-bottom:5px;line-height:1.2">${label}</div>
+    <div style="font-family:var(--mono);font-size:17px;font-weight:700;color:${color}">${val}</div>
+    ${hint?`<div style="font-size:11px;color:${color};margin-top:4px;line-height:1.3">${hint}</div>`:''}
   </div>`;
 }
 function _mkPerfRow(label, pct, sub='') {
   if (pct == null) return _mkRow(label, '—', sub);
   const color = pct >= 0 ? 'var(--buy)' : 'var(--sell)';
   const barW = Math.min(Math.abs(pct) / 25 * 50, 50);
-  return `<div style="padding:6px 0;border-bottom:1px solid var(--bdr)">
+  return `<div style="padding:7px 0;border-bottom:1px solid var(--bdr)">
     <div style="display:flex;justify-content:space-between;align-items:center">
-      <span style="font-size:11px;color:var(--txt2)">${label}</span>
-      <span style="font-family:var(--mono);font-size:12px;font-weight:600;color:${color}">${pct>=0?'+':''}${pct.toFixed(2)}%</span>
+      <span style="font-size:12px;color:var(--txt2)">${label}</span>
+      <span style="font-family:var(--mono);font-size:13px;font-weight:700;color:${color}">${pct>=0?'+':''}${pct.toFixed(2)}%</span>
     </div>
-    <div style="height:3px;background:var(--bdr);border-radius:2px;margin-top:4px;position:relative">
+    <div style="height:3px;background:var(--bdr);border-radius:2px;margin-top:5px;position:relative">
       <div style="position:absolute;${pct>=0?'left:50%':'right:50%'};width:${barW}%;height:100%;background:${color};border-radius:2px"></div>
     </div>
-    ${sub?`<div style="font-size:9px;color:var(--txt3);margin-top:2px">${sub}</div>`:''}
+    ${sub?`<div style="font-size:11px;color:var(--txt3);margin-top:3px">${sub}</div>`:''}
   </div>`;
 }
 
@@ -3729,18 +3725,7 @@ function _renderHistAnalysis(code) {
         if (pnlP > 20) return `<div style="background:#4ade8011;border:1px solid #4ade8033;border-radius:8px;padding:8px 12px;margin-top:8px;font-size:10px;color:var(--txt2)"><b style="color:var(--buy)">Lãi tốt (${pnlP.toFixed(1)}%)</b>${_sc >= 3 ? ' — tín hiệu vẫn tốt, có thể tiếp tục nắm.' : ' — cân nhắc đặt mức chốt lời bảo vệ (trailing stop).'}</div>`;
         return '';
       })()}
-      ${(() => {
-        const _peers = (_me?.portfolio?.items || [])
-          .filter(h => h.code !== code && h.nav > 0)
-          .map(h => ({ code: h.code, pnlP: h.pnl_pct != null ? h.pnl_pct : (h.avg_cost > 0 ? (h.nav - h.avg_cost) / h.avg_cost * 100 : 0) }))
-          .sort((a,b) => b.pnlP - a.pnlP);
-        if (!_peers.length) return '';
-        const _peersHtml = _peers.map(p =>
-          '<span style="color:' + (p.pnlP >= 0 ? 'var(--buy)' : 'var(--sell)') + ';margin-right:6px">' +
-          p.code + ' ' + (p.pnlP >= 0 ? '+' : '') + p.pnlP.toFixed(1) + '%</span>'
-        ).join('');
-        return `<div style="margin-top:8px;padding:6px 12px;background:var(--bg3);border-radius:8px"><span style="font-size:9px;color:var(--txt3);font-family:var(--mono)">DANH MỤC: </span>${_peersHtml}</div>`;
-      })()}`);
+      `);
   }
 
   // ── 3. PERFORMANCE ──
@@ -4828,8 +4813,39 @@ function _renderHistAnalysis(code) {
   const _mkTile = (label,val,color,sublabel) => `<div style="background:var(--bg2);border-radius:8px;padding:10px 8px;text-align:center;border:1px solid var(--bdr)"><div style="font-size:9px;color:var(--txt3);margin-bottom:4px;font-family:var(--mono);letter-spacing:.08em">${label}</div><div style="font-size:19px;font-weight:700;font-family:var(--mono);color:${color};line-height:1.1">${val}</div><div style="font-size:9px;color:${color};margin-top:3px;font-weight:600">${sublabel}</div></div>`;
   const compactIndRow = s ? `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:12px">${_mkTile('RSI (14)',_rsi!=null?_rsi.toFixed(1):'—',_rsiC,_rsiLbl)}${_mkTile('BB%',_bb!=null?_bb.toFixed(1)+'%':'—',_bbC,_bbLbl)}${_mkTile('MACD Hist.',_macd!=null?(_macd>0?'+':'')+_macd.toFixed(0):'—',_macdC,_macdLbl)}</div>` : '';
 
-  // Collapsible section wrapper
-  const _col = (title, emoji, html, open=false) => html ? `<details${open?' open':''} style="margin-bottom:1px"><summary class="collapsible-hdr"><span>${emoji}</span><span>${title}</span><span class="collapsible-arrow">›</span></summary><div class="collapsible-body">${html}</div></details>` : '';
+  // Collapsible section wrapper — strips _mkSect outer div if present to avoid double headers
+  const _col = (title, emoji, html, open=false) => {
+    if (!html?.trim()) return '';
+    // _mkSect wraps in <div style="margin-bottom:..."><div style="font-size:12px...">TITLE</div>BODY</div>
+    // Strip that wrapper so _col's <summary> is the only header
+    let body = html.replace(/^[\s]*<div[^>]*margin-bottom:\d+px[^>]*>[\s]*<div[^>]*font-size:\d+px[^>]*>[\s\S]*?<\/div>[\s]*/,'').replace(/[\s]*<\/div>[\s]*$/,'');
+    if (!body.trim()) body = html; // fallback if regex didn't match
+    return `<details${open?' open':''} style="margin-bottom:1px"><summary class="collapsible-hdr"><span>${emoji}</span><span>${title}</span><span class="collapsible-arrow">›</span></summary><div class="collapsible-body">${body}</div></details>`;
+  };
+
+  // PI compact strip — show portfolio summary above fund analysis
+  const _piStrip = document.getElementById('hist-pi-compact');
+  if (_piStrip) {
+    const _pf = _me?.portfolio;
+    if (_pf?.items?.length) {
+      const _pfTotal = _pf.total_value || 0;
+      const _pfCost = _pf.items.reduce((s,h)=>s+(h.cost||0),0);
+      const _pfPnl = _pfTotal - _pfCost;
+      const _pfPnlP = _pfCost > 0 ? _pfPnl/_pfCost*100 : 0;
+      const _pfC = _pfPnlP >= 0 ? 'var(--buy)' : 'var(--sell)';
+      const _alerts = _pf.items.filter(h=>{const sg=_signals?.[h.code]||_marketData?.[h.code];return sg&&(sg.score>=4||sg.score<=-4);});
+      _piStrip.style.display = '';
+      _piStrip.innerHTML = `<div style="display:flex;align-items:center;gap:10px;padding:8px 14px;background:var(--bg2);border-bottom:1px solid var(--bdr);flex-wrap:wrap;cursor:pointer" onclick="_researchCode=null;document.getElementById('hist-pi-compact').style.display='none'">
+        <span style="font-size:10px;font-family:var(--mono);color:var(--txt3);letter-spacing:.06em;flex-shrink:0">DANH MỤC</span>
+        <span style="font-family:var(--mono);font-size:13px;font-weight:700;color:${_pfC}">${_pfPnlP>=0?'+':''}${_pfPnlP.toFixed(1)}%</span>
+        <span style="font-size:12px;color:${_pfC}">${_pfPnl>=0?'+':''}${(_pfPnl/1e6).toFixed(2)}M đ</span>
+        ${_alerts.length ? `<span style="font-size:10px;background:#facc1522;color:#facc15;border:1px solid #facc1544;border-radius:4px;padding:2px 7px;font-family:var(--mono)">${_alerts.length} tín hiệu ⚡</span>` : ''}
+        <span style="margin-left:auto;font-size:10px;color:var(--txt3)">${_pf.items.length} quỹ · Tổng ${(_pfTotal/1e6).toFixed(1)}M đ</span>
+      </div>`;
+    } else {
+      _piStrip.style.display = 'none';
+    }
+  }
 
   panel.innerHTML = `<div style="padding:8px 0 20px">
     ${headerHtml}
