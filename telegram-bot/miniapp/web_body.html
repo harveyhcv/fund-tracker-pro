@@ -132,7 +132,6 @@
     </div>
     <div class="header-right">
       <div class="header-chip live" id="header-date-chip">Dữ liệu thực &middot; <span id="pf-date"></span></div>
-      <div class="header-chip" id="header-nav-chip">&#128194; Đang tải...</div>
     </div>
   </header>
 
@@ -157,8 +156,6 @@
       <div id="pf-banner"></div>
       <div id="pf-alloc"></div>
 
-      <!-- #2: School summary card -->
-      <div id="pf-school-summary"></div>
       <div class="section-label section-ccq" style="padding:6px 14px 4px">
         <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--c0);margin-right:6px;vertical-align:middle"></span>QUỸ MỞ
       </div>
@@ -174,16 +171,9 @@
     <div class="col col-chart" id="chart-col">
       <div class="col-head">
         <div class="col-head-row">
-          <div>
-            <div class="col-title" id="chart-col-title">BIỂU ĐỒ NAV</div>
-            <div class="col-sub" id="chart-col-sub">Chọn một quỹ để xem</div>
-          </div>
-          <div class="chart-range-bar" id="chart-range-bar" style="display:none">
-            <button class="range-btn" onclick="setChartRange('1M',this)">1T</button>
-            <button class="range-btn" onclick="setChartRange('3M',this)">3T</button>
-            <button class="range-btn active" onclick="setChartRange('1Y',this)">1N</button>
-            <button class="range-btn" onclick="setChartRange('3Y',this)">3N</button>
-            <button class="range-btn" onclick="setChartRange('ALL',this)">Tất cả</button>
+          <div style="cursor:pointer" onclick="_researchCode=null;_showPfIntelligence()" title="Quay về tổng quan danh mục">
+            <div class="col-title" id="chart-col-title">PHÂN TÍCH DANH MỤC</div>
+            <div class="col-sub" id="chart-col-sub">Đang tải...</div>
           </div>
         </div>
       </div>
@@ -309,6 +299,7 @@
             <div class="trade-history-head">
               <span class="col-title" style="font-size:10px">LỊCH SỬ GIAO DỊCH</span>
               <div style="display:flex;gap:4px">
+                <button id="hist-sort-toggle" onclick="toggleHistSortMode()" class="col-action" title="Sắp xếp theo thời gian">📋</button>
                 <button onclick="toggleHistFilter()" class="col-action" title="Bộ lọc">&#x1F50D;</button>
                 <button onclick="loadUnifiedHistory()" class="col-action">&#x21BB;</button>
               </div>
@@ -567,19 +558,8 @@
       <div id="hist-fund-list" style="flex:1;overflow-y:auto">
         <div class="loading"><div class="spinner"></div></div>
       </div>
-      <!-- Nhập NAV thủ công (single row) -->
-      <div style="padding:10px 12px;border-top:1px solid var(--bdr);flex-shrink:0;background:var(--bg2)">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-          <div class="col-title" style="font-size:9px;margin:0">NHẬP NAV THỦ CÔNG</div>
-          <span id="hist-fund-label" style="font-size:10px;color:var(--c0);font-family:var(--mono)"></span>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">
-          <input type="date" id="bulk-nav-date-single" style="font-size:11px;padding:5px 8px">
-          <input type="text" id="bulk-nav-value-single" placeholder="NAV (đ)" style="font-size:11px;padding:5px 8px;font-family:var(--mono)">
-        </div>
-        <button onclick="submitSingleNav()" class="btn btn-primary" style="padding:8px;font-size:12px;margin:0">Lưu NAV</button>
-        <div id="bulk-nav-status" style="font-size:11px;margin-top:6px;min-height:14px;text-align:center"></div>
-      </div>
+      <!-- hist-fund-label hidden, kept for JS compat -->
+      <span id="hist-fund-label" style="display:none"></span>
       <!-- Admin: fetch NAV trigger -->
       <div id="hist-admin-actions" style="display:none;padding:0 12px 10px;border-top:1px solid var(--bdr);flex-shrink:0">
         <button class="btn btn-primary" style="margin:8px 0 4px;padding:8px;font-size:12px" onclick="autoUpdateNav()">&#x21BB; Fetch NAV mới nhất</button>
@@ -616,6 +596,24 @@
         <div id="hist-analysis-panel" style="padding:0 14px 16px;border-top:1px solid var(--bdr);overflow-y:auto">
           <div style="color:var(--txt2);font-size:12px;padding:12px 0;text-align:center">Chọn quỹ để xem chỉ báo kỹ thuật</div>
         </div>
+
+        <!-- Nhập NAV thủ công — collapsible -->
+        <details id="manual-nav-panel" style="border-top:1px solid var(--bdr);flex-shrink:0" ontoggle="if(this.open)_initBulkRows()">
+          <summary style="display:flex;align-items:center;gap:6px;padding:10px 14px;cursor:pointer;font-family:var(--mono);font-size:10px;color:var(--txt2);list-style:none;user-select:none">
+            <span style="font-size:12px">✏️</span>
+            <span>NHẬP NAV THỦ CÔNG</span>
+            <span id="manual-nav-fund-tag" style="color:var(--c0);font-size:10px;margin-left:4px"></span>
+            <span style="margin-left:auto;font-size:10px">▾</span>
+          </summary>
+          <div style="padding:10px 14px 14px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+              <div id="bulk-nav-status" style="font-size:11px;color:var(--c0);min-height:14px"></div>
+              <button onclick="addBulkNavRow('')" style="background:none;border:1px solid var(--bdr);color:var(--c0);font-size:10px;padding:3px 8px;border-radius:6px;cursor:pointer;font-family:var(--mono)">+ Thêm dòng</button>
+            </div>
+            <div id="bulk-nav-rows" style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px"></div>
+            <button onclick="submitBulkNav()" class="btn btn-primary" style="padding:8px;font-size:12px;margin:0;width:100%">Lưu NAV</button>
+          </div>
+        </details>
       </div>
     </div>
 

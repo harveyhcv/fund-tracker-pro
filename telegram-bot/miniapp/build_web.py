@@ -46,7 +46,7 @@ body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14p
 .header{height:52px;background:var(--bg2);border-bottom:1px solid var(--bdr);display:flex;align-items:center;padding:0 16px;gap:14px;flex-shrink:0;z-index:10}
 .header-title{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--c0);letter-spacing:.1em;text-transform:uppercase;white-space:nowrap;min-width:100px}
 .header-search{flex:1;max-width:320px;position:relative}
-.header-search input{background:var(--bg3);border:1px solid var(--bdr);border-radius:8px;padding:7px 10px 7px 32px;color:var(--txt);font-family:var(--mono);font-size:12px;outline:none;width:100%}
+.header-search input{background:var(--bg3);border:1px solid var(--bdr);border-radius:8px;padding:7px 10px 7px 34px;color:var(--txt);font-family:var(--mono);font-size:12px;outline:none;width:100%;box-sizing:border-box}
 .header-search input:focus{border-color:var(--c0)}
 .si{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--txt3);font-size:14px;pointer-events:none}
 .header-right{display:flex;align-items:center;gap:8px;margin-left:auto}
@@ -60,9 +60,9 @@ body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14p
 .three-col{display:flex;width:100%;height:100%;overflow:hidden}
 .col{border-right:1px solid var(--bdr);display:flex;flex-direction:column;height:100%;overflow:hidden}
 .col:last-child{border-right:none}
-.col-portfolio{width:270px;min-width:220px;overflow-y:auto}
-.col-chart{flex:2;min-width:360px;display:flex;flex-direction:column;overflow:hidden}
-.col-market{flex:1.5;min-width:320px;display:flex;flex-direction:column;overflow:hidden}
+.col-portfolio{width:500px;min-width:360px;overflow-y:auto}
+.col-chart{flex:1;min-width:340px;display:flex;flex-direction:column;overflow:hidden}
+.col-market{flex:1.2;min-width:320px;display:flex;flex-direction:column;overflow:hidden}
 #chart-col-content{flex:1;overflow-y:auto;padding:0}
 #market-content{flex:1;overflow-y:auto}
 /* ── Chart time range bar ── */
@@ -86,9 +86,9 @@ body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14p
 .trade-col-left{background:var(--bg);overflow-y:auto;flex:1}
 .trade-col-mid{background:var(--bg4);flex:1}
 .trade-col-right{background:var(--bg);overflow:hidden;flex:1;display:flex;flex-direction:column}
-.trade-right-dca{flex:1;overflow-y:auto;min-height:0}
-.trade-right-gold{flex:0 0 52%;overflow-y:auto;border-top:2px solid #fbbf24}
-.col-head-gold{background:rgba(251,191,36,.06);border-bottom:1px solid rgba(251,191,36,.2);border-top:2px solid #fbbf24;flex-shrink:0}
+.trade-right-dca{flex:1;overflow-y:auto;min-height:0;background:var(--bg)}
+.trade-right-gold{flex:0 0 52%;overflow-y:auto;border-top:2px solid #fbbf24;background:rgba(251,191,36,.02)}
+.col-head-gold{background:rgba(251,191,36,.08);border-bottom:1px solid rgba(251,191,36,.2);border-top:2px solid #fbbf24;flex-shrink:0}
 .trade-form-area{flex:1;display:flex;flex-direction:column;overflow:hidden}
 .trade-history-head{padding:8px 12px;border-bottom:1px solid var(--bdr);display:flex;justify-content:space-between;align-items:center;flex-shrink:0;background:var(--bg4);position:sticky;top:0;z-index:2}
 .trade-history-scroll{flex:1;overflow-y:auto}
@@ -144,12 +144,18 @@ body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14p
 .fund-row{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--bdr);gap:8px;cursor:pointer;transition:background .15s;border-radius:6px;padding:8px 4px}
 .fund-row:last-child{border:none}
 .fund-row:active{background:var(--bg3)}
-.fund-code{font-family:var(--mono);font-weight:700;font-size:13px;flex:0 0 auto;background:var(--bg3);border:1px solid var(--bdr);border-radius:5px;padding:2px 7px}
+.fund-code{font-family:var(--mono);font-weight:700;font-size:14px;flex:0 0 auto;white-space:nowrap;background:var(--bg3);border:1px solid var(--bdr);border-radius:5px;padding:2px 7px}
 .fund-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
-.fund-top{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap}
-.fund-nav{font-family:var(--mono);font-size:15px;font-weight:600;color:var(--txt)}
-.fund-sub{font-size:12px;color:var(--txt2);display:flex;align-items:center;gap:6px}
-.fund-right{text-align:right;flex:0 0 auto;display:flex;flex-direction:column;gap:4px}
+.fund-top{display:grid;grid-template-columns:auto 1fr auto;align-items:baseline;gap:6px}
+.fund-nav{font-family:var(--mono);font-size:15px;font-weight:600;color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fund-sub{font-size:12px;color:var(--txt2);display:flex;align-items:center;gap:5px;white-space:nowrap;overflow:hidden}
+.fund-right{text-align:right;flex:0 0 88px;display:flex;flex-direction:column;gap:4px;align-items:flex-end}
+details>summary{list-style:none;cursor:pointer}
+details>summary::-webkit-details-marker{display:none}
+.collapsible-hdr{display:flex;align-items:center;gap:6px;padding:10px 2px;font-size:10px;font-family:var(--mono);letter-spacing:.08em;color:var(--txt2);border-top:1px solid var(--bdr)}
+.collapsible-arrow{margin-left:auto;font-size:12px;transition:transform .2s;color:var(--txt3)}
+details[open] .collapsible-arrow{transform:rotate(90deg)}
+details .collapsible-body{padding-bottom:4px}
 .sig-row{display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;padding:9px 4px;border-bottom:1px solid var(--bdr);cursor:pointer;border-radius:6px;transition:background .15s}
 .sig-row:last-child{border:none}
 .sig-row:active{background:var(--bg3)}
@@ -281,19 +287,19 @@ canvas{width:100%!important;height:100%!important}
 /* ── History Page ────────────────────────── */
 .trade-form-inner{flex:1;overflow-y:auto;padding:0 14px;min-height:0}
 .hist-page-layout{display:flex;height:100%;overflow:hidden}
-.hist-page-left{width:360px;min-width:280px;border-right:1px solid var(--bdr);display:flex;flex-direction:column;overflow:hidden}
+.hist-page-left{width:420px;min-width:320px;border-right:1px solid var(--bdr);display:flex;flex-direction:column;overflow:hidden}
 .hist-page-right{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
 .hist-nav-header{padding:10px 14px 8px;border-bottom:1px solid var(--bdr);flex-shrink:0;background:var(--bg2)}
 .hist-nav-hval{font-family:var(--mono);font-size:18px;font-weight:700;color:var(--txt)}
 .hist-nav-hchg{font-family:var(--mono);font-size:13px;font-weight:600;margin-left:8px}
 .hist-nav-right{flex:1;min-width:0;display:flex;flex-direction:column;overflow-y:auto}
-#hist-chart-area{height:280px;min-height:220px;position:relative;padding:8px;flex-shrink:0}
+#hist-chart-area{height:320px;min-height:240px;position:relative;padding:8px;flex-shrink:0}
 #hist-chart-area canvas{width:100%!important;height:100%!important}
-.hist-fund-row{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--bdr);cursor:pointer;transition:background .15s}
+.hist-fund-row{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--bdr);cursor:pointer;transition:background .15s}
 .hist-fund-row:hover,.hist-fund-row.active{background:rgba(0,229,255,.06)}
 .hist-fund-row.active{border-left:2px solid var(--c0)}
-.hist-fund-code{font-family:var(--mono);font-size:13px;font-weight:700;min-width:60px}
-.hist-fund-nav{font-family:var(--mono);font-size:12px;color:var(--txt);flex:1}
+.hist-fund-code{font-family:var(--mono);font-size:15px;font-weight:700;min-width:68px}
+.hist-fund-nav{font-family:var(--mono);font-size:13px;color:var(--txt);flex:1}
 .hist-fund-held{font-size:10px;color:var(--c0);font-family:var(--mono);border:1px solid var(--c0);border-radius:3px;padding:0 4px;flex-shrink:0}
 /* ── NAV Import ──────────────────────────── */
 .nav-import-row{display:flex;gap:6px;align-items:center}
@@ -325,13 +331,13 @@ canvas{width:100%!important;height:100%!important}
   .main{margin-left:0;padding-bottom:60px}
 }
 @media(min-width:901px) and (max-width:1200px){
-  .col-portfolio{width:240px;min-width:200px}
-  .col-market{min-width:300px;max-width:420px}
-  .col-chart{min-width:320px}
+  .col-portfolio{width:400px;min-width:320px}
+  .col-market{min-width:280px;max-width:420px}
+  .col-chart{min-width:300px}
 }
 @media(min-width:1600px){
   :root{font-size:15px}
-  .col-portfolio{width:310px}
+  .col-portfolio{width:460px}
   .col-market{max-width:560px}
   .fund-nav{font-size:16px}
   .res-nav{font-size:26px}
@@ -340,7 +346,7 @@ canvas{width:100%!important;height:100%!important}
 }
 @media(min-width:2000px){
   :root{font-size:16px}
-  .col-portfolio{width:360px}
+  .col-portfolio{width:390px}
 }
 </style>
 </head>"""

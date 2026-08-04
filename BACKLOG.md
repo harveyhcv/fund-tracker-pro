@@ -4,7 +4,31 @@
 # Priority: P0 (blocker) / P1 (important) / P2 (nice-to-have)
 # Claude đọc file này ĐẦU TIÊN mỗi session. Pick task IN_PROGRESS nếu có, nếu không pick P0 cao nhất.
 #
-# Last updated: 2026-08-03 (autonomous ca chiều: WEB-044..053 — 10 features, analysis panel depth)
+# Last updated: 2026-08-04 (Harvey session: WEB-054..059 UX fixes + NAV entry redesign)
+
+## Session (Harvey-directed) — 2026-08-04: UX polish + UI fixes
+# WEB-054 DONE: Portfolio Intelligence compact banner khi fund selected (Phân Tích tab)
+#   - _pfIntelCompactHtml() → <details> với P&L tóm tắt, expand để xem đầy đủ
+#   - renderResearchInline() prepends compact PI trước fund analysis
+# WEB-055 DONE: Tab title fix — bỏ "LỊCH SỬ NAV", dùng TAB_TITLES constant đúng
+#   - history tab → "PHÂN TÍCH"
+# WEB-056 DONE: Comparison (So Sánh) fixes — typo + expert AM analysis + gold support
+#   - _renderCmpSignals() rewrite: _interp() function, larger fonts, explanatory notes
+#   - Expert analysis: return divergence, RSI extremes, Sharpe proxy, signal consensus
+#   - Gold (GOLD_SJC) có thể so sánh với CCQ
+#   - Fixed typo "TÔ ĐỬM" → "ĐẬM = TỐT HƠN"
+# WEB-057 DONE: History flat time-sort toggle
+#   - _histSortByTime state + toggleHistSortMode() + flat render branch
+#   - Sort toggle button (📋/🕐) trong Giao Dịch history header
+# WEB-058 DONE: NAV manual entry redesign
+#   - Moved từ left col Phân Tích → right col, dạng <details id="manual-nav-panel">
+#   - Multi-row bulk form: addBulkNavRow, submitBulkNav, auto-init khi open (ontoggle)
+#   - Fund tag hiển thị trong summary: "✏️ NHẬP NAV THỦ CÔNG — SSISCA"
+# WEB-059 DONE: Giao Dịch right-col section separation
+#   - Gold section header background stronger: rgba(251,191,36,.08)
+#   - Gold section body: rgba(251,191,36,.02) tint
+#   - DCA section: explicit var(--bg) background
+# Build: 427,963 chars. 0 console errors.
 
 ## Session (autonomous, ca chiều) — 2026-08-03: WEB-044..053 frontend depth
 # WEB-044 DONE: 5-day linear regression trend forecast in HIỆU SUẤT
