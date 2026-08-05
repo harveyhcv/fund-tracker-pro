@@ -298,11 +298,15 @@ canvas{width:100%!important;height:100%!important}
 .hist-nav-hval{font-family:var(--mono);font-size:18px;font-weight:700;color:var(--txt)}
 .hist-nav-hchg{font-family:var(--mono);font-size:13px;font-weight:600;margin-left:8px}
 .hist-nav-right{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
-#hist-chart-area{flex:1;min-height:220px;position:relative;padding:8px}
+#hist-chart-area{height:260px;max-height:300px;min-height:180px;flex-shrink:0;position:relative;padding:8px}
 #hist-chart-area canvas{width:100%!important;height:100%!important}
-.hist-fund-row{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--bdr);cursor:pointer;transition:background .15s}
+/* hist-fund-row inherits sig-row grid layout; active/hover states */
+.hist-fund-row{border-left:3px solid transparent}
 .hist-fund-row:hover,.hist-fund-row.active{background:rgba(0,229,255,.06)}
-.hist-fund-row.active{border-left:2px solid var(--c0)}
+.hist-fund-row.active{border-left-color:var(--c0)!important}
+/* Manual NAV entry — make summary row look like a section header */
+#manual-nav-panel summary{background:var(--bg2);border-top:1px solid var(--bdr);font-size:11px;color:var(--c0);letter-spacing:.05em;font-weight:600}
+#manual-nav-panel summary:hover{background:var(--bg3)}
 .hist-fund-code{font-family:var(--mono);font-size:15px;font-weight:700;min-width:68px}
 .hist-fund-nav{font-family:var(--mono);font-size:13px;color:var(--txt);flex:1}
 .hist-fund-held{font-size:10px;color:var(--c0);font-family:var(--mono);border:1px solid var(--c0);border-radius:3px;padding:0 4px;flex-shrink:0}

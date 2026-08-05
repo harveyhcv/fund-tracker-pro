@@ -676,6 +676,8 @@ function _showPfIntelligence() {
   if (_researchCode) return;
   const pf = _me?.portfolio;
   if (!pf?.items?.length) return;
+  const piStrip = document.getElementById('home-pi-strip');
+  if (piStrip) piStrip.style.display = 'none';
   const el = document.getElementById('chart-col-content');
   if (!el) return;
   const titleEl = document.getElementById('chart-col-title');
@@ -1288,6 +1290,23 @@ async function openResearch(code) {
     if (titleEl) titleEl.textContent = code;
     if (targetEl) targetEl.innerHTML = spin();
     if (_navChart) { _navChart.destroy(); _navChart = null; }
+    // PI strip — show portfolio summary above fund analysis
+    const piStrip = document.getElementById('home-pi-strip');
+    if (piStrip && _me?.portfolio?.items?.length) {
+      const _pf = _me.portfolio;
+      const _pfTotal = _pf.total_value || 0;
+      const _pfCost = _pf.items.reduce((s,h)=>s+(h.cost||0),0);
+      const _pfPnl = _pfTotal - _pfCost;
+      const _pfPnlP = _pfCost > 0 ? _pfPnl/_pfCost*100 : 0;
+      const _pfC = _pfPnlP >= 0 ? 'var(--buy)' : 'var(--sell)';
+      piStrip.style.display = '';
+      piStrip.innerHTML = `<div style="display:flex;align-items:center;gap:12px;padding:8px 14px;cursor:pointer;flex-wrap:wrap" onclick="_researchCode=null;document.getElementById('home-pi-strip').style.display='none';_showPfIntelligence()" title="Quay về tổng quan danh mục">
+        <span style="font-size:10px;font-family:var(--mono);color:var(--txt3);letter-spacing:.06em;flex-shrink:0">← DANH MỤC</span>
+        <span style="font-family:var(--mono);font-size:14px;font-weight:700;color:${_pfC}">${_pfPnlP>=0?'+':''}${_pfPnlP.toFixed(2)}%</span>
+        <span style="font-size:12px;color:${_pfC}">${_pfPnl>=0?'+':''}${(_pfPnl/1e6).toFixed(2)}M đ</span>
+        <span style="margin-left:auto;font-size:11px;color:var(--txt2)">${_pf.items.length} quỹ · ${(_pfTotal/1e6).toFixed(1)}M đ tổng</span>
+      </div>`;
+    }
   } else if (tradeActive) {
     targetEl = document.getElementById('trade-signal-research');
     canvasId = 'trade-inline-chart';
@@ -2631,22 +2650,31 @@ function _renderHistFundList() {
     const rsiDotC = (s.rsi != null) ? (s.rsi < 35 ? 'var(--buy)' : s.rsi > 65 ? 'var(--sell)' : 'var(--txt3)') : 'transparent';
     const rsiLabel = s.rsi != null ? `<span style="font-size:9px;font-family:var(--mono);color:${rsiDotC}" title="RSI">RSI ${s.rsi.toFixed(0)}</span>` : '';
     const alert = isAlert(code);
-    const alertBorder = alert ? `border-left:3px solid ${alertColor(code)}` : 'border-left:3px solid transparent';
-    const alertBg = alert ? `background:${alertColor(code)}08` : '';
-    return `<div class="hist-fund-row ${_histPageCode===code?'active':''}" onclick="_selectHistFund('${code}',this)" style="display:flex;flex-direction:column;gap:3px;padding:8px 12px 8px 10px;${alertBorder};${alertBg}">
-      <div style="display:flex;align-items:center;gap:6px">
-        <span style="font-family:var(--mono);font-size:13px;font-weight:700;color:var(--txt);flex-shrink:0;min-width:64px">${code}</span>
-        ${heldBadge}${sigHtml}
-        <span style="margin-left:auto;display:flex;align-items:center;gap:4px;flex-shrink:0">${_staleH}${starBtn}</span>
+    const alertBorderStyle = alert ? `border-left:3px solid ${alertColor(code)}` : 'border-left:3px solid transparent';
+    const rsi = s.rsi ?? 50;
+    const bb  = s.bb_pct ?? 50;
+    const rsiC = rsi < 35 ? 'var(--buy)' : rsi > 65 ? 'var(--sell)' : 'var(--hold)';
+    const bbC  = bb  < 20 ? 'var(--buy)' : bb  > 80 ? 'var(--sell)' : 'var(--hold)';
+    return `<div class="hist-fund-row sig-row ${_histPageCode===code?'active':''}" onclick="_selectHistFund('${code}',this)" style="${alertBorderStyle}">
+      <div>
+        <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
+          <span class="sig-code">${code}</span>
+          ${chgHtml}
+          ${held.has(code)?'<span style="font-size:9px;color:var(--c0);font-family:var(--mono)">•NẮM</span>':''}
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;margin-top:2px;flex-wrap:wrap">
+          <span style="font-size:11px;color:var(--txt2);font-family:var(--mono)">${nav}</span>
+          ${_staleH}
+        </div>
       </div>
-      <div style="display:flex;align-items:center;gap:8px;padding-left:1px">
-        <span style="font-family:var(--mono);font-size:11px;color:var(--txt2)">${nav}</span>
-        ${chgHtml}
-        ${_sparklineSvg(code)}
-        <span style="margin-left:auto;display:flex;align-items:center;gap:6px;flex-shrink:0">
-          ${rsiLabel}
-          <span style="font-size:10px;font-family:var(--mono);color:${scColor};font-weight:600" title="Điểm tổng hợp">${sc>=0?'+':''}${sc}</span>
-        </span>
+      <div class="sig-meters">
+        <div class="meter"><div class="meter-lbl">RSI</div><div class="meter-bar"><div class="meter-fill" style="width:${rsi}%;background:${rsiC}"></div></div><div class="meter-val">${rsi.toFixed?rsi.toFixed(0):rsi}</div></div>
+        <div class="meter"><div class="meter-lbl">BB</div><div class="meter-bar"><div class="meter-fill" style="width:${bb}%;background:${bbC}"></div></div><div class="meter-val">${bb.toFixed?bb.toFixed(0):bb}</div></div>
+        <div class="meter"><div class="meter-lbl">SCR</div><div class="meter-val" style="color:${scColor}">${sc>=0?'+':''}${sc}</div></div>
+      </div>
+      <div style="text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+        ${sigHtml}
+        <span onclick="event.stopPropagation();_toggleWatchFund('${code}')" title="${watched.has(code)?'Bỏ theo dõi':'Thêm theo dõi'}" style="cursor:pointer;font-size:14px;color:${watched.has(code)?'var(--c0)':'var(--txt3)'}">${watched.has(code)?'★':'☆'}</span>
       </div>
     </div>`;
   }).join('');
