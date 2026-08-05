@@ -293,15 +293,15 @@ canvas{width:100%!important;height:100%!important}
 /* Analysis sub-column — takes center space (flex:1) on desktop */
 .hist-analysis-col{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;border-right:1px solid var(--bdr)}
 #hist-analysis-panel{font-size:15px;line-height:1.65}
-/* Chart sub-column — narrow right sidebar on desktop */
-.hist-chart-col{width:320px;min-width:240px;max-width:320px;flex-shrink:0;flex-grow:0;display:flex;flex-direction:column;overflow:hidden}
+/* Chart sub-column — width = sidebar(200) + fund-list(420) = 620px */
+.hist-chart-col{width:620px;min-width:400px;max-width:none;flex-shrink:0;flex-grow:0;display:flex;flex-direction:column;overflow:hidden}
 .hist-nav-header{padding:10px 14px 8px;border-bottom:1px solid var(--bdr);flex-shrink:0;background:var(--bg2)}
 .hist-nav-hval{font-family:var(--mono);font-size:18px;font-weight:700;color:var(--txt)}
 .hist-nav-hchg{font-family:var(--mono);font-size:13px;font-weight:600;margin-left:8px}
 .hist-nav-right{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
 #hist-chart-area{flex:1;min-height:180px;max-height:420px;flex-shrink:0;position:relative;padding:0}
 #hist-chart-area canvas{width:100%!important;height:100%!important;display:block}
-#hist-below-chart{border-top:1px solid var(--bdr);flex-shrink:0;max-height:300px;overflow-y:auto}
+#hist-below-chart{border-top:1px solid var(--bdr);flex:1;min-height:0;overflow-y:auto}
 .hist-cmp-btn{display:flex;align-items:center;gap:5px;padding:5px 12px;border:1px solid var(--bdr);border-radius:6px;background:var(--bg3);color:var(--txt2);font-size:11px;font-family:var(--mono);cursor:pointer;white-space:nowrap;letter-spacing:.03em}
 .hist-cmp-btn:hover{border-color:var(--c0);color:var(--c0)}
 /* hist-fund-row inherits sig-row grid layout; active/hover states */
