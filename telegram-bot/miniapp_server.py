@@ -18,6 +18,7 @@ import hmac
 import json
 import logging
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -30,6 +31,12 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 log = logging.getLogger("miniapp")
+
+_FUND_CODE_RE = re.compile(r'^[A-Z0-9_]{1,20}$')
+def _valid_fund_code(code: str) -> str | None:
+    """Trả về code đã chuẩn hoá nếu hợp lệ, None nếu không."""
+    c = (code or '').upper().strip()
+    return c if _FUND_CODE_RE.match(c) else None
 
 ROOT      = Path(__file__).parent.parent
 DATA_DIR  = Path(os.environ.get("DATA_DIR", Path(__file__).parent))
@@ -171,6 +178,171 @@ _GOLD_LABELS = {
 
 def _gold_product_label(source: str, product: str) -> str:
     return _GOLD_LABELS.get(f"{source}:{product}", f"{source} {product}")
+
+
+# ── Local SQLite gold cache (dùng khi không có Railway DATABASE_URL) ──────────
+
+_LOCAL_DB_PATH = Path(__file__).parent / "local_users.db"
+
+_VANGTODAY_MAP = {
+    "SJL1L10":     "SJC_1L",
+    "DOHNL":       "DOJI_NHAN_9999",
+    "DOHCML":      "DOJI_NHAN_HCM",
+    "DOJINHTV":    "DOJI_JEWELRY",
+    "SJ9999":      "SJC_NHAN",
+    "PQHNVM":      "PNJ_HN",
+    "PQHN24NTT":   "PNJ_24K",
+    "BT9999NTT":   "BAOTINNGUYEN",
+    "BTSJC":       "BAOTINSJC",
+    "VNGSJC":      "VNGOLD_SJC",
+    "VIETTINMSJC": "VIETTIN_SJC",
+    "XAUUSD":      "XAUUSD",
+}
+
+def _ensure_gold_prices_sqlite(conn) -> None:
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS gold_prices (
+            price_date TEXT NOT NULL,
+            source     TEXT NOT NULL,
+            product    TEXT NOT NULL,
+            buy_price  REAL,
+            sell_price REAL,
+            currency   TEXT DEFAULT 'VND',
+            extra      TEXT,
+            updated_at TEXT DEFAULT (strftime('%Y-%m-%d %H:%M:%S','now')),
+            PRIMARY KEY (price_date, source, product)
+        )
+    """)
+    conn.commit()
+
+def _fetch_gold_to_sqlite() -> int:
+    """Fetch giá vàng từ vang.today và lưu vào local SQLite. Trả về số bản ghi đã lưu."""
+    import urllib.request, sqlite3
+    from datetime import date as _date
+    url = "https://www.vang.today/api/prices"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            envelope = json.loads(resp.read().decode())
+        # vang.today wraps data in {"prices": {...}} or returns flat dict
+        raw = envelope.get("prices", envelope) if isinstance(envelope, dict) else {}
+    except Exception as e:
+        log.warning(f"[gold_local] fetch vang.today failed: {e}")
+        return 0
+    today = str(_date.today())
+    conn = sqlite3.connect(str(_LOCAL_DB_PATH))
+    _ensure_gold_prices_sqlite(conn)
+    saved = 0
+    for type_code, product in _VANGTODAY_MAP.items():
+        item = raw.get(type_code)
+        if not item:
+            continue
+        buy  = float(item.get("buy")  or item.get("buy_price")  or 0)
+        sell = float(item.get("sell") or item.get("sell_price") or 0)
+        curr = item.get("currency", "VND")
+        extra_str = json.dumps({"name": item.get("name", ""), "type_code": type_code,
+                                 "change_buy": item.get("change_buy", 0)})
+        conn.execute("""
+            INSERT INTO gold_prices (price_date, source, product, buy_price, sell_price, currency, extra)
+            VALUES (?, 'VANGTODAYAPI', ?, ?, ?, ?, ?)
+            ON CONFLICT(price_date, source, product) DO UPDATE SET
+                buy_price=excluded.buy_price, sell_price=excluded.sell_price,
+                extra=excluded.extra, updated_at=strftime('%Y-%m-%d %H:%M:%S','now')
+        """, (today, product, buy, sell, curr, extra_str))
+        saved += 1
+    conn.commit()
+    conn.close()
+    log.info(f"[gold_local] saved {saved} gold prices to SQLite ({today})")
+    return saved
+
+def _get_gold_prices_sqlite() -> dict:
+    """Đọc giá vàng gần nhất từ local SQLite. Auto-fetch từ vang.today nếu hôm nay chưa có."""
+    import sqlite3
+    from datetime import date as _date, timedelta
+    conn = sqlite3.connect(str(_LOCAL_DB_PATH))
+    _ensure_gold_prices_sqlite(conn)
+    today = str(_date.today())
+    count = conn.execute(
+        "SELECT COUNT(*) FROM gold_prices WHERE price_date=? AND source='VANGTODAYAPI'", (today,)
+    ).fetchone()[0]
+    conn.close()
+    if count == 0:
+        _fetch_gold_to_sqlite()
+    conn = sqlite3.connect(str(_LOCAL_DB_PATH))
+    _ensure_gold_prices_sqlite(conn)
+    cutoff = str(_date.today() - timedelta(days=7))
+    rows = conn.execute("""
+        SELECT source, product, buy_price, sell_price, price_date, currency, extra
+        FROM gold_prices
+        WHERE price_date >= ?
+        GROUP BY source, product
+        HAVING price_date = MAX(price_date)
+        ORDER BY source, product
+    """, (cutoff,)).fetchall()
+    conn.close()
+    prices = {}
+    for src, prod, buy, sell, dt, curr, extra_str in rows:
+        key = f"{src}:{prod}"
+        extra = json.loads(extra_str) if extra_str else {}
+        prices[key] = {
+            "source": src, "product": prod,
+            "buy": buy, "sell": sell,
+            "date": dt, "currency": curr or "VND",
+            "extra": extra,
+            "label": _gold_product_label(src, prod),
+        }
+    return prices
+
+def _calc_gold_signals_sqlite() -> dict:
+    """Tính RSI/BB/MA cho SJC từ local SQLite (tương đương _calc_gold_signals nhưng không cần PostgreSQL)."""
+    import sqlite3
+    conn = sqlite3.connect(str(_LOCAL_DB_PATH))
+    _ensure_gold_prices_sqlite(conn)
+    rows = conn.execute("""
+        SELECT price_date, sell_price FROM gold_prices
+        WHERE product='SJC_1L' AND sell_price > 0
+        GROUP BY price_date HAVING sell_price = MAX(sell_price)
+        ORDER BY price_date ASC LIMIT 300
+    """).fetchall()
+    conn.close()
+    if not rows:
+        return {}
+    dates  = [r[0] for r in rows]
+    prices = [r[1] for r in rows]
+    if len(rows) < 10:
+        # Chưa đủ lịch sử để tính RSI/BB — trả về giá hiện tại thôi
+        return {"price": prices[-1], "date": dates[-1], "n_points": len(rows),
+                "signal": "—", "score": 0}
+    rsi    = _gold_rsi(prices)
+    ma20   = sum(prices[-20:]) / min(len(prices), 20)
+    ma50   = sum(prices[-50:]) / min(len(prices), 50) if len(prices) >= 20 else None
+    cur_p  = prices[-1];  prev_p = prices[-2] if len(prices) >= 2 else cur_p
+    chg    = (cur_p - prev_p) / prev_p * 100 if prev_p else 0
+    win    = prices[-20:] if len(prices) >= 20 else prices
+    mean   = sum(win) / len(win)
+    std    = (sum((x - mean) ** 2 for x in win) / len(win)) ** 0.5
+    bb_pct = (cur_p - (mean - 2 * std)) / (4 * std) * 100 if std else 50
+    score  = 0
+    if rsi is not None:
+        if rsi < 33:   score += 2
+        elif rsi < 48: score += 1
+        elif rsi > 70: score -= 2
+    if bb_pct < 25:    score += 1
+    elif bb_pct > 75:  score -= 1
+    if ma50 and cur_p > ma50: score += 1
+    if score >= 3:    sig = "MUA 🟢"
+    elif score >= 1:  sig = "TÍCH LŨY 🟡"
+    elif score <= -2: sig = "THẬN TRỌNG 🔴"
+    else:             sig = "HOLD ⚪"
+    return {
+        "signal": sig, "score": score,
+        "rsi": round(rsi, 1) if rsi else None,
+        "bb_pct": round(bb_pct, 1),
+        "ma20": round(ma20, 0),
+        "ma50": round(ma50, 0) if ma50 else None,
+        "price": cur_p, "chg_pct": round(chg, 2),
+        "date": dates[-1], "n_points": len(prices),
+    }
 
 
 def _gold_label_for_product(product: str) -> str:
@@ -1545,8 +1717,11 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         elif path == "/api/history":
             self._api_unified_history(qs)
         elif path.startswith("/api/nav_history/"):
-            code = path[len("/api/nav_history/"):].upper()
-            self._api_nav_history_chart(code, qs)
+            code = _valid_fund_code(path[len("/api/nav_history/"):])
+            if not code:
+                _json(self, {"error": "Invalid fund code"}, 400)
+            else:
+                self._api_nav_history_chart(code, qs)
         elif path.startswith("/api/gold/price_history/"):
             from urllib.parse import unquote
             product = unquote(path[len("/api/gold/price_history/"):])
@@ -1871,6 +2046,9 @@ class MiniAppHandler(BaseHTTPRequestHandler):
 
     def _api_update_watched(self, data: dict):
         """POST /api/me/watched_funds — cập nhật danh sách quỹ theo dõi."""
+        tg_id   = str(data.get("telegram_id", ""))
+        if not _auth_write(self, tg_id):
+            return
         tg_id   = _data_tg_id(data)
         watched = data.get("watched_funds", [])
         if not tg_id:
@@ -1930,7 +2108,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
     def _api_create_alert(self, data: dict):
         """POST /api/alerts — PRO-004, tạo cảnh báo mới cho 1 quỹ."""
         tg_id     = str(data.get("telegram_id", ""))
-        fund_code = str(data.get("fund_code", "")).upper()
+        fund_code = _valid_fund_code(data.get("fund_code", ""))
         condition = str(data.get("condition", ""))
         threshold = data.get("threshold")
         if not tg_id or not fund_code or not condition:
@@ -2269,7 +2447,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         Accept cả field names cũ (code/type/date) lẫn mới (fund_code/trade_type/trade_date).
         """
         tg_id    = str(data.get("telegram_id", ""))
-        code     = str(data.get("fund_code") or data.get("code", "")).upper()
+        code     = _valid_fund_code(data.get("fund_code") or data.get("code", ""))
         tx_type  = str(data.get("trade_type") or data.get("type", "")).lower()
         units    = float(data.get("units", 0))
         amount   = float(data.get("amount", 0))
@@ -2451,9 +2629,12 @@ class MiniAppHandler(BaseHTTPRequestHandler):
                     }
             except Exception as e:
                 prices = {"error": str(e)}
+        else:
+            # Local SQLite fallback — fetch từ vang.today nếu cần
+            prices = _get_gold_prices_sqlite()
 
         # Tính signals từ lịch sử SJC (60 ngày gần nhất, mọi nguồn — xem _calc_gold_signals)
-        signals = _calc_gold_signals(db_url) if db_url else {}
+        signals = _calc_gold_signals(db_url) if db_url else _calc_gold_signals_sqlite()
 
         # Portfolio vàng — tính riêng theo từng product user đang nắm (xem _calc_gold_portfolio)
         portfolio = None
@@ -3278,24 +3459,33 @@ class MiniAppHandler(BaseHTTPRequestHandler):
         if not product or len(product) > 80:
             _json(self, {"error": "Invalid product"}, 400); return
         db_url = os.environ.get("DATABASE_URL", _load_cfg().get("database_url", ""))
-        if not db_url:
-            _json(self, {"error": "DATABASE_URL not set"}, 503); return
-        try:
-            import psycopg2
-            conn = psycopg2.connect(db_url, connect_timeout=8)
-            with conn.cursor() as cur:
-                cur.execute("""
-                    SELECT price_date::text,
-                           COALESCE(buy_price, sell_price)::float AS price
-                    FROM gold_prices
-                    WHERE product = %s
-                    ORDER BY price_date
-                """, (product,))
-                rows = cur.fetchall()
-            conn.close()
-        except Exception as e:
-            _json(self, {"error": str(e)}, 500); return
-        history = [{"date": r[0], "price": r[1]} for r in rows]
+        if db_url:
+            try:
+                import psycopg2
+                conn = psycopg2.connect(db_url, connect_timeout=8)
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT price_date::text,
+                               COALESCE(buy_price, sell_price)::float AS price
+                        FROM gold_prices
+                        WHERE product = %s
+                        ORDER BY price_date
+                    """, (product,))
+                    rows = cur.fetchall()
+                conn.close()
+            except Exception as e:
+                _json(self, {"error": str(e)}, 500); return
+        else:
+            # Local SQLite fallback
+            import sqlite3
+            conn2 = sqlite3.connect(str(_LOCAL_DB_PATH))
+            _ensure_gold_prices_sqlite(conn2)
+            rows = conn2.execute("""
+                SELECT price_date, COALESCE(sell_price, buy_price) AS price
+                FROM gold_prices WHERE product=? ORDER BY price_date
+            """, (product,)).fetchall()
+            conn2.close()
+        history = [{"date": r[0], "sell": r[1], "buy": r[1]} for r in rows]
         _json(self, {"product": product, "history": history})
 
     def _api_admin_payments_recent(self, qs: dict):
@@ -3392,7 +3582,7 @@ class MiniAppHandler(BaseHTTPRequestHandler):
     def _api_admin_nav_confirm(self, data: dict):
         """POST /api/admin/nav/confirm — admin chọn manual hoặc fetch cho pending NAV."""
         tg_id     = str(data.get("telegram_id", ""))
-        fund_code = str(data.get("fund_code", "")).upper()
+        fund_code = _valid_fund_code(data.get("fund_code", ""))
         nav_date  = str(data.get("nav_date", ""))
         choice    = str(data.get("choice", ""))
         if not _is_admin(tg_id):

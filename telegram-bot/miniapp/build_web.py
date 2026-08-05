@@ -292,7 +292,7 @@ canvas{width:100%!important;height:100%!important}
 .hist-page-right{flex:1;min-width:0;display:flex;overflow:hidden}
 /* Analysis sub-column — takes center space (flex:1) on desktop */
 .hist-analysis-col{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;border-right:1px solid var(--bdr)}
-#hist-analysis-panel{font-size:15px;line-height:1.65}
+#hist-analysis-panel{font-size:14px;line-height:1.65}
 /* Chart sub-column — width = sidebar(200) + fund-list(420) = 620px */
 .hist-chart-col{width:620px;min-width:400px;max-width:none;flex-shrink:0;flex-grow:0;display:flex;flex-direction:column;overflow:hidden}
 .hist-nav-header{padding:10px 14px 8px;border-bottom:1px solid var(--bdr);flex-shrink:0;background:var(--bg2)}

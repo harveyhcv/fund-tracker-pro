@@ -3899,17 +3899,17 @@ function _renderHistAnalysis(code) {
     pnlHtml = _mkSect('V\u1ecb TH\u1ebe \u0110ANG N\u1eafM GI\u1eef', '\u{1F4BC}', `
       <div style="background:var(--bg3);border-radius:8px;padding:12px 14px">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 16px;margin-bottom:${t2p ? '10px' : '0'}">
-          <div><div style="font-size:9px;color:var(--txt3)">Gi\u00e1 tr\u1ecb th\u1ecb tr\u01b0\u1eddng</div><div style="font-family:var(--mono);font-size:14px;font-weight:700">${(mktVal / 1e6).toFixed(2)}M \u0111</div></div>
-          <div><div style="font-size:9px;color:var(--txt3)">L\u00e3i / L\u1ed7</div>
+          <div><div style="font-size:14px;color:var(--txt3)">Gi\u00e1 tr\u1ecb th\u1ecb tr\u01b0\u1eddng</div><div style="font-family:var(--mono);font-size:14px;font-weight:700">${(mktVal / 1e6).toFixed(2)}M \u0111</div></div>
+          <div><div style="font-size:14px;color:var(--txt3)">L\u00e3i / L\u1ed7</div>
             <div class="pnl ${pnlC(pnlP)}" style="font-family:var(--mono);font-size:14px;font-weight:700">${pnl >= 0 ? '+' : ''}${(pnl / 1e6).toFixed(2)}M</div>
-            <div style="font-size:9px;color:${pctColor(pnlP)}">(${pctFmt(pnlP)})</div>
+            <div style="font-size:14px;color:${pctColor(pnlP)}">(${pctFmt(pnlP)})</div>
           </div>
-          <div><div style="font-size:9px;color:var(--txt3)">S\u1ed1 CCQ</div><div style="font-family:var(--mono);font-size:13px">${units.toFixed(4)}</div></div>
-          <div><div style="font-size:9px;color:var(--txt3)">Gi\u00e1 v\u1ed1n b\u00ecnh qu\u00e2n</div><div style="font-family:var(--mono);font-size:13px">${fmt(Math.round(avgCost))} \u0111/CCQ</div></div>
+          <div><div style="font-size:14px;color:var(--txt3)">S\u1ed1 CCQ</div><div style="font-family:var(--mono);font-size:14px">${units.toFixed(4)}</div></div>
+          <div><div style="font-size:14px;color:var(--txt3)">Gi\u00e1 v\u1ed1n b\u00ecnh qu\u00e2n</div><div style="font-family:var(--mono);font-size:14px">${fmt(Math.round(avgCost))} \u0111/CCQ</div></div>
         </div>
         ${t2p ? `<div style="border-top:1px solid var(--bdr);padding-top:8px;display:flex;justify-content:space-between;align-items:center">
-          <span style="font-size:10px;color:var(--txt2)">D\u1ef1 b\u00e1o T+2 (gi\u00e1 tr\u1ecb danh m\u1ee5c)</span>
-          <span style="font-family:var(--mono);font-size:12px;font-weight:700;color:${pctColor(t2p.pct)}">${t2p.pct >= 0 ? '+' : ''}${(t2p.pct || 0).toFixed(2)}% \u2248 ${((mktVal * (1 + t2p.pct / 100)) / 1e6).toFixed(2)}M \u0111</span>
+          <span style="font-size:14px;color:var(--txt2)">D\u1ef1 b\u00e1o T+2 (gi\u00e1 tr\u1ecb danh m\u1ee5c)</span>
+          <span style="font-family:var(--mono);font-size:14px;font-weight:700;color:${pctColor(t2p.pct)}">${t2p.pct >= 0 ? '+' : ''}${(t2p.pct || 0).toFixed(2)}% \u2248 ${((mktVal * (1 + t2p.pct / 100)) / 1e6).toFixed(2)}M \u0111</span>
         </div>` : ''}
       </div>
       ${(() => {
@@ -3924,10 +3924,10 @@ function _renderHistAnalysis(code) {
           const _recovNote = _recovMo != null
             ? ` Ở đà hiện tại (+${s.chg30.toFixed(1)}%/tháng), ước tính ~${_recovMo} tháng để hoà vốn.`
             : (s?.chg30 != null && s.chg30 < -0.05 ? ' Quỹ đang tiếp tục giảm — chưa thể ước tính thời gian phục hồi.' : '');
-          return `<div style="background:var(--sell)11;border:1px solid var(--sell)33;border-radius:8px;padding:8px 12px;margin-top:8px;font-size:10px;color:var(--txt2)"><b style="color:var(--sell)">Hòa vốn:</b> cần NAV tăng +${_toBreak.toFixed(1)}% (về ${fmt(Math.round(avgCost))}đ/CCQ).${_dcaHint}${_recovNote}</div>`;
+          return `<div style="background:var(--sell)11;border:1px solid var(--sell)33;border-radius:8px;padding:8px 12px;margin-top:8px;font-size:14px;color:var(--txt2)"><b style="color:var(--sell)">Hòa vốn:</b> cần NAV tăng +${_toBreak.toFixed(1)}% (về ${fmt(Math.round(avgCost))}đ/CCQ).${_dcaHint}${_recovNote}</div>`;
         }
-        if (pnlP > 15 && _sc <= -3) return `<div style="background:#facc1511;border:1px solid #facc1533;border-radius:8px;padding:8px 12px;margin-top:8px;font-size:10px;color:var(--txt2)"><b style="color:#facc15">Đang lãi ${pnlP.toFixed(1)}%</b> — tín hiệu kỹ thuật đang tiêu cực. Cân nhắc chốt lời một phần để bảo vệ thành quả.</div>`;
-        if (pnlP > 20) return `<div style="background:#4ade8011;border:1px solid #4ade8033;border-radius:8px;padding:8px 12px;margin-top:8px;font-size:10px;color:var(--txt2)"><b style="color:var(--buy)">Lãi tốt (${pnlP.toFixed(1)}%)</b>${_sc >= 3 ? ' — tín hiệu vẫn tốt, có thể tiếp tục nắm.' : ' — cân nhắc đặt mức chốt lời bảo vệ (trailing stop).'}</div>`;
+        if (pnlP > 15 && _sc <= -3) return `<div style="background:#facc1511;border:1px solid #facc1533;border-radius:8px;padding:8px 12px;margin-top:8px;font-size:14px;color:var(--txt2)"><b style="color:#facc15">Đang lãi ${pnlP.toFixed(1)}%</b> — tín hiệu kỹ thuật đang tiêu cực. Cân nhắc chốt lời một phần để bảo vệ thành quả.</div>`;
+        if (pnlP > 20) return `<div style="background:#4ade8011;border:1px solid #4ade8033;border-radius:8px;padding:8px 12px;margin-top:8px;font-size:14px;color:var(--txt2)"><b style="color:var(--buy)">Lãi tốt (${pnlP.toFixed(1)}%)</b>${_sc >= 3 ? ' — tín hiệu vẫn tốt, có thể tiếp tục nắm.' : ' — cân nhắc đặt mức chốt lời bảo vệ (trailing stop).'}</div>`;
         return '';
       })()}
       `);
@@ -4034,52 +4034,52 @@ function _renderHistAnalysis(code) {
       ${_mkPerfRow('1 năm', d365, ann1y != null ? `Lợi nhuận hàng năm (không ghép lãi)` : '')}
       ${p3y != null ? _mkPerfRow('3 năm (gộp)', p3y, ann3y != null ? `Kép: ${ann3y>=0?'+':''}${ann3y.toFixed(1)}%/năm` : '') : ''}
     </div>
-    ${_momTrend ? `<div style="background:${_momC}11;border:1px solid ${_momC}33;border-radius:8px;padding:8px 12px;margin-top:8px;display:flex;justify-content:space-between;align-items:center;gap:10px"><div style="flex:1"><div style="font-size:10px;font-weight:600;color:${_momC};margin-bottom:2px">${_momLabel}</div><div style="font-size:9px;color:var(--txt2);line-height:1.4">${_momDesc}</div></div><div style="text-align:right;flex-shrink:0"><div style="font-size:9px;color:var(--txt3)">1 tháng (quy đổi/năm)</div><div style="font-family:var(--mono);font-size:13px;font-weight:700;color:${_momC}">${_d30ann>=0?'+':''}${_d30ann.toFixed(1)}%</div></div></div>` : ''}
-    ${_vsBankDiff != null ? `<div style="background:${_vsBankC}11;border:1px solid ${_vsBankC}33;border-radius:8px;padding:8px 12px;margin-top:8px;display:flex;justify-content:space-between;align-items:center"><div><div style="font-size:10px;color:var(--txt2)">So với lãi tiết kiệm 4.5%/năm</div><div style="font-size:9px;color:var(--txt3)">Benchmark phi rủi ro · lãi ngân hàng kỳ hạn 12T ước tính</div></div><div style="text-align:right"><div style="font-family:var(--mono);font-size:14px;font-weight:700;color:${_vsBankC}">${_vsBankDiff >= 0 ? '+' : ''}${_vsBankDiff.toFixed(1)}%</div><div style="font-size:9px;color:${_vsBankC}">${_vsBankDiff >= 5 ? 'Vượt trội rõ ràng — đáng đầu tư hơn gửi tiết kiệm' : _vsBankDiff >= 0 ? 'Nhỉnh hơn lãi ngân hàng' : 'Kém lãi ngân hàng — xem xét lại hiệu quả'}</div></div></div>` : ''}
+    ${_momTrend ? `<div style="background:${_momC}11;border:1px solid ${_momC}33;border-radius:8px;padding:8px 12px;margin-top:8px;display:flex;justify-content:space-between;align-items:center;gap:10px"><div style="flex:1"><div style="font-size:14px;font-weight:600;color:${_momC};margin-bottom:2px">${_momLabel}</div><div style="font-size:14px;color:var(--txt2);line-height:1.4">${_momDesc}</div></div><div style="text-align:right;flex-shrink:0"><div style="font-size:14px;color:var(--txt3)">1 tháng (quy đổi/năm)</div><div style="font-family:var(--mono);font-size:14px;font-weight:700;color:${_momC}">${_d30ann>=0?'+':''}${_d30ann.toFixed(1)}%</div></div></div>` : ''}
+    ${_vsBankDiff != null ? `<div style="background:${_vsBankC}11;border:1px solid ${_vsBankC}33;border-radius:8px;padding:8px 12px;margin-top:8px;display:flex;justify-content:space-between;align-items:center"><div><div style="font-size:14px;color:var(--txt2)">So với lãi tiết kiệm 4.5%/năm</div><div style="font-size:14px;color:var(--txt3)">Benchmark phi rủi ro · lãi ngân hàng kỳ hạn 12T ước tính</div></div><div style="text-align:right"><div style="font-family:var(--mono);font-size:14px;font-weight:700;color:${_vsBankC}">${_vsBankDiff >= 0 ? '+' : ''}${_vsBankDiff.toFixed(1)}%</div><div style="font-size:14px;color:${_vsBankC}">${_vsBankDiff >= 5 ? 'Vượt trội rõ ràng — đáng đầu tư hơn gửi tiết kiệm' : _vsBankDiff >= 0 ? 'Nhỉnh hơn lãi ngân hàng' : 'Kém lãi ngân hàng — xem xét lại hiệu quả'}</div></div></div>` : ''}
     ${(rank30 != null && total30 > 1) ? `<div style="background:${rankC30}11;border:1px solid ${rankC30}33;border-radius:8px;padding:10px 12px;margin-top:8px;display:flex;align-items:center;gap:10px">
       <div style="font-size:22px;font-family:var(--mono);font-weight:700;color:${rankC30}">#${rank30}</div>
       <div>
-        <div style="font-size:11px;font-weight:600;color:${rankC30}">${rankLabel30} trong nhóm ${ftLabel}</div>
-        <div style="font-size:10px;color:var(--txt3)">1 tháng · xếp hạng trong ${total30} quỹ ${ftLabel.replace('Quỹ ','')} đang theo dõi</div>
+        <div style="font-size:14px;font-weight:600;color:${rankC30}">${rankLabel30} trong nhóm ${ftLabel}</div>
+        <div style="font-size:14px;color:var(--txt3)">1 tháng · xếp hạng trong ${total30} quỹ ${ftLabel.replace('Quỹ ','')} đang theo dõi</div>
       </div>
-      ${rankPctile30 != null ? `<div style="margin-left:auto;text-align:right"><div style="font-size:9px;color:var(--txt3)">Đánh bại</div><div style="font-family:var(--mono);font-size:14px;font-weight:700;color:${rankC30}">${rankPctile30}% quỹ</div></div>` : ''}
+      ${rankPctile30 != null ? `<div style="margin-left:auto;text-align:right"><div style="font-size:14px;color:var(--txt3)">Đánh bại</div><div style="font-family:var(--mono);font-size:14px;font-weight:700;color:${rankC30}">${rankPctile30}% quỹ</div></div>` : ''}
     </div>` : ''}
     ${consistencyPct != null ? `<div style="background:var(--bg3);border-radius:8px;padding:8px 12px;margin-top:8px;display:flex;justify-content:space-between;align-items:center">
       <div>
-        <div style="font-size:10px;color:var(--txt2)">Tỷ lệ tuần tăng</div>
-        <div style="font-size:9px;color:var(--txt3)">NAV tuần sau > tuần trước · ${totalWeeks} tuần đã đo</div>
+        <div style="font-size:14px;color:var(--txt2)">Tỷ lệ tuần tăng</div>
+        <div style="font-size:14px;color:var(--txt3)">NAV tuần sau > tuần trước · ${totalWeeks} tuần đã đo</div>
       </div>
       <div style="text-align:right">
-        <div style="font-family:var(--mono);font-size:15px;font-weight:700;color:${consistencyC}">${consistencyPct}%</div>
-        <div style="font-size:9px;color:${consistencyC}">${consistencyLabel}</div>
+        <div style="font-family:var(--mono);font-size:16px;font-weight:700;color:${consistencyC}">${consistencyPct}%</div>
+        <div style="font-size:14px;color:${consistencyC}">${consistencyLabel}</div>
       </div>
     </div>` : ''}
     ${_extremeMove7 ? `<div style="background:#f8717111;border:1px solid #f8717133;border-radius:8px;padding:10px 12px;margin-top:8px">
-      <div style="font-size:11px;font-weight:700;color:var(--sell)">⚠️ BIẾN ĐỘNG BẤT THƯỜNG 7 NGÀY</div>
-      <div style="font-size:10px;color:var(--txt2);margin-top:4px">NAV ${p7 != null && p7 > 0 ? 'tăng vọt' : 'giảm mạnh'} ${p7 != null ? Math.abs(p7).toFixed(1) : '?'}% trong 7 ngày — vượt xa mức bình thường của quỹ loại này (ngưỡng ${_extremeThresh}%). Kiểm tra nguyên nhân (thị trường chung, thay đổi fund manager, corporate action) trước khi ra quyết định giao dịch.</div>
+      <div style="font-size:14px;font-weight:700;color:var(--sell)">⚠️ BIẾN ĐỘNG BẤT THƯỜNG 7 NGÀY</div>
+      <div style="font-size:14px;color:var(--txt2);margin-top:4px">NAV ${p7 != null && p7 > 0 ? 'tăng vọt' : 'giảm mạnh'} ${p7 != null ? Math.abs(p7).toFixed(1) : '?'}% trong 7 ngày — vượt xa mức bình thường của quỹ loại này (ngưỡng ${_extremeThresh}%). Kiểm tra nguyên nhân (thị trường chung, thay đổi fund manager, corporate action) trước khi ra quyết định giao dịch.</div>
     </div>` : ''}
     ${_fcast5Pct != null ? '<div style="background:' + _fcast5C + '11;border:1px solid ' + _fcast5C + '33;border-radius:8px;padding:8px 12px;margin-top:8px;display:flex;justify-content:space-between;align-items:center">'
-      + '<div><div style="font-size:10px;color:var(--txt2)">Dự đoán xu hướng 5 ngày tới</div><div style="font-size:9px;color:var(--txt3)">Tính theo đà giá 30 ngày gần nhất · chỉ mang tính tham khảo</div></div>'
+      + '<div><div style="font-size:14px;color:var(--txt2)">Dự đoán xu hướng 5 ngày tới</div><div style="font-size:14px;color:var(--txt3)">Tính theo đà giá 30 ngày gần nhất · chỉ mang tính tham khảo</div></div>'
       + '<div style="text-align:right"><div style="font-family:var(--mono);font-size:14px;font-weight:700;color:' + _fcast5C + '">' + (_fcast5Pct >= 0 ? '+' : '') + _fcast5Pct.toFixed(2) + '%</div>'
-      + '<div style="font-size:9px;color:' + _fcast5C + '">≈ ' + fmt(Math.round(_fcast5d)) + ' đ</div></div></div>' : ''}
+      + '<div style="font-size:14px;color:' + _fcast5C + '">≈ ' + fmt(Math.round(_fcast5d)) + ' đ</div></div></div>' : ''}
     ${_tfTotal >= 2 ? (() => {
       const _frames = [['7 ngày', p7], ['1 tháng', d30], ['3 tháng', d90], ['1 năm', d365]].filter(([, v]) => v != null);
       const _vC = _tfPos === _tfTotal ? 'var(--buy)' : _tfNeg === _tfTotal ? 'var(--sell)' : _tfPos > _tfNeg ? 'var(--buy)' : _tfPos < _tfNeg ? 'var(--sell)' : '#facc15';
       const _verdict = _tfPos === _tfTotal ? 'Nhất quán tăng trên tất cả khung' : _tfNeg === _tfTotal ? 'Nhất quán giảm trên tất cả khung' : _tfPos > _tfNeg ? 'Nghiêng về tăng (' + _tfPos + '/' + _tfTotal + ' khung dương)' : _tfPos < _tfNeg ? 'Nghiêng về giảm (' + _tfNeg + '/' + _tfTotal + ' khung âm)' : 'Tín hiệu hỗn hợp — phân kỳ ngắn/dài hạn';
       return '<div style="background:var(--bg3);border-radius:8px;padding:8px 12px;margin-top:8px">'
-        + '<div style="font-size:10px;color:var(--txt2);margin-bottom:5px">Nhìn chung qua nhiều khung thời gian</div>'
+        + '<div style="font-size:14px;color:var(--txt2);margin-bottom:5px">Nhìn chung qua nhiều khung thời gian</div>'
         + '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:4px">'
-        + _frames.map(([l, v]) => '<span style="font-size:10px;background:' + (v > 0 ? '#4ade8022' : '#f8717122') + ';color:' + (v > 0 ? 'var(--buy)' : 'var(--sell)') + ';border-radius:4px;padding:2px 7px;font-family:var(--mono)">' + l + ' ' + (v > 0 ? '▲' : '▼') + '</span>').join('')
-        + '</div><div style="font-size:9px;color:' + _vC + '">' + _verdict + '</div></div>';
+        + _frames.map(([l, v]) => '<span style="font-size:14px;background:' + (v > 0 ? '#4ade8022' : '#f8717122') + ';color:' + (v > 0 ? 'var(--buy)' : 'var(--sell)') + ';border-radius:4px;padding:2px 7px;font-family:var(--mono)">' + l + ' ' + (v > 0 ? '▲' : '▼') + '</span>').join('')
+        + '</div><div style="font-size:14px;color:' + _vC + '">' + _verdict + '</div></div>';
     })() : ''}
     ${_streaks ? `<div style="background:var(--bg3);border-radius:8px;padding:8px 12px;margin-top:8px">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">
-        <div style="font-size:10px;color:var(--txt2)">Chuỗi tăng dài nhất: <b style="color:var(--buy)">${_streaks.mW} ngày</b>${_streaks.mWFrom ? ' (' + _streaks.mWFrom + ' → ' + _streaks.mWTo + ')' : ''}</div>
-        <div style="font-size:10px;color:var(--txt2)">Chuỗi giảm dài nhất: <b style="color:var(--sell)">${_streaks.mL} ngày</b>${_streaks.mLFrom ? ' (' + _streaks.mLFrom + ' → ' + _streaks.mLTo + ')' : ''}</div>
+        <div style="font-size:14px;color:var(--txt2)">Chuỗi tăng dài nhất: <b style="color:var(--buy)">${_streaks.mW} ngày</b>${_streaks.mWFrom ? ' (' + _streaks.mWFrom + ' → ' + _streaks.mWTo + ')' : ''}</div>
+        <div style="font-size:14px;color:var(--txt2)">Chuỗi giảm dài nhất: <b style="color:var(--sell)">${_streaks.mL} ngày</b>${_streaks.mLFrom ? ' (' + _streaks.mLFrom + ' → ' + _streaks.mLTo + ')' : ''}</div>
       </div>
-      ${_streaks.cS >= 2 ? `<div style="font-size:10px;color:var(--txt3);margin-top:4px">Đang trong chuỗi <b style="color:${_streaks.cDir > 0 ? 'var(--buy)' : 'var(--sell)'}">${_streaks.cDir > 0 ? 'tăng' : 'giảm'} ${_streaks.cS} ngày liên tiếp</b></div>` : ''}
+      ${_streaks.cS >= 2 ? `<div style="font-size:14px;color:var(--txt3);margin-top:4px">Đang trong chuỗi <b style="color:${_streaks.cDir > 0 ? 'var(--buy)' : 'var(--sell)'}">${_streaks.cDir > 0 ? 'tăng' : 'giảm'} ${_streaks.cS} ngày liên tiếp</b></div>` : ''}
     </div>` : ''}
-    <div style="margin-top:6px;font-size:10px;color:var(--txt3);line-height:1.5">Hiệu suất = % thay đổi NAV theo thời gian. Chưa tính phí mua/bán hoặc thuế. Xếp hạng so với các quỹ cùng loại trong danh sách đang theo dõi.</div>`);
+    <div style="margin-top:6px;font-size:14px;color:var(--txt3);line-height:1.5">Hiệu suất = % thay đổi NAV theo thời gian. Chưa tính phí mua/bán hoặc thuế. Xếp hạng so với các quỹ cùng loại trong danh sách đang theo dõi.</div>`);
 
   // ── 4. RISK METRICS ──
   const vol = _annVol(pts) ?? s?.vol_ann;
@@ -4210,7 +4210,7 @@ function _renderHistAnalysis(code) {
       ${_mkMetric('Ph\u1ee5c h\u1ed3i sau l\u1ed7', calmar != null ? calmar.toFixed(2) : '\u2013', calmarC, calmarDesc)}
       ${_mkMetric('M\u1ea5t nhi\u1ec1u nh\u1ea5t 1T', var95 != null ? '-' + var95.toFixed(1) + '%' : '\u2013', var95C, var95Desc)}
     </div>
-    <div style="background:var(--bg3);border-radius:8px;padding:10px 12px;font-size:10px;color:var(--txt2);line-height:1.9">
+    <div style="background:var(--bg3);border-radius:8px;padding:10px 12px;font-size:14px;color:var(--txt2);line-height:1.9">
       <b style="color:var(--txt1)">\ud83c\udfa2 Dao \u0111\u1ed9ng gi\u00e1</b> \u2014 Gi\u00e1 qu\u1ef9 l\u00ean xu\u1ed1ng nhi\u1ec1u hay \u00edt trong 1 n\u0103m. D\u01b0\u1edbi 8% = y\u00ean t\u00e2m ng\u1ee7 ngon. Tr\u00ean 18% = c\u1ea3m gi\u00e1c nh\u01b0 \u0111i t\u00e0u l\u01b0\u1ee3n \u2014 c\u00f3 c\u01a1 h\u1ed9i l\u1eddi to nh\u01b0ng c\u0169ng d\u1ec5 l\u1ed7 n\u1eb7ng.<br>
       <b style="color:var(--txt1)">\ud83d\udcc9 T\u1eebng l\u1ed7 t\u1ed1i \u0111a</b> \u2014 Bao gi\u1edd \u0111\u00f3, gi\u00e1 qu\u1ef9 xu\u1ed1ng th\u1ea5p nh\u1ea5t bao nhi\u00eau tr\u01b0\u1edbc khi h\u1ed3i ph\u1ee5c. V\u00ed d\u1ee5 -15% ngh\u0129a l\u00e0 c\u00f3 l\u00fac b\u1ea1n s\u1ebd th\u1ea5y t\u00e0i kho\u1ea3n \u0111\u1ecf -15%. <i>B\u1ea1n c\u00f3 ch\u1ecbu \u0111\u01b0\u1ee3c kh\u00f4ng th\u00ec m\u1edbi n\u00ean \u0111\u1ea7u t\u01b0.</i><br>
       <b style="color:var(--txt1)">\u2696\ufe0f L\u00e3i/R\u1ee7i ro</b> \u2014 C\u1ee9 m\u1ed7i % r\u1ee7i ro b\u1ea1n ch\u1ea5p nh\u1eadn, qu\u1ef9 tr\u1ea3 l\u1ea1i bao nhi\u00eau l\u1ee3i nhu\u1eadn so v\u1edbi g\u1eedi ng\u00e2n h\u00e0ng. Tr\u00ean 1 = x\u1ee9ng \u0111\u00e1ng r\u1ee7i ro. D\u01b0\u1edbi 0 = ch\u01b0a b\u1eb1ng g\u1eedi ti\u1ebft ki\u1ec7m 4.5%/n\u0103m.<br>
@@ -4218,46 +4218,46 @@ function _renderHistAnalysis(code) {
       <b style="color:var(--txt1)">\ud83d\udd01 Ph\u1ee5c h\u1ed3i sau l\u1ed7</b> \u2014 M\u1ed7i khi qu\u1ef9 b\u1ecb gi\u1ea3m, n\u00f3 h\u1ed3i ph\u1ee5c nhanh hay ch\u1eadm? Tr\u00ean 1 = h\u1ed3i ph\u1ee5c nhanh, l\u1eddi nhi\u1ec1u h\u01a1n l\u1ed7. D\u01b0\u1edbi 0 = \u0111ang c\u00f2n \u0111\u1ee9ng trong v\u00f9ng l\u1ed7 so v\u1edbi ng\u00e2n h\u00e0ng.<br>
       <b style="color:var(--txt1)">\ud83d\ude2c M\u1ea5t nhi\u1ec1u nh\u1ea5t 1 th\u00e1ng</b> \u2014 Trong nh\u1eefng th\u00e1ng x\u1ea5u nh\u1ea5t (5% tr\u01b0\u1eddng h\u1ee3p t\u1ec7 nh\u1ea5t theo l\u1ecbch s\u1eed), qu\u1ef9 t\u1eebng m\u1ea5t bao nhi\u00eau % trong 1 th\u00e1ng. Con s\u1ed1 n\u00e0y gi\u00fap b\u1ea1n bi\u1ebft m\u00ecnh c\u1ea7n chu\u1ea9n b\u1ecb t\u00e2m l\u00fd \u0111\u1ebfn \u0111\u00e2u.
     </div>
-    ${sr != null ? `<div style="background:${sr>1?'var(--buy)':sr>0?'#facc15':'var(--sell)'}11;border:1px solid ${sr>1?'var(--buy)':sr>0?'#facc15':'var(--sell)'}33;border-radius:8px;padding:10px 12px;margin-top:8px"><div style="font-size:10px;font-weight:600;color:${sr>1?'var(--buy)':sr>0?'#facc15':'var(--sell)'};margin-bottom:4px">📋 Nhận xét tổng thể về mức độ an toàn</div><div style="font-size:10px;color:var(--txt2);line-height:1.7">${sr > 1 ? '✅ Quỹ sinh lời tốt so với mức rủi ro phải chịu — đáng đầu tư hơn so với gửi tiết kiệm ngân hàng (4.5%/năm).' : sr > 0 ? '🟡 Quỹ có lãi nhưng mức dao động giá chưa được bù đắp xứng đáng. Vẫn hơn gửi ngân hàng nhưng cần chấp nhận giá lên xuống nhiều.' : '⚠️ Quỹ này chưa sinh lời tốt hơn gửi tiết kiệm ngân hàng (4.5%/năm) sau khi tính rủi ro. Nên cân nhắc lại hoặc chờ thêm.'}${mdd > 20 ? ` Từng có lúc giảm tới <b style="color:var(--sell)">${mdd.toFixed(1)}%</b> — bạn cần tâm lý vững để không hoảng loạn bán tháo.` : mdd > 10 ? ` Từng giảm tới ${mdd.toFixed(1)}% — mức độ trung bình, phù hợp nhà đầu tư trung hạn.` : ` Chưa bao giờ giảm quá ${mdd.toFixed(1)}% — khá ổn định.`}${sortino != null && sortino > 1.5 ? ' Quỹ có xu hướng tăng đều, ít bị giảm sốc bất ngờ.' : sortino != null && sortino < 0 ? ' Quỹ hay bị giảm nhiều hơn tăng — cần chú ý.' : ''}${_curDD52 > 5 ? ` Hiện tại giá đang thấp hơn đỉnh năm ngoái <b style="color:var(--sell)">${_curDD52.toFixed(1)}%</b> — nếu mua từ đỉnh, bạn đang lỗ ${_curDD52.toFixed(1)}% ở thời điểm này.` : _curDD52 > 1 ? ` Hiện đang thấp hơn đỉnh năm ngoái ${_curDD52.toFixed(1)}% — mức bình thường.` : ''}${calmar != null && calmar < 10 ? (calmar > 1 ? ` Sau mỗi đợt giảm, quỹ phục hồi khá nhanh.` : calmar > 0.3 ? ` Quỹ phục hồi ở mức chấp nhận được sau mỗi đợt giảm.` : calmar >= 0 ? ` Quỹ phục hồi chậm sau các đợt giảm — cần kiên nhẫn.` : '') : ''}</div></div>` : ''}
-    ${var95 != null ? `<div style="background:var(--bg3);border-radius:8px;padding:8px 12px;margin-top:8px;font-size:10px;color:var(--txt2);line-height:1.6"><b style="color:var(--txt1)">😬 Nên đầu tư bao nhiêu % tiền?</b> — Trong tháng xấu nhất (5% trường hợp tệ nhất theo lịch sử), quỹ này có thể mất tới <b style="color:${var95C}">${var95.toFixed(1)}%</b>. Nếu bạn không muốn toàn bộ danh mục bị ảnh hưởng quá 2%, thì chỉ nên để tối đa <b style="color:var(--c0)">~${Math.min(99, Math.round(2/var95*100))}% tổng tiền</b> vào quỹ này.</div>` : ''}
-    ${_volRegime != null && _volRegime > 1.4 ? `<div style="background:#f8717111;border:1px solid #f8717133;border-radius:8px;padding:8px 12px;margin-top:8px;font-size:10px;color:var(--txt2);line-height:1.6">⚡ <b style="color:var(--sell)">Giá đang dao động mạnh hơn bình thường</b> — 30 ngày qua giá lên xuống mạnh gấp ${_volRegime.toFixed(1)} lần so với thường ngày. Nên mua từng lần nhỏ, tránh đổ tiền lớn một lúc trong giai đoạn này.</div>` : _volRegime != null && _volRegime < 0.6 ? `<div style="background:#4ade8011;border:1px solid #4ade8033;border-radius:8px;padding:8px 12px;margin-top:8px;font-size:10px;color:var(--txt2);line-height:1.6">✅ <b style="color:var(--buy)">Giá đang rất ổn định</b> — 30 ngày qua ít dao động hơn bình thường. Thời điểm thuận lợi để vào lệnh nếu bạn đã quyết định đầu tư.</div>` : ''}
+    ${sr != null ? `<div style="background:${sr>1?'var(--buy)':sr>0?'#facc15':'var(--sell)'}11;border:1px solid ${sr>1?'var(--buy)':sr>0?'#facc15':'var(--sell)'}33;border-radius:8px;padding:10px 12px;margin-top:8px"><div style="font-size:14px;font-weight:600;color:${sr>1?'var(--buy)':sr>0?'#facc15':'var(--sell)'};margin-bottom:4px">📋 Nhận xét tổng thể về mức độ an toàn</div><div style="font-size:14px;color:var(--txt2);line-height:1.7">${sr > 1 ? '✅ Quỹ sinh lời tốt so với mức rủi ro phải chịu — đáng đầu tư hơn so với gửi tiết kiệm ngân hàng (4.5%/năm).' : sr > 0 ? '🟡 Quỹ có lãi nhưng mức dao động giá chưa được bù đắp xứng đáng. Vẫn hơn gửi ngân hàng nhưng cần chấp nhận giá lên xuống nhiều.' : '⚠️ Quỹ này chưa sinh lời tốt hơn gửi tiết kiệm ngân hàng (4.5%/năm) sau khi tính rủi ro. Nên cân nhắc lại hoặc chờ thêm.'}${mdd > 20 ? ` Từng có lúc giảm tới <b style="color:var(--sell)">${mdd.toFixed(1)}%</b> — bạn cần tâm lý vững để không hoảng loạn bán tháo.` : mdd > 10 ? ` Từng giảm tới ${mdd.toFixed(1)}% — mức độ trung bình, phù hợp nhà đầu tư trung hạn.` : ` Chưa bao giờ giảm quá ${mdd.toFixed(1)}% — khá ổn định.`}${sortino != null && sortino > 1.5 ? ' Quỹ có xu hướng tăng đều, ít bị giảm sốc bất ngờ.' : sortino != null && sortino < 0 ? ' Quỹ hay bị giảm nhiều hơn tăng — cần chú ý.' : ''}${_curDD52 > 5 ? ` Hiện tại giá đang thấp hơn đỉnh năm ngoái <b style="color:var(--sell)">${_curDD52.toFixed(1)}%</b> — nếu mua từ đỉnh, bạn đang lỗ ${_curDD52.toFixed(1)}% ở thời điểm này.` : _curDD52 > 1 ? ` Hiện đang thấp hơn đỉnh năm ngoái ${_curDD52.toFixed(1)}% — mức bình thường.` : ''}${calmar != null && calmar < 10 ? (calmar > 1 ? ` Sau mỗi đợt giảm, quỹ phục hồi khá nhanh.` : calmar > 0.3 ? ` Quỹ phục hồi ở mức chấp nhận được sau mỗi đợt giảm.` : calmar >= 0 ? ` Quỹ phục hồi chậm sau các đợt giảm — cần kiên nhẫn.` : '') : ''}</div></div>` : ''}
+    ${var95 != null ? `<div style="background:var(--bg3);border-radius:8px;padding:8px 12px;margin-top:8px;font-size:14px;color:var(--txt2);line-height:1.6"><b style="color:var(--txt1)">😬 Nên đầu tư bao nhiêu % tiền?</b> — Trong tháng xấu nhất (5% trường hợp tệ nhất theo lịch sử), quỹ này có thể mất tới <b style="color:${var95C}">${var95.toFixed(1)}%</b>. Nếu bạn không muốn toàn bộ danh mục bị ảnh hưởng quá 2%, thì chỉ nên để tối đa <b style="color:var(--c0)">~${Math.min(99, Math.round(2/var95*100))}% tổng tiền</b> vào quỹ này.</div>` : ''}
+    ${_volRegime != null && _volRegime > 1.4 ? `<div style="background:#f8717111;border:1px solid #f8717133;border-radius:8px;padding:8px 12px;margin-top:8px;font-size:14px;color:var(--txt2);line-height:1.6">⚡ <b style="color:var(--sell)">Giá đang dao động mạnh hơn bình thường</b> — 30 ngày qua giá lên xuống mạnh gấp ${_volRegime.toFixed(1)} lần so với thường ngày. Nên mua từng lần nhỏ, tránh đổ tiền lớn một lúc trong giai đoạn này.</div>` : _volRegime != null && _volRegime < 0.6 ? `<div style="background:#4ade8011;border:1px solid #4ade8033;border-radius:8px;padding:8px 12px;margin-top:8px;font-size:14px;color:var(--txt2);line-height:1.6">✅ <b style="color:var(--buy)">Giá đang rất ổn định</b> — 30 ngày qua ít dao động hơn bình thường. Thời điểm thuận lợi để vào lệnh nếu bạn đã quyết định đầu tư.</div>` : ''}
     ${_ddStats ? '<div style="background:var(--bg3);border-radius:8px;padding:10px 12px;margin-top:8px">'
-      + '<div style="font-size:10px;font-weight:600;color:var(--txt1);margin-bottom:6px">📉 Lịch sử Drawdown (≥5%)</div>'
+      + '<div style="font-size:14px;font-weight:600;color:var(--txt1);margin-bottom:6px">📉 Lịch sử Drawdown (≥5%)</div>'
       + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">'
       + _mkMetric('Số đợt', String(_ddStats.count), 'var(--c0)', _ddStats.hasOpen ? 'Có đợt đang mở' : 'Đã hồi phục hết')
       + _mkMetric('Sâu nhất', '-' + _ddStats.maxDp.toFixed(1) + '%', 'var(--sell)', 'Đỉnh → Đáy')
       + _mkMetric('Phục hồi TB', _ddStats.avgRec != null ? _ddStats.avgRec + ' ngày' : '—', 'var(--buy)', _ddStats.avgRec != null ? 'Sau khi chạm đáy' : 'Chưa có dữ liệu')
       + '</div>'
-      + '<div style="font-size:10px;color:var(--txt2);margin-top:6px;line-height:1.5">'
+      + '<div style="font-size:14px;color:var(--txt2);margin-top:6px;line-height:1.5">'
       + (_ddStats.avgRec != null
         ? 'TB mỗi đợt giảm <b style="color:var(--sell)">' + _ddStats.avgDp.toFixed(1) + '%</b>, kéo dài <b>' + _ddStats.maxDur + ' ngày</b>. Phục hồi trung bình <b style="color:var(--buy)">' + _ddStats.avgRec + ' ngày</b> sau đáy' + (_ddStats.hasOpen ? ' (đang có đợt chưa phục hồi).' : '.')
         : (_ddStats.hasOpen ? 'Đang trong đợt drawdown chưa phục hồi hoàn toàn trong dữ liệu lịch sử.' : ''))
       + '</div></div>' : ''}
     ${_retDist ? '<div style="background:var(--bg3);border-radius:8px;padding:10px 12px;margin-top:8px">'
-      + '<div style="font-size:10px;font-weight:600;color:var(--txt1);margin-bottom:6px">📊 Phân phối lợi nhuận hàng ngày</div>'
+      + '<div style="font-size:14px;font-weight:600;color:var(--txt1);margin-bottom:6px">📊 Phân phối lợi nhuận hàng ngày</div>'
       + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">'
       + _mkMetric('Skewness', _retDist.skew.toFixed(2), Math.abs(_retDist.skew) < 0.5 ? 'var(--txt2)' : _retDist.skew > 0 ? 'var(--buy)' : 'var(--sell)', Math.abs(_retDist.skew) < 0.5 ? 'Gần chuẩn' : _retDist.skew > 0.5 ? 'Lệch dương' : 'Lệch âm')
       + _mkMetric('Excess Kurtosis', _retDist.kurt.toFixed(2), Math.abs(_retDist.kurt) < 1 ? 'var(--txt2)' : _retDist.kurt > 0 ? '#facc15' : 'var(--buy)', _retDist.kurt > 1 ? 'Fat-tailed' : _retDist.kurt < -1 ? 'Thin-tailed' : 'Bình thường')
       + '</div>'
-      + '<div style="font-size:10px;color:var(--txt2);margin-top:6px;line-height:1.5">'
+      + '<div style="font-size:14px;color:var(--txt2);margin-top:6px;line-height:1.5">'
       + (_retDist.skew < -0.5 ? '⚠️ Lệch âm (Skew ' + _retDist.skew.toFixed(2) + ') — rủi ro đuôi trái: cú giảm mạnh đột ngột xảy ra thường hơn cú tăng đột biến.' : _retDist.skew > 0.5 ? '✅ Lệch dương (Skew ' + _retDist.skew.toFixed(2) + ') — cú tăng đột biến thỉnh thoảng xảy ra, không bị chi phối bởi đuôi giảm.' : 'Phân phối lợi nhuận gần đối xứng (Skew ' + _retDist.skew.toFixed(2) + ') — rủi ro cân đối 2 chiều.')
       + (_retDist.kurt > 1 ? ' Kurtosis cao (' + _retDist.kurt.toFixed(2) + ') — fat-tailed: cú sốc cực đoan xảy ra thường hơn phân phối chuẩn dự báo.' : _retDist.kurt < -1 ? ' Kurtosis thấp (' + _retDist.kurt.toFixed(2) + ') — ít cú sốc cực đoan.' : '')
       + '</div></div>' : ''}
     ${_winRate ? '<div style="background:var(--bg3);border-radius:8px;padding:10px 12px;margin-top:8px">'
-      + '<div style="font-size:10px;font-weight:600;color:var(--txt1);margin-bottom:6px">🏆 Tỷ lệ thắng/thua hàng ngày</div>'
+      + '<div style="font-size:14px;font-weight:600;color:var(--txt1);margin-bottom:6px">🏆 Tỷ lệ thắng/thua hàng ngày</div>'
       + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">'
       + _mkMetric('Ngày tăng', _winRate.winRate.toFixed(0) + '%', _winRate.winRate >= 55 ? 'var(--buy)' : _winRate.winRate >= 45 ? '#facc15' : 'var(--sell)', _winRate.ups + '/' + _winRate.total + ' ngày')
       + _mkMetric('Lãi TB ngày +', '+' + _winRate.avgUp.toFixed(3) + '%', 'var(--buy)', 'Mỗi ngày tăng')
       + _mkMetric('Gain/Pain', _winRate.gainPain != null ? _winRate.gainPain.toFixed(2) : '—', _winRate.gainPain == null ? 'var(--txt2)' : _winRate.gainPain >= 1.2 ? 'var(--buy)' : _winRate.gainPain >= 0.8 ? '#facc15' : 'var(--sell)', _winRate.gainPain == null ? '' : _winRate.gainPain >= 1.2 ? 'Hiệu quả tốt' : _winRate.gainPain >= 0.8 ? 'Trung bình' : 'Kém hiệu quả')
       + '</div>'
-      + '<div style="font-size:10px;color:var(--txt2);margin-top:6px;line-height:1.5">'
+      + '<div style="font-size:14px;color:var(--txt2);margin-top:6px;line-height:1.5">'
       + (_winRate.gainPain != null
         ? (_winRate.gainPain >= 1.2 ? 'Gain/Pain ' + _winRate.gainPain.toFixed(2) + ' — quỹ kiếm nhiều hơn lỗ trên từng ngày giao dịch: mỗi ngày tăng bù đắp tốt các ngày giảm.'
           : _winRate.gainPain >= 0.8 ? 'Gain/Pain ' + _winRate.gainPain.toFixed(2) + ' — gần cân bằng: lãi và lỗ hàng ngày bù trừ tương đương nhau.'
           : 'Gain/Pain ' + _winRate.gainPain.toFixed(2) + ' — mỗi ngày giảm gây thiệt hại lớn hơn lợi ích từ ngày tăng: quỹ cần nhiều ngày xanh để bù đắp.')
         : '')
       + '</div></div>' : ''}
-    ${_volPctile ? '<div style="background:var(--bg3);border-radius:8px;padding:8px 12px;margin-top:8px;font-size:10px;color:var(--txt2);line-height:1.6">'
+    ${_volPctile ? '<div style="background:var(--bg3);border-radius:8px;padding:8px 12px;margin-top:8px;font-size:14px;color:var(--txt2);line-height:1.6">'
       + '<b style="color:var(--txt1)">Phân vị biến động lịch sử</b> — Biến động 30 ngày hiện tại <b style="color:' + (_volPctile.pctile >= 75 ? 'var(--sell)' : _volPctile.pctile <= 25 ? 'var(--buy)' : '#facc15') + '">' + _vol30d.toFixed(1) + '%/năm</b> cao hơn <b>' + _volPctile.pctile + '%</b> giai đoạn lịch sử của quỹ'
       + ' (min: ' + _volPctile.min.toFixed(1) + '%, max: ' + _volPctile.max.toFixed(1) + '%).'
       + (_volPctile.pctile >= 75 ? ' Đang ở vùng biến động cao — rủi ro lớn hơn bình thường.' : _volPctile.pctile <= 25 ? ' Đang ở vùng biến động thấp — ổn định hơn lịch sử.' : ' Biến động ở mức trung bình so với lịch sử.')
@@ -4283,15 +4283,15 @@ function _renderHistAnalysis(code) {
   const _fmtD52 = d => d && d.length >= 10 ? d.slice(8,10)+'/'+d.slice(5,7) : '';
   const rangeHtml = nav52.length > 10 ? _mkSect('V\u00d9NG GI\u00c1 52 TU\u1ea6N', '\u{1F4CF}', `
     <div style="background:var(--bg3);border-radius:8px;padding:12px 14px">
-      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--txt3);margin-bottom:8px">
-        <span style="display:inline-flex;flex-direction:column"><span>\u0110\u00e1y: <b style="color:var(--sell);font-family:var(--mono)">${fmt(Math.round(lo52))}</b></span><span style="font-size:9px;color:var(--txt3);font-family:var(--mono)">${_fmtD52(_lo52Pt?.date)}</span></span>
+      <div style="display:flex;justify-content:space-between;font-size:14px;color:var(--txt3);margin-bottom:8px">
+        <span style="display:inline-flex;flex-direction:column"><span>\u0110\u00e1y: <b style="color:var(--sell);font-family:var(--mono)">${fmt(Math.round(lo52))}</b></span><span style="font-size:14px;color:var(--txt3);font-family:var(--mono)">${_fmtD52(_lo52Pt?.date)}</span></span>
         <span>Hi\u1ec7n t\u1ea1i: <b style="color:var(--c0);font-family:var(--mono)">${fmt(Math.round(curr))}</b></span>
-        <span style="display:inline-flex;flex-direction:column;align-items:flex-end"><span>\u0110\u1ec9nh: <b style="color:var(--buy);font-family:var(--mono)">${fmt(Math.round(hi52))}</b></span><span style="font-size:9px;color:var(--txt3);font-family:var(--mono);text-align:right">${_fmtD52(_hi52Pt?.date)}</span></span>
+        <span style="display:inline-flex;flex-direction:column;align-items:flex-end"><span>\u0110\u1ec9nh: <b style="color:var(--buy);font-family:var(--mono)">${fmt(Math.round(hi52))}</b></span><span style="font-size:14px;color:var(--txt3);font-family:var(--mono);text-align:right">${_fmtD52(_hi52Pt?.date)}</span></span>
       </div>
       <div style="height:10px;background:linear-gradient(90deg,var(--sell)33,#facc1533,var(--buy)33);border-radius:5px;position:relative;margin-bottom:8px">
         <div style="position:absolute;top:-3px;left:calc(${pct52}% - 8px);width:16px;height:16px;background:var(--c0);border-radius:50%;border:2px solid var(--bg);box-shadow:0 0 6px var(--c0)"></div>
       </div>
-      <div style="font-size:11px;color:var(--txt2);text-align:center">${pct52}% t\u1eeb \u0111\u00e1y \u2014 ${pct52Desc}</div>
+      <div style="font-size:14px;color:var(--txt2);text-align:center">${pct52}% t\u1eeb \u0111\u00e1y \u2014 ${pct52Desc}</div>
       ${_bestWorst30 ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px">
         ${_mkMetric('30 ng\u00e0y t\u1ed1t nh\u1ea5t', '+' + _bestWorst30.bR.toFixed(1) + '%', 'var(--buy)', _bestWorst30.bFrom + ' \u2192 ' + _bestWorst30.bTo)}
         ${_mkMetric('30 ng\u00e0y t\u1ec7 nh\u1ea5t', _bestWorst30.wR.toFixed(1) + '%', 'var(--sell)', _bestWorst30.wFrom + ' \u2192 ' + _bestWorst30.wTo)}
@@ -4378,25 +4378,25 @@ function _renderHistAnalysis(code) {
   const advHtml = pts.length >= 20 ? _mkSect('PHÂN TÍCH KỸ THUẬT NÂNG CAO', '🔬', `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
       ${ma20val ? `<div style="background:var(--bg3);border-radius:8px;padding:10px 12px">
-        <div style="font-size:9px;color:var(--txt3);margin-bottom:4px">GIÁ SO VỚI TRUNG BÌNH 20/50 NGÀY</div>
-        <div style="font-size:10px;color:var(--txt2);margin-bottom:6px">MA20 <b style="color:${curr > ma20val ? 'var(--buy)' : 'var(--sell)'};font-family:var(--mono)">${fmt(Math.round(ma20val))}</b></div>
-        ${ma50val ? `<div style="font-size:10px;color:var(--txt2);margin-bottom:6px">MA50 <b style="color:${curr > ma50val ? 'var(--buy)' : 'var(--sell)'};font-family:var(--mono)">${fmt(Math.round(ma50val))}</b></div>` : ''}
-        ${maCrossSignal === 'golden' ? `<div style="color:var(--buy);font-size:11px;font-weight:700">✨ TÍN HIỆU MUA MẠNH — Trung bình 20 ngày vừa vượt qua trung bình 50 ngày. Điều này xảy ra rất hiếm và thường báo hiệu xu hướng tăng dài hạn.</div>` :
-          maCrossSignal === 'death'  ? `<div style="color:var(--sell);font-size:11px;font-weight:700">⚠️ CẢNH BÁO GIẢM — Trung bình 20 ngày vừa chui xuống trung bình 50 ngày. Xu hướng có thể đang chuyển sang giảm.</div>` :
-          maCrossSignal === 'above'  ? `<div style="color:var(--buy);font-size:10px">📈 Xu hướng trung hạn đang tốt — giá trung bình ngắn hạn (20 ngày) cao hơn trung hạn (50 ngày).${curr>ma20val?' Giá hiện tại còn cao hơn cả hai → rất tích cực.':curr>ma50val?' Giá đang lùi nhẹ về mức trung bình — bình thường trong xu hướng tăng.':' Giá đang dưới cả hai mức trung bình — cẩn thận dù xu hướng vẫn tốt.'}</div>` :
-          maCrossSignal === 'below'  ? `<div style="color:var(--sell);font-size:10px">📉 Xu hướng trung hạn đang xấu — giá trung bình ngắn hạn (20 ngày) thấp hơn trung hạn (50 ngày).${curr<ma20val?' Giá còn thấp hơn cả hai → xu hướng giảm rõ ràng, chưa nên mua thêm.':curr<ma50val?' Giá đang hồi phục ngắn hạn trong xu hướng giảm — chưa chắc đã xong.':' Giá đang tạm trên mức trung bình — theo dõi thêm.'}</div>` : ''}
-        <div style="font-size:9px;color:var(--txt3);margin-top:5px;line-height:1.4">Trung bình 20 ngày = giá trung bình trong 20 ngày gần nhất. Trung bình 50 ngày = 50 ngày gần nhất. Khi giá > cả hai = xu hướng tăng toàn diện.</div>
+        <div style="font-size:14px;color:var(--txt3);margin-bottom:4px">GIÁ SO VỚI TRUNG BÌNH 20/50 NGÀY</div>
+        <div style="font-size:14px;color:var(--txt2);margin-bottom:6px">MA20 <b style="color:${curr > ma20val ? 'var(--buy)' : 'var(--sell)'};font-family:var(--mono)">${fmt(Math.round(ma20val))}</b></div>
+        ${ma50val ? `<div style="font-size:14px;color:var(--txt2);margin-bottom:6px">MA50 <b style="color:${curr > ma50val ? 'var(--buy)' : 'var(--sell)'};font-family:var(--mono)">${fmt(Math.round(ma50val))}</b></div>` : ''}
+        ${maCrossSignal === 'golden' ? `<div style="color:var(--buy);font-size:14px;font-weight:700">✨ TÍN HIỆU MUA MẠNH — Trung bình 20 ngày vừa vượt qua trung bình 50 ngày. Điều này xảy ra rất hiếm và thường báo hiệu xu hướng tăng dài hạn.</div>` :
+          maCrossSignal === 'death'  ? `<div style="color:var(--sell);font-size:14px;font-weight:700">⚠️ CẢNH BÁO GIẢM — Trung bình 20 ngày vừa chui xuống trung bình 50 ngày. Xu hướng có thể đang chuyển sang giảm.</div>` :
+          maCrossSignal === 'above'  ? `<div style="color:var(--buy);font-size:14px">📈 Xu hướng trung hạn đang tốt — giá trung bình ngắn hạn (20 ngày) cao hơn trung hạn (50 ngày).${curr>ma20val?' Giá hiện tại còn cao hơn cả hai → rất tích cực.':curr>ma50val?' Giá đang lùi nhẹ về mức trung bình — bình thường trong xu hướng tăng.':' Giá đang dưới cả hai mức trung bình — cẩn thận dù xu hướng vẫn tốt.'}</div>` :
+          maCrossSignal === 'below'  ? `<div style="color:var(--sell);font-size:14px">📉 Xu hướng trung hạn đang xấu — giá trung bình ngắn hạn (20 ngày) thấp hơn trung hạn (50 ngày).${curr<ma20val?' Giá còn thấp hơn cả hai → xu hướng giảm rõ ràng, chưa nên mua thêm.':curr<ma50val?' Giá đang hồi phục ngắn hạn trong xu hướng giảm — chưa chắc đã xong.':' Giá đang tạm trên mức trung bình — theo dõi thêm.'}</div>` : ''}
+        <div style="font-size:14px;color:var(--txt3);margin-top:5px;line-height:1.4">Trung bình 20 ngày = giá trung bình trong 20 ngày gần nhất. Trung bình 50 ngày = 50 ngày gần nhất. Khi giá > cả hai = xu hướng tăng toàn diện.</div>
       </div>` : '<div></div>'}
       ${bbW ? `<div style="background:var(--bg3);border-radius:8px;padding:10px 12px">
-        <div style="font-size:9px;color:var(--txt3);margin-bottom:4px">ĐỘ BIẾN ĐỘNG (BB WIDTH)</div>
+        <div style="font-size:14px;color:var(--txt3);margin-bottom:4px">ĐỘ BIẾN ĐỘNG (BB WIDTH)</div>
         <div style="font-family:var(--mono);font-size:14px;font-weight:700;color:${bbW.curr < 3 ? 'var(--buy)' : bbW.curr > 10 ? 'var(--sell)' : '#facc15'};margin-bottom:4px">${bbW.curr.toFixed(2)}%</div>
-        <div style="font-size:10px;color:var(--txt2);margin-bottom:6px">${bbW.expanding === true ? '↑ Đang mở rộng — biến động tăng' : bbW.expanding === false ? '↓ Đang thu hẹp — áp lực tích lũy' : ''}</div>
+        <div style="font-size:14px;color:var(--txt2);margin-bottom:6px">${bbW.expanding === true ? '↑ Đang mở rộng — biến động tăng' : bbW.expanding === false ? '↓ Đang thu hẹp — áp lực tích lũy' : ''}</div>
         <div style="height:4px;background:var(--bdr);border-radius:2px;margin-bottom:6px"><div style="height:100%;width:${Math.min(bbW.curr/15*100,100)}%;background:${bbW.curr>8?'var(--sell)':bbW.curr>4?'#facc15':'var(--buy)'};border-radius:2px"></div></div>
-        <div style="font-size:9px;color:var(--txt3);line-height:1.4">${bbW.curr < 3 ? `Dải hẹp — thường xảy ra trước breakout. ${(s?.macd_hist??s?.macd??0)>0?'MACD dương → breakout tăng khả thi, theo dõi sát.':(s?.macd_hist??s?.macd??0)<0?'MACD âm → cẩn thận breakout theo chiều giảm.':'MACD gần 0 — hướng breakout chưa rõ, chờ xác nhận.'}` : bbW.curr > 10 ? 'Dải rộng: biến động rất cao, rủi ro cả hai chiều — nên giảm size nếu đang nắm nhiều.' : 'Dải bình thường: biến động trong ngưỡng trung bình.'}</div>
+        <div style="font-size:14px;color:var(--txt3);line-height:1.4">${bbW.curr < 3 ? `Dải hẹp — thường xảy ra trước breakout. ${(s?.macd_hist??s?.macd??0)>0?'MACD dương → breakout tăng khả thi, theo dõi sát.':(s?.macd_hist??s?.macd??0)<0?'MACD âm → cẩn thận breakout theo chiều giảm.':'MACD gần 0 — hướng breakout chưa rõ, chờ xác nhận.'}` : bbW.curr > 10 ? 'Dải rộng: biến động rất cao, rủi ro cả hai chiều — nên giảm size nếu đang nắm nhiều.' : 'Dải bình thường: biến động trong ngưỡng trung bình.'}</div>
       </div>` : ''}
     </div>
     ${fibLevels.length ? `<div style="background:var(--bg3);border-radius:8px;padding:10px 12px;margin-bottom:8px">
-      <div style="font-size:9px;color:var(--txt3);margin-bottom:8px">FIBONACCI HỖ TRỢ & KHÁNG CỰ (từ biên độ 52 tuần)</div>
+      <div style="font-size:14px;color:var(--txt3);margin-bottom:8px">FIBONACCI HỖ TRỢ & KHÁNG CỰ (từ biên độ 52 tuần)</div>
       <div style="position:relative;height:20px;background:linear-gradient(90deg,var(--sell)33,#facc1533,var(--buy)33);border-radius:4px;margin-bottom:10px">
         ${fibLevels.filter(fl=>fl.f>0&&fl.f<100).map(fl=>`<div style="position:absolute;top:0;left:${fl.f}%;width:1px;height:100%;background:#ffffff22"></div>`).join('')}
         <div style="position:absolute;top:-3px;left:calc(${pct52}% - 6px);width:12px;height:26px;background:var(--c0);border-radius:2px;opacity:.8"></div>
@@ -4406,15 +4406,15 @@ function _renderHistAnalysis(code) {
           const isNear = Math.abs(curr-fl.nav)/Math.max(curr,1) < 0.02;
           const isSupport = fl.nav < curr;
           return `<div style="background:${isNear?'#facc1522':'var(--bg2)'};border:1px solid ${isNear?'#facc1566':isSupport?'#4ade8033':'#f8717133'};border-radius:4px;padding:3px 8px;text-align:center">
-            <div style="font-size:9px;color:${isNear?'#facc15':isSupport?'var(--buy)':'var(--sell)'}">${fl.label}</div>
-            <div style="font-family:var(--mono);font-size:10px;font-weight:700">${fmt(Math.round(fl.nav))}</div>
+            <div style="font-size:14px;color:${isNear?'#facc15':isSupport?'var(--buy)':'var(--sell)'}">${fl.label}</div>
+            <div style="font-family:var(--mono);font-size:14px;font-weight:700">${fmt(Math.round(fl.nav))}</div>
             ${isNear?'<div style="font-size:8px;color:#facc15">← Hiện tại</div>':''}
           </div>`;
         }).join('')}
       </div>
-      <div style="font-size:9px;color:var(--txt3);margin-top:8px;line-height:1.4">Fibonacci: các mức hỗ trợ/kháng cự tự nhiên — giá thường phản ứng tại 38.2%, 50%, 61.8%. Vị trí hiện tại (${pct52}% từ đáy 52T) ${nearFib.length ? `gần <b>Fib ${nearFib[0].f}%</b> (${fmt(Math.round(nearFib[0].nav))}đ) — ${nearFib[0].nav<=curr?'<b style="color:var(--buy)">hỗ trợ bên dưới</b>':'<b style="color:var(--sell)">kháng cự phía trên</b>'}. ${nearFib[0].nav<=curr&&(s?.rsi??50)<40?'RSI thấp + Fib support = vùng mua kỹ thuật tốt.':nearFib[0].nav>curr&&(s?.rsi??50)>60?'RSI cao + Fib resistance = cân nhắc chốt lời một phần.':'Theo dõi phản ứng NAV tại mức này.'}` : 'giữa các Fib — chưa có tín hiệu rõ từ Fibonacci.'}</div>
+      <div style="font-size:14px;color:var(--txt3);margin-top:8px;line-height:1.4">Fibonacci: các mức hỗ trợ/kháng cự tự nhiên — giá thường phản ứng tại 38.2%, 50%, 61.8%. Vị trí hiện tại (${pct52}% từ đáy 52T) ${nearFib.length ? `gần <b>Fib ${nearFib[0].f}%</b> (${fmt(Math.round(nearFib[0].nav))}đ) — ${nearFib[0].nav<=curr?'<b style="color:var(--buy)">hỗ trợ bên dưới</b>':'<b style="color:var(--sell)">kháng cự phía trên</b>'}. ${nearFib[0].nav<=curr&&(s?.rsi??50)<40?'RSI thấp + Fib support = vùng mua kỹ thuật tốt.':nearFib[0].nav>curr&&(s?.rsi??50)>60?'RSI cao + Fib resistance = cân nhắc chốt lời một phần.':'Theo dõi phản ứng NAV tại mức này.'}` : 'giữa các Fib — chưa có tín hiệu rõ từ Fibonacci.'}</div>
     </div>` : ''}
-    ${rsiDivergence === 'bullish' ? `<div style="background:#4ade8011;border:1px solid #4ade8033;border-radius:6px;padding:8px 12px;font-size:10px;line-height:1.6"><div style="color:var(--buy);font-weight:700;margin-bottom:4px">📊 PHÂN KỲ DƯƠNG (Bullish Divergence)</div><div style="color:var(--txt2)">${rsiDivergenceDesc}</div><div style="color:var(--txt3);font-size:9px;margin-top:4px">Phân kỳ dương — giá tạo đáy mới thấp hơn nhưng lực bán suy yếu dần. Kết hợp với RSI < 40 và MACD bắt đầu quay đầu để có xác nhận mạnh hơn.</div></div>` : rsiDivergence === 'bearish' ? `<div style="background:#f8717111;border:1px solid #f8717133;border-radius:6px;padding:8px 12px;font-size:10px;line-height:1.6"><div style="color:var(--sell);font-weight:700;margin-bottom:4px">⚠️ PHÂN KỲ ÂM (Bearish Divergence)</div><div style="color:var(--txt2)">${rsiDivergenceDesc}</div><div style="color:var(--txt3);font-size:9px;margin-top:4px">Phân kỳ âm — giá tạo đỉnh mới cao hơn nhưng lực mua cạn kiệt dần. Không nên mua thêm; nếu đang có lãi, cân nhắc chốt một phần.</div></div>` : ''}
+    ${rsiDivergence === 'bullish' ? `<div style="background:#4ade8011;border:1px solid #4ade8033;border-radius:6px;padding:8px 12px;font-size:14px;line-height:1.6"><div style="color:var(--buy);font-weight:700;margin-bottom:4px">📊 PHÂN KỲ DƯƠNG (Bullish Divergence)</div><div style="color:var(--txt2)">${rsiDivergenceDesc}</div><div style="color:var(--txt3);font-size:14px;margin-top:4px">Phân kỳ dương — giá tạo đáy mới thấp hơn nhưng lực bán suy yếu dần. Kết hợp với RSI < 40 và MACD bắt đầu quay đầu để có xác nhận mạnh hơn.</div></div>` : rsiDivergence === 'bearish' ? `<div style="background:#f8717111;border:1px solid #f8717133;border-radius:6px;padding:8px 12px;font-size:14px;line-height:1.6"><div style="color:var(--sell);font-weight:700;margin-bottom:4px">⚠️ PHÂN KỲ ÂM (Bearish Divergence)</div><div style="color:var(--txt2)">${rsiDivergenceDesc}</div><div style="color:var(--txt3);font-size:14px;margin-top:4px">Phân kỳ âm — giá tạo đỉnh mới cao hơn nhưng lực mua cạn kiệt dần. Không nên mua thêm; nếu đang có lãi, cân nhắc chốt một phần.</div></div>` : ''}
   `) : '';
 
   // ── 6. TECHNICAL INDICATORS ──
@@ -4463,58 +4463,58 @@ function _renderHistAnalysis(code) {
   const _rsiPrev7 = navVals.length > 22 ? _rsiAt(navVals, navVals.length - 1 - 7) : null;
   const _rsiDelta  = (_rsiCurr != null && _rsiPrev7 != null) ? Math.round(_rsiCurr - _rsiPrev7) : null;
   const techNotice = techRel === 'LOW' || techRel === 'N/A'
-    ? `<div style="background:#60a5fa11;border:1px solid #60a5fa33;border-radius:6px;padding:7px 10px;margin-bottom:10px;font-size:10px;color:#60a5fa">\u26a0 V\u1edbi qu\u1ef9 tr\u00e1i phi\u1ebfu/ti\u1ec1n t\u1ec7, c\u00e1c ch\u1ec9 s\u1ed1 k\u1ef9 thu\u1eadt c\u00f3 \u0111\u1ed9 tin c\u1eady th\u1ea5p h\u01a1n so v\u1edbi qu\u1ef9 c\u1ed5 phi\u1ebfu.</div>` : '';
+    ? `<div style="background:#60a5fa11;border:1px solid #60a5fa33;border-radius:6px;padding:7px 10px;margin-bottom:10px;font-size:14px;color:#60a5fa">\u26a0 V\u1edbi qu\u1ef9 tr\u00e1i phi\u1ebfu/ti\u1ec1n t\u1ec7, c\u00e1c ch\u1ec9 s\u1ed1 k\u1ef9 thu\u1eadt c\u00f3 \u0111\u1ed9 tin c\u1eady th\u1ea5p h\u01a1n so v\u1edbi qu\u1ef9 c\u1ed5 phi\u1ebfu.</div>` : '';
 
   const indHtml = s ? _mkSect('T\u00cdN HI\u1ec6U K\u1ef8 THU\u1eacT', '\u26a1', `
     ${techNotice}
     <div style="background:var(--bg3);border-radius:8px;padding:12px 14px;margin-bottom:8px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-        <div style="font-size:10px;color:var(--txt3)">Smart Score \u2014 T\u1ed5ng h\u1ee3p t\u1ea5t c\u1ea3 t\u00edn hi\u1ec7u</div>
+        <div style="font-size:14px;color:var(--txt3)">Smart Score \u2014 T\u1ed5ng h\u1ee3p t\u1ea5t c\u1ea3 t\u00edn hi\u1ec7u</div>
         <div style="font-family:var(--mono);font-size:18px;font-weight:700;color:${scoreColor}">${score > 0 ? '+' : ''}${score}</div>
       </div>
       <div style="height:8px;background:linear-gradient(90deg,var(--sell),#facc15,var(--buy));border-radius:4px;position:relative;margin-bottom:6px">
         <div style="position:absolute;top:-3px;left:calc(${Math.round((score + 6) / 12 * 100)}% - 7px);width:14px;height:14px;background:var(--c0);border-radius:50%;border:2px solid var(--bg)"></div>
       </div>
-      <div style="text-align:center;font-size:12px;font-weight:700;color:${scoreColor}">${scoreLabel}</div>
+      <div style="text-align:center;font-size:14px;font-weight:700;color:${scoreColor}">${scoreLabel}</div>
     </div>
     <div style="display:grid;grid-template-columns:1fr;gap:6px;margin-bottom:8px">
       <div style="background:var(--bg3);border-radius:8px;padding:10px 12px">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
-          <div><span style="font-size:10px;color:var(--txt3)">\u0110\u00c0 MUA/B\u00c1N \u2014 th\u1ecb tr\u01b0\u1eddng \u0111ang nghi\u00eang v\u1ec1 \u0111\u00e2u?</span><span style="margin-left:8px;font-family:var(--mono);font-size:14px;font-weight:700;color:${rsiColor}">${rsi.toFixed(1)}</span></div>
-          <span style="font-size:10px;color:${rsiColor}">${rsi < 35 ? '\ud83d\udfe2 \u0110ANG B\u1eca B\u00c1N NHI\u1ec0U \u2192 th\u01b0\u1eddng l\u00e0 c\u01a1 h\u1ed9i mua' : rsi > 65 ? '\ud83d\udd34 \u0110ANG \u0110\u01af\u1ee2C MUA NHI\u1ec0U \u2192 c\u1ea9n th\u1eadn mua th\u00eam' : '\u26aa C\u00c2N B\u1eb0NG \u2014 kh\u00f4ng thi\u00ean v\u1ec1 b\u00ean n\u00e0o'}</span>
+          <div><span style="font-size:14px;color:var(--txt3)">\u0110\u00c0 MUA/B\u00c1N \u2014 th\u1ecb tr\u01b0\u1eddng \u0111ang nghi\u00eang v\u1ec1 \u0111\u00e2u?</span><span style="margin-left:8px;font-family:var(--mono);font-size:14px;font-weight:700;color:${rsiColor}">${rsi.toFixed(1)}</span></div>
+          <span style="font-size:14px;color:${rsiColor}">${rsi < 35 ? '\ud83d\udfe2 \u0110ANG B\u1eca B\u00c1N NHI\u1ec0U \u2192 th\u01b0\u1eddng l\u00e0 c\u01a1 h\u1ed9i mua' : rsi > 65 ? '\ud83d\udd34 \u0110ANG \u0110\u01af\u1ee2C MUA NHI\u1ec0U \u2192 c\u1ea9n th\u1eadn mua th\u00eam' : '\u26aa C\u00c2N B\u1eb0NG \u2014 kh\u00f4ng thi\u00ean v\u1ec1 b\u00ean n\u00e0o'}</span>
         </div>
         <div style="height:5px;background:linear-gradient(90deg,var(--buy),#facc15,var(--sell));border-radius:3px;position:relative;margin-bottom:6px">
           <div style="position:absolute;top:-2px;left:${Math.min(rsi, 100)}%;width:9px;height:9px;background:var(--c0);border-radius:50%;transform:translateX(-50%)"></div>
         </div>
-        <div style="font-size:10px;color:var(--txt2);line-height:1.5">${rsiInterp}</div>
-        ${_rsiDelta != null && Math.abs(_rsiDelta) >= 2 ? ('<div style="margin-top:5px;font-size:9px;color:'+(_rsiDelta>0?'var(--buy)':'var(--sell)')+'">'+(_rsiDelta>0?'↑ ':'↓ ')+'So với 7 ngày trước: đà mua/bán '+(_rsiDelta>0?'tăng +':'giảm ')+Math.abs(_rsiDelta)+' điểm — '+(_rsiDelta>0?'ngày càng có nhiều người mua hơn.':'ngày càng có nhiều người bán hơn.')+'</div>') : ''}
+        <div style="font-size:14px;color:var(--txt2);line-height:1.5">${rsiInterp}</div>
+        ${_rsiDelta != null && Math.abs(_rsiDelta) >= 2 ? ('<div style="margin-top:5px;font-size:14px;color:'+(_rsiDelta>0?'var(--buy)':'var(--sell)')+'">'+(_rsiDelta>0?'↑ ':'↓ ')+'So với 7 ngày trước: đà mua/bán '+(_rsiDelta>0?'tăng +':'giảm ')+Math.abs(_rsiDelta)+' điểm — '+(_rsiDelta>0?'ngày càng có nhiều người mua hơn.':'ngày càng có nhiều người bán hơn.')+'</div>') : ''}
       </div>
       <div style="background:var(--bg3);border-radius:8px;padding:10px 12px">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
-          <div><span style="font-size:10px;color:var(--txt3)">V\u1eca TR\u00cd GI\u00c1 \u2014 \u0111ang \u1edf v\u00f9ng r\u1ebb hay \u0111\u1eaft so v\u1edbi 20 ng\u00e0y qua?</span><span style="margin-left:8px;font-family:var(--mono);font-size:14px;font-weight:700;color:${bbColor}">${bb.toFixed(1)}%</span></div>
-          <span style="font-size:10px;color:${bbColor}">${bb < 30 ? '\ud83d\udfe2 GI\u00c1 \u0110ANG TH\u1ea4P (r\u1ebb h\u01a1n b\u00ecnh th\u01b0\u1eddng)' : bb > 70 ? '\ud83d\udd34 GI\u00c1 \u0110ANG CAO (\u0111\u1eaft h\u01a1n b\u00ecnh th\u01b0\u1eddng)' : '\u26aa GI\u00c1 \u1ede M\u1ee8C B\u00ccNH TH\u01af\u1edcNG'}</span>
+          <div><span style="font-size:14px;color:var(--txt3)">V\u1eca TR\u00cd GI\u00c1 \u2014 \u0111ang \u1edf v\u00f9ng r\u1ebb hay \u0111\u1eaft so v\u1edbi 20 ng\u00e0y qua?</span><span style="margin-left:8px;font-family:var(--mono);font-size:14px;font-weight:700;color:${bbColor}">${bb.toFixed(1)}%</span></div>
+          <span style="font-size:14px;color:${bbColor}">${bb < 30 ? '\ud83d\udfe2 GI\u00c1 \u0110ANG TH\u1ea4P (r\u1ebb h\u01a1n b\u00ecnh th\u01b0\u1eddng)' : bb > 70 ? '\ud83d\udd34 GI\u00c1 \u0110ANG CAO (\u0111\u1eaft h\u01a1n b\u00ecnh th\u01b0\u1eddng)' : '\u26aa GI\u00c1 \u1ede M\u1ee8C B\u00ccNH TH\u01af\u1edcNG'}</span>
         </div>
         <div style="height:5px;background:linear-gradient(90deg,var(--buy),#facc15,var(--sell));border-radius:3px;position:relative;margin-bottom:6px">
           <div style="position:absolute;top:-2px;left:${Math.min(Math.max(bb, 0), 100)}%;width:9px;height:9px;background:var(--c0);border-radius:50%;transform:translateX(-50%)"></div>
         </div>
-        <div style="font-size:10px;color:var(--txt2);line-height:1.5">${bbInterp}</div>
+        <div style="font-size:14px;color:var(--txt2);line-height:1.5">${bbInterp}</div>
       </div>
       <div style="background:var(--bg3);border-radius:8px;padding:10px 12px">
         <div style="display:flex;justify-content:space-between;align-items:flex-start">
-          <div><span style="font-size:10px;color:var(--txt3)">XU H\u01af\u1edaNG \u2014 qu\u1ef9 \u0111ang t\u0103ng t\u1ed1c hay gi\u1ea3m t\u1ed1c?</span><span style="margin-left:8px;font-family:var(--mono);font-size:14px;font-weight:700;color:${macdColor}">${macd >= 0 ? '+' : ''}${(macd || 0).toFixed(2)}</span></div>
-          <span style="font-size:10px;color:${macdColor}">${macd > 0 ? '\u25b2 \u0110ANG T\u0102NG \u2014 \u0111\u00e0 t\u1ed1t' : macd < 0 ? '\u25bc \u0110ANG GI\u1ea2M \u2014 ch\u01b0a n\u00ean v\u1ed9i mua' : '= GI\u1eee NGUY\u00caN \u2014 ch\u1edd th\u00eam t\u00edn hi\u1ec7u'}</span>
+          <div><span style="font-size:14px;color:var(--txt3)">XU H\u01af\u1edaNG \u2014 qu\u1ef9 \u0111ang t\u0103ng t\u1ed1c hay gi\u1ea3m t\u1ed1c?</span><span style="margin-left:8px;font-family:var(--mono);font-size:14px;font-weight:700;color:${macdColor}">${macd >= 0 ? '+' : ''}${(macd || 0).toFixed(2)}</span></div>
+          <span style="font-size:14px;color:${macdColor}">${macd > 0 ? '\u25b2 \u0110ANG T\u0102NG \u2014 \u0111\u00e0 t\u1ed1t' : macd < 0 ? '\u25bc \u0110ANG GI\u1ea2M \u2014 ch\u01b0a n\u00ean v\u1ed9i mua' : '= GI\u1eee NGUY\u00caN \u2014 ch\u1edd th\u00eam t\u00edn hi\u1ec7u'}</span>
         </div>
-        <div style="margin-top:6px;font-size:10px;color:var(--txt2);line-height:1.5">${macdInterp}</div>
+        <div style="margin-top:6px;font-size:14px;color:var(--txt2);line-height:1.5">${macdInterp}</div>
       </div>
     </div>
     ${details.length ? `<div style="background:var(--bg3);border-radius:6px;padding:8px 12px">
-      <div style="font-size:9px;color:var(--txt3);margin-bottom:6px">Chi ti\u1ebft t\u00ednh \u0111i\u1ec3m</div>
+      <div style="font-size:14px;color:var(--txt3);margin-bottom:6px">Chi ti\u1ebft t\u00ednh \u0111i\u1ec3m</div>
       <div style="display:flex;flex-wrap:wrap;gap:4px">${details.map(d => {
         const isBull = /qu\u00e1 b\u00e1n|\u0111\u00e1y|\u25b2|mua|t\u00edch c\u1ef1c|h\u1ed7 tr\u1ee3/.test(d);
         const isBear = /qu\u00e1 mua|\u0111\u1ec9nh|\u25bc|b\u00e1n|c\u1ea9n th\u1eadn|cao|tr\u00ean band/.test(d);
         const bg = isBull ? '#4ade8022' : isBear ? '#f8717122' : 'var(--bg2)';
         const col = isBull ? 'var(--buy)' : isBear ? 'var(--sell)' : 'var(--txt2)';
-        return `<span style="display:inline-block;background:${bg};color:${col};border:1px solid ${col}44;border-radius:12px;padding:2px 8px;font-size:10px;font-family:var(--mono)">${d}</span>`;
+        return `<span style="display:inline-block;background:${bg};color:${col};border:1px solid ${col}44;border-radius:12px;padding:2px 8px;font-size:14px;font-family:var(--mono)">${d}</span>`;
       }).join('')}</div>
     </div>` : ''}`) : '';
 
@@ -4623,79 +4623,79 @@ function _renderHistAnalysis(code) {
       ? `ℹ️ Nhẹ nghiêng phục hồi: ${winRate30}% lần tăng, TB ${avg30>=0?'+':''}${avg30.toFixed(1)}% sau 30 ngày. Không đủ mạnh để kết luận rõ ràng.`
       : `ℹ️ Kết quả lịch sử hỗn hợp (${winRate30}% lần tăng, TB ${avg30>=0?'+':''}${avg30.toFixed(1)}%) — khó dự đoán dựa trên RSI đơn thuần.`;
     return _mkSect('LỊCH SỬ TÍN HIỆU TƯƠNG TỰ', '📊', `
-      <div style="font-size:10px;color:var(--txt3);margin-bottom:8px">Trong ${n} lần lịch sử có ${zone} — hiệu suất trung bình của quỹ trong các giai đoạn tiếp theo:</div>
+      <div style="font-size:14px;color:var(--txt3);margin-bottom:8px">Trong ${n} lần lịch sử có ${zone} — hiệu suất trung bình của quỹ trong các giai đoạn tiếp theo:</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">
         <div style="background:var(--bg3);border-radius:8px;padding:10px 12px;text-align:center">
-          <div style="font-size:9px;color:var(--txt3);margin-bottom:4px;font-family:var(--mono)">SAU 30 NGÀY</div>
+          <div style="font-size:14px;color:var(--txt3);margin-bottom:4px;font-family:var(--mono)">SAU 30 NGÀY</div>
           <div style="font-family:var(--mono);font-size:18px;font-weight:700;color:${avgC30}">${avg30>=0?'+':''}${avg30.toFixed(1)}%</div>
-          <div style="font-size:9px;color:var(--txt3);margin-top:2px">trung bình</div>
-          <div style="font-size:11px;color:${winC30};margin-top:5px;font-family:var(--mono)">${winRate30}% lần tăng</div>
+          <div style="font-size:14px;color:var(--txt3);margin-top:2px">trung bình</div>
+          <div style="font-size:14px;color:${winC30};margin-top:5px;font-family:var(--mono)">${winRate30}% lần tăng</div>
         </div>
         <div style="background:var(--bg3);border-radius:8px;padding:10px 12px;text-align:center">
-          <div style="font-size:9px;color:var(--txt3);margin-bottom:4px;font-family:var(--mono)">SAU 60 NGÀY</div>
+          <div style="font-size:14px;color:var(--txt3);margin-bottom:4px;font-family:var(--mono)">SAU 60 NGÀY</div>
           <div style="font-family:var(--mono);font-size:18px;font-weight:700;color:${avgC60}">${avg60>=0?'+':''}${avg60.toFixed(1)}%</div>
-          <div style="font-size:9px;color:var(--txt3);margin-top:2px">trung bình</div>
-          <div style="font-size:11px;color:${winC60};margin-top:5px;font-family:var(--mono)">${winRate60}% lần tăng</div>
+          <div style="font-size:14px;color:var(--txt3);margin-top:2px">trung bình</div>
+          <div style="font-size:14px;color:${winC60};margin-top:5px;font-family:var(--mono)">${winRate60}% lần tăng</div>
         </div>
       </div>
       <div style="display:flex;gap:5px;margin-bottom:8px">
-        <div style="background:var(--bg3);border-radius:6px;padding:5px 10px;font-size:10px;flex:1;text-align:center">
-          <span style="color:var(--txt3);font-size:9px">Tốt nhất (30N)</span>
+        <div style="background:var(--bg3);border-radius:6px;padding:5px 10px;font-size:14px;flex:1;text-align:center">
+          <span style="color:var(--txt3);font-size:14px">Tốt nhất (30N)</span>
           <span style="font-family:var(--mono);color:var(--buy);margin-left:5px">${best30>=0?'+':''}${best30.toFixed(1)}%</span>
         </div>
-        <div style="background:var(--bg3);border-radius:6px;padding:5px 10px;font-size:10px;flex:1;text-align:center">
-          <span style="color:var(--txt3);font-size:9px">Xấu nhất (30N)</span>
+        <div style="background:var(--bg3);border-radius:6px;padding:5px 10px;font-size:14px;flex:1;text-align:center">
+          <span style="color:var(--txt3);font-size:14px">Xấu nhất (30N)</span>
           <span style="font-family:var(--mono);color:var(--sell);margin-left:5px">${worst30.toFixed(1)}%</span>
         </div>
       </div>
-      <div style="background:${avg30>=0&&winRate30>=60?'#4ade8011':avg30<0&&winRate30<=40?'#f8717111':'var(--bg3)'};border:1px solid ${avg30>=0&&winRate30>=60?'#4ade8033':avg30<0&&winRate30<=40?'#f8717133':'var(--bdr)'};border-radius:6px;padding:7px 10px;font-size:10px;color:var(--txt2);line-height:1.5">${insight}</div>
-      <div style="font-size:9px;color:var(--txt3);margin-top:6px;line-height:1.5">Dựa trên NAV lịch sử của chính quỹ này. Quá khứ không đảm bảo tương lai — bối cảnh thị trường thay đổi có thể tạo ra kết quả khác.</div>
+      <div style="background:${avg30>=0&&winRate30>=60?'#4ade8011':avg30<0&&winRate30<=40?'#f8717111':'var(--bg3)'};border:1px solid ${avg30>=0&&winRate30>=60?'#4ade8033':avg30<0&&winRate30<=40?'#f8717133':'var(--bdr)'};border-radius:6px;padding:7px 10px;font-size:14px;color:var(--txt2);line-height:1.5">${insight}</div>
+      <div style="font-size:14px;color:var(--txt3);margin-top:6px;line-height:1.5">Dựa trên NAV lịch sử của chính quỹ này. Quá khứ không đảm bảo tương lai — bối cảnh thị trường thay đổi có thể tạo ra kết quả khác.</div>
     `);
   })() : '';
   const predHtml = predNav ? _mkSect('DỰ BÁO GIÁ TRỊ (ENSEMBLE MODEL)', '🔮', `
     <div style="background:linear-gradient(135deg,var(--bg3),#0a1628);border:1px solid #facc1533;border-radius:10px;padding:14px">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
         <div style="background:var(--bg2);border-radius:8px;padding:12px;text-align:center">
-          <div style="font-size:10px;color:var(--txt3);margin-bottom:4px">Dự báo T+2 (2 ngày tới)</div>
+          <div style="font-size:14px;color:var(--txt3);margin-bottom:4px">Dự báo T+2 (2 ngày tới)</div>
           <div style="font-family:var(--mono);font-size:17px;font-weight:700;color:#facc15">${fmt(Math.round(predNav))}</div>
-          ${predPct != null ? `<div class="pnl ${pnlC(predPct)}" style="font-size:12px;font-weight:700;margin-top:4px">${predPct >= 0 ? '+' : ''}${predPct.toFixed(2)}%</div>` : ''}
-          <div style="font-size:9px;color:var(--txt3);margin-top:4px">NAV dự báo khi lệnh mua hôm nay khớp T+2</div>
+          ${predPct != null ? `<div class="pnl ${pnlC(predPct)}" style="font-size:14px;font-weight:700;margin-top:4px">${predPct >= 0 ? '+' : ''}${predPct.toFixed(2)}%</div>` : ''}
+          <div style="font-size:14px;color:var(--txt3);margin-top:4px">NAV dự báo khi lệnh mua hôm nay khớp T+2</div>
         </div>
         <div style="background:var(--bg2);border-radius:8px;padding:12px;text-align:center">
-          <div style="font-size:10px;color:var(--txt3);margin-bottom:4px">Dự báo T+5 (1 tuần)</div>
+          <div style="font-size:14px;color:var(--txt3);margin-bottom:4px">Dự báo T+5 (1 tuần)</div>
           <div style="font-family:var(--mono);font-size:17px;font-weight:700;color:#facc15">${predNav5 ? fmt(Math.round(predNav5)) : '–'}</div>
-          ${predPct5 != null ? `<div class="pnl ${pnlC(predPct5)}" style="font-size:12px;font-weight:700;margin-top:4px">${predPct5 >= 0 ? '+' : ''}${predPct5.toFixed(2)}%</div>` : ''}
-          <div style="font-size:9px;color:var(--txt3);margin-top:4px">Xu hướng ngắn hạn 1 tuần</div>
+          ${predPct5 != null ? `<div class="pnl ${pnlC(predPct5)}" style="font-size:14px;font-weight:700;margin-top:4px">${predPct5 >= 0 ? '+' : ''}${predPct5.toFixed(2)}%</div>` : ''}
+          <div style="font-size:14px;color:var(--txt3);margin-top:4px">Xu hướng ngắn hạn 1 tuần</div>
         </div>
       </div>
       ${r2 != null ? `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-        <span style="font-size:9px;color:var(--txt3)">Độ khớp R²</span>
+        <span style="font-size:14px;color:var(--txt3)">Độ khớp R²</span>
         <div style="flex:1;margin:0 8px;height:4px;background:var(--bdr);border-radius:2px"><div style="height:100%;width:${(r2 * 100).toFixed(0)}%;background:${r2 > 0.7 ? 'var(--buy)' : '#facc15'};border-radius:2px"></div></div>
-        <span style="font-size:9px;font-family:var(--mono);color:${r2 > 0.7 ? 'var(--buy)' : '#facc15'}">${r2.toFixed(2)} ${confLabel}</span>
+        <span style="font-size:14px;font-family:var(--mono);color:${r2 > 0.7 ? 'var(--buy)' : '#facc15'}">${r2.toFixed(2)} ${confLabel}</span>
       </div>` : ''}
       ${(bullNav && bearNav) ? `<div style="border-top:1px solid var(--bdr);padding-top:10px;margin-top:2px">
-        <div style="font-size:9px;color:var(--txt3);margin-bottom:6px;font-family:var(--mono);letter-spacing:.05em">KỊCH BẢN T+2 (±${(ciRange||0).toFixed(1)}% khoảng tin cậy)</div>
+        <div style="font-size:14px;color:var(--txt3);margin-bottom:6px;font-family:var(--mono);letter-spacing:.05em">KỊCH BẢN T+2 (±${(ciRange||0).toFixed(1)}% khoảng tin cậy)</div>
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">
           <div style="background:#4ade8011;border:1px solid #4ade8033;border-radius:6px;padding:8px;text-align:center">
-            <div style="font-size:9px;color:var(--buy);margin-bottom:3px">📈 Tích cực</div>
-            <div style="font-family:var(--mono);font-size:12px;font-weight:700;color:var(--buy)">${fmt(bullNav)}</div>
-            <div style="font-size:9px;color:var(--txt3)">+${((bullNav-curr)/curr*100).toFixed(2)}%</div>
+            <div style="font-size:14px;color:var(--buy);margin-bottom:3px">📈 Tích cực</div>
+            <div style="font-family:var(--mono);font-size:14px;font-weight:700;color:var(--buy)">${fmt(bullNav)}</div>
+            <div style="font-size:14px;color:var(--txt3)">+${((bullNav-curr)/curr*100).toFixed(2)}%</div>
           </div>
           <div style="background:#facc1511;border:1px solid #facc1533;border-radius:6px;padding:8px;text-align:center">
-            <div style="font-size:9px;color:#facc15;margin-bottom:3px">📊 Cơ sở</div>
-            <div style="font-family:var(--mono);font-size:12px;font-weight:700;color:#facc15">${fmt(Math.round(predNav))}</div>
-            <div style="font-size:9px;color:var(--txt3)">${predPct >= 0 ? '+' : ''}${(predPct||0).toFixed(2)}%</div>
+            <div style="font-size:14px;color:#facc15;margin-bottom:3px">📊 Cơ sở</div>
+            <div style="font-family:var(--mono);font-size:14px;font-weight:700;color:#facc15">${fmt(Math.round(predNav))}</div>
+            <div style="font-size:14px;color:var(--txt3)">${predPct >= 0 ? '+' : ''}${(predPct||0).toFixed(2)}%</div>
           </div>
           <div style="background:#f8717111;border:1px solid #f8717133;border-radius:6px;padding:8px;text-align:center">
-            <div style="font-size:9px;color:var(--sell);margin-bottom:3px">📉 Tiêu cực</div>
-            <div style="font-family:var(--mono);font-size:12px;font-weight:700;color:var(--sell)">${fmt(bearNav)}</div>
-            <div style="font-size:9px;color:var(--txt3)">${((bearNav-curr)/curr*100).toFixed(2)}%</div>
+            <div style="font-size:14px;color:var(--sell);margin-bottom:3px">📉 Tiêu cực</div>
+            <div style="font-family:var(--mono);font-size:14px;font-weight:700;color:var(--sell)">${fmt(bearNav)}</div>
+            <div style="font-size:14px;color:var(--txt3)">${((bearNav-curr)/curr*100).toFixed(2)}%</div>
           </div>
         </div>
       </div>` : ''}
     </div>
     <div style="background:var(--bg3);border-radius:8px;padding:10px 12px;margin-top:8px">
-      <div style="font-size:9px;color:var(--txt3);margin-bottom:8px;font-family:var(--mono);letter-spacing:.05em">PHÂN RÃ MÔ HÌNH ENSEMBLE</div>
+      <div style="font-size:14px;color:var(--txt3);margin-bottom:8px;font-family:var(--mono);letter-spacing:.05em">PHÂN RÃ MÔ HÌNH ENSEMBLE</div>
       ${[
         {label:`Hồi quy tuyến tính (${regN}d)`, w:regW, contrib:regContrib, desc:`Xu hướng dài hạn từ ${regN} ngày gần nhất (trọng số ${Math.round(regW*100)}%)`},
         {label:`Momentum ngắn hạn (${momN1}d)`, w:momW1, contrib:mom1Contrib, desc:`Đà biến động ${momN1} ngày gần nhất (trọng số ${Math.round(momW1*100)}%)`},
@@ -4707,21 +4707,21 @@ function _renderHistAnalysis(code) {
         const barW = c != null ? Math.min(Math.abs(c) / 0.1 * 50, 50) : 0;
         return `<div style="margin-bottom:8px">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
-            <span style="font-size:10px;color:var(--txt2)">${label}</span>
-            <span style="font-family:var(--mono);font-size:10px;font-weight:700;color:${col}">${cStr}</span>
+            <span style="font-size:14px;color:var(--txt2)">${label}</span>
+            <span style="font-family:var(--mono);font-size:14px;font-weight:700;color:${col}">${cStr}</span>
           </div>
           <div style="height:3px;background:var(--bdr);border-radius:2px;position:relative;margin-bottom:3px">
             <div style="position:absolute;${c>=0?'left:50%':'right:50%'};width:${barW}%;height:100%;background:${col};border-radius:2px"></div>
           </div>
-          <div style="font-size:9px;color:var(--txt3)">${desc}</div>
+          <div style="font-size:14px;color:var(--txt3)">${desc}</div>
         </div>`;
       }).join('')}
-      <div style="border-top:1px solid var(--bdr);padding-top:6px;font-size:9px;color:var(--txt3)">
+      <div style="border-top:1px solid var(--bdr);padding-top:6px;font-size:14px;color:var(--txt3)">
         ${acc ? `📊 Sai số lịch sử: ±${acc.mae.toFixed(2)}% trên ${acc.count} dự báo đã kiểm chứng · ` : ''}
         R² ${r2 != null ? r2.toFixed(3) : 'N/A'} · ${predMethodLabel}
       </div>
     </div>
-    <div style="margin-top:6px;font-size:10px;color:var(--txt3);line-height:1.5">⚠️ Dự báo dựa trên xu hướng lịch sử NAV, không phải đảm bảo. Các sự kiện bất ngờ (thay đổi chính sách, khủng hoảng thị trường) có thể làm NAV lệch so với dự báo. Kịch bản "tích cực" và "tiêu cực" chỉ là phạm vi có thể xảy ra, không phải cam kết.</div>`) : '';
+    <div style="margin-top:6px;font-size:14px;color:var(--txt3);line-height:1.5">⚠️ Dự báo dựa trên xu hướng lịch sử NAV, không phải đảm bảo. Các sự kiện bất ngờ (thay đổi chính sách, khủng hoảng thị trường) có thể làm NAV lệch so với dự báo. Kịch bản "tích cực" và "tiêu cực" chỉ là phạm vi có thể xảy ra, không phải cam kết.</div>`) : '';
 
   // ── 8. CONCLUSION ──
   // ── 8. CONCLUSION ──
@@ -4889,8 +4889,8 @@ function _renderHistAnalysis(code) {
     if (watchConds.length) rows.push(['👀 Theo dõi khi', watchConds.join('; ')]);
     return rows.map(([lbl, txt]) => `
       <div style="border-top:1px solid var(--bdr);padding:8px 0">
-        <div style="font-size:10px;font-weight:700;color:var(--txt3);margin-bottom:3px;font-family:var(--mono);letter-spacing:.04em">${lbl}</div>
-        <div style="font-size:11px;color:var(--txt1);line-height:1.6">${txt}</div>
+        <div style="font-size:14px;font-weight:700;color:var(--txt3);margin-bottom:3px;font-family:var(--mono);letter-spacing:.04em">${lbl}</div>
+        <div style="font-size:14px;color:var(--txt1);line-height:1.6">${txt}</div>
       </div>`).join('');
   })();
   _lastStrategyHtml = strategyHtml;
@@ -4925,8 +4925,8 @@ function _renderHistAnalysis(code) {
       const c  = isCur ? 'var(--c0)' : isBest ? 'var(--buy)' : isWorst ? 'var(--sell)' : r.avg >= 0 ? '#4ade8088' : '#f8717188';
       const bg = isCur ? '#00e5ff22' : isBest ? '#4ade8022' : isWorst ? '#f8717122' : 'var(--bg2)';
       return '<div style="background:' + bg + ';border:1px solid ' + c + '33;border-radius:6px;padding:5px 4px;text-align:center">'
-        + '<div style="font-size:9px;color:' + (isCur ? 'var(--c0)' : 'var(--txt3)') + ';font-family:var(--mono)">' + ML[r.m-1] + '</div>'
-        + '<div style="font-size:10px;font-weight:700;color:' + c + ';font-family:var(--mono);margin-top:2px">' + (r.avg >= 0 ? '+' : '') + r.avg.toFixed(1) + '%</div>'
+        + '<div style="font-size:14px;color:' + (isCur ? 'var(--c0)' : 'var(--txt3)') + ';font-family:var(--mono)">' + ML[r.m-1] + '</div>'
+        + '<div style="font-size:14px;font-weight:700;color:' + c + ';font-family:var(--mono);margin-top:2px">' + (r.avg >= 0 ? '+' : '') + r.avg.toFixed(1) + '%</div>'
         + '<div style="font-size:8px;color:var(--txt3)">' + r.winRate + '%↑</div>'
         + '</div>';
     }).join('');
@@ -4935,7 +4935,7 @@ function _renderHistAnalysis(code) {
     const curRow = _seasonData.find(r => r.m === curM);
     const curDesc = curRow ? (curRow.avg >= 0 ? '+' : '') + curRow.avg.toFixed(1) + '% trung bình · ' + curRow.winRate + '% số năm tăng (' + curRow.n + ' năm dữ liệu)' : 'chưa đủ dữ liệu';
     return _mkSect('MÙA VỤ THEO THÁNG', '\u{1F4C5}', '<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:4px;margin-bottom:10px">' + cells + '</div>'
-      + '<div style="font-size:10px;color:var(--txt2);line-height:1.8">'
+      + '<div style="font-size:14px;color:var(--txt2);line-height:1.8">'
       + '<span style="color:var(--buy)">▲ Mạnh nhất:</span> ' + bestDesc + '  ·  <span style="color:var(--sell)">▼ Yếu nhất:</span> ' + worstDesc + '.<br>'
       + 'Tháng này (<b style="color:var(--c0)">' + ML[curM-1] + '</b>): ' + curDesc + '.'
       + '<br><span style="color:var(--txt3)">Dựa trên lịch sử NAV — không đảm bảo lặp lại.</span>'
@@ -4952,14 +4952,14 @@ function _renderHistAnalysis(code) {
     const _eqLb = _eq >= 75 ? 'Xuất sắc — vùng tích lũy tốt' : _eq >= 60 ? 'Tốt — đáng cân nhắc mua vào' : _eq >= 45 ? 'Trung bình — nên chờ thêm tín hiệu' : 'Thấp — chưa phải vùng mua tốt';
     return '<div style="background:var(--bg3);border-radius:8px;padding:10px 12px;margin-bottom:10px">'
       + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
-      + '<div style="font-size:10px;color:var(--txt2)">Chất lượng vùng mua hiện tại</div>'
-      + '<div style="font-family:var(--mono);font-size:18px;font-weight:700;color:' + _eqC + '">' + _eq + '<span style="font-size:10px;font-weight:400;color:var(--txt3)">/100</span></div>'
+      + '<div style="font-size:14px;color:var(--txt2)">Chất lượng vùng mua hiện tại</div>'
+      + '<div style="font-family:var(--mono);font-size:18px;font-weight:700;color:' + _eqC + '">' + _eq + '<span style="font-size:14px;font-weight:400;color:var(--txt3)">/100</span></div>'
       + '</div>'
       + '<div style="height:5px;background:var(--bdr);border-radius:3px;margin-bottom:5px">'
       + '<div style="height:100%;width:' + _eq + '%;background:' + _eqC + ';border-radius:3px"></div>'
       + '</div>'
-      + '<div style="font-size:10px;color:' + _eqC + ';margin-bottom:3px">' + _eqLb + '</div>'
-      + '<div style="font-size:9px;color:var(--txt3)">RSI ' + ((s.rsi ?? 50)).toFixed(0) + ' (38%) · BB% ' + ((s.bb_pct ?? 50)).toFixed(0) + '% (27%) · Vị trí 52T: ' + pct52 + '% (27%) · Biến động (8%)</div>'
+      + '<div style="font-size:14px;color:' + _eqC + ';margin-bottom:3px">' + _eqLb + '</div>'
+      + '<div style="font-size:14px;color:var(--txt3)">RSI ' + ((s.rsi ?? 50)).toFixed(0) + ' (38%) · BB% ' + ((s.bb_pct ?? 50)).toFixed(0) + '% (27%) · Vị trí 52T: ' + pct52 + '% (27%) · Biến động (8%)</div>'
       + '</div>';
   })() : '';
   // WEB-053: Lag-1 return autocorrelation — momentum vs mean-reversion signal
@@ -4982,27 +4982,27 @@ function _renderHistAnalysis(code) {
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
         <div style="font-family:var(--mono);font-size:20px;font-weight:700;color:${scoreColor}">${score > 0 ? '+' : ''}${score}</div>
         <div>
-          <div style="font-size:15px;font-weight:700;color:${scoreColor}">${scoreDesc}</div>
-          <div style="font-size:10px;color:var(--txt3)">${ftLabel} · TA ${relLabel}</div>
+          <div style="font-size:16px;font-weight:700;color:${scoreColor}">${scoreDesc}</div>
+          <div style="font-size:14px;color:var(--txt3)">${ftLabel} · TA ${relLabel}</div>
         </div>
       </div>
       <div style="font-size:14px;color:var(--txt1);line-height:1.7;font-weight:500${apiConclusion ? ';margin-bottom:10px' : ''}">${summaryLine}${_summaryRsiCtx}</div>
-      ${apiConclusion ? `<div style="font-size:13px;color:var(--txt2);line-height:1.7;border-top:1px solid var(--bdr);padding-top:8px">${esc(apiConclusion)}</div>` : ''}
+      ${apiConclusion ? `<div style="font-size:14px;color:var(--txt2);line-height:1.7;border-top:1px solid var(--bdr);padding-top:8px">${esc(apiConclusion)}</div>` : ''}
     </div>
-    ${s?.tech_reliability === 'LOW' ? `<div style="background:#facc1511;border:1px solid #facc1533;border-radius:8px;padding:8px 12px;margin-bottom:8px;display:flex;gap:8px;align-items:flex-start"><span style="font-size:13px">⚠️</span><div style="font-size:10px;color:var(--txt2);line-height:1.6"><b style="color:#facc15">TA độ tin cậy THẤP</b> — ${s?.fund_type === 'bond' ? 'Quỹ trái phiếu có NAV biến động nhỏ và phân phối đều: RSI/MACD/BB được thiết kế cho cổ phiếu, ít hiệu quả hơn với trái phiếu. Ưu tiên xem Hiệu suất dài hạn và Sharpe ratio; tín hiệu kỹ thuật chỉ mang tính tham khảo.' : 'Tín hiệu kỹ thuật hiện ít tin cậy — cân nhắc thêm yếu tố cơ bản.'}</div></div>` : ''}
+    ${s?.tech_reliability === 'LOW' ? `<div style="background:#facc1511;border:1px solid #facc1533;border-radius:8px;padding:8px 12px;margin-bottom:8px;display:flex;gap:8px;align-items:flex-start"><span style="font-size:14px">⚠️</span><div style="font-size:14px;color:var(--txt2);line-height:1.6"><b style="color:#facc15">TA độ tin cậy THẤP</b> — ${s?.fund_type === 'bond' ? 'Quỹ trái phiếu có NAV biến động nhỏ và phân phối đều: RSI/MACD/BB được thiết kế cho cổ phiếu, ít hiệu quả hơn với trái phiếu. Ưu tiên xem Hiệu suất dài hạn và Sharpe ratio; tín hiệu kỹ thuật chỉ mang tính tham khảo.' : 'Tín hiệu kỹ thuật hiện ít tin cậy — cân nhắc thêm yếu tố cơ bản.'}</div></div>` : ''}
     ${_entryQualHtml}
-    ${_autoCorr != null ? `<div style="background:var(--bg3);border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:10px;color:var(--txt2);line-height:1.6">
+    ${_autoCorr != null ? `<div style="background:var(--bg3);border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:14px;color:var(--txt2);line-height:1.6">
       <b style="color:var(--txt1)">Xu hướng hiện tại có bền không?</b> —
       ${Math.abs(_autoCorr) <= 0.1 ? 'Quỹ này lên xuống khá ngẫu nhiên, không có xu hướng rõ ràng trong ngắn hạn. Nên nhìn tín hiệu trung và dài hạn thay vì giao dịch ngắn hạn.'
         : _autoCorr > 0.1 ? 'Xu hướng có xu hướng bền vững — nếu đang tăng thì thường tiếp tục tăng, nếu đang giảm thì thường tiếp tục giảm. Không nên "đánh ngược" xu hướng khi chưa có dấu hiệu đảo chiều rõ ràng.'
         : 'Quỹ hay tự phục hồi sau mỗi cú giảm — các đợt xuống mạnh thường không kéo dài. Đây là đặc điểm tốt cho chiến lược DCA (mua đều đặn).'}
     </div>` : ''}
-    <div style="margin-top:8px;background:#facc1511;border:1px solid #facc1522;border-radius:6px;padding:8px 12px;font-size:10px;color:var(--txt3);line-height:1.6">
+    <div style="margin-top:8px;background:#facc1511;border:1px solid #facc1522;border-radius:6px;padding:8px 12px;font-size:14px;color:var(--txt3);line-height:1.6">
       ⚠️ Phân tích dựa trên dữ liệu kỹ thuật lịch sử NAV. Không phải lời khuyên đầu tư tài chính. Quỹ mở có thể bị ảnh hưởng bởi thị trường chung, chính sách tiền tệ, và yếu tố vĩ mô ngoài tầm dự báo của chỉ báo kỹ thuật.
     </div>
     <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
-      <button onclick="_quickTrade('${code}','buy')" style="flex:1;min-width:100px;background:${score>=3?'var(--buy)':'var(--bg3)'};color:${score>=3?'#000':'var(--txt1)'};border:1px solid ${score>=3?'var(--buy)':'var(--bdr)'};border-radius:7px;padding:9px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--sans)">📈 Mua ${code}</button>
-      ${pfItem ? `<button onclick="_quickTrade('${code}','sell')" style="flex:1;min-width:100px;background:${score<=-3?'var(--sell)':'var(--bg3)'};color:${score<=-3?'#fff':'var(--txt1)'};border:1px solid ${score<=-3?'var(--sell)':'var(--bdr)'};border-radius:7px;padding:9px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--sans)">📉 Bán bớt</button>` : ''}
+      <button onclick="_quickTrade('${code}','buy')" style="flex:1;min-width:100px;background:${score>=3?'var(--buy)':'var(--bg3)'};color:${score>=3?'#000':'var(--txt1)'};border:1px solid ${score>=3?'var(--buy)':'var(--bdr)'};border-radius:7px;padding:9px 12px;font-size:14px;font-weight:700;cursor:pointer;font-family:var(--sans)">📈 Mua ${code}</button>
+      ${pfItem ? `<button onclick="_quickTrade('${code}','sell')" style="flex:1;min-width:100px;background:${score<=-3?'var(--sell)':'var(--bg3)'};color:${score<=-3?'#fff':'var(--txt1)'};border:1px solid ${score<=-3?'var(--sell)':'var(--bdr)'};border-radius:7px;padding:9px 12px;font-size:14px;font-weight:700;cursor:pointer;font-family:var(--sans)">📉 Bán bớt</button>` : ''}
     </div>`);
 
   // Compact 3-tile indicator row — always visible at top
@@ -5013,13 +5013,13 @@ function _renderHistAnalysis(code) {
   const _bbLbl = _bb==null?'—':_bb<20?'Giá đang rất thấp → cơ hội mua':_bb>80?'Giá đang rất cao → cẩn thận':'Giá ở mức bình thường';
   const _macdC = _macd==null?'var(--txt2)':_macd>0?'var(--buy)':'var(--sell)';
   const _macdLbl = _macd==null?'—':_macd>50?'Tăng mạnh':_macd>0?'Đang tăng dần':_macd>-50?'Đang giảm dần':'Giảm mạnh';
-  const _mkTile = (label,techName,val,color,sublabel) => `<div style="background:var(--bg2);border-radius:8px;padding:10px 8px;text-align:center;border:1px solid var(--bdr)"><div style="font-size:10px;color:var(--txt1);margin-bottom:1px;font-family:var(--mono);letter-spacing:.04em;font-weight:600">${label}</div><div style="font-size:9px;color:var(--txt3);margin-bottom:5px;font-family:var(--mono)">${techName}</div><div style="font-size:20px;font-weight:700;font-family:var(--mono);color:${color};line-height:1.1">${val}</div><div style="font-size:10px;color:${color};margin-top:4px;font-weight:600;line-height:1.3">${sublabel}</div></div>`;
+  const _mkTile = (label,techName,val,color,sublabel) => `<div style="background:var(--bg2);border-radius:8px;padding:10px 8px;text-align:center;border:1px solid var(--bdr)"><div style="font-size:14px;color:var(--txt1);margin-bottom:1px;font-family:var(--mono);letter-spacing:.04em;font-weight:600">${label}</div><div style="font-size:14px;color:var(--txt3);margin-bottom:5px;font-family:var(--mono)">${techName}</div><div style="font-size:20px;font-weight:700;font-family:var(--mono);color:${color};line-height:1.1">${val}</div><div style="font-size:14px;color:${color};margin-top:4px;font-weight:600;line-height:1.3">${sublabel}</div></div>`;
   const compactIndRow = s ? `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:12px">${_mkTile('ĐÀ MUA/BÁN','RSI (14)',_rsi!=null?_rsi.toFixed(1):'—',_rsiC,_rsiLbl)}${_mkTile('VỊ TRÍ GIÁ','BB %B',_bb!=null?_bb.toFixed(1)+'%':'—',_bbC,_bbLbl)}${_mkTile('XU HƯỚNG','MACD Hist.',_macd!=null?(_macd>0?'+':'')+_macd.toFixed(0):'—',_macdC,_macdLbl)}</div>` : '';
 
   // Collapsible section wrapper — strips _mkSect outer div if present to avoid double headers
   const _col = (title, emoji, html, open=false) => {
     if (!html?.trim()) return '';
-    // _mkSect wraps in <div style="margin-bottom:..."><div style="font-size:12px...">TITLE</div>BODY</div>
+    // _mkSect wraps in <div style="margin-bottom:..."><div style="font-size:14px...">TITLE</div>BODY</div>
     // Strip that wrapper so _col's <summary> is the only header
     let body = html.replace(/^[\s]*<div[^>]*margin-bottom:\d+px[^>]*>[\s]*<div[^>]*font-size:\d+px[^>]*>[\s\S]*?<\/div>[\s]*/,'').replace(/[\s]*<\/div>[\s]*$/,'');
     if (!body.trim()) body = html; // fallback if regex didn't match
@@ -5039,11 +5039,11 @@ function _renderHistAnalysis(code) {
       const _alerts = _pf.items.filter(h=>{const sg=_signals?.[h.code]||_marketData?.[h.code];return sg&&(sg.score>=4||sg.score<=-4);});
       _piStrip.style.display = '';
       _piStrip.innerHTML = `<div style="display:flex;align-items:center;gap:10px;padding:8px 14px;background:var(--bg2);border-bottom:1px solid var(--bdr);flex-wrap:wrap;cursor:pointer" onclick="_researchCode=null;document.getElementById('hist-pi-compact').style.display='none'">
-        <span style="font-size:10px;font-family:var(--mono);color:var(--txt3);letter-spacing:.06em;flex-shrink:0">DANH MỤC</span>
-        <span style="font-family:var(--mono);font-size:13px;font-weight:700;color:${_pfC}">${_pfPnlP>=0?'+':''}${_pfPnlP.toFixed(1)}%</span>
-        <span style="font-size:12px;color:${_pfC}">${_pfPnl>=0?'+':''}${(_pfPnl/1e6).toFixed(2)}M đ</span>
-        ${_alerts.length ? `<span style="font-size:10px;background:#facc1522;color:#facc15;border:1px solid #facc1544;border-radius:4px;padding:2px 7px;font-family:var(--mono)">${_alerts.length} tín hiệu ⚡</span>` : ''}
-        <span style="margin-left:auto;font-size:10px;color:var(--txt3)">${_pf.items.length} quỹ · Tổng ${(_pfTotal/1e6).toFixed(1)}M đ</span>
+        <span style="font-size:14px;font-family:var(--mono);color:var(--txt3);letter-spacing:.06em;flex-shrink:0">DANH MỤC</span>
+        <span style="font-family:var(--mono);font-size:14px;font-weight:700;color:${_pfC}">${_pfPnlP>=0?'+':''}${_pfPnlP.toFixed(1)}%</span>
+        <span style="font-size:14px;color:${_pfC}">${_pfPnl>=0?'+':''}${(_pfPnl/1e6).toFixed(2)}M đ</span>
+        ${_alerts.length ? `<span style="font-size:14px;background:#facc1522;color:#facc15;border:1px solid #facc1544;border-radius:4px;padding:2px 7px;font-family:var(--mono)">${_alerts.length} tín hiệu ⚡</span>` : ''}
+        <span style="margin-left:auto;font-size:14px;color:var(--txt3)">${_pf.items.length} quỹ · Tổng ${(_pfTotal/1e6).toFixed(1)}M đ</span>
       </div>`;
     } else {
       _piStrip.style.display = 'none';
@@ -5075,7 +5075,7 @@ async function loadGoldAnalysis() {
   if (lbl) lbl.textContent = '🥇 VÀNG SJC';
   // Update chart column header immediately so it doesn't show previous fund
   const navHdr = document.getElementById('hist-nav-header');
-  if (navHdr) navHdr.innerHTML = '<div style="display:flex;align-items:center;gap:8px"><span style="font-family:var(--mono);font-size:13px;font-weight:700;color:#fbbf24">🥇 VÀNG SJC</span></div>';
+  if (navHdr) navHdr.innerHTML = '<div style="display:flex;align-items:center;gap:8px"><span style="font-family:var(--mono);font-size:14px;font-weight:700;color:#fbbf24">🥇 VÀNG SJC</span></div>';
   // Ensure NAV view mode (shows analysis panel)
   if (_histView !== 'nav') {
     _histView = 'nav';
@@ -5117,7 +5117,7 @@ async function loadGoldAnalysis() {
               callback:v=>v>=1e6?(v/1e6).toFixed(0)+'M':''+v}}}}
       });
     } else {
-      chartEl.innerHTML='<div style="color:var(--txt2);font-size:12px;padding:24px;text-align:center;line-height:1.7">📊<br>Chưa có lịch sử giá vàng SJC.<br><span style="font-size:10px;color:var(--txt3)">Dữ liệu lịch sử chưa được tải.</span></div>';
+      chartEl.innerHTML='<div style="color:var(--txt2);font-size:14px;padding:24px;text-align:center;line-height:1.7">📊<br>Chưa có lịch sử giá vàng SJC.<br><span style="font-size:14px;color:var(--txt3)">Dữ liệu lịch sử chưa được tải.</span></div>';
     }
   } catch(e) { if(chartEl) chartEl.innerHTML=renderErr('Lỗi: '+e.message); }
   _renderGoldAnalysisPanel();
@@ -5129,10 +5129,10 @@ function _renderGoldAnalysisPanel() {
   const s=_goldData?.signals;
   const hasData = s && (s.price || s.rsi != null);
   if (!hasData) {
-    panel.innerHTML=`<div style="color:var(--txt2);font-size:12px;padding:16px;text-align:center;line-height:1.7">
+    panel.innerHTML=`<div style="color:var(--txt2);font-size:14px;padding:16px;text-align:center;line-height:1.7">
       <div style="font-size:22px;margin-bottom:8px">🥇</div>
-      <div style="color:var(--txt1);font-weight:600;font-family:var(--mono);font-size:11px;margin-bottom:6px">VÀNG SJC</div>
-      <div>Chưa có dữ liệu tín hiệu vàng.<br><span style="font-size:10px;color:var(--txt3)">Cần fetch giá SJC để tính RSI/BB%/MACD.</span></div>
+      <div style="color:var(--txt1);font-weight:600;font-family:var(--mono);font-size:14px;margin-bottom:6px">VÀNG SJC</div>
+      <div>Chưa có dữ liệu tín hiệu vàng.<br><span style="font-size:14px;color:var(--txt3)">Cần fetch giá SJC để tính RSI/BB%/MACD.</span></div>
     </div>`;
     return;
   }
@@ -5142,48 +5142,48 @@ function _renderGoldAnalysisPanel() {
   const bbColor=bb<25?'var(--buy)':bb>75?'var(--sell)':'var(--txt2)';
   const priceHtml=s.price?`
     <div style="background:var(--bg3);border-radius:8px;padding:10px 12px;margin-bottom:10px">
-      <div style="font-size:10px;font-family:var(--mono);color:var(--txt2);letter-spacing:.05em;margin-bottom:6px">GIÁ VÀNG SJC HIỆN TẠI</div>
+      <div style="font-size:14px;font-family:var(--mono);color:var(--txt2);letter-spacing:.05em;margin-bottom:6px">GIÁ VÀNG SJC HIỆN TẠI</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
-        <div><div style="font-size:10px;color:var(--txt3)">Giá bán</div><div style="font-family:var(--mono);font-size:13px;font-weight:600">${fmt(s.price)} đ/lượng</div></div>
-        <div><div style="font-size:10px;color:var(--txt3)">Thay đổi ngày</div><div class="pnl ${pnlC(s.chg_pct||0)}" style="font-family:var(--mono);font-size:13px;font-weight:600">${fmtP(s.chg_pct||0)}</div></div>
-        ${s.ma20?`<div><div style="font-size:10px;color:var(--txt3)">MA20</div><div style="font-family:var(--mono);font-size:12px">${fmt(s.ma20)} đ</div></div>`:''}
-        ${s.ma50?`<div><div style="font-size:10px;color:var(--txt3)">MA50</div><div style="font-family:var(--mono);font-size:12px">${fmt(s.ma50)} đ</div></div>`:''}
+        <div><div style="font-size:14px;color:var(--txt3)">Giá bán</div><div style="font-family:var(--mono);font-size:14px;font-weight:600">${fmt(s.price)} đ/lượng</div></div>
+        <div><div style="font-size:14px;color:var(--txt3)">Thay đổi ngày</div><div class="pnl ${pnlC(s.chg_pct||0)}" style="font-family:var(--mono);font-size:14px;font-weight:600">${fmtP(s.chg_pct||0)}</div></div>
+        ${s.ma20?`<div><div style="font-size:14px;color:var(--txt3)">MA20</div><div style="font-family:var(--mono);font-size:14px">${fmt(s.ma20)} đ</div></div>`:''}
+        ${s.ma50?`<div><div style="font-size:14px;color:var(--txt3)">MA50</div><div style="font-family:var(--mono);font-size:14px">${fmt(s.ma50)} đ</div></div>`:''}
       </div>
     </div>`:'';
   const indHtml=`
-    <div style="font-size:10px;font-family:var(--mono);color:var(--txt2);letter-spacing:.05em;margin-bottom:8px">CHỈ SỐ KỸ THUẬT — VÀNG SJC</div>
+    <div style="font-size:14px;font-family:var(--mono);color:var(--txt2);letter-spacing:.05em;margin-bottom:8px">CHỈ SỐ KỸ THUẬT — VÀNG SJC</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
       <div style="background:var(--bg3);border-radius:8px;padding:8px 10px">
-        <div style="font-size:10px;color:var(--txt3);margin-bottom:4px">RSI (14)</div>
+        <div style="font-size:14px;color:var(--txt3);margin-bottom:4px">RSI (14)</div>
         <div style="font-family:var(--mono);font-size:14px;font-weight:700;color:${rsiColor}">${rsi.toFixed?rsi.toFixed(1):rsi}</div>
-        <div style="font-size:10px;color:${rsiColor};margin-top:2px">${rsiLabel}</div>
+        <div style="font-size:14px;color:${rsiColor};margin-top:2px">${rsiLabel}</div>
         <div style="height:4px;background:var(--bdr);border-radius:2px;margin-top:6px"><div style="height:100%;width:${Math.min(rsi,100)}%;background:${rsiColor};border-radius:2px"></div></div>
       </div>
       <div style="background:var(--bg3);border-radius:8px;padding:8px 10px">
-        <div style="font-size:10px;color:var(--txt3);margin-bottom:4px">BB %B</div>
+        <div style="font-size:14px;color:var(--txt3);margin-bottom:4px">BB %B</div>
         <div style="font-family:var(--mono);font-size:14px;font-weight:700;color:${bbColor}">${bb.toFixed?bb.toFixed(1):bb}%</div>
-        <div style="font-size:10px;color:${bbColor};margin-top:2px">${bb<25?'Gần band dưới':bb>75?'Gần band trên':'Giữa dải'}</div>
+        <div style="font-size:14px;color:${bbColor};margin-top:2px">${bb<25?'Gần band dưới':bb>75?'Gần band trên':'Giữa dải'}</div>
         <div style="height:4px;background:var(--bdr);border-radius:2px;margin-top:6px"><div style="height:100%;width:${Math.min(bb,100)}%;background:${bbColor};border-radius:2px"></div></div>
       </div>
       <div style="background:var(--bg3);border-radius:8px;padding:8px 10px">
-        <div style="font-size:10px;color:var(--txt3);margin-bottom:4px">Score</div>
+        <div style="font-size:14px;color:var(--txt3);margin-bottom:4px">Score</div>
         <div style="font-family:var(--mono);font-size:14px;font-weight:700;color:${score>0?'var(--buy)':score<0?'var(--sell)':'var(--txt2)'}">${score>0?'+':''}${score}</div>
-        <div style="font-size:10px;color:var(--txt3);margin-top:2px">Thang vàng (max ±4)</div>
+        <div style="font-size:14px;color:var(--txt3);margin-top:2px">Thang vàng (max ±4)</div>
       </div>
       ${s.ma20?`<div style="background:var(--bg3);border-radius:8px;padding:8px 10px">
-        <div style="font-size:10px;color:var(--txt3);margin-bottom:4px">Xu hướng MA</div>
-        <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:${s.price>s.ma20?'var(--buy)':'var(--sell)'}">
+        <div style="font-size:14px;color:var(--txt3);margin-bottom:4px">Xu hướng MA</div>
+        <div style="font-family:var(--mono);font-size:14px;font-weight:700;color:${s.price>s.ma20?'var(--buy)':'var(--sell)'}">
           ${s.price>s.ma20?'↑ Trên MA20':'↓ Dưới MA20'}
         </div>
-        <div style="font-size:10px;color:var(--txt3);margin-top:2px">${s.ma50?(s.price>s.ma50?'↑ Trên MA50':'↓ Dưới MA50'):''}</div>
+        <div style="font-size:14px;color:var(--txt3);margin-top:2px">${s.ma50?(s.price>s.ma50?'↑ Trên MA50':'↓ Dưới MA50'):''}</div>
       </div>`:'' }
     </div>`;
   const scoreDesc=score>=3?'MUA':score>=1?'TÍCH LŨY':score<=-2?'THẬN TRỌNG':'HOLD';
   const scoreColor=score>=1?'var(--buy)':score<=-2?'var(--sell)':'var(--txt2)';
   const conclusionHtml=`
     <div style="background:var(--bg3);border-radius:8px;padding:8px 12px;text-align:center">
-      <div style="font-size:9px;font-family:var(--mono);color:var(--txt3);letter-spacing:.06em;margin-bottom:4px">KẾT LUẬN — VÀNG SJC</div>
-      <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:${scoreColor}">${s.signal||('Score '+(score>0?'+':'')+score+' — '+scoreDesc)}</div>
+      <div style="font-size:14px;font-family:var(--mono);color:var(--txt3);letter-spacing:.06em;margin-bottom:4px">KẾT LUẬN — VÀNG SJC</div>
+      <div style="font-family:var(--mono);font-size:14px;font-weight:700;color:${scoreColor}">${s.signal||('Score '+(score>0?'+':'')+score+' — '+scoreDesc)}</div>
     </div>`;
   panel.innerHTML=`<div style="padding:12px 0">${priceHtml}${indHtml}${conclusionHtml}</div>`;
 }
@@ -5211,11 +5211,11 @@ async function renderT2AccuracyChart(code) {
       if (!hist.length) {
         el.innerHTML=`<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:12px;padding:32px;text-align:center">
           <div style="font-size:36px;opacity:.3">⏱</div>
-          <div style="font-size:13px;font-weight:600;color:var(--txt1)">${code} — Chưa có lịch sử T+2</div>
-          <div style="font-size:11px;color:var(--txt3);max-width:320px;line-height:1.7">Biểu đồ T+2 so sánh NAV dự báo vs thực tế. Dữ liệu tích lũy sau khi pipeline T+2 chạy đủ ngày trên Railway.<br>Trên môi trường local, dữ liệu T+2 chưa có.</div>
+          <div style="font-size:14px;font-weight:600;color:var(--txt1)">${code} — Chưa có lịch sử T+2</div>
+          <div style="font-size:14px;color:var(--txt3);max-width:320px;line-height:1.7">Biểu đồ T+2 so sánh NAV dự báo vs thực tế. Dữ liệu tích lũy sau khi pipeline T+2 chạy đủ ngày trên Railway.<br>Trên môi trường local, dữ liệu T+2 chưa có.</div>
         </div>`;
         const st=document.getElementById('hist-stats');
-        if(st) st.innerHTML=`<div class="sum-row"><span class="sum-label">Quỹ</span><span class="sum-val">${code}</span></div><div style="font-size:11px;color:var(--txt2);margin-top:8px">Chưa có dữ liệu chấm điểm T+2</div>`;
+        if(st) st.innerHTML=`<div class="sum-row"><span class="sum-label">Quỹ</span><span class="sum-val">${code}</span></div><div style="font-size:14px;color:var(--txt2);margin-top:8px">Chưa có dữ liệu chấm điểm T+2</div>`;
         return;
       }
       pts=hist.map(h=>({date:h.predicted_for_date,actual:h.actual_nav,predicted:h.predicted_nav,error_pct:h.error_pct}));
@@ -5243,7 +5243,7 @@ async function renderT2AccuracyChart(code) {
     <div class="sum-row"><span class="sum-label">Quỹ</span><span class="sum-val">${code}</span></div>
     <div class="sum-row"><span class="sum-label">MAPE (${pts.length} phiên)</span><span class="sum-val pnl ${parseFloat(mape)<5?'pos':'neg'}">${mape}%</span></div>
     ${summary.length?`<div class="sum-row"><span class="sum-label">Model tốt nhất</span><span class="sum-val" style="color:var(--c0)">${bestModel}</span></div>`:''}
-    <div style="margin-top:8px;font-size:10px;color:var(--txt2)">Đường xanh = Thực tế · Vàng đứt = T+2 dự báo</div>`;
+    <div style="margin-top:8px;font-size:14px;color:var(--txt2)">Đường xanh = Thực tế · Vàng đứt = T+2 dự báo</div>`;
 }
 
 // #21 Gold history multi-series chart ─────────────────────────────────────────
@@ -5272,7 +5272,7 @@ async function loadGoldHistory() {
         scales:{x:{ticks:{color:'#6b7280',font:{size:10},maxTicksLimit:8},grid:{color:'rgba(255,255,255,.04)'}},
           y:{ticks:{color:'#6b7280',font:{size:10},callback:v=>(v/1e6).toFixed(1)+'M ₫'},grid:{color:'rgba(255,255,255,.04)'}}}}});
     const st=document.getElementById('hist-stats');
-    if(st) st.innerHTML=`<div style="font-size:11px;color:var(--txt2)">Giá vàng ${prods.length} sản phẩm · ${days} phiên</div>`;
+    if(st) st.innerHTML=`<div style="font-size:14px;color:var(--txt2)">Giá vàng ${prods.length} sản phẩm · ${days} phiên</div>`;
     return;
   }
   try{
