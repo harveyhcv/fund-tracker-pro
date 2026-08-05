@@ -288,17 +288,17 @@ canvas{width:100%!important;height:100%!important}
 /* ── History Page ────────────────────────── */
 .trade-form-inner{flex:1;overflow-y:auto;padding:0 14px;min-height:0}
 .hist-page-layout{display:flex;height:100%;overflow:hidden}
-.hist-page-left{width:340px;min-width:260px;border-right:1px solid var(--bdr);display:flex;flex-direction:column;overflow:hidden}
+.hist-page-left{width:420px;min-width:300px;border-right:1px solid var(--bdr);display:flex;flex-direction:column;overflow:hidden}
 .hist-page-right{flex:1;min-width:0;display:flex;overflow:hidden}
-/* Chart sub-column */
-.hist-chart-col{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;border-right:1px solid var(--bdr)}
-/* Analysis sub-column — fixed width on desktop, full width stacked on mobile */
-.hist-analysis-col{width:400px;min-width:320px;flex-shrink:0;display:flex;flex-direction:column;overflow:hidden}
+/* Analysis sub-column — takes center space (flex:1) on desktop */
+.hist-analysis-col{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;border-right:1px solid var(--bdr)}
+/* Chart sub-column — narrow right sidebar on desktop */
+.hist-chart-col{width:300px;min-width:240px;flex-shrink:0;display:flex;flex-direction:column;overflow:hidden}
 .hist-nav-header{padding:10px 14px 8px;border-bottom:1px solid var(--bdr);flex-shrink:0;background:var(--bg2)}
 .hist-nav-hval{font-family:var(--mono);font-size:18px;font-weight:700;color:var(--txt)}
 .hist-nav-hchg{font-family:var(--mono);font-size:13px;font-weight:600;margin-left:8px}
 .hist-nav-right{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
-#hist-chart-area{height:260px;max-height:300px;min-height:180px;flex-shrink:0;position:relative;padding:8px}
+#hist-chart-area{height:200px;max-height:220px;min-height:160px;flex-shrink:0;position:relative;padding:6px}
 #hist-chart-area canvas{width:100%!important;height:100%!important}
 /* hist-fund-row inherits sig-row grid layout; active/hover states */
 .hist-fund-row{border-left:3px solid transparent}
@@ -346,11 +346,11 @@ canvas{width:100%!important;height:100%!important}
   .col-market{min-width:280px;max-width:420px}
   .col-chart{min-width:300px}
 }
-/* Phân Tích: on medium screens (901-1349px) stack analysis below chart */
+/* Phân Tích: on medium screens (901-1349px) stack analysis above chart */
 @media(min-width:901px) and (max-width:1349px){
   .hist-page-right{flex-direction:column}
-  .hist-chart-col{border-right:none;border-bottom:1px solid var(--bdr);height:300px;flex-shrink:0}
-  .hist-analysis-col{width:100%;min-width:0;flex:1;flex-shrink:1}
+  .hist-analysis-col{border-right:none;border-bottom:1px solid var(--bdr);flex:1;flex-shrink:1;min-height:300px}
+  .hist-chart-col{width:100%;min-width:0;flex-shrink:0;height:240px;border-right:none}
 }
 @media(min-width:1600px){
   :root{font-size:15px}

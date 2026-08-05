@@ -672,12 +672,31 @@ function _pfIntelCompactHtml() {
   </details>`;
 }
 
+function _populateHomepiStrip() {
+  const piStrip = document.getElementById('home-pi-strip');
+  if (!piStrip) return;
+  const pf = _me?.portfolio;
+  if (!pf?.items?.length) { piStrip.style.display = 'none'; return; }
+  const total = pf.total_value || 0;
+  const cost = pf.items.reduce((s,h)=>s+(h.cost||0),0);
+  const pnl = total - cost;
+  const pnlP = cost > 0 ? pnl/cost*100 : 0;
+  const c = pnlP >= 0 ? 'var(--buy)' : 'var(--sell)';
+  const isResearch = !!_researchCode;
+  piStrip.style.display = '';
+  piStrip.innerHTML = `<div style="display:flex;align-items:center;gap:14px;padding:10px 16px;cursor:${isResearch?'pointer':'default'};flex-wrap:wrap" ${isResearch?`onclick="_researchCode=null;_showPfIntelligence()" title="Quay về tổng quan danh mục"`:''}>
+    ${isResearch ? `<span style="font-size:10px;font-family:var(--mono);color:var(--c0);letter-spacing:.06em;flex-shrink:0">← DANH MỤC</span>` : `<span style="font-size:10px;font-family:var(--mono);color:var(--txt3);letter-spacing:.06em;flex-shrink:0">DANH MỤC</span>`}
+    <span style="font-family:var(--mono);font-size:16px;font-weight:700;color:${c}">${pnlP>=0?'+':''}${pnlP.toFixed(2)}%</span>
+    <span style="font-size:13px;font-family:var(--mono);color:${c}">${pnl>=0?'+':''}${(pnl/1e6).toFixed(2)}M đ</span>
+    <span style="margin-left:auto;font-size:11px;color:var(--txt2)">${pf.items.length} quỹ · ${(total/1e6).toFixed(1)}M đ</span>
+  </div>`;
+}
+
 function _showPfIntelligence() {
   if (_researchCode) return;
   const pf = _me?.portfolio;
   if (!pf?.items?.length) return;
-  const piStrip = document.getElementById('home-pi-strip');
-  if (piStrip) piStrip.style.display = 'none';
+  _populateHomepiStrip();
   const el = document.getElementById('chart-col-content');
   if (!el) return;
   const titleEl = document.getElementById('chart-col-title');
@@ -1290,28 +1309,13 @@ async function openResearch(code) {
     if (titleEl) titleEl.textContent = code;
     if (targetEl) targetEl.innerHTML = spin();
     if (_navChart) { _navChart.destroy(); _navChart = null; }
-    // PI strip — show portfolio summary above fund analysis
-    const piStrip = document.getElementById('home-pi-strip');
-    if (piStrip && _me?.portfolio?.items?.length) {
-      const _pf = _me.portfolio;
-      const _pfTotal = _pf.total_value || 0;
-      const _pfCost = _pf.items.reduce((s,h)=>s+(h.cost||0),0);
-      const _pfPnl = _pfTotal - _pfCost;
-      const _pfPnlP = _pfCost > 0 ? _pfPnl/_pfCost*100 : 0;
-      const _pfC = _pfPnlP >= 0 ? 'var(--buy)' : 'var(--sell)';
-      piStrip.style.display = '';
-      piStrip.innerHTML = `<div style="display:flex;align-items:center;gap:12px;padding:8px 14px;cursor:pointer;flex-wrap:wrap" onclick="_researchCode=null;document.getElementById('home-pi-strip').style.display='none';_showPfIntelligence()" title="Quay về tổng quan danh mục">
-        <span style="font-size:10px;font-family:var(--mono);color:var(--txt3);letter-spacing:.06em;flex-shrink:0">← DANH MỤC</span>
-        <span style="font-family:var(--mono);font-size:14px;font-weight:700;color:${_pfC}">${_pfPnlP>=0?'+':''}${_pfPnlP.toFixed(2)}%</span>
-        <span style="font-size:12px;color:${_pfC}">${_pfPnl>=0?'+':''}${(_pfPnl/1e6).toFixed(2)}M đ</span>
-        <span style="margin-left:auto;font-size:11px;color:var(--txt2)">${_pf.items.length} quỹ · ${(_pfTotal/1e6).toFixed(1)}M đ tổng</span>
-      </div>`;
-    }
+    _populateHomepiStrip();
   } else if (tradeActive) {
-    targetEl = document.getElementById('trade-signal-research');
-    canvasId = 'trade-inline-chart';
-    if (targetEl) { targetEl.style.display = ''; targetEl.innerHTML = spin(); }
-    if (_navChart) { _navChart.destroy(); _navChart = null; }
+    // Switch to Phân Tích tab and open fund there instead of inline panel
+    const histBtn = document.querySelector('.nav-btn[data-tab="history"]') || Array.from(document.querySelectorAll('.nav-btn')).find(b=>b.textContent.includes('Phân Tích'));
+    goTab('history', histBtn);
+    setTimeout(() => _selectHistFund(code, document.querySelector(`.hist-fund-row[onclick*="${code}"]`)), 500);
+    return;
   } else {
     document.getElementById('modal').classList.add('open');
     document.getElementById('modal-body').innerHTML = spin();
@@ -2655,27 +2659,22 @@ function _renderHistFundList() {
     const bb  = s.bb_pct ?? 50;
     const rsiC = rsi < 35 ? 'var(--buy)' : rsi > 65 ? 'var(--sell)' : 'var(--hold)';
     const bbC  = bb  < 20 ? 'var(--buy)' : bb  > 80 ? 'var(--sell)' : 'var(--hold)';
-    return `<div class="hist-fund-row sig-row ${_histPageCode===code?'active':''}" onclick="_selectHistFund('${code}',this)" style="${alertBorderStyle}">
-      <div>
-        <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
-          <span class="sig-code">${code}</span>
-          ${chgHtml}
-          ${held.has(code)?'<span style="font-size:9px;color:var(--c0);font-family:var(--mono)">•NẮM</span>':''}
+    const sparkline = _sparklineSvg(code);
+    return `<div class="hist-fund-row ${_histPageCode===code?'active':''}" onclick="_selectHistFund('${code}',this)" style="${alertBorderStyle};display:flex;align-items:center;gap:8px;padding:9px 12px">
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;flex-wrap:wrap">
+          <span class="sig-code" style="font-size:13px">${code}</span>
+          ${held.has(code)?'<span style="font-size:9px;font-family:var(--mono);color:var(--c0);background:var(--c0)22;border:1px solid var(--c0)44;border-radius:3px;padding:0 5px">NẮM</span>':''}
+          ${sigHtml}
         </div>
-        <div style="display:flex;align-items:center;gap:6px;margin-top:2px;flex-wrap:wrap">
-          <span style="font-size:11px;color:var(--txt2);font-family:var(--mono)">${nav}</span>
+        <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+          <span style="font-size:12px;font-family:var(--mono);color:var(--txt1)">${nav}</span>
+          ${chgHtml}
           ${_staleH}
         </div>
       </div>
-      <div class="sig-meters">
-        <div class="meter"><div class="meter-lbl">RSI</div><div class="meter-bar"><div class="meter-fill" style="width:${rsi}%;background:${rsiC}"></div></div><div class="meter-val">${rsi.toFixed?rsi.toFixed(0):rsi}</div></div>
-        <div class="meter"><div class="meter-lbl">BB</div><div class="meter-bar"><div class="meter-fill" style="width:${bb}%;background:${bbC}"></div></div><div class="meter-val">${bb.toFixed?bb.toFixed(0):bb}</div></div>
-        <div class="meter"><div class="meter-lbl">SCR</div><div class="meter-val" style="color:${scColor}">${sc>=0?'+':''}${sc}</div></div>
-      </div>
-      <div style="text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:4px">
-        ${sigHtml}
-        <span onclick="event.stopPropagation();_toggleWatchFund('${code}')" title="${watched.has(code)?'Bỏ theo dõi':'Thêm theo dõi'}" style="cursor:pointer;font-size:14px;color:${watched.has(code)?'var(--c0)':'var(--txt3)'}">${watched.has(code)?'★':'☆'}</span>
-      </div>
+      ${sparkline ? `<div style="flex-shrink:0">${sparkline}</div>` : ''}
+      <span onclick="event.stopPropagation();_toggleWatchFund('${code}')" title="${watched.has(code)?'Bỏ theo dõi':'Thêm theo dõi'}" style="cursor:pointer;font-size:16px;flex-shrink:0;color:${watched.has(code)?'#facc15':'var(--txt3)'}">${watched.has(code)?'★':'☆'}</span>
     </div>`;
   }).join('');
 }
@@ -3000,14 +2999,14 @@ function _t2PredHtml(d) {
   const predChg=(predNav-nav)/nav*100;
   const nextBiz=()=>{const d=new Date();d.setDate(d.getDate()+2);return d.toISOString().slice(0,10);};
   const predDate=t2Date||nextBiz();
-  return `<div style="background:var(--bg3);border:1px solid var(--bdr);border-radius:8px;padding:8px 12px;margin:6px 14px;display:flex;justify-content:space-between;align-items:center">
+  return `<div style="background:var(--bg3);border:1px solid var(--bdr);border-radius:6px;padding:5px 10px;margin:4px 14px;display:flex;justify-content:space-between;align-items:center;gap:10px">
     <div>
-      <div style="font-size:9px;font-family:var(--mono);color:var(--txt2);text-transform:uppercase;letter-spacing:.08em">Dự báo T+2 (${predDate})</div>
-      <div style="font-family:var(--mono);font-size:14px;font-weight:700;margin-top:2px">${fmt(predNav)} đ</div>
+      <div style="font-size:8px;font-family:var(--mono);color:var(--txt3);text-transform:uppercase;letter-spacing:.08em">Dự báo T+2 (${predDate})</div>
+      <div style="font-family:var(--mono);font-size:11px;font-weight:600;margin-top:1px">${fmt(predNav)} đ</div>
     </div>
     <div style="text-align:right">
-      <div class="pnl ${pnlC(predChg)}" style="font-size:12px;font-family:var(--mono)">${fmtP(predChg)}</div>
-      ${mape!=null?`<div style="font-size:10px;color:var(--txt2);margin-top:2px">MAPE ${Number(mape).toFixed(1)}%</div>`:'<div style="font-size:10px;color:var(--txt3);margin-top:2px">AI dự báo</div>'}
+      <div class="pnl ${pnlC(predChg)}" style="font-size:11px;font-family:var(--mono)">${fmtP(predChg)}</div>
+      ${mape!=null?`<div style="font-size:9px;color:var(--txt2)">MAPE ${Number(mape).toFixed(1)}%</div>`:'<div style="font-size:9px;color:var(--txt3)">AI dự báo</div>'}
     </div>
   </div>`;
 }
