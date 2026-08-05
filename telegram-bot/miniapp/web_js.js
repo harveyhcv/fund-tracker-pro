@@ -2625,11 +2625,13 @@ function _renderHistFundList() {
   if (!allCodes.length) { el.innerHTML='<div style="color:var(--txt2);font-size:12px;padding:16px;text-align:center">Đang tải dữ liệu...</div>'; return; }
   // WEB-011: Gold row pinned at top of fund list
   const gs = _goldData?.signals;
+  // Fallback price from prices dict when signals are empty (no Railway connection)
+  const _gRawPrice = gs?.price || _goldData?.prices?.['VANGTODAYAPI:SJC_1L'] || _goldData?.prices?.['SJC_1L'] || null;
   const goldActiveClass = _histPageCode==='GOLD_SJC' ? 'active' : '';
   const goldSigLabel = gs?.signal || '';
   const goldSigClass = goldSigLabel.includes('MUA')?'buy':goldSigLabel.includes('THẬN')||goldSigLabel.includes('BÁN')?'sell':'hold';
   const goldChgHtml = gs?.chg_pct!=null ? `<span class="pnl ${pnlC(gs.chg_pct)}" style="font-size:11px;font-weight:600">${gs.chg_pct>=0?'+':''}${gs.chg_pct.toFixed(2)}%</span>` : '';
-  const goldPriceHtml = gs?.price ? `<span style="font-family:var(--mono);font-size:12px;color:var(--txt1);font-weight:600">${(gs.price/1e6).toFixed(1)}M đ</span>` : '';
+  const goldPriceHtml = _gRawPrice ? `<span style="font-family:var(--mono);font-size:12px;color:var(--txt1);font-weight:600">${(_gRawPrice/1e6).toFixed(1)}M đ</span>` : '';
   const goldRsi = gs?.rsi != null ? gs.rsi : null;
   const goldBb  = gs?.bb_pct != null ? gs.bb_pct : null;
   const goldMacd = gs?.macd_hist != null ? gs.macd_hist : null;
