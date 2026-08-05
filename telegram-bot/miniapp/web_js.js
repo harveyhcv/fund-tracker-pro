@@ -4858,9 +4858,9 @@ function _renderHistAnalysis(code) {
     ${compactIndRow}
     ${pnlHtml}
     ${conclusionHtml}
-    ${_col('HIỆU SUẤT ĐẦU TƯ','📈',perfHtml)}
+    ${_col('TÍN HIỆU KỸ THUẬT','⚡',indHtml,true)}
+    ${_col('HIỆU SUẤT ĐẦU TƯ','📈',perfHtml,true)}
     ${_col('RỦI RO & CHẤT LƯỢNG','🛡️',riskHtml)}
-    ${_col('TÍN HIỆU KỸ THUẬT','⚡',indHtml)}
     ${_col('VÙNG GIÁ 52 TUẦN','📏',rangeHtml)}
     ${_col('TÍNH THỜI VỤ','📅',seasonHtml)}
     ${_col('PHÂN TÍCH NÂNG CAO','🔬',advHtml)}
