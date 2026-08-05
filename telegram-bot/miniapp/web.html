@@ -290,7 +290,7 @@ canvas{width:100%!important;height:100%!important}
 .hist-page-right{flex:1;min-width:0;display:flex;overflow:hidden}
 /* Analysis sub-column — takes center space (flex:1) on desktop */
 .hist-analysis-col{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;border-right:1px solid var(--bdr)}
-#hist-analysis-panel{font-size:13px;line-height:1.55}
+#hist-analysis-panel{font-size:14px;line-height:1.6}
 /* Chart sub-column — narrow right sidebar on desktop */
 .hist-chart-col{width:320px;min-width:240px;max-width:320px;flex-shrink:0;flex-grow:0;display:flex;flex-direction:column;overflow:hidden}
 .hist-nav-header{padding:10px 14px 8px;border-bottom:1px solid var(--bdr);flex-shrink:0;background:var(--bg2)}
@@ -947,12 +947,12 @@ canvas{width:100%!important;height:100%!important}
           <div style="color:var(--txt2);font-size:12px;padding:16px 0;text-align:center">Chọn quỹ để xem phân tích</div>
         </div>
         <!-- Nhập NAV thủ công — collapsible -->
-        <details id="manual-nav-panel" style="border-top:1px solid var(--bdr);flex-shrink:0" ontoggle="if(this.open)_initBulkRows()">
-          <summary style="display:flex;align-items:center;gap:6px;padding:10px 14px;cursor:pointer;font-family:var(--mono);font-size:10px;color:var(--txt2);list-style:none;user-select:none">
-            <span style="font-size:12px">✏️</span>
+        <details id="manual-nav-panel" style="border-top:2px solid var(--c0)33;flex-shrink:0;background:var(--c0)08" ontoggle="if(this.open)_initBulkRows()">
+          <summary style="display:flex;align-items:center;gap:6px;padding:10px 14px;cursor:pointer;font-family:var(--mono);font-size:11px;color:var(--c0);list-style:none;user-select:none;font-weight:600;letter-spacing:.04em">
+            <span style="font-size:13px">✏️</span>
             <span>NHẬP NAV THỦ CÔNG</span>
-            <span id="manual-nav-fund-tag" style="color:var(--c0);font-size:10px;margin-left:4px"></span>
-            <span style="margin-left:auto;font-size:10px">▾</span>
+            <span id="manual-nav-fund-tag" style="color:var(--txt2);font-size:11px;margin-left:4px;font-weight:400"></span>
+            <span style="margin-left:auto;font-size:11px;opacity:.7">▾</span>
           </summary>
           <div style="padding:10px 14px 14px">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
@@ -4029,7 +4029,8 @@ function applyHistDateRange() {
 
 function _renderBelowChart(code, currentNav) {
   const el = document.getElementById('hist-below-chart'); if (!el) return;
-  if (!code || code === 'GOLD_SJC') { el.innerHTML = ''; return; }
+  if (!code) { el.innerHTML = ''; return; }
+  if (code === 'GOLD_SJC') { _renderGoldBelowChart(el); return; }
   const s = (_signals?.[code]) || (_marketData?.[code]) || {};
   const nav = currentNav || s.nav || 0;
   const held = _me?.portfolio?.items?.find(h => h.code === code);
@@ -4139,12 +4140,62 @@ function _renderBelowChart(code, currentNav) {
   </div>` : '';
 
   el.innerHTML = `<div style="padding:10px 12px">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-      <span style="font-size:9px;font-family:var(--mono);color:var(--txt3);letter-spacing:.06em">PHÂN TÍCH BỔ SUNG</span>
-      <button class="hist-cmp-btn" onclick="setHistView('cmp',document.getElementById('hist-view-cmp'))" title="So sánh 2 quỹ cạnh nhau">⚖️ So Sánh</button>
-    </div>
     ${heldSection}${peerSection}${fibSection}${(!peerSection&&!fibSection)?quickStats:''}${stratSection}
   </div>`;
+}
+
+function _renderGoldBelowChart(el) {
+  const s = _goldData?.signals;
+  if (!s) {
+    el.innerHTML = `<div style="padding:14px 12px;color:var(--txt2);font-size:12px;text-align:center;line-height:1.8">
+      🥇<br><b style="color:var(--txt1)">VÀNG SJC</b><br>
+      <span style="font-size:11px">Chưa có dữ liệu tín hiệu vàng.<br>Cần kết nối Railway DB.</span>
+    </div>`;
+    return;
+  }
+  const rsi = s.rsi ?? null, bb = s.bb_pct ?? null, score = s.score ?? 0;
+  const sc = score >= 3 ? 'var(--buy)' : score <= -2 ? 'var(--sell)' : '#facc15';
+  const rsiC = rsi==null?'var(--txt2)':rsi<35?'var(--buy)':rsi>65?'var(--sell)':'var(--txt2)';
+  const bbC  = bb==null?'var(--txt2)':bb<25?'var(--buy)':bb>75?'var(--sell)':'var(--txt2)';
+  const goldHeld = _me?.portfolio?.gold_items?.length || _me?.portfolio?.gold_total_value > 0;
+  const goldValue = _me?.portfolio?.gold_total_value;
+  const goldPnl   = _me?.portfolio?.gold_pnl_pct;
+  const heldHtml = goldHeld ? `<div style="background:var(--bg);border:1px solid var(--bdr)44;border-radius:6px;padding:8px 10px;margin-bottom:10px">
+    <div style="font-size:9px;font-family:var(--mono);color:var(--txt3);letter-spacing:.06em;margin-bottom:5px">VỊ THẾ VÀNG ĐANG NẮM</div>
+    <div style="display:flex;justify-content:space-between;font-size:12px">
+      <span style="color:var(--txt2)">${goldValue ? fmt(goldValue)+' đ' : '—'}</span>
+      <span style="font-family:var(--mono);font-weight:600;color:${goldPnl>=0?'var(--buy)':'var(--sell)'}">${goldPnl!=null?(goldPnl>=0?'+':'')+goldPnl.toFixed(2)+'%':'—'}</span>
+    </div>
+  </div>` : '';
+  const statsHtml = `<div style="margin-bottom:10px">
+    <div style="font-size:9px;font-family:var(--mono);color:var(--txt3);letter-spacing:.06em;margin-bottom:6px">CHỈ SỐ KỸ THUẬT — VÀNG</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
+      <div style="background:var(--bg);border-radius:5px;padding:6px 8px;text-align:center">
+        <div style="font-size:9px;color:var(--txt3)">Smart Score</div>
+        <div style="font-family:var(--mono);font-size:16px;font-weight:700;color:${sc}">${score>0?'+':''}${score}</div>
+        <div style="font-size:9px;color:${sc}">${score>=3?'MUA':score<=-2?'THẬN TRỌNG':'HOLD'}</div>
+      </div>
+      ${rsi!=null?`<div style="background:var(--bg);border-radius:5px;padding:6px 8px;text-align:center">
+        <div style="font-size:9px;color:var(--txt3)">RSI (14)</div>
+        <div style="font-family:var(--mono);font-size:16px;font-weight:700;color:${rsiC}">${rsi.toFixed(1)}</div>
+        <div style="font-size:9px;color:${rsiC}">${rsi<35?'Quá bán':rsi>65?'Quá mua':'Trung tính'}</div>
+      </div>`:''}
+      ${bb!=null?`<div style="background:var(--bg);border-radius:5px;padding:6px 8px;text-align:center">
+        <div style="font-size:9px;color:var(--txt3)">BB %B</div>
+        <div style="font-family:var(--mono);font-size:16px;font-weight:700;color:${bbC}">${bb.toFixed(1)}%</div>
+        <div style="font-size:9px;color:${bbC}">${bb<25?'Gần đáy':bb>75?'Gần đỉnh':'Giữa dải'}</div>
+      </div>`:''}
+      ${s.chg7!=null?`<div style="background:var(--bg);border-radius:5px;padding:6px 8px;text-align:center">
+        <div style="font-size:9px;color:var(--txt3)">7 ngày</div>
+        <div style="font-family:var(--mono);font-size:16px;font-weight:700;color:${s.chg7>=0?'var(--buy)':'var(--sell)'}">${s.chg7>=0?'+':''}${s.chg7.toFixed(2)}%</div>
+      </div>`:''}
+    </div>
+  </div>`;
+  const phiBuHtml = s.phi_bu_xau != null ? `<div style="margin-bottom:10px">
+    <div style="font-size:9px;font-family:var(--mono);color:var(--txt3);letter-spacing:.06em;margin-bottom:4px">PHÍ BÙ XAU (CHÊNH LỆCH SJC)</div>
+    <div style="background:var(--bg);border-radius:5px;padding:6px 10px;font-family:var(--mono);font-size:13px;font-weight:600;color:${s.phi_bu_xau>5?'var(--sell)':'var(--txt1)'}">${s.phi_bu_xau?.toFixed(1)}% <span style="font-size:10px;color:var(--txt3);font-weight:400">so với giá thế giới</span></div>
+  </div>` : '';
+  el.innerHTML = `<div style="padding:10px 12px">${heldHtml}${statsHtml}${phiBuHtml}</div>`;
 }
 
 async function submitSingleNav() {
@@ -4977,17 +5028,18 @@ function _renderHistAnalysis(code) {
     <div style="display:flex;justify-content:space-between;align-items:flex-start">
       <div>
         <div style="font-family:var(--mono);font-size:16px;font-weight:700;color:var(--c0)">${code}</div>
-        <div style="font-size:11px;color:var(--txt2);margin-top:2px">${fundName !== code ? esc(fundName) : ''}</div>
+        <div style="font-size:12px;color:var(--txt2);margin-top:2px">${fundName !== code ? esc(fundName) : ''}</div>
       </div>
       <div style="text-align:right">
-        <div style="font-family:var(--mono);font-size:15px;font-weight:700">${fmt(Math.round(curr))} \u0111</div>
-        <div style="font-size:10px;color:var(--txt3)">${s?.nav_date || ''}</div>
+        <div style="font-family:var(--mono);font-size:16px;font-weight:700">${fmt(Math.round(curr))} \u0111</div>
+        <div style="font-size:11px;color:var(--txt3)">${s?.nav_date || ''}</div>
       </div>
     </div>
-    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
-      <span style="font-size:10px;background:${ftColor}22;color:${ftColor};border:1px solid ${ftColor}44;border-radius:4px;padding:2px 7px;font-family:var(--mono)">${ftLabel}</span>
-      <span style="font-size:10px;background:${relColor}22;color:${relColor};border:1px solid ${relColor}44;border-radius:4px;padding:2px 7px">TA: ${relLabel}</span>
-      ${pts.length ? `<span style="font-size:10px;color:var(--txt3);padding:2px 7px">${pts.length} ng\u00e0y d\u1eef li\u1ec7u</span>` : ''}
+    <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;align-items:center">
+      <span style="font-size:11px;background:${ftColor}22;color:${ftColor};border:1px solid ${ftColor}44;border-radius:4px;padding:3px 8px;font-family:var(--mono)">${ftLabel}</span>
+      <span style="font-size:11px;background:${relColor}22;color:${relColor};border:1px solid ${relColor}44;border-radius:4px;padding:3px 8px">TA: ${relLabel}</span>
+      ${pts.length ? `<span style="font-size:10px;color:var(--txt3);padding:2px 6px">${pts.length} ng\u00e0y</span>` : ''}
+      <button class="hist-cmp-btn" onclick="setHistView('cmp',document.getElementById('hist-view-cmp'))" style="margin-left:auto;font-size:11px;padding:3px 10px" title="So s\u00e1nh 2 qu\u1ef9">\u2696\ufe0f So S\u00e1nh</button>
     </div>
     ${techRel === 'LOW' ? `<div style="margin-top:8px;font-size:10px;color:#60a5fa;line-height:1.5;background:#60a5fa11;border-radius:6px;padding:6px 8px">\u2139 Qu\u1ef9 tr\u00e1i phi\u1ebfu NAV t\u0103ng \u0111\u1ec1u \u2014 RSI/BB/MACD k\u00e9m hi\u1ec7u qu\u1ea3 h\u01a1n qu\u1ef9 c\u1ed5 phi\u1ebfu. T\u00edn hi\u1ec7u ch\u1ec9 c\u00f3 gi\u00e1 tr\u1ecb khi c\u00f3 bi\u1ebfn \u0111\u1ed9ng b\u1ea5t th\u01b0\u1eddng.</div>` : ''}
     ${techRel === 'N/A' ? `<div style="margin-top:8px;font-size:10px;color:#facc15;line-height:1.5;background:#facc1511;border-radius:6px;padding:6px 8px">\u2139 Qu\u1ef9 ti\u1ec1n t\u1ec7 ho\u1ea1t \u0111\u1ed9ng nh\u01b0 g\u1eedi ti\u1ebft ki\u1ec7m \u2014 NAV t\u0103ng \u1ed5n \u0111\u1ecbnh m\u1ed7i ng\u00e0y, ph\u00e2n t\u00edch k\u1ef9 thu\u1eadt kh\u00f4ng c\u00f3 \u00fd ngh\u0129a.</div>` : ''}
@@ -6223,6 +6275,7 @@ async function loadGoldAnalysis() {
     }
   } catch(e) { if(chartEl) chartEl.innerHTML=renderErr('Lỗi: '+e.message); }
   _renderGoldAnalysisPanel();
+  _renderBelowChart('GOLD_SJC');
 }
 
 function _renderGoldAnalysisPanel() {

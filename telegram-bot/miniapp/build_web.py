@@ -292,7 +292,7 @@ canvas{width:100%!important;height:100%!important}
 .hist-page-right{flex:1;min-width:0;display:flex;overflow:hidden}
 /* Analysis sub-column — takes center space (flex:1) on desktop */
 .hist-analysis-col{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;border-right:1px solid var(--bdr)}
-#hist-analysis-panel{font-size:13px;line-height:1.55}
+#hist-analysis-panel{font-size:14px;line-height:1.6}
 /* Chart sub-column — narrow right sidebar on desktop */
 .hist-chart-col{width:320px;min-width:240px;max-width:320px;flex-shrink:0;flex-grow:0;display:flex;flex-direction:column;overflow:hidden}
 .hist-nav-header{padding:10px 14px 8px;border-bottom:1px solid var(--bdr);flex-shrink:0;background:var(--bg2)}
