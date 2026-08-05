@@ -3874,7 +3874,7 @@ async function loadHistChart(code) {
   if (lbl) lbl.textContent = code;
   // Update active state in fund list
   document.querySelectorAll('.hist-fund-row').forEach(r => {
-    r.classList.toggle('active', r.querySelector('.hist-fund-code')?.textContent === code);
+    r.classList.toggle('active', r.querySelector('.sig-code')?.textContent === code);
   });
   const el = document.getElementById('hist-chart-area'); if (!el) return;
   el.innerHTML = spin();
@@ -6043,7 +6043,7 @@ async function loadGoldAnalysis() {
   if(analysisPanel) analysisPanel.style.display='block';
   // Update active row in fund list
   document.querySelectorAll('.hist-fund-row').forEach(r=>{
-    r.classList.toggle('active', !!r.querySelector('.hist-fund-code[style*="fbbf24"]'));
+    r.classList.toggle('active', !!r.getAttribute('onclick')?.includes('GOLD_SJC'));
   });
   const chartEl=document.getElementById('hist-chart-area'); if(!chartEl) return;
   chartEl.innerHTML=spin();
