@@ -126,6 +126,7 @@ let _goldSchool = 'dca';
 let _histPageCode = '', _histPageData = null, _histPageChart = null;
 let _histNavCache = {};  // code → sorted [{date,nav}] cached per fund for sparklines
 let _histFundSort = 'default';  // 'default' | 'score' | 'rsi' | 'm1'
+let _lastStrategyHtml = '';  // cached from last renderResearchInline, shown in below-chart
 let _histSortByTime = false;   // false=grouped by fund, true=flat time-sorted
 // Payment state
 let _paymentMethod = 'stars', _sepayRef = null, _sepayTimer = null;
@@ -2595,8 +2596,8 @@ function _renderHistFundList() {
   const sigs = _signals || _marketData || MOCK_SIGNALS || {};
   const held = new Set(_me?.portfolio?.items?.map(i=>i.code)||[]);
   const watched = new Set(_me?.watched_funds || []);
-  // Show ALL funds — held/watched pinned at top, rest sorted alphabetically
-  const allCodes = Object.keys(sigs);
+  // Show ALL funds — exclude funds with no NAV data (delisted/inactive)
+  const allCodes = Object.keys(sigs).filter(c => (sigs[c]?.nav || 0) > 0);
   const priority = allCodes.filter(c => held.has(c) || watched.has(c));
   const rest = allCodes.filter(c => !held.has(c) && !watched.has(c));
   // Highlight: top 2 MUA (highest score ≥ 3) + top 2 BÁN (lowest score ≤ -3) only
@@ -2971,12 +2972,17 @@ function _renderBelowChart(code, currentNav) {
     </div>
   </div>` : '';
 
+  const stratSection = _lastStrategyHtml ? `<div style="margin-top:8px">
+    <div style="font-size:9px;font-family:var(--mono);color:var(--txt3);letter-spacing:.06em;margin-bottom:2px">CHIẾN LƯỢC GỢI Ý</div>
+    ${_lastStrategyHtml}
+  </div>` : '';
+
   el.innerHTML = `<div style="padding:10px 12px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
       <span style="font-size:9px;font-family:var(--mono);color:var(--txt3);letter-spacing:.06em">PHÂN TÍCH BỔ SUNG</span>
       <button class="hist-cmp-btn" onclick="setHistView('cmp',document.getElementById('hist-view-cmp'))" title="So sánh 2 quỹ cạnh nhau">⚖️ So Sánh</button>
     </div>
-    ${heldSection}${peerSection}${fibSection}${(!peerSection&&!fibSection)?quickStats:''}
+    ${heldSection}${peerSection}${fibSection}${(!peerSection&&!fibSection)?quickStats:''}${stratSection}
   </div>`;
 }
 
@@ -4716,6 +4722,7 @@ function _renderHistAnalysis(code) {
       ? ` RSI rời vùng quá mua (<b style="color:var(--sell)">−${Math.abs(_rsiDelta)}pts/7 ngày</b>) — cẩn thận chốt lời.`
       : '')
     : '';
+  _lastStrategyHtml = '';  // reset before computing
   const strategyHtml = (() => {
     const cheapTech = rsi < 45 && bb < 45;
     const expTech   = rsi > 60 && bb > 65;
@@ -4830,6 +4837,7 @@ function _renderHistAnalysis(code) {
         <div style="font-size:11px;color:var(--txt1);line-height:1.6">${txt}</div>
       </div>`).join('');
   })();
+  _lastStrategyHtml = strategyHtml;
   // WEB-040: Monthly seasonality — avg return per calendar month from historical NAV
   const _seasonData = (() => {
     if (pts.length < 120) return null;
@@ -4933,10 +4941,6 @@ function _renderHistAnalysis(code) {
         : _autoCorr > 0.1 ? 'Xu hướng có xu hướng bền vững — nếu đang tăng thì thường tiếp tục tăng, nếu đang giảm thì thường tiếp tục giảm. Không nên "đánh ngược" xu hướng khi chưa có dấu hiệu đảo chiều rõ ràng.'
         : 'Quỹ hay tự phục hồi sau mỗi cú giảm — các đợt xuống mạnh thường không kéo dài. Đây là đặc điểm tốt cho chiến lược DCA (mua đều đặn).'}
     </div>` : ''}
-    <div style="background:var(--bg3);border-radius:8px;padding:10px 14px">
-      <div style="font-size:10px;color:var(--txt3);font-family:var(--mono);letter-spacing:.06em">CHIẾN LƯỢC GỢI Ý</div>
-      ${strategyHtml}
-    </div>
     <div style="margin-top:8px;background:#facc1511;border:1px solid #facc1522;border-radius:6px;padding:8px 12px;font-size:10px;color:var(--txt3);line-height:1.6">
       ⚠️ Phân tích dựa trên dữ liệu kỹ thuật lịch sử NAV. Không phải lời khuyên đầu tư tài chính. Quỹ mở có thể bị ảnh hưởng bởi thị trường chung, chính sách tiền tệ, và yếu tố vĩ mô ngoài tầm dự báo của chỉ báo kỹ thuật.
     </div>
@@ -5004,6 +5008,8 @@ function _renderHistAnalysis(code) {
     ${_col('DỰ BÁO TRƯỚC CÓ ĐÚNG KHÔNG?','📊',histPatternHtml)}
     ${_col('DỰ ĐOÁN GIÁ TỚI ĐÂY','🔮',predHtml)}
   </div>`;
+  // Re-render below-chart now that strategyHtml is ready
+  _renderBelowChart(_histPageCode);
 }
 
 // WEB-011: Gold analysis in Phân Tích tab ──────────────────────────────────────
