@@ -3760,25 +3760,26 @@ function _renderHistFundList() {
   const allCodes = Object.keys(sigs);
   const priority = allCodes.filter(c => held.has(c) || watched.has(c));
   const rest = allCodes.filter(c => !held.has(c) && !watched.has(c));
-  // Alert funds: oversold/overbought/strong signal
-  const isAlert = c => { const sv = sigs[c]; if (!sv) return false; return (sv.rsi != null && (sv.rsi < 32 || sv.rsi > 68)) || Math.abs(sv.score||0) >= 4; };
-  const alertColor = c => { const sv = sigs[c]||{}; return sv.rsi < 32 || sv.score >= 4 ? 'var(--buy)' : 'var(--sell)'; };
+  // Highlight: top 2 MUA (highest score ≥ 3) + top 2 BÁN (lowest score ≤ -3) only
+  const muaTop2 = new Set(allCodes.filter(c=>(sigs[c]?.score||0)>=3).sort((a,b)=>(sigs[b]?.score||0)-(sigs[a]?.score||0)).slice(0,2));
+  const banTop2 = new Set(allCodes.filter(c=>(sigs[c]?.score||0)<=-3).sort((a,b)=>(sigs[a]?.score||0)-(sigs[b]?.score||0)).slice(0,2));
+  const hlType = c => muaTop2.has(c) ? 'mua' : banTop2.has(c) ? 'ban' : null;
   // Apply sort mode
   const sortFn = {
     score: (a, b) => (sigs[b]?.score || 0) - (sigs[a]?.score || 0),
-    rsi:   (a, b) => (sigs[a]?.rsi ?? 50) - (sigs[b]?.rsi ?? 50),  // lowest RSI first (oversold)
+    rsi:   (a, b) => (sigs[a]?.rsi ?? 50) - (sigs[b]?.rsi ?? 50),
     default: (a, b) => a.localeCompare(b),
   }[_histFundSort] || ((a, b) => a.localeCompare(b));
   // Signal strength sort: MUA (score≥3) → TRUNG LẬP → BÁN (score≤-3)
   const sigOrder = c => { const sc = sigs[c]?.score||0; return sc >= 3 ? 0 : sc <= -3 ? 2 : 1; };
   const signalThenAlpha = (a, b) => sigOrder(a) - sigOrder(b) || a.localeCompare(b);
-  // Default: alerts first → held/watched (by signal) → rest (by signal)
-  const alertCodes = allCodes.filter(c => isAlert(c));
-  const heldWatchedNonAlert = priority.filter(c => !isAlert(c));
-  const restNonAlert = rest.filter(c => !isAlert(c));
+  // Default: highlight funds first (pinned top) → held/watched → rest, each group sorted by signal
+  const hlCodes = allCodes.filter(c => hlType(c));
+  const nonHlPriority = priority.filter(c => !hlType(c));
+  const nonHlRest = rest.filter(c => !hlType(c));
   const funds = _histFundSort === 'default'
-    ? [...alertCodes.sort(signalThenAlpha), ...heldWatchedNonAlert.sort(signalThenAlpha), ...restNonAlert.sort(signalThenAlpha)]
-    : [...allCodes].sort(sortFn);  // ignore held/watched pin when user picks explicit sort
+    ? [...hlCodes.sort(signalThenAlpha), ...nonHlPriority.sort(signalThenAlpha), ...nonHlRest.sort(signalThenAlpha)]
+    : [...allCodes].sort(sortFn);
   const countEl = document.getElementById('hist-fund-count');
   if (countEl) countEl.textContent = funds.length + ' quỹ';
   if (!allCodes.length) { el.innerHTML='<div style="color:var(--txt2);font-size:12px;padding:16px;text-align:center">Đang tải dữ liệu...</div>'; return; }
@@ -3826,24 +3827,22 @@ function _renderHistFundList() {
     const sigHtml = sig && sig!=='N/A' ? `<span class="badge ${sigClass}" style="font-size:10px;padding:2px 7px;font-weight:700">${sig}</span>` : '';
     const isWatched = watched.has(code);
     const starBtn = `<span onclick="event.stopPropagation();_toggleWatchFund('${code}')" title="${isWatched?'Bỏ theo dõi':'Thêm theo dõi'}" style="cursor:pointer;font-size:10px;color:${isWatched?'var(--c0)':'var(--txt3)'};padding:0 1px;line-height:1;flex-shrink:0">${isWatched?'★':'☆'}</span>`;
-    const heldBadge = held.has(code) ? `<span class="hist-fund-held">NẮM</span>` : '';
     const sc = s.score || 0;
-    const scColor = sc >= 3 ? 'var(--buy)' : sc <= -3 ? 'var(--sell)' : '#facc15';
-    const rsiDotC = (s.rsi != null) ? (s.rsi < 35 ? 'var(--buy)' : s.rsi > 65 ? 'var(--sell)' : 'var(--txt3)') : 'transparent';
-    const rsiLabel = s.rsi != null ? `<span style="font-size:9px;font-family:var(--mono);color:${rsiDotC}" title="RSI">RSI ${s.rsi.toFixed(0)}</span>` : '';
-    const alert = isAlert(code);
-    const alertBorderStyle = alert ? `border-left:3px solid ${alertColor(code)}` : 'border-left:3px solid transparent';
-    const rsi = s.rsi ?? 50;
-    const bb  = s.bb_pct ?? 50;
-    const rsiC = rsi < 35 ? 'var(--buy)' : rsi > 65 ? 'var(--sell)' : 'var(--hold)';
-    const bbC  = bb  < 20 ? 'var(--buy)' : bb  > 80 ? 'var(--sell)' : 'var(--hold)';
+    const hl = hlType(code);
+    // Full-row background for top-2 MUA and top-2 BÁN only
+    const hlBg = hl === 'mua' ? 'rgba(74,222,128,0.07)' : hl === 'ban' ? 'rgba(248,113,113,0.07)' : '';
+    const hlBorder = hl === 'mua' ? 'border-left:3px solid var(--buy)' : hl === 'ban' ? 'border-left:3px solid var(--sell)' : 'border-left:3px solid transparent';
+    // Score chip shown only on highlighted rows
+    const scC = hl === 'mua' ? 'var(--buy)' : hl === 'ban' ? 'var(--sell)' : '#facc15';
+    const scHtml = hl ? `<span style="font-size:9px;font-family:var(--mono);color:${scC};background:${scC}20;border:1px solid ${scC}55;border-radius:3px;padding:1px 5px;font-weight:700">Điểm ${sc>0?'+':''}${sc}</span>` : '';
     const sparkline = _sparklineSvg(code);
-    return `<div class="hist-fund-row ${_histPageCode===code?'active':''}" onclick="_selectHistFund('${code}',this)" style="${alertBorderStyle};display:flex;align-items:center;gap:8px;padding:9px 12px">
+    return `<div class="hist-fund-row ${_histPageCode===code?'active':''}" onclick="_selectHistFund('${code}',this)" style="${hlBorder};${hlBg?'background:'+hlBg+';':''}display:flex;align-items:center;gap:8px;padding:9px 12px">
       <div style="flex:1;min-width:0">
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;flex-wrap:wrap">
           <span class="sig-code" style="font-size:13px">${code}</span>
           ${held.has(code)?'<span style="font-size:9px;font-family:var(--mono);color:var(--c0);background:var(--c0)22;border:1px solid var(--c0)44;border-radius:3px;padding:0 5px">NẮM</span>':''}
           ${sigHtml}
+          ${scHtml}
         </div>
         <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
           <span style="font-size:12px;font-family:var(--mono);color:var(--txt1)">${nav}</span>
@@ -4013,10 +4012,11 @@ function renderHistChart(pts, code) {
       ...txDatasets
     ]},
     options:{responsive:true, maintainAspectRatio:false, animation:false,
+      layout:{padding:0},
       plugins:{legend:{display:vals.length>50||(txBuy.length+txSell.length>0), labels:{color:'#6b7280',font:{size:9},boxWidth:12,padding:8, filter:(item)=>item.text!=='NAV'||vals.length>50}},
         tooltip:{mode:'index',intersect:false, callbacks:{label:(c)=>c.dataset.label==='NAV'?`NAV: ${fmt(Math.round(c.parsed.y))} đ`:`${c.dataset.label}: ${fmt(Math.round(c.parsed.y))}`}},
         crosshair:_crosshairPlugin},
-      scales:{x:{type:'category',ticks:{maxTicksLimit:8,color:'#6b7280',font:{size:10}},grid:{color:'rgba(255,255,255,.04)'}}, y:{ticks:{color:'#6b7280',font:{size:10}, callback:v=>fmt(Math.round(v))},grid:{color:'rgba(255,255,255,.04)'}}}}
+      scales:{x:{type:'category',ticks:{maxTicksLimit:8,color:'#6b7280',font:{size:10}},grid:{color:'rgba(255,255,255,.04)'}}, y:{position:'right',ticks:{color:'#6b7280',font:{size:10}, callback:v=>fmt(Math.round(v))},grid:{color:'rgba(255,255,255,.04)'}}}}
   });
   // Force chart to fill container width after layout settles
   setTimeout(() => { if (_histPageChart) _histPageChart.resize(); }, 60);
@@ -4117,14 +4117,27 @@ function _renderBelowChart(code, currentNav) {
     </div>`;
   })() : '';
 
-  if (!peerSection && !fibSection && !heldSection) { el.innerHTML = ''; return; }
+  // Fallback: always show quick indicators even when no peer/fib data
+  const sc2 = s.score ?? null;
+  const rsi2 = s.rsi ?? null;
+  const bb2 = s.bb_pct ?? null;
+  const vol2 = s.volatility ?? s.vol ?? null;
+  const quickStats = (sc2!=null||rsi2!=null||bb2!=null||vol2!=null) ? `<div style="margin-bottom:10px">
+    <div style="font-size:9px;font-family:var(--mono);color:var(--txt3);letter-spacing:.06em;margin-bottom:6px">CHỈ SỐ NHANH</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
+      ${sc2!=null?`<div style="background:var(--bg);border-radius:5px;padding:5px 8px;text-align:center"><div style="font-size:9px;color:var(--txt3)">Smart Score</div><div style="font-family:var(--mono);font-size:14px;font-weight:700;color:${sc2>=3?'var(--buy)':sc2<=-3?'var(--sell)':'#facc15'}">${sc2>0?'+':''}${sc2}</div></div>`:''}
+      ${rsi2!=null?`<div style="background:var(--bg);border-radius:5px;padding:5px 8px;text-align:center"><div style="font-size:9px;color:var(--txt3)">RSI (14)</div><div style="font-family:var(--mono);font-size:14px;font-weight:700;color:${rsi2<35?'var(--buy)':rsi2>65?'var(--sell)':'var(--txt2)'}">${rsi2.toFixed(1)}</div></div>`:''}
+      ${bb2!=null?`<div style="background:var(--bg);border-radius:5px;padding:5px 8px;text-align:center"><div style="font-size:9px;color:var(--txt3)">BB %B</div><div style="font-family:var(--mono);font-size:14px;font-weight:700;color:${bb2<25?'var(--buy)':bb2>75?'var(--sell)':'var(--txt2)'}">${bb2.toFixed(1)}%</div></div>`:''}
+      ${vol2!=null?`<div style="background:var(--bg);border-radius:5px;padding:5px 8px;text-align:center"><div style="font-size:9px;color:var(--txt3)">Dao động/năm</div><div style="font-family:var(--mono);font-size:14px;font-weight:700;color:${vol2<8?'var(--buy)':vol2>18?'var(--sell)':'#facc15'}">${vol2.toFixed(1)}%</div></div>`:''}
+    </div>
+  </div>` : '';
 
   el.innerHTML = `<div style="padding:10px 12px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
       <span style="font-size:9px;font-family:var(--mono);color:var(--txt3);letter-spacing:.06em">PHÂN TÍCH BỔ SUNG</span>
       <button class="hist-cmp-btn" onclick="setHistView('cmp',document.getElementById('hist-view-cmp'))" title="So sánh 2 quỹ cạnh nhau">⚖️ So Sánh</button>
     </div>
-    ${heldSection}${peerSection}${fibSection}
+    ${heldSection}${peerSection}${fibSection}${(!peerSection&&!fibSection)?quickStats:''}
   </div>`;
 }
 
