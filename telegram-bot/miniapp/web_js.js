@@ -402,7 +402,7 @@ async function loadMe() {
   try {
     _me = await apiFetch('/api/me');
     renderTierBar(_me);
-    apiFetch(`/api/gold?user_id=${USER_ID}`).then(d=>{_goldData=d;renderPfBanner();renderPfAlloc();renderPfGoldSub();}).catch(()=>{});
+    apiFetch(`/api/gold?user_id=${USER_ID}`).then(d=>{_goldData=d;renderPfBanner();renderPfAlloc();renderPfGoldSub();_renderHistFundList();}).catch(()=>{});
     renderPortfolio(_me);
   } catch(e) { document.getElementById('pf-sub-ccq').innerHTML=renderErr('Lỗi tải: '+e.message); }
 }
@@ -2794,10 +2794,11 @@ function renderHistChart(pts, code) {
   const hdrEl = document.getElementById('hist-nav-header');
   if (hdrEl) {
     const latestDate = filtered[filtered.length-1]?.date || '';
-    hdrEl.innerHTML = `<div style="display:flex;align-items:baseline;gap:10px">
+    hdrEl.innerHTML = `<div style="display:flex;align-items:center;gap:8px">
       <span style="font-family:var(--mono);font-size:10px;color:var(--txt2);letter-spacing:.08em">${code}</span>
       <span class="hist-nav-hval">${fmt(last)} đ</span>
       <span class="hist-nav-hchg pnl ${pnlC(chg)}">${chg>=0?'+':''}${chg.toFixed(2)}%</span>
+      <button onclick="(()=>{const d=document.getElementById('manual-nav-panel');if(d){d.open=!d.open;if(d.open)_initBulkRows();}})()" title="Nhập NAV thủ công" style="margin-left:auto;padding:2px 8px;font-size:10px;font-family:var(--mono);background:var(--bg3);border:1px solid var(--c0)66;border-radius:4px;color:var(--c0);cursor:pointer;flex-shrink:0;line-height:1.4">✏️ NAV</button>
     </div>
     <div style="font-size:10px;color:var(--txt2);margin-top:2px">${latestDate}</div>`;
   }
@@ -2978,7 +2979,7 @@ function _renderBelowChart(code, currentNav) {
     ${_lastStrategyHtml}
   </div>` : '';
 
-  el.innerHTML = `<div style="padding:10px 12px">
+  el.innerHTML = `<div style="padding:10px 12px;min-height:100%;box-sizing:border-box">
     ${heldSection}${peerSection}${fibSection}${(!peerSection&&!fibSection)?quickStats:''}${stratSection}
   </div>`;
 }
@@ -3034,7 +3035,7 @@ function _renderGoldBelowChart(el) {
     <div style="font-size:9px;font-family:var(--mono);color:var(--txt3);letter-spacing:.06em;margin-bottom:4px">PHÍ BÙ XAU (CHÊNH LỆCH SJC)</div>
     <div style="background:var(--bg);border-radius:5px;padding:6px 10px;font-family:var(--mono);font-size:13px;font-weight:600;color:${s.phi_bu_xau>5?'var(--sell)':'var(--txt1)'}">${s.phi_bu_xau?.toFixed(1)}% <span style="font-size:10px;color:var(--txt3);font-weight:400">so với giá thế giới</span></div>
   </div>` : '';
-  el.innerHTML = `<div style="padding:10px 12px">${heldHtml}${statsHtml}${phiBuHtml}</div>`;
+  el.innerHTML = `<div style="padding:10px 12px;min-height:100%;box-sizing:border-box">${heldHtml}${statsHtml}${phiBuHtml}</div>`;
 }
 
 async function submitSingleNav() {
@@ -4982,8 +4983,8 @@ function _renderHistAnalysis(code) {
           <div style="font-size:10px;color:var(--txt3)">${ftLabel} · TA ${relLabel}</div>
         </div>
       </div>
-      <div style="font-size:12px;color:var(--txt1);line-height:1.7;font-weight:500${apiConclusion ? ';margin-bottom:10px' : ''}">${summaryLine}${_summaryRsiCtx}</div>
-      ${apiConclusion ? `<div style="font-size:11px;color:var(--txt2);line-height:1.7;border-top:1px solid var(--bdr);padding-top:8px">${esc(apiConclusion)}</div>` : ''}
+      <div style="font-size:14px;color:var(--txt1);line-height:1.7;font-weight:500${apiConclusion ? ';margin-bottom:10px' : ''}">${summaryLine}${_summaryRsiCtx}</div>
+      ${apiConclusion ? `<div style="font-size:13px;color:var(--txt2);line-height:1.7;border-top:1px solid var(--bdr);padding-top:8px">${esc(apiConclusion)}</div>` : ''}
     </div>
     ${s?.tech_reliability === 'LOW' ? `<div style="background:#facc1511;border:1px solid #facc1533;border-radius:8px;padding:8px 12px;margin-bottom:8px;display:flex;gap:8px;align-items:flex-start"><span style="font-size:13px">⚠️</span><div style="font-size:10px;color:var(--txt2);line-height:1.6"><b style="color:#facc15">TA độ tin cậy THẤP</b> — ${s?.fund_type === 'bond' ? 'Quỹ trái phiếu có NAV biến động nhỏ và phân phối đều: RSI/MACD/BB được thiết kế cho cổ phiếu, ít hiệu quả hơn với trái phiếu. Ưu tiên xem Hiệu suất dài hạn và Sharpe ratio; tín hiệu kỹ thuật chỉ mang tính tham khảo.' : 'Tín hiệu kỹ thuật hiện ít tin cậy — cân nhắc thêm yếu tố cơ bản.'}</div></div>` : ''}
     ${_entryQualHtml}
