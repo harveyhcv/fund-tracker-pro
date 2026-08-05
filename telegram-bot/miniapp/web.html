@@ -292,14 +292,14 @@ canvas{width:100%!important;height:100%!important}
 .hist-analysis-col{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;border-right:1px solid var(--bdr)}
 #hist-analysis-panel{font-size:13px;line-height:1.55}
 /* Chart sub-column — narrow right sidebar on desktop */
-.hist-chart-col{width:300px;min-width:240px;flex-shrink:0;display:flex;flex-direction:column;overflow:hidden}
+.hist-chart-col{width:320px;min-width:240px;max-width:320px;flex-shrink:0;flex-grow:0;display:flex;flex-direction:column;overflow:hidden}
 .hist-nav-header{padding:10px 14px 8px;border-bottom:1px solid var(--bdr);flex-shrink:0;background:var(--bg2)}
 .hist-nav-hval{font-family:var(--mono);font-size:18px;font-weight:700;color:var(--txt)}
 .hist-nav-hchg{font-family:var(--mono);font-size:13px;font-weight:600;margin-left:8px}
 .hist-nav-right{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
 #hist-chart-area{height:210px;max-height:230px;min-height:160px;flex-shrink:0;position:relative;padding:0}
 #hist-chart-area canvas{width:100%!important;height:100%!important;display:block}
-#hist-below-chart{border-top:1px solid var(--bdr);overflow-y:auto;max-height:320px}
+#hist-below-chart{border-top:1px solid var(--bdr);flex:1;overflow-y:auto;min-height:0}
 .hist-cmp-btn{display:flex;align-items:center;gap:5px;padding:5px 12px;border:1px solid var(--bdr);border-radius:6px;background:var(--bg3);color:var(--txt2);font-size:11px;font-family:var(--mono);cursor:pointer;white-space:nowrap;letter-spacing:.03em}
 .hist-cmp-btn:hover{border-color:var(--c0);color:var(--c0)}
 /* hist-fund-row inherits sig-row grid layout; active/hover states */
@@ -991,8 +991,8 @@ canvas{width:100%!important;height:100%!important}
           <div id="hist-chart-area">
             <div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--txt2);font-size:12px">Chọn quỹ bên trái</div>
           </div>
-          <!-- Below chart: DCA calculator + key levels -->
-          <div id="hist-below-chart" style="flex-shrink:0;overflow-y:auto"></div>
+          <!-- Below chart: peer ranking + strategy + key levels -->
+          <div id="hist-below-chart" style="flex:1;min-height:0;overflow-y:auto"></div>
         </div>
       </div>
 
