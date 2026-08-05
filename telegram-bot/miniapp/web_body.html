@@ -608,8 +608,7 @@
           <div style="display:flex;flex-wrap:wrap;gap:4px;padding:6px 10px 4px;border-bottom:1px solid var(--bdr);flex-shrink:0;align-items:center">
             <button id="hist-view-nav"  class="tab active" onclick="setHistView('nav',this)"  style="font-size:10px;padding:4px 8px">📈 NAV</button>
             <button id="hist-view-t2"   class="tab"        onclick="setHistView('t2',this)"   style="font-size:10px;padding:4px 8px">⏱ T+2</button>
-            <button id="hist-view-gold" class="tab"        onclick="setHistView('gold',this)" style="font-size:10px;padding:4px 8px">🪙 Vàng</button>
-            <button id="hist-view-cmp"  class="tab"        onclick="setHistView('cmp',this)"  style="font-size:10px;padding:4px 8px">⚖️ So Sánh</button>
+            <button id="hist-view-gold" class="tab"        onclick="setHistView('gold',this)" style="font-size:10px;padding:4px 8px;display:none">🪙 Vàng</button>
           </div>
           <div style="display:flex;gap:3px;padding:4px 10px;border-bottom:1px solid var(--bdr);flex-shrink:0" id="hist-range-bar">
             <button class="hist-range-btn active" onclick="setHistRange('1M',this)" style="flex:1;font-size:10px;padding:3px 4px">1T</button>
@@ -622,6 +621,8 @@
           <div id="hist-chart-area">
             <div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--txt2);font-size:12px">Chọn quỹ bên trái</div>
           </div>
+          <!-- Below chart: DCA calculator + key levels -->
+          <div id="hist-below-chart" style="flex-shrink:0;overflow-y:auto"></div>
         </div>
       </div>
 

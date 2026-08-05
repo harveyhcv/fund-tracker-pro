@@ -2608,12 +2608,15 @@ function _renderHistFundList() {
     rsi:   (a, b) => (sigs[a]?.rsi ?? 50) - (sigs[b]?.rsi ?? 50),  // lowest RSI first (oversold)
     default: (a, b) => a.localeCompare(b),
   }[_histFundSort] || ((a, b) => a.localeCompare(b));
-  // Default: alerts first → held/watched → rest (all alphabetical within group)
+  // Signal strength sort: MUA (score≥3) → TRUNG LẬP → BÁN (score≤-3)
+  const sigOrder = c => { const sc = sigs[c]?.score||0; return sc >= 3 ? 0 : sc <= -3 ? 2 : 1; };
+  const signalThenAlpha = (a, b) => sigOrder(a) - sigOrder(b) || a.localeCompare(b);
+  // Default: alerts first → held/watched (by signal) → rest (by signal)
   const alertCodes = allCodes.filter(c => isAlert(c));
   const heldWatchedNonAlert = priority.filter(c => !isAlert(c));
   const restNonAlert = rest.filter(c => !isAlert(c));
   const funds = _histFundSort === 'default'
-    ? [...alertCodes.sort(), ...heldWatchedNonAlert.sort(), ...restNonAlert.sort()]
+    ? [...alertCodes.sort(signalThenAlpha), ...heldWatchedNonAlert.sort(signalThenAlpha), ...restNonAlert.sort(signalThenAlpha)]
     : [...allCodes].sort(sortFn);  // ignore held/watched pin when user picks explicit sort
   const countEl = document.getElementById('hist-fund-count');
   if (countEl) countEl.textContent = funds.length + ' quỹ';
@@ -2623,16 +2626,30 @@ function _renderHistFundList() {
   const goldActiveClass = _histPageCode==='GOLD_SJC' ? 'active' : '';
   const goldSigLabel = gs?.signal || '';
   const goldSigClass = goldSigLabel.includes('MUA')?'buy':goldSigLabel.includes('THẬN')||goldSigLabel.includes('BÁN')?'sell':'hold';
-  const goldChgHtml = gs?.chg_pct!=null ? `<span class="pnl ${pnlC(gs.chg_pct)}" style="font-size:10px">${gs.chg_pct>=0?'+':''}${gs.chg_pct.toFixed(2)}%</span>` : '';
-  const goldPriceHtml = gs?.price ? `<span style="font-family:var(--mono);font-size:10px;color:var(--txt2)">${(gs.price/1e6).toFixed(0)}M</span>` : '';
-  const goldRow = `<div class="hist-fund-row ${goldActiveClass}" onclick="_selectHistFund('GOLD_SJC',this)" style="display:flex;flex-direction:column;gap:4px;padding:8px 12px;border-left:2px solid #fbbf24">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:6px">
-      <span style="font-family:var(--mono);font-size:12px;font-weight:700;color:#fbbf24">🥇 VÀNG</span>
-      ${goldSigLabel ? `<span class="badge ${goldSigClass}" style="font-size:9px;padding:1px 5px">${goldSigLabel}</span>` : ''}
+  const goldChgHtml = gs?.chg_pct!=null ? `<span class="pnl ${pnlC(gs.chg_pct)}" style="font-size:11px;font-weight:600">${gs.chg_pct>=0?'+':''}${gs.chg_pct.toFixed(2)}%</span>` : '';
+  const goldPriceHtml = gs?.price ? `<span style="font-family:var(--mono);font-size:12px;color:var(--txt1);font-weight:600">${(gs.price/1e6).toFixed(1)}M đ</span>` : '';
+  const goldRsi = gs?.rsi != null ? gs.rsi : null;
+  const goldBb  = gs?.bb_pct != null ? gs.bb_pct : null;
+  const goldMacd = gs?.macd_hist != null ? gs.macd_hist : null;
+  const goldRsiC = goldRsi!=null ? (goldRsi<35?'var(--buy)':goldRsi>65?'var(--sell)':'var(--txt3)') : 'var(--txt3)';
+  const goldBbC  = goldBb!=null  ? (goldBb<25?'var(--buy)':goldBb>75?'var(--sell)':'var(--txt3)') : 'var(--txt3)';
+  const goldScore = gs?.score ?? null;
+  const goldScoreC = goldScore!=null ? (goldScore>=3?'var(--buy)':goldScore<=-3?'var(--sell)':'#facc15') : 'var(--txt3)';
+  const goldIndHtml = (goldRsi!=null||goldBb!=null||goldScore!=null) ? `<div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap">
+    ${goldScore!=null?`<span style="font-size:9px;font-family:var(--mono);color:${goldScoreC};background:${goldScoreC}22;border:1px solid ${goldScoreC}44;border-radius:3px;padding:1px 5px">Điểm ${goldScore>0?'+':''}${goldScore}</span>`:''}
+    ${goldRsi!=null?`<span style="font-size:9px;font-family:var(--mono);color:${goldRsiC}">RSI ${goldRsi.toFixed(0)}</span>`:''}
+    ${goldBb!=null?`<span style="font-size:9px;font-family:var(--mono);color:${goldBbC}">BB ${goldBb.toFixed(0)}%</span>`:''}
+    ${gs?.chg7!=null?`<span style="font-size:9px;font-family:var(--mono);color:${pnlC(gs.chg7)}">7N ${gs.chg7>=0?'+':''}${gs.chg7.toFixed(1)}%</span>`:''}
+  </div>` : '';
+  const goldRow = `<div class="hist-fund-row ${goldActiveClass}" onclick="_selectHistFund('GOLD_SJC',this)" style="display:flex;flex-direction:column;gap:2px;padding:9px 12px;border-left:3px solid #fbbf24">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:2px">
+      <span style="font-family:var(--mono);font-size:13px;font-weight:700;color:#fbbf24">🥇 VÀNG SJC</span>
+      ${goldSigLabel ? `<span class="badge ${goldSigClass}" style="font-size:10px;padding:2px 7px;font-weight:700">${goldSigLabel}</span>` : ''}
     </div>
-    <div style="display:flex;align-items:center;gap:6px">
+    <div style="display:flex;align-items:center;gap:8px">
       ${goldPriceHtml}${goldChgHtml}
     </div>
+    ${goldIndHtml}
   </div>`;
   const _todayForHist = new Date().toISOString().slice(0,10);
   el.innerHTML = goldRow + funds.map(code => {
@@ -2645,7 +2662,7 @@ function _renderHistFundList() {
     const _staleH = (_ndH && _ndH !== _todayForHist) ? `<span style="font-size:9px;color:#f59e0b;font-family:var(--mono);padding:1px 5px;border:1px solid #f59e0b55;border-radius:3px;background:#f59e0b15;white-space:nowrap" title="NAV từ ngày ${_fmtFullDateH(_ndH)}">📅 ${_fmtFullDateH(_ndH)}</span>` : '';
     const sig = s.signal || '';
     const sigClass = sig.includes('MUA')?'buy':sig.includes('BÁN')||sig.includes('BAN')?'sell':'hold';
-    const sigHtml = sig && sig!=='N/A' ? `<span class="badge ${sigClass}" style="font-size:9px;padding:1px 5px">${sig}</span>` : '';
+    const sigHtml = sig && sig!=='N/A' ? `<span class="badge ${sigClass}" style="font-size:10px;padding:2px 7px;font-weight:700">${sig}</span>` : '';
     const isWatched = watched.has(code);
     const starBtn = `<span onclick="event.stopPropagation();_toggleWatchFund('${code}')" title="${isWatched?'Bỏ theo dõi':'Thêm theo dõi'}" style="cursor:pointer;font-size:10px;color:${isWatched?'var(--c0)':'var(--txt3)'};padding:0 1px;line-height:1;flex-shrink:0">${isWatched?'★':'☆'}</span>`;
     const heldBadge = held.has(code) ? `<span class="hist-fund-held">NẮM</span>` : '';
@@ -2707,6 +2724,9 @@ function _selectHistFund(code, el) {
   el?.classList.add('active');
   const lbl = document.getElementById('hist-fund-label');
   if (lbl) lbl.textContent = code === 'GOLD_SJC' ? '🥇 VÀNG SJC' : code;
+  // Show/hide Vàng view button based on selected fund
+  const goldBtn = document.getElementById('hist-view-gold');
+  if (goldBtn) goldBtn.style.display = code === 'GOLD_SJC' ? '' : 'none';
   if (_histView === 'cmp') { _histPageCode = code; loadComparisonView(); return; }
   if (code === 'GOLD_SJC') loadGoldAnalysis();
   else loadHistChart(code);
@@ -2837,9 +2857,114 @@ function renderHistChart(pts, code) {
         crosshair:_crosshairPlugin},
       scales:{x:{type:'category',ticks:{maxTicksLimit:8,color:'#6b7280',font:{size:10}},grid:{color:'rgba(255,255,255,.04)'}}, y:{ticks:{color:'#6b7280',font:{size:10}, callback:v=>fmt(Math.round(v))},grid:{color:'rgba(255,255,255,.04)'}}}}
   });
+  // Force chart to fill container width after layout settles
+  setTimeout(() => { if (_histPageChart) _histPageChart.resize(); }, 60);
+  _renderBelowChart(code, vals[vals.length-1]);
 }
 function applyHistDateRange() {
   if (_histPageData) renderHistChart(_histPageData, _histPageCode);
+}
+
+function _renderBelowChart(code, currentNav) {
+  const el = document.getElementById('hist-below-chart'); if (!el) return;
+  if (!code || code === 'GOLD_SJC') { el.innerHTML = ''; return; }
+  const s = (_signals?.[code]) || (_marketData?.[code]) || {};
+  const nav = currentNav || s.nav || 0;
+  const held = _me?.portfolio?.items?.find(h => h.code === code);
+
+  // Peer comparison within same fund type
+  const allSigs = Object.entries(_signals || _marketData || {}).filter(([c]) => c !== code);
+  const ft = s.fund_type || '';
+  const peers = ft ? allSigs.filter(([,ps]) => ps.fund_type === ft) : allSigs;
+  const peerCount = peers.length;
+  const p30 = s.chg30 ?? s.chg_30 ?? null;
+  const p7  = s.chg7  ?? s.chg_7  ?? null;
+  const rank30 = (p30 != null && peerCount > 0) ? peers.filter(([,ps]) => (ps.chg30 ?? ps.chg_30 ?? -999) > p30).length + 1 : null;
+  const rank7  = (p7  != null && peerCount > 0) ? peers.filter(([,ps]) => (ps.chg7  ?? ps.chg_7  ?? -999) > p7 ).length + 1 : null;
+  const total  = peerCount + 1;
+
+  const rankRow = (label, rank, tot, pct) => {
+    if (rank == null) return '';
+    const bar = Math.round((1 - (rank-1)/Math.max(tot-1,1)) * 100);
+    const c = bar >= 60 ? 'var(--buy)' : bar >= 35 ? '#facc15' : 'var(--sell)';
+    return `<div style="margin-bottom:6px">
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--txt2);margin-bottom:2px">
+        <span>${label}</span>
+        <span style="font-family:var(--mono);color:${c}">Hạng ${rank}/${tot} <span style="color:var(--txt3)">(${pct>=0?'+':''}${pct?.toFixed(2)}%)</span></span>
+      </div>
+      <div style="height:4px;background:var(--bdr);border-radius:2px"><div style="height:100%;width:${bar}%;background:${c};border-radius:2px"></div></div>
+    </div>`;
+  };
+
+  // Fibonacci levels from 52w high/low
+  const hi52 = s.high_52w || s.hi52 || null;
+  const lo52 = s.low_52w  || s.lo52  || null;
+  const fibLevels = (hi52 && lo52 && nav > 0) ? (() => {
+    const rng = hi52 - lo52;
+    const f = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1].map(r => ({r, v: lo52 + rng * r}));
+    const cur = nav;
+    return f.filter(({v}) => v > 0).map(({r, v}) => {
+      const diff = ((v - cur) / cur * 100);
+      const isAbove = v > cur;
+      const label = r === 0 ? 'Đáy 52T' : r === 1 ? 'Đỉnh 52T' : `Fib ${(r*100).toFixed(1)}%`;
+      const c = isAbove ? 'var(--sell)' : 'var(--buy)';
+      const role = isAbove ? '↑ Kháng cự' : '↓ Hỗ trợ';
+      if (r === 0.5 && Math.abs(diff) < 1) return null; // skip if very close to current
+      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid var(--bdr)15">
+        <span style="font-size:10px;color:var(--txt3)">${label} <span style="font-size:9px;color:${c}">${role}</span></span>
+        <span style="font-family:var(--mono);font-size:10px;color:${c}">${fmt(Math.round(v))} đ <span style="font-size:9px">(${diff>=0?'+':''}${diff.toFixed(1)}%)</span></span>
+      </div>`;
+    }).filter(Boolean).join('');
+  })() : '';
+
+  // MA distance
+  const ma20 = s.ma20 || null;
+  const ma50 = s.ma50 || null;
+  const maRow = (nav > 0 && (ma20 || ma50)) ? `<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
+    ${ma20 ? (() => { const d=((nav-ma20)/ma20*100); const c=d>=0?'var(--buy)':'var(--sell)'; return `<div style="flex:1;background:var(--bg);border:1px solid var(--bdr);border-radius:5px;padding:5px 8px;text-align:center"><div style="font-size:9px;color:var(--txt3)">Giá vs TB 20 ngày</div><div style="font-family:var(--mono);font-size:12px;font-weight:600;color:${c}">${d>=0?'+':''}${d.toFixed(1)}%</div></div>`; })() : ''}
+    ${ma50 ? (() => { const d=((nav-ma50)/ma50*100); const c=d>=0?'var(--buy)':'var(--sell)'; return `<div style="flex:1;background:var(--bg);border:1px solid var(--bdr);border-radius:5px;padding:5px 8px;text-align:center"><div style="font-size:9px;color:var(--txt3)">Giá vs TB 50 ngày</div><div style="font-family:var(--mono);font-size:12px;font-weight:600;color:${c}">${d>=0?'+':''}${d.toFixed(1)}%</div></div>`; })() : ''}
+  </div>` : '';
+
+  const peerSection = (rank30 || rank7) ? `<div style="margin-bottom:10px">
+    <div style="font-size:9px;font-family:var(--mono);color:var(--txt3);letter-spacing:.06em;margin-bottom:6px">XẾP HẠNG TRONG NHÓM${ft ? ' — '+ft : ''} (${total} quỹ)</div>
+    ${rankRow('30 ngày qua', rank30, total, p30)}
+    ${rankRow('7 ngày qua', rank7, total, p7)}
+  </div>` : '';
+
+  const fibSection = fibLevels ? `<div style="margin-bottom:10px">
+    <div style="font-size:9px;font-family:var(--mono);color:var(--txt3);letter-spacing:.06em;margin-bottom:4px">MỨC GIÁ QUAN TRỌNG (Fibonacci 52 tuần)</div>
+    ${fibLevels}
+    ${maRow}
+  </div>` : (maRow ? `<div style="margin-bottom:10px">${maRow}</div>` : '');
+
+  const heldSection = held ? (() => {
+    const heldCost = held.cost_per_unit || 0;
+    const heldUnits = held.units || 0;
+    const pnlPct = (heldCost > 0 && nav > 0) ? ((nav - heldCost) / heldCost * 100) : 0;
+    const breakevenUnits = heldCost > 0 && nav > 0 && heldCost > nav ? Math.ceil((heldCost - nav) / nav * heldUnits * 10) / 10 : null;
+    const c = pnlPct >= 0 ? 'var(--buy)' : 'var(--sell)';
+    return `<div style="background:var(--bg);border:1px solid var(--bdr)44;border-radius:6px;padding:8px 10px;margin-bottom:10px">
+      <div style="font-size:9px;font-family:var(--mono);color:var(--txt3);letter-spacing:.06em;margin-bottom:6px">VỊ THẾ ĐANG NẮM GIỮ</div>
+      <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px">
+        <span style="color:var(--txt3)">${heldUnits.toFixed(2)} CCQ × ${fmt(Math.round(nav))} đ</span>
+        <span style="font-family:var(--mono);font-weight:600;color:${c}">${pnlPct>=0?'+':''}${pnlPct.toFixed(2)}%</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--txt3)">
+        <span>Giá vốn: ${fmt(Math.round(heldCost))} đ/CCQ</span>
+        <span style="color:${c}">${pnlPct>=0?'Đang lãi':'Đang lỗ'}</span>
+      </div>
+    </div>`;
+  })() : '';
+
+  if (!peerSection && !fibSection && !heldSection) { el.innerHTML = ''; return; }
+
+  el.innerHTML = `<div style="padding:10px 12px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <span style="font-size:9px;font-family:var(--mono);color:var(--txt3);letter-spacing:.06em">PHÂN TÍCH BỔ SUNG</span>
+      <button class="hist-cmp-btn" onclick="setHistView('cmp',document.getElementById('hist-view-cmp'))" title="So sánh 2 quỹ cạnh nhau">⚖️ So Sánh</button>
+    </div>
+    ${heldSection}${peerSection}${fibSection}
+  </div>`;
 }
 
 async function submitSingleNav() {
@@ -3598,34 +3723,34 @@ function _checkPredAccuracy(code, actualPts) {
 // ── Analysis panel below chart ─────────────────────────────────────────────────
 function _mkSect(title, icon, body) {
   return `<div style="margin-bottom:16px">
-    <div style="font-size:12px;font-family:var(--mono);color:var(--txt1);letter-spacing:.06em;margin-bottom:10px;display:flex;align-items:center;gap:6px;border-bottom:1px solid var(--bdr);padding-bottom:6px">
-      <span>${icon}</span><span style="font-weight:600">${title}</span>
+    <div style="font-size:13px;font-family:var(--mono);color:var(--txt1);letter-spacing:.05em;margin-bottom:10px;display:flex;align-items:center;gap:6px;border-bottom:1px solid var(--bdr);padding-bottom:6px">
+      <span>${icon}</span><span style="font-weight:700">${title}</span>
     </div>${body}</div>`;
 }
 function _mkRow(label, value, sub='') {
-  return `<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--bdr)">
-    <span style="font-size:12px;color:var(--txt2)">${label}</span>
+  return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--bdr)">
+    <span style="font-size:13px;color:var(--txt2)">${label}</span>
     <div style="text-align:right">
-      <div style="font-family:var(--mono);font-size:13px;font-weight:600">${value}</div>
+      <div style="font-family:var(--mono);font-size:14px;font-weight:600">${value}</div>
       ${sub?`<div style="font-size:11px;color:var(--txt3);margin-top:1px">${sub}</div>`:''}
     </div>
   </div>`;
 }
 function _mkMetric(label, val, color, hint) {
   return `<div style="background:var(--bg3);border-radius:8px;padding:12px 8px;text-align:center">
-    <div style="font-size:11px;color:var(--txt3);margin-bottom:5px;line-height:1.2">${label}</div>
-    <div style="font-family:var(--mono);font-size:17px;font-weight:700;color:${color}">${val}</div>
-    ${hint?`<div style="font-size:11px;color:${color};margin-top:4px;line-height:1.3">${hint}</div>`:''}
+    <div style="font-size:12px;color:var(--txt3);margin-bottom:5px;line-height:1.3">${label}</div>
+    <div style="font-family:var(--mono);font-size:19px;font-weight:700;color:${color}">${val}</div>
+    ${hint?`<div style="font-size:12px;color:${color};margin-top:5px;line-height:1.4">${hint}</div>`:''}
   </div>`;
 }
 function _mkPerfRow(label, pct, sub='') {
   if (pct == null) return _mkRow(label, '—', sub);
   const color = pct >= 0 ? 'var(--buy)' : 'var(--sell)';
   const barW = Math.min(Math.abs(pct) / 25 * 50, 50);
-  return `<div style="padding:7px 0;border-bottom:1px solid var(--bdr)">
+  return `<div style="padding:8px 0;border-bottom:1px solid var(--bdr)">
     <div style="display:flex;justify-content:space-between;align-items:center">
-      <span style="font-size:12px;color:var(--txt2)">${label}</span>
-      <span style="font-family:var(--mono);font-size:13px;font-weight:700;color:${color}">${pct>=0?'+':''}${pct.toFixed(2)}%</span>
+      <span style="font-size:13px;color:var(--txt2)">${label}</span>
+      <span style="font-family:var(--mono);font-size:14px;font-weight:700;color:${color}">${pct>=0?'+':''}${pct.toFixed(2)}%</span>
     </div>
     <div style="height:3px;background:var(--bdr);border-radius:2px;margin-top:5px;position:relative">
       <div style="position:absolute;${pct>=0?'left:50%':'right:50%'};width:${barW}%;height:100%;background:${color};border-radius:2px"></div>
@@ -4815,8 +4940,8 @@ function _renderHistAnalysis(code) {
   const _bbLbl = _bb==null?'—':_bb<20?'Giá đang rất thấp → cơ hội mua':_bb>80?'Giá đang rất cao → cẩn thận':'Giá ở mức bình thường';
   const _macdC = _macd==null?'var(--txt2)':_macd>0?'var(--buy)':'var(--sell)';
   const _macdLbl = _macd==null?'—':_macd>50?'Tăng mạnh':_macd>0?'Đang tăng dần':_macd>-50?'Đang giảm dần':'Giảm mạnh';
-  const _mkTile = (label,val,color,sublabel) => `<div style="background:var(--bg2);border-radius:8px;padding:10px 8px;text-align:center;border:1px solid var(--bdr)"><div style="font-size:9px;color:var(--txt3);margin-bottom:4px;font-family:var(--mono);letter-spacing:.06em">${label}</div><div style="font-size:19px;font-weight:700;font-family:var(--mono);color:${color};line-height:1.1">${val}</div><div style="font-size:9px;color:${color};margin-top:3px;font-weight:600">${sublabel}</div></div>`;
-  const compactIndRow = s ? `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:12px">${_mkTile('ĐÀ MUA/BÁN',_rsi!=null?_rsi.toFixed(1):'—',_rsiC,_rsiLbl)}${_mkTile('VỊ TRÍ GIÁ',_bb!=null?_bb.toFixed(1)+'%':'—',_bbC,_bbLbl)}${_mkTile('XU HƯỚNG',_macd!=null?(_macd>0?'+':'')+_macd.toFixed(0):'—',_macdC,_macdLbl)}</div>` : '';
+  const _mkTile = (label,techName,val,color,sublabel) => `<div style="background:var(--bg2);border-radius:8px;padding:10px 8px;text-align:center;border:1px solid var(--bdr)"><div style="font-size:10px;color:var(--txt1);margin-bottom:1px;font-family:var(--mono);letter-spacing:.04em;font-weight:600">${label}</div><div style="font-size:9px;color:var(--txt3);margin-bottom:5px;font-family:var(--mono)">${techName}</div><div style="font-size:20px;font-weight:700;font-family:var(--mono);color:${color};line-height:1.1">${val}</div><div style="font-size:10px;color:${color};margin-top:4px;font-weight:600;line-height:1.3">${sublabel}</div></div>`;
+  const compactIndRow = s ? `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:12px">${_mkTile('ĐÀ MUA/BÁN','RSI (14)',_rsi!=null?_rsi.toFixed(1):'—',_rsiC,_rsiLbl)}${_mkTile('VỊ TRÍ GIÁ','BB %B',_bb!=null?_bb.toFixed(1)+'%':'—',_bbC,_bbLbl)}${_mkTile('XU HƯỚNG','MACD Hist.',_macd!=null?(_macd>0?'+':'')+_macd.toFixed(0):'—',_macdC,_macdLbl)}</div>` : '';
 
   // Collapsible section wrapper — strips _mkSect outer div if present to avoid double headers
   const _col = (title, emoji, html, open=false) => {

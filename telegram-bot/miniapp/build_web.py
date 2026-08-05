@@ -152,7 +152,7 @@ body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14p
 .fund-right{text-align:right;flex:0 0 88px;display:flex;flex-direction:column;gap:4px;align-items:flex-end}
 details>summary{list-style:none;cursor:pointer}
 details>summary::-webkit-details-marker{display:none}
-.collapsible-hdr{display:flex;align-items:center;gap:6px;padding:10px 2px;font-size:10px;font-family:var(--mono);letter-spacing:.08em;color:var(--txt2);border-top:1px solid var(--bdr)}
+.collapsible-hdr{display:flex;align-items:center;gap:6px;padding:11px 2px;font-size:12px;font-family:var(--mono);letter-spacing:.06em;color:var(--txt1);font-weight:600;border-top:1px solid var(--bdr)}
 .collapsible-arrow{margin-left:auto;font-size:12px;transition:transform .2s;color:var(--txt3)}
 details[open] .collapsible-arrow{transform:rotate(90deg)}
 details .collapsible-body{padding-bottom:4px}
@@ -292,14 +292,18 @@ canvas{width:100%!important;height:100%!important}
 .hist-page-right{flex:1;min-width:0;display:flex;overflow:hidden}
 /* Analysis sub-column — takes center space (flex:1) on desktop */
 .hist-analysis-col{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;border-right:1px solid var(--bdr)}
+#hist-analysis-panel{font-size:13px;line-height:1.55}
 /* Chart sub-column — narrow right sidebar on desktop */
 .hist-chart-col{width:300px;min-width:240px;flex-shrink:0;display:flex;flex-direction:column;overflow:hidden}
 .hist-nav-header{padding:10px 14px 8px;border-bottom:1px solid var(--bdr);flex-shrink:0;background:var(--bg2)}
 .hist-nav-hval{font-family:var(--mono);font-size:18px;font-weight:700;color:var(--txt)}
 .hist-nav-hchg{font-family:var(--mono);font-size:13px;font-weight:600;margin-left:8px}
 .hist-nav-right{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
-#hist-chart-area{height:200px;max-height:220px;min-height:160px;flex-shrink:0;position:relative;padding:6px}
-#hist-chart-area canvas{width:100%!important;height:100%!important}
+#hist-chart-area{height:210px;max-height:230px;min-height:160px;flex-shrink:0;position:relative;padding:0}
+#hist-chart-area canvas{width:100%!important;height:100%!important;display:block}
+#hist-below-chart{border-top:1px solid var(--bdr);overflow-y:auto;max-height:320px}
+.hist-cmp-btn{display:flex;align-items:center;gap:5px;padding:5px 12px;border:1px solid var(--bdr);border-radius:6px;background:var(--bg3);color:var(--txt2);font-size:11px;font-family:var(--mono);cursor:pointer;white-space:nowrap;letter-spacing:.03em}
+.hist-cmp-btn:hover{border-color:var(--c0);color:var(--c0)}
 /* hist-fund-row inherits sig-row grid layout; active/hover states */
 .hist-fund-row{border-left:3px solid transparent}
 .hist-fund-row:hover,.hist-fund-row.active{background:rgba(0,229,255,.06)}
