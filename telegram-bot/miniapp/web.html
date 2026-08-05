@@ -286,13 +286,17 @@ canvas{width:100%!important;height:100%!important}
 /* ── History Page ────────────────────────── */
 .trade-form-inner{flex:1;overflow-y:auto;padding:0 14px;min-height:0}
 .hist-page-layout{display:flex;height:100%;overflow:hidden}
-.hist-page-left{width:420px;min-width:320px;border-right:1px solid var(--bdr);display:flex;flex-direction:column;overflow:hidden}
-.hist-page-right{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
+.hist-page-left{width:340px;min-width:260px;border-right:1px solid var(--bdr);display:flex;flex-direction:column;overflow:hidden}
+.hist-page-right{flex:1;min-width:0;display:flex;overflow:hidden}
+/* Chart sub-column */
+.hist-chart-col{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;border-right:1px solid var(--bdr)}
+/* Analysis sub-column — fixed width on desktop, full width stacked on mobile */
+.hist-analysis-col{width:400px;min-width:320px;flex-shrink:0;display:flex;flex-direction:column;overflow:hidden}
 .hist-nav-header{padding:10px 14px 8px;border-bottom:1px solid var(--bdr);flex-shrink:0;background:var(--bg2)}
 .hist-nav-hval{font-family:var(--mono);font-size:18px;font-weight:700;color:var(--txt)}
 .hist-nav-hchg{font-family:var(--mono);font-size:13px;font-weight:600;margin-left:8px}
-.hist-nav-right{flex:1;min-width:0;display:flex;flex-direction:column;overflow-y:auto}
-#hist-chart-area{height:320px;min-height:240px;position:relative;padding:8px;flex-shrink:0}
+.hist-nav-right{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
+#hist-chart-area{flex:1;min-height:220px;position:relative;padding:8px}
 #hist-chart-area canvas{width:100%!important;height:100%!important}
 .hist-fund-row{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--bdr);cursor:pointer;transition:background .15s}
 .hist-fund-row:hover,.hist-fund-row.active{background:rgba(0,229,255,.06)}
@@ -322,8 +326,10 @@ canvas{width:100%!important;height:100%!important}
   .trade-grid{flex-direction:column}
   .trade-col{min-width:0;border-right:none;border-bottom:1px solid var(--bdr)}
   .hist-page-layout{flex-direction:column}
-  .hist-page-left{width:100%;min-width:0;border-right:none;border-bottom:1px solid var(--bdr);max-height:340px;overflow-y:auto}
-  .hist-page-right{height:60vw;min-height:260px}
+  .hist-page-left{width:100%;min-width:0;border-right:none;border-bottom:1px solid var(--bdr);max-height:280px;overflow-y:auto}
+  .hist-page-right{flex-direction:column;height:auto}
+  .hist-chart-col{border-right:none;border-bottom:1px solid var(--bdr);height:56vw;min-height:240px;max-height:380px}
+  .hist-analysis-col{width:100%;min-width:0;flex-shrink:1;height:60vw;min-height:300px}
   .sidebar{width:100%;height:54px;flex-direction:row;overflow-x:auto;border-right:none;border-top:1px solid var(--bdr);position:fixed;bottom:0;left:0;right:0;z-index:100;background:var(--bg2);padding:0}
   .nav-btn{flex-direction:column;padding:6px 12px;font-size:9px;gap:2px;min-width:60px;white-space:nowrap}
   .nav-btn svg{width:18px;height:18px}
@@ -333,6 +339,12 @@ canvas{width:100%!important;height:100%!important}
   .col-portfolio{width:400px;min-width:320px}
   .col-market{min-width:280px;max-width:420px}
   .col-chart{min-width:300px}
+}
+/* Phân Tích: on medium screens (901-1349px) stack analysis below chart */
+@media(min-width:901px) and (max-width:1349px){
+  .hist-page-right{flex-direction:column}
+  .hist-chart-col{border-right:none;border-bottom:1px solid var(--bdr);height:300px;flex-shrink:0}
+  .hist-analysis-col{width:100%;min-width:0;flex:1;flex-shrink:1}
 }
 @media(min-width:1600px){
   :root{font-size:15px}
@@ -901,7 +913,6 @@ canvas{width:100%!important;height:100%!important}
           <button onclick="_setHistSort('default')" id="hsort-default" class="col-action" style="font-size:9px;padding:2px 7px;border-radius:4px;background:var(--c0);color:var(--bg)">Mặc định</button>
           <button onclick="_setHistSort('score')"   id="hsort-score"   class="col-action" style="font-size:9px;padding:2px 7px;border-radius:4px">Score ↓</button>
           <button onclick="_setHistSort('rsi')"     id="hsort-rsi"     class="col-action" style="font-size:9px;padding:2px 7px;border-radius:4px">RSI quá bán</button>
-          <button onclick="_setHistSort('m1')"      id="hsort-m1"      class="col-action" style="font-size:9px;padding:2px 7px;border-radius:4px">1T tốt nhất</button>
         </div>
       </div>
       <!-- Fund signal rows — JS renders -->
@@ -917,38 +928,44 @@ canvas{width:100%!important;height:100%!important}
       </div>
     </div>
 
-    <!-- Cột phải: NAV header + View toggle + Chart + Indicators -->
+    <!-- Cột phải: Chart col + Analysis col (side-by-side on wide screens) -->
     <div class="hist-page-right">
-      <!-- PI compact strip — shows portfolio summary when a fund is selected -->
-      <div id="hist-pi-compact" style="display:none"></div>
-      <!-- NAV headline cho quỹ đang chọn -->
-      <div class="hist-nav-header" id="hist-nav-header">
-        <div style="color:var(--txt2);font-size:12px;padding:4px 0">Chọn quỹ bên trái để xem biểu đồ</div>
-      </div>
-      <div class="hist-nav-right">
-        <!-- View toggle + time range -->
-        <div style="display:flex;flex-wrap:wrap;gap:6px;padding:8px 14px 6px;border-bottom:1px solid var(--bdr);flex-shrink:0;align-items:center">
-          <button id="hist-view-nav"  class="tab active" onclick="setHistView('nav',this)"  style="font-size:11px;padding:5px 10px">📈 NAV</button>
-          <button id="hist-view-t2"   class="tab"        onclick="setHistView('t2',this)"   style="font-size:11px;padding:5px 10px">⏱ T+2</button>
-          <button id="hist-view-gold" class="tab"        onclick="setHistView('gold',this)" style="font-size:11px;padding:5px 10px">🪙 Vàng</button>
-          <button id="hist-view-cmp"  class="tab"        onclick="setHistView('cmp',this)"  style="font-size:11px;padding:5px 10px">⚖️ So Sánh</button>
-          <div id="hist-range-bar" style="display:flex;gap:4px;margin-left:auto">
-            <button class="hist-range-btn active" onclick="setHistRange('1M',this)">1T</button>
-            <button class="hist-range-btn" onclick="setHistRange('3M',this)">3T</button>
-            <button class="hist-range-btn" onclick="setHistRange('6M',this)">6T</button>
-            <button class="hist-range-btn" onclick="setHistRange('1Y',this)">1N</button>
-            <button class="hist-range-btn" onclick="setHistRange('ALL',this)">Tất cả</button>
+
+      <!-- Sub-cột CHART: PI strip + NAV header + view toggle + chart -->
+      <div class="hist-chart-col">
+        <!-- PI compact strip -->
+        <div id="hist-pi-compact" style="display:none"></div>
+        <!-- NAV headline cho quỹ đang chọn -->
+        <div class="hist-nav-header" id="hist-nav-header">
+          <div style="color:var(--txt2);font-size:12px;padding:4px 0">Chọn quỹ bên trái để xem biểu đồ</div>
+        </div>
+        <div class="hist-nav-right">
+          <!-- View toggle + time range -->
+          <div style="display:flex;flex-wrap:wrap;gap:6px;padding:8px 14px 6px;border-bottom:1px solid var(--bdr);flex-shrink:0;align-items:center">
+            <button id="hist-view-nav"  class="tab active" onclick="setHistView('nav',this)"  style="font-size:11px;padding:5px 10px">📈 NAV</button>
+            <button id="hist-view-t2"   class="tab"        onclick="setHistView('t2',this)"   style="font-size:11px;padding:5px 10px">⏱ T+2</button>
+            <button id="hist-view-gold" class="tab"        onclick="setHistView('gold',this)" style="font-size:11px;padding:5px 10px">🪙 Vàng</button>
+            <button id="hist-view-cmp"  class="tab"        onclick="setHistView('cmp',this)"  style="font-size:11px;padding:5px 10px">⚖️ So Sánh</button>
+            <div id="hist-range-bar" style="display:flex;gap:4px;margin-left:auto">
+              <button class="hist-range-btn active" onclick="setHistRange('1M',this)">1T</button>
+              <button class="hist-range-btn" onclick="setHistRange('3M',this)">3T</button>
+              <button class="hist-range-btn" onclick="setHistRange('6M',this)">6T</button>
+              <button class="hist-range-btn" onclick="setHistRange('1Y',this)">1N</button>
+              <button class="hist-range-btn" onclick="setHistRange('ALL',this)">Tất cả</button>
+            </div>
+          </div>
+          <!-- Chart area -->
+          <div id="hist-chart-area">
+            <div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--txt2);font-size:12px">Chọn quỹ bên trái</div>
           </div>
         </div>
-        <!-- Chart area -->
-        <div id="hist-chart-area">
-          <div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--txt2);font-size:12px">Chọn quỹ bên trái</div>
-        </div>
-        <!-- Indicators + Analysis below chart -->
-        <div id="hist-analysis-panel" style="padding:0 14px 16px;border-top:1px solid var(--bdr);overflow-y:auto">
-          <div style="color:var(--txt2);font-size:12px;padding:12px 0;text-align:center">Chọn quỹ để xem chỉ báo kỹ thuật</div>
-        </div>
+      </div>
 
+      <!-- Sub-cột ANALYSIS: indicators + manual NAV entry -->
+      <div class="hist-analysis-col">
+        <div id="hist-analysis-panel" style="flex:1;padding:0 14px 16px;overflow-y:auto">
+          <div style="color:var(--txt2);font-size:12px;padding:16px 0;text-align:center">Chọn quỹ để xem phân tích</div>
+        </div>
         <!-- Nhập NAV thủ công — collapsible -->
         <details id="manual-nav-panel" style="border-top:1px solid var(--bdr);flex-shrink:0" ontoggle="if(this.open)_initBulkRows()">
           <summary style="display:flex;align-items:center;gap:6px;padding:10px 14px;cursor:pointer;font-family:var(--mono);font-size:10px;color:var(--txt2);list-style:none;user-select:none">
@@ -967,6 +984,7 @@ canvas{width:100%!important;height:100%!important}
           </div>
         </details>
       </div>
+
     </div>
 
   </div>
@@ -3677,7 +3695,7 @@ async function loadHistoryPage() {
 }
 function _setHistSort(mode) {
   _histFundSort = mode;
-  ['default','score','rsi','m1'].forEach(m => {
+  ['default','score','rsi'].forEach(m => {
     const btn = document.getElementById('hsort-'+m);
     if (!btn) return;
     const active = m === mode;
@@ -3708,15 +3726,21 @@ function _renderHistFundList() {
   const allCodes = Object.keys(sigs);
   const priority = allCodes.filter(c => held.has(c) || watched.has(c));
   const rest = allCodes.filter(c => !held.has(c) && !watched.has(c));
+  // Alert funds: oversold/overbought/strong signal
+  const isAlert = c => { const sv = sigs[c]; if (!sv) return false; return (sv.rsi != null && (sv.rsi < 32 || sv.rsi > 68)) || Math.abs(sv.score||0) >= 4; };
+  const alertColor = c => { const sv = sigs[c]||{}; return sv.rsi < 32 || sv.score >= 4 ? 'var(--buy)' : 'var(--sell)'; };
   // Apply sort mode
   const sortFn = {
     score: (a, b) => (sigs[b]?.score || 0) - (sigs[a]?.score || 0),
     rsi:   (a, b) => (sigs[a]?.rsi ?? 50) - (sigs[b]?.rsi ?? 50),  // lowest RSI first (oversold)
-    m1:    (a, b) => (sigs[b]?.chg30 ?? -999) - (sigs[a]?.chg30 ?? -999),  // best 1M return first
     default: (a, b) => a.localeCompare(b),
   }[_histFundSort] || ((a, b) => a.localeCompare(b));
+  // Default: alerts first → held/watched → rest (all alphabetical within group)
+  const alertCodes = allCodes.filter(c => isAlert(c));
+  const heldWatchedNonAlert = priority.filter(c => !isAlert(c));
+  const restNonAlert = rest.filter(c => !isAlert(c));
   const funds = _histFundSort === 'default'
-    ? [...priority, ...rest.sort()]
+    ? [...alertCodes.sort(), ...heldWatchedNonAlert.sort(), ...restNonAlert.sort()]
     : [...allCodes].sort(sortFn);  // ignore held/watched pin when user picks explicit sort
   const countEl = document.getElementById('hist-fund-count');
   if (countEl) countEl.textContent = funds.length + ' quỹ';
@@ -3737,33 +3761,8 @@ function _renderHistFundList() {
       ${goldPriceHtml}${goldChgHtml}
     </div>
   </div>`;
-  // "Cần chú ý" — oversold/overbought alerts shown above fund list
-  const alerts = funds.filter(c => {
-    const sv = sigs[c]; if (!sv) return false;
-    return (sv.rsi != null && (sv.rsi < 32 || sv.rsi > 68)) || Math.abs(sv.score||0) >= 4;
-  });
-  // Sort alerts: oversold first (lowest RSI), then high score
-  alerts.sort((a,b) => {
-    const sa = sigs[a], sb = sigs[b];
-    const rsA = sa.rsi ?? 50, rsB = sb.rsi ?? 50;
-    if (rsA < 32 && rsB >= 32) return -1;
-    if (rsB < 32 && rsA >= 32) return 1;
-    return rsA - rsB;
-  });
-  const TOP = 5;
-  const alertsShow = alerts.slice(0, TOP);
-  const alertsMore = alerts.length - TOP;
-  const alertHtml = alerts.length ? `<div style="background:#facc1511;border:1px solid #facc1533;border-radius:6px;padding:5px 8px;margin-bottom:6px;font-size:10px;line-height:1.7">
-    <span style="color:#facc15;font-size:9px;font-family:var(--mono);letter-spacing:.05em">⚠ CẦN CHÚ Ý</span>
-    <div style="display:flex;flex-wrap:wrap;gap:3px 6px;margin-top:3px">${alertsShow.map(c=>{
-      const sv=sigs[c];
-      const note=sv.rsi<32?`RSI ${sv.rsi?.toFixed(0)} quá bán`:sv.rsi>68?`RSI ${sv.rsi?.toFixed(0)} quá mua`:sv.score>=4?`+${sv.score} mua`:sv.score<=-4?`${sv.score} bán`:'';
-      const col=sv.rsi<32||sv.score>=4?'var(--buy)':sv.rsi>68||sv.score<=-4?'var(--sell)':'#facc15';
-      return `<span onclick="_selectHistFund('${c}')" style="cursor:pointer;background:${col}18;border:1px solid ${col}44;border-radius:10px;padding:1px 6px;font-size:9px;font-family:var(--mono);color:${col};white-space:nowrap">${c} <span style="opacity:.8">${note}</span></span>`;
-    }).join('')}${alertsMore > 0 ? `<span onclick="_setHistSort('rsi')" style="cursor:pointer;font-size:9px;color:var(--c0);padding:1px 6px;border:1px solid var(--c0)44;border-radius:10px;font-family:var(--mono)">+${alertsMore} quỹ khác ↓</span>` : ''}</div>
-  </div>` : '';
   const _todayForHist = new Date().toISOString().slice(0,10);
-  el.innerHTML = alertHtml + goldRow + funds.map(code => {
+  el.innerHTML = goldRow + funds.map(code => {
     const s = sigs[code] || {};
     const nav = s.nav ? fmt(s.nav)+' đ' : '—';
     const chg = s.chg_pct ?? s.change_pct ?? s.change ?? null;
@@ -3781,26 +3780,23 @@ function _renderHistFundList() {
     const scColor = sc >= 3 ? 'var(--buy)' : sc <= -3 ? 'var(--sell)' : '#facc15';
     const rsiDotC = (s.rsi != null) ? (s.rsi < 35 ? 'var(--buy)' : s.rsi > 65 ? 'var(--sell)' : 'var(--txt3)') : 'transparent';
     const rsiLabel = s.rsi != null ? `<span style="font-size:9px;font-family:var(--mono);color:${rsiDotC}" title="RSI">RSI ${s.rsi.toFixed(0)}</span>` : '';
-    return `<div class="hist-fund-row ${_histPageCode===code?'active':''}" onclick="_selectHistFund('${code}',this)" style="display:flex;flex-direction:column;gap:4px;padding:8px 12px">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:6px">
-        <div style="display:flex;align-items:center;gap:4px;min-width:0;overflow:hidden">
-          <span style="font-family:var(--mono);font-size:12px;font-weight:700;color:var(--txt);flex-shrink:0">${code}</span>
-          ${starBtn}${heldBadge}
-        </div>
-        <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
-          ${sigHtml}${_staleH}
-        </div>
+    const alert = isAlert(code);
+    const alertBorder = alert ? `border-left:3px solid ${alertColor(code)}` : 'border-left:3px solid transparent';
+    const alertBg = alert ? `background:${alertColor(code)}08` : '';
+    return `<div class="hist-fund-row ${_histPageCode===code?'active':''}" onclick="_selectHistFund('${code}',this)" style="display:flex;flex-direction:column;gap:3px;padding:8px 12px 8px 10px;${alertBorder};${alertBg}">
+      <div style="display:flex;align-items:center;gap:6px">
+        <span style="font-family:var(--mono);font-size:13px;font-weight:700;color:var(--txt);flex-shrink:0;min-width:64px">${code}</span>
+        ${heldBadge}${sigHtml}
+        <span style="margin-left:auto;display:flex;align-items:center;gap:4px;flex-shrink:0">${_staleH}${starBtn}</span>
       </div>
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:6px">
-        <div style="display:flex;align-items:center;gap:4px;min-width:0">
-          <span style="font-family:var(--mono);font-size:11px;color:var(--txt2);flex-shrink:0">${nav}</span>
-          ${chgHtml}
-          ${_sparklineSvg(code)}
-        </div>
-        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+      <div style="display:flex;align-items:center;gap:8px;padding-left:1px">
+        <span style="font-family:var(--mono);font-size:11px;color:var(--txt2)">${nav}</span>
+        ${chgHtml}
+        ${_sparklineSvg(code)}
+        <span style="margin-left:auto;display:flex;align-items:center;gap:6px;flex-shrink:0">
           ${rsiLabel}
-          <span style="font-size:9px;font-family:var(--mono);color:${scColor}" title="Score ${sc>=0?'+':''}${sc}">${sc>=0?'+':''}${sc}</span>
-        </div>
+          <span style="font-size:10px;font-family:var(--mono);color:${scColor};font-weight:600" title="Điểm tổng hợp">${sc>=0?'+':''}${sc}</span>
+        </span>
       </div>
     </div>`;
   }).join('');

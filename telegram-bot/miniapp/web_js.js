@@ -2545,7 +2545,7 @@ async function loadHistoryPage() {
 }
 function _setHistSort(mode) {
   _histFundSort = mode;
-  ['default','score','rsi','m1'].forEach(m => {
+  ['default','score','rsi'].forEach(m => {
     const btn = document.getElementById('hsort-'+m);
     if (!btn) return;
     const active = m === mode;
@@ -2576,15 +2576,21 @@ function _renderHistFundList() {
   const allCodes = Object.keys(sigs);
   const priority = allCodes.filter(c => held.has(c) || watched.has(c));
   const rest = allCodes.filter(c => !held.has(c) && !watched.has(c));
+  // Alert funds: oversold/overbought/strong signal
+  const isAlert = c => { const sv = sigs[c]; if (!sv) return false; return (sv.rsi != null && (sv.rsi < 32 || sv.rsi > 68)) || Math.abs(sv.score||0) >= 4; };
+  const alertColor = c => { const sv = sigs[c]||{}; return sv.rsi < 32 || sv.score >= 4 ? 'var(--buy)' : 'var(--sell)'; };
   // Apply sort mode
   const sortFn = {
     score: (a, b) => (sigs[b]?.score || 0) - (sigs[a]?.score || 0),
     rsi:   (a, b) => (sigs[a]?.rsi ?? 50) - (sigs[b]?.rsi ?? 50),  // lowest RSI first (oversold)
-    m1:    (a, b) => (sigs[b]?.chg30 ?? -999) - (sigs[a]?.chg30 ?? -999),  // best 1M return first
     default: (a, b) => a.localeCompare(b),
   }[_histFundSort] || ((a, b) => a.localeCompare(b));
+  // Default: alerts first → held/watched → rest (all alphabetical within group)
+  const alertCodes = allCodes.filter(c => isAlert(c));
+  const heldWatchedNonAlert = priority.filter(c => !isAlert(c));
+  const restNonAlert = rest.filter(c => !isAlert(c));
   const funds = _histFundSort === 'default'
-    ? [...priority, ...rest.sort()]
+    ? [...alertCodes.sort(), ...heldWatchedNonAlert.sort(), ...restNonAlert.sort()]
     : [...allCodes].sort(sortFn);  // ignore held/watched pin when user picks explicit sort
   const countEl = document.getElementById('hist-fund-count');
   if (countEl) countEl.textContent = funds.length + ' quỹ';
@@ -2605,33 +2611,8 @@ function _renderHistFundList() {
       ${goldPriceHtml}${goldChgHtml}
     </div>
   </div>`;
-  // "Cần chú ý" — oversold/overbought alerts shown above fund list
-  const alerts = funds.filter(c => {
-    const sv = sigs[c]; if (!sv) return false;
-    return (sv.rsi != null && (sv.rsi < 32 || sv.rsi > 68)) || Math.abs(sv.score||0) >= 4;
-  });
-  // Sort alerts: oversold first (lowest RSI), then high score
-  alerts.sort((a,b) => {
-    const sa = sigs[a], sb = sigs[b];
-    const rsA = sa.rsi ?? 50, rsB = sb.rsi ?? 50;
-    if (rsA < 32 && rsB >= 32) return -1;
-    if (rsB < 32 && rsA >= 32) return 1;
-    return rsA - rsB;
-  });
-  const TOP = 5;
-  const alertsShow = alerts.slice(0, TOP);
-  const alertsMore = alerts.length - TOP;
-  const alertHtml = alerts.length ? `<div style="background:#facc1511;border:1px solid #facc1533;border-radius:6px;padding:5px 8px;margin-bottom:6px;font-size:10px;line-height:1.7">
-    <span style="color:#facc15;font-size:9px;font-family:var(--mono);letter-spacing:.05em">⚠ CẦN CHÚ Ý</span>
-    <div style="display:flex;flex-wrap:wrap;gap:3px 6px;margin-top:3px">${alertsShow.map(c=>{
-      const sv=sigs[c];
-      const note=sv.rsi<32?`RSI ${sv.rsi?.toFixed(0)} quá bán`:sv.rsi>68?`RSI ${sv.rsi?.toFixed(0)} quá mua`:sv.score>=4?`+${sv.score} mua`:sv.score<=-4?`${sv.score} bán`:'';
-      const col=sv.rsi<32||sv.score>=4?'var(--buy)':sv.rsi>68||sv.score<=-4?'var(--sell)':'#facc15';
-      return `<span onclick="_selectHistFund('${c}')" style="cursor:pointer;background:${col}18;border:1px solid ${col}44;border-radius:10px;padding:1px 6px;font-size:9px;font-family:var(--mono);color:${col};white-space:nowrap">${c} <span style="opacity:.8">${note}</span></span>`;
-    }).join('')}${alertsMore > 0 ? `<span onclick="_setHistSort('rsi')" style="cursor:pointer;font-size:9px;color:var(--c0);padding:1px 6px;border:1px solid var(--c0)44;border-radius:10px;font-family:var(--mono)">+${alertsMore} quỹ khác ↓</span>` : ''}</div>
-  </div>` : '';
   const _todayForHist = new Date().toISOString().slice(0,10);
-  el.innerHTML = alertHtml + goldRow + funds.map(code => {
+  el.innerHTML = goldRow + funds.map(code => {
     const s = sigs[code] || {};
     const nav = s.nav ? fmt(s.nav)+' đ' : '—';
     const chg = s.chg_pct ?? s.change_pct ?? s.change ?? null;
@@ -2649,26 +2630,23 @@ function _renderHistFundList() {
     const scColor = sc >= 3 ? 'var(--buy)' : sc <= -3 ? 'var(--sell)' : '#facc15';
     const rsiDotC = (s.rsi != null) ? (s.rsi < 35 ? 'var(--buy)' : s.rsi > 65 ? 'var(--sell)' : 'var(--txt3)') : 'transparent';
     const rsiLabel = s.rsi != null ? `<span style="font-size:9px;font-family:var(--mono);color:${rsiDotC}" title="RSI">RSI ${s.rsi.toFixed(0)}</span>` : '';
-    return `<div class="hist-fund-row ${_histPageCode===code?'active':''}" onclick="_selectHistFund('${code}',this)" style="display:flex;flex-direction:column;gap:4px;padding:8px 12px">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:6px">
-        <div style="display:flex;align-items:center;gap:4px;min-width:0;overflow:hidden">
-          <span style="font-family:var(--mono);font-size:12px;font-weight:700;color:var(--txt);flex-shrink:0">${code}</span>
-          ${starBtn}${heldBadge}
-        </div>
-        <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
-          ${sigHtml}${_staleH}
-        </div>
+    const alert = isAlert(code);
+    const alertBorder = alert ? `border-left:3px solid ${alertColor(code)}` : 'border-left:3px solid transparent';
+    const alertBg = alert ? `background:${alertColor(code)}08` : '';
+    return `<div class="hist-fund-row ${_histPageCode===code?'active':''}" onclick="_selectHistFund('${code}',this)" style="display:flex;flex-direction:column;gap:3px;padding:8px 12px 8px 10px;${alertBorder};${alertBg}">
+      <div style="display:flex;align-items:center;gap:6px">
+        <span style="font-family:var(--mono);font-size:13px;font-weight:700;color:var(--txt);flex-shrink:0;min-width:64px">${code}</span>
+        ${heldBadge}${sigHtml}
+        <span style="margin-left:auto;display:flex;align-items:center;gap:4px;flex-shrink:0">${_staleH}${starBtn}</span>
       </div>
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:6px">
-        <div style="display:flex;align-items:center;gap:4px;min-width:0">
-          <span style="font-family:var(--mono);font-size:11px;color:var(--txt2);flex-shrink:0">${nav}</span>
-          ${chgHtml}
-          ${_sparklineSvg(code)}
-        </div>
-        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+      <div style="display:flex;align-items:center;gap:8px;padding-left:1px">
+        <span style="font-family:var(--mono);font-size:11px;color:var(--txt2)">${nav}</span>
+        ${chgHtml}
+        ${_sparklineSvg(code)}
+        <span style="margin-left:auto;display:flex;align-items:center;gap:6px;flex-shrink:0">
           ${rsiLabel}
-          <span style="font-size:9px;font-family:var(--mono);color:${scColor}" title="Score ${sc>=0?'+':''}${sc}">${sc>=0?'+':''}${sc}</span>
-        </div>
+          <span style="font-size:10px;font-family:var(--mono);color:${scColor};font-weight:600" title="Điểm tổng hợp">${sc>=0?'+':''}${sc}</span>
+        </span>
       </div>
     </div>`;
   }).join('');
