@@ -402,7 +402,7 @@ async function loadMe() {
   try {
     _me = await apiFetch('/api/me');
     renderTierBar(_me);
-    apiFetch(`/api/gold?user_id=${USER_ID}`).then(d=>{_goldData=d;renderPfBanner();renderPfAlloc();renderPfGoldSub();_renderHistFundList();}).catch(()=>{});
+    apiFetch(`/api/gold?user_id=${USER_ID}`).then(d=>{if(d?.portfolio?.portfolio!==undefined)d.portfolio=d.portfolio.portfolio;_goldData=d;renderPfBanner();renderPfAlloc();renderPfGoldSub();_renderHistFundList();}).catch(()=>{});
     renderPortfolio(_me);
   } catch(e) { document.getElementById('pf-sub-ccq').innerHTML=renderErr('Lỗi tải: '+e.message); }
 }
@@ -5097,6 +5097,7 @@ async function loadGoldAnalysis() {
   try {
     if (!_goldData) {
       const d=await apiFetch(`/api/gold?user_id=${USER_ID}`);
+      if(d?.portfolio?.portfolio!==undefined)d.portfolio=d.portfolio.portfolio;
       _goldData=d;
     }
     const prod='VANGTODAYAPI:SJC_1L';
