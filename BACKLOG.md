@@ -4,7 +4,28 @@
 # Priority: P0 (blocker) / P1 (important) / P2 (nice-to-have)
 # Claude đọc file này ĐẦU TIÊN mỗi session. Pick task IN_PROGRESS nếu có, nếu không pick P0 cao nhất.
 #
-# Last updated: 2026-08-06 (Harvey-directed: WEB-086..102 + autonomous fix: test suite)
+# Last updated: 2026-08-06 (autonomous: WEB-103..104 bugfixes + QA parity check)
+
+## Session (autonomous, scheduled) — 2026-08-06: WEB-103..104 bugfixes
+# Tình trạng đầu session: tất cả P0/P1 đã DONE. Tiếp tục từ session WEB-TEST.
+# WEB-103 DONE: Gold portfolio history chart — p.price undefined với WEB-102 {sell,buy} format
+#   _renderGoldPortfolioHistoryChart() byDate map: p.price → p.sell??p.buy??p.price??null
+#   Commit: a3a0d2e.
+# WEB-104 DONE: "undefined lượng" trong VÀNG section (Trang Chủ)
+#   BUG: local_dev_server._calc_gold_portfolio() wraps result trong extra "portfolio" key
+#   → /api/gold trả về {"portfolio": {"portfolio": {...}}} thay vì {"portfolio": {...}}
+#   FIX: normalize tại cả 2 chỗ _goldData được set trong web_js.js:
+#     if(d?.portfolio?.portfolio!==undefined)d.portfolio=d.portfolio.portfolio;
+#   Không sửa local_dev_server.py (Harvey WIP) — fix phía frontend để resilient với cả 2 format.
+#   Commit: 01d1c79.
+# QA parity check: 0 console errors, 44 quỹ trong Phân Tích list (live funds),
+#   GOLD_SJC pinned đầu, held funds visible, portfolio P&L đúng.
+# Test suite: 367/367. Build: 451,065 chars.
+# Việc cần Harvey:
+#   (1) WEB-017 BLOCKED: cấp JWT tcinvest mới để backfill NAV bulk
+#   (2) WEB-014 P2: clarify backend field cần expose (nav_jump_anomaly)
+#   (3) local_dev_server.py: _calc_gold_portfolio() nên bỏ outer "portfolio" wrapper để khớp
+#       miniapp_server.py format (double-nesting bug). Harvey đang có WIP uncommitted.
 
 ## Session (Harvey-directed) — 2026-08-05..06: WEB-086..102 layout + gold + font polish
 # WEB-086 DONE: Filter inactive/delisted funds from Phân Tích fund list (nav=0 hidden) — 44→48 live funds
