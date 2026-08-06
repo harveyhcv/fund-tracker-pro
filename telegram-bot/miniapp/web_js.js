@@ -5284,7 +5284,7 @@ async function loadGoldHistory() {
     const allLabels=[...labelsSet].sort();
     const datasets=prods.map((prod,i)=>{
       const h=histories[i]?.history||[];
-      const byDate=Object.fromEntries(h.map(p=>[p.date,p.price]));
+      const byDate=Object.fromEntries(h.map(p=>[p.date,p.sell??p.buy??p.price??null]));
       return{label:prod,data:allLabels.map(d=>byDate[d]||null),borderColor:colors[i%colors.length],borderWidth:1.5,fill:false,tension:0.3,pointRadius:0,spanGaps:true};
     });
     el.innerHTML='<canvas id="gold-hist-canvas" style="width:100%;height:100%"></canvas>';
