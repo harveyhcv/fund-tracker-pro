@@ -11,6 +11,11 @@
 # WEB-103 DONE: Gold portfolio history chart — p.price undefined với WEB-102 {sell,buy} format
 #   _renderGoldPortfolioHistoryChart() byDate map: p.price → p.sell??p.buy??p.price??null
 #   Commit: a3a0d2e.
+# WEB-105 DONE: Gold DCA — NaN trong gp-xau (XAU/USD field) + sjcRaw object unwrap
+#   autoFillMarketData() set gp-xau (XAU/USD USD/oz) dùng SJC VND price → wrong unit → NaN cascade
+#   Bỏ auto-fill gp-xau (user nhập thủ công; placeholder 3100 là fallback đúng)
+#   runGoldPrediction() sjcRaw: WEB-102 đổi prices sang rich {sell,buy,...} object →
+#     unwrap .sell trước khi dùng làm VND price. Commit: ec37ecc.
 # WEB-104 DONE: "undefined lượng" trong VÀNG section (Trang Chủ)
 #   BUG: local_dev_server._calc_gold_portfolio() wraps result trong extra "portfolio" key
 #   → /api/gold trả về {"portfolio": {"portfolio": {...}}} thay vì {"portfolio": {...}}
