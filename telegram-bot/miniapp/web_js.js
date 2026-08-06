@@ -1991,8 +1991,7 @@ async function autoFillMarketData() {
     const usd = typeof sjcVal==='object' ? sjcVal.extra?.usd_vnd || sjcVal.usd_vnd : null;
     if (usd) { const el=document.getElementById('gp-usd'); if(el) el.value=Math.round(usd); }
   }
-  const sjcPrice = _goldData?.signal?.sjc_sell || _goldData?.prices?.['VANGTODAYAPI:SJC_1L'] || 87000000;
-  const xauEl = document.getElementById('gp-xau'); if(xauEl) xauEl.value = Math.round(sjcPrice / 37.5 / 1000 * 1.0862 * 1000);
+  // gp-xau (XAU/USD USD/oz) — không auto-fill từ SJC VND (đơn vị khác nhau); user nhập thủ công
   // Try Binance for BTC
   try {
     const r = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT');
@@ -2004,7 +2003,8 @@ async function autoFillMarketData() {
 function runGoldPrediction() {
   const el=document.getElementById('gold-dca-content'); if(!el) return;
   const divider=_goldUnit==='chi'?10:1;
-  const sjcRaw = _goldData?.signal?.sjc_sell || _goldData?.prices?.['VANGTODAYAPI:SJC_1L'] || 87000000;
+  const _sr0=_goldData?.signal?.sjc_sell||_goldData?.prices?.['VANGTODAYAPI:SJC_1L'];
+  const sjcRaw=(typeof _sr0==='object'?(_sr0?.sell||_sr0?.buy):_sr0)||87000000;
   const sjcPrice = sjcRaw / divider;
   const inf = parseDecimal(document.getElementById('gp-inflation')?.value) || 4;
   const xauUSD = parseDecimal(document.getElementById('gp-xau')?.value) || 3100;
