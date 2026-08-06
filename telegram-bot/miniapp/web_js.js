@@ -3623,6 +3623,9 @@ function setHistRange(range, el) {
   document.querySelectorAll('.hist-range-btn').forEach(b=>b.classList.remove('active'));
   if(el) el.classList.add('active');
   if(_histView==='cmp' && _histPageCode && _cmpCode2) loadComparisonView();
+  else if(_histView==='t2') renderT2AccuracyChart(_histPageCode||Object.keys(MOCK_SIGNALS||{})[0]||'VESAF');
+  else if(_histView==='gold') loadGoldHistory();
+  else if(_histPageCode==='GOLD_SJC') loadGoldAnalysis();
   else if(_histPageData) renderHistChart(_histPageData, _histPageCode);
 }
 
@@ -5102,7 +5105,13 @@ async function loadGoldAnalysis() {
     }
     const prod='VANGTODAYAPI:SJC_1L';
     const hist=await apiFetch('/api/gold/price_history/'+encodeURIComponent(prod)).catch(()=>({history:[]}));
-    const history=hist.history||[];
+    let history=hist.history||[];
+    if (_histRange && _histRange !== 'ALL') {
+      const days={'1M':30,'3M':90,'6M':180,'1Y':365,'3Y':1095}[_histRange]||30;
+      const cutoff=new Date(); cutoff.setDate(cutoff.getDate()-days);
+      const cut=cutoff.toISOString().slice(0,10);
+      history=history.filter(h=>h.date>=cut);
+    }
     if (history.length) {
       chartEl.innerHTML='<canvas id="gold-analysis-canvas" style="width:100%;height:100%"></canvas>';
       if (_histPageChart) { _histPageChart.destroy(); _histPageChart=null; }
@@ -5282,7 +5291,13 @@ async function loadGoldHistory() {
     const histories=await Promise.all(prods.map(p=>apiFetch('/api/gold/price_history/'+encodeURIComponent(p)).catch(()=>({history:[]}))));
     const labelsSet=new Set();
     histories.forEach(h=>(h.history||[]).forEach(p=>labelsSet.add(p.date)));
-    const allLabels=[...labelsSet].sort();
+    let allLabels=[...labelsSet].sort();
+    if (_histRange && _histRange !== 'ALL') {
+      const days={'1M':30,'3M':90,'6M':180,'1Y':365,'3Y':1095}[_histRange]||30;
+      const cutoff=new Date(); cutoff.setDate(cutoff.getDate()-days);
+      const cut=cutoff.toISOString().slice(0,10);
+      allLabels=allLabels.filter(d=>d>=cut);
+    }
     const datasets=prods.map((prod,i)=>{
       const h=histories[i]?.history||[];
       const byDate=Object.fromEntries(h.map(p=>[p.date,p.sell??p.buy??p.price??null]));

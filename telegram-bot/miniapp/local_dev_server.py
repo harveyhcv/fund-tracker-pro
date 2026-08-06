@@ -1174,6 +1174,41 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/admin/nav/confirm":
             return self._json({"ok": True})
 
+        # ── POST: admin import-nav (local: save to nav.db) ──
+        if path == "/api/admin/import-nav" or path == "/api/nav/draft":
+            funds = body.get("funds", {})  # {CODE: [{date, nav}]}
+            if not funds:
+                return self._json({"error": "Không có dữ liệu"}, 400)
+            nav_conn = _nav_conn()
+            saved, skipped = 0, 0
+            PROTECTED = {"fixed", "manual", "confirmed"}
+            for code, entries in funds.items():
+                code = code.upper().strip()
+                for entry in entries:
+                    d = entry.get("date", "")
+                    nav = entry.get("nav")
+                    if not d or not nav:
+                        continue
+                    existing = nav_conn.execute(
+                        "SELECT source FROM nav_history WHERE fund_code=? AND date=?", (code, d)
+                    ).fetchone()
+                    if existing and existing[0] in PROTECTED:
+                        skipped += 1
+                        continue
+                    nav_conn.execute(
+                        """INSERT INTO nav_history (fund_code, date, nav, source, status, updated_at)
+                           VALUES (?, ?, ?, 'manual', 'verified', datetime('now'))
+                           ON CONFLICT(fund_code, date) DO UPDATE SET
+                             nav=excluded.nav, source='manual', status='verified',
+                             updated_at=datetime('now')""",
+                        (code, d, float(nav))
+                    )
+                    saved += 1
+            nav_conn.commit()
+            nav_conn.close()
+            return self._json({"ok": True, "saved": saved, "skipped": skipped,
+                               "msg": f"✓ Đã lưu {saved} NAV vào nav.db{' (bỏ qua '+str(skipped)+' dòng protected)' if skipped else ''}"})
+
         # stubs
         if path.startswith("/api/"):
             return self._json({"ok": True})
