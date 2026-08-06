@@ -4,7 +4,81 @@
 # Priority: P0 (blocker) / P1 (important) / P2 (nice-to-have)
 # Claude đọc file này ĐẦU TIÊN mỗi session. Pick task IN_PROGRESS nếu có, nếu không pick P0 cao nhất.
 #
-# Last updated: 2026-08-04 (Harvey session: WEB-054..059 UX fixes + NAV entry redesign)
+# Last updated: 2026-08-06 (Harvey-directed: WEB-086..102 + autonomous fix: test suite)
+
+## Session (Harvey-directed) — 2026-08-05..06: WEB-086..102 layout + gold + font polish
+# WEB-086 DONE: Filter inactive/delisted funds from Phân Tích fund list (nav=0 hidden) — 44→48 live funds
+# WEB-087 DONE: Fix analysis column width shift when switching funds — overflow-x:hidden + min-width:0
+# WEB-088 DONE: CHIẾN LƯỢC GỢI Ý moved below chart (stored in _lastStrategyHtml, re-injected via _renderBelowChart)
+# WEB-089 DONE: Lock chart col max-width:320px + below-chart flex:1;min-height:0 — fills column height
+# WEB-090 DONE: Gold below-chart shows signals (Score/RSI/BB/chg7/phi-bu-xau) + held position — no longer blank
+# WEB-091 DONE: Analysis panel font 13px→14px, line-height 1.55→1.60, chip/name/NAV sizes all +1px
+# WEB-092 DONE: So Sánh button moved to fund info header chip row (always visible without scrolling)
+# WEB-093 DONE: Nhập NAV thủ công summary styled cyan + bold + larger text, border-top 2px cyan
+# WEB-094 DONE: Re-render fund list after _goldData loads — VÀNG SJC shows badge + price + RSI on first load
+# WEB-095 DONE: Analysis panel font 14→15px, conclusion body 12→14px, API conclusion 11→13px
+# WEB-096 DONE: ✏️ NAV button added next to NAV value in chart column header (toggles manual-nav-panel)
+# WEB-097 DONE: below-chart wrapper min-height:100% — fills column visually when content is short
+# WEB-098 DONE: VÀNG SJC fallback price from _goldData.prices when signals empty (local mode)
+# WEB-099 DONE: .hist-page-layout width:100%; #hist-chart-area flex:1 fills remaining height
+# WEB-100 DONE: Chart column width 320px→620px; below-chart reverted to flex:1
+# WEB-101 DONE: loadGoldAnalysis() updates #hist-nav-header immediately; remove Railway messages from UI;
+#   gold fund list row: 'Chưa có giá hôm nay' placeholder when price/change empty
+# WEB-102 DONE: Local SQLite gold prices — no Railway needed for gold chart
+#   Backend: _fetch_gold_to_sqlite(), _get_gold_prices_sqlite(), _calc_gold_signals_sqlite();
+#   _api_gold() + _api_gold_price_history() both have SQLite fallback
+#   Frontend: 3-tier font sizes (12/14/16px); #hist-analysis-panel base 15→14px
+#   Commit: 753e51d.
+# WEB-TEST DONE (autonomous 2026-08-06): Fix test suite for WEB-102 SQLite fallback
+#   test_no_db_url_returns_503 → test_no_db_url_uses_sqlite_fallback (200 not 503)
+#   test_returns_history_with_price: response format {sell, buy} not {price}
+#   367/367 tests pass. Commit: 62cc4b5.
+
+## Session (Harvey-directed) — 2026-08-05: WEB-076..085 UX overhaul + highlight fix
+# WEB-076 DONE: Font sizes in Phân Tích analysis panel enlarged (13-14px base, tiles 20px)
+# WEB-077 DONE: Chart fills full width — layout:{padding:0}, y-axis position:'right', canvas block
+# WEB-078 DONE: Dual labels — plain (ĐÀ MUA/BÁN) + technical (RSI 14) shown simultaneously
+# WEB-079 DONE: Below-chart content — peer ranking, Fibonacci levels, MA distance, held P&L
+#   + fallback quickStats (Score/RSI/BB/vol) when no peer/fib data — never empty
+# WEB-080 DONE: Gold view button hidden when viewing CCQ fund
+# WEB-081 DONE: So Sánh button moved outside tab toggle row
+# WEB-082 DONE: Highlight top-2 MUA (score≥3) + top-2 BÁN (score≤-3) only, score-based not RSI
+#   Full-row rgba background; Score chip shown on highlighted rows; SSISCA cyan border fixed
+#   MBBF/VNDBF (TRUNG LẬP) no longer falsely highlighted
+# WEB-083 DONE: Fund list sort — highlighted rows pinned to top, MUA→BÁN order
+# WEB-084 DONE: Gold row in CHỌN QUỸ shows RSI + BB% + Score + chg7 indicators
+# WEB-085 DONE: Below-chart fallback quickStats grid — always shows content
+#   Commit: 1c2be15. Build: 445,149 chars.
+
+## Session (Harvey-directed) — 2026-08-05: WEB-075 language simplification
+# WEB-075 DONE: Simplify all analysis language for non-expert users (commit bab6eac)
+#   REQUEST: Harvey: "nội dung phải dễ hiểu đến học sinh lớp 5 vẫn có thể hiểu được"
+#   CHANGES: RSI→ĐÀ MUA/BÁN, BB%→VỊ TRÍ GIÁ, MACD→XU HƯỚNG; section titles → plain questions;
+#     risk metrics rewritten with analogies; Golden/Death Cross → plain Vietnamese;
+#     VaR → "nên đầu tư bao nhiêu %"; percentile → "Đánh bại X% quỹ"
+#   Build: 433,869 chars.
+
+## Session (autonomous, scheduled) — 2026-08-05: WEB-074 bugfix
+# Tình trạng đầu session: tất cả P0/P1 đã DONE. Harvey đã push 5 commits WEB-060..073 (2026-08-05).
+# Phát hiện bug qua QA parity check:
+# WEB-074 DONE: Fix broken active state selectors in hist-fund-list (commit af4949f)
+#   BUG: WEB-069 đổi fund row HTML sang .sig-row + .sig-meters layout → .hist-fund-code class
+#     không còn tồn tại trong bất kỳ phần tử nào, nhưng 2 chỗ trong web_js.js vẫn dùng selector cũ:
+#     (1) loadHistChart() line ~2721: .hist-fund-code → .sig-code (active state không set đúng khi
+#         dev mode hoặc trong khoảng delay giữa click và re-render của _renderHistFundList)
+#     (2) loadGoldAnalysis() line ~4890: .hist-fund-code[style*="fbbf24"] → onclick*GOLD_SJC
+#         (gold row dùng onclick="_selectHistFund('GOLD_SJC',this)", không có .hist-fund-code)
+#   FIX: 2 edits trong web_js.js, rebuild web.html (432,023 chars), 367/367 tests pass.
+#   Dead CSS: .hist-fund-code { ... } vẫn ở line ~308 web.html — chỉ là dead CSS, không ảnh hưởng.
+# Harvey commits được document (WEB-060..073 — xem các session entries từ 2026-08-04 và 2026-08-05):
+#   WEB-060..063: Phân Tích layout overhaul 3-col responsive + fund list UX (commit ded6858)
+#   WEB-064..067: PI strip Trang Chủ + fund list market-board style + chart height (commit 7dcdd04)
+#   WEB-068: mở mặc định TÍN HIỆU KỸ THUẬT + HIỆU SUẤT ĐẦU TƯ (commit 715cd00)
+#   WEB-069..073: layout restructure + PI persistent + Giao Dịch→Phân Tích signal tab (commit 5874887)
+# Việc cần Harvey:
+#   (1) WEB-017 BLOCKED: cấp JWT tcinvest mới để backfill NAV bulk
+#   (2) WEB-014 P2: clarify backend field cần expose (nav_jump_anomaly)
+# Build: 432,023 chars. Commit: af4949f.
 
 ## Session (Harvey-directed) — 2026-08-04: UX polish + UI fixes
 # WEB-054 DONE: Portfolio Intelligence compact banner khi fund selected (Phân Tích tab)
