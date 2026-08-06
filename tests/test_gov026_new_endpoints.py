@@ -215,13 +215,19 @@ class TestGoldPriceHistory:
         code, data = _last(handler)
         assert code == 400
 
-    def test_no_db_url_returns_503(self):
+    def test_no_db_url_uses_sqlite_fallback(self):
+        # WEB-102: khi không có DATABASE_URL, dùng SQLite local thay vì 503
         handler, ms = _make_handler()
+        mock_conn = MagicMock()
+        mock_conn.execute.return_value.fetchall.return_value = []
         with patch.dict("os.environ", {}, clear=True), \
-             patch("miniapp_server._load_cfg", return_value={}):
+             patch("miniapp_server._load_cfg", return_value={}), \
+             patch("sqlite3.connect", return_value=mock_conn):
             handler._api_gold_price_history("SJC_1L")
         code, data = _last(handler)
-        assert code == 503
+        assert code == 200
+        assert data["product"] == "SJC_1L"
+        assert data["history"] == []
 
     def test_returns_history_with_price(self):
         handler, ms = _make_handler()
@@ -238,7 +244,7 @@ class TestGoldPriceHistory:
         assert code == 200
         assert data["product"] == "SJC_1L"
         assert len(data["history"]) == 2
-        assert data["history"][0] == {"date": "2026-07-08", "price": 110000000.0}
+        assert data["history"][0] == {"date": "2026-07-08", "sell": 110000000.0, "buy": 110000000.0}
 
     def test_unknown_product_returns_empty_history(self):
         handler, ms = _make_handler()
