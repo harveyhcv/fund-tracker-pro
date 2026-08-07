@@ -4,7 +4,18 @@
 # Priority: P0 (blocker) / P1 (important) / P2 (nice-to-have)
 # Claude đọc file này ĐẦU TIÊN mỗi session. Pick task IN_PROGRESS nếu có, nếu không pick P0 cao nhất.
 #
-# Last updated: 2026-08-07 (autonomous: verify baseline, document WEB-106 + Harvey WIP status)
+# Last updated: 2026-08-07 (autonomous ca chiều: verify baseline, no code tasks)
+
+## Session (autonomous, scheduled) — Ca chiều 2026-08-07: verify baseline, không code thêm
+# Tình trạng đầu session: tất cả P0/P1 đã DONE (ca sáng xác nhận). Harvey WIP vẫn uncommitted.
+# Baseline: py_compile miniapp_server+bot+db+local_dev_server OK. 367/367 tests pass (1.87s).
+# Harvey WIP (không đổi so với ca sáng): web_js.js +74, web_body.html +37, local_dev_server.py +12,
+#   web.html +111 (rebuilt); thêm xcodeproj cũ đã xoá (deleted iOS files, ngoài scope web).
+# Điều kiện dừng: Hết P0+P1 → áp dụng ngay. Không code thêm để tránh conflict với Harvey WIP.
+# Việc cần Harvey:
+#   (1) Commit + push uncommitted WIP: web_js.js, web_body.html, web.html, local_dev_server.py
+#   (2) WEB-017 BLOCKED: cấp JWT tcinvest mới → backfill NAV bulk
+#   (3) WEB-014 P2: clarify backend field cần expose (nav_jump_anomaly)
 
 ## Session (autonomous, scheduled) — 2026-08-07: baseline verify, no code tasks
 # Tình trạng đầu session: tất cả P0/P1 đã DONE. Harvey có uncommitted WIP lớn trong web frontend.
