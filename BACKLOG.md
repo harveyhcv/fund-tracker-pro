@@ -4,7 +4,40 @@
 # Priority: P0 (blocker) / P1 (important) / P2 (nice-to-have)
 # Claude đọc file này ĐẦU TIÊN mỗi session. Pick task IN_PROGRESS nếu có, nếu không pick P0 cao nhất.
 #
-# Last updated: 2026-08-06 (autonomous: WEB-103..104 bugfixes + QA parity check)
+# Last updated: 2026-08-07 (autonomous: verify baseline, document WEB-106 + Harvey WIP status)
+
+## Session (autonomous, scheduled) — 2026-08-07: baseline verify, no code tasks
+# Tình trạng đầu session: tất cả P0/P1 đã DONE. Harvey có uncommitted WIP lớn trong web frontend.
+# WEB-106 DONE (Harvey, 2026-08-06 13:20, commit 45a731e): chart date range + manual NAV local save
+#   - setHistRange(): thêm T+2/gold-history/gold-analysis cases cho nút 1T/3T/6T/1N/Tất cả
+#   - loadGoldHistory(): apply _histRange filter trước khi render
+#   - loadGoldAnalysis(): apply _histRange filter cho SJC price history
+#   - local_dev_server.py: thêm POST /api/admin/import-nav + /api/nav/draft handlers
+#     ghi vào core_data/nav.db với source='manual', status='verified'
+# Scan Harvey uncommitted WIP (git diff HEAD, 2026-08-07):
+#   web_js.js (+74 dòng):
+#     1. _pfIntelCompactHtml(): dùng pnl_amount từ API hoặc compute (value-cost), pnlPct dùng
+#        totalCost (không còn nhầm total), sort items by pnl_pct desc, hiện cả % và giá trị M
+#     2. _renderHistFundList(): sort trong cùng nhóm MUA/BÁN theo score cao hơn lên trước;
+#        navSrcBadge ✏️ khi nav_source=manual, ⏳ khi pending_confirm
+#     3. openNavModal(preselect) + closeNavModal() + submitNavModal(): modal input NAV mới
+#        thay thế <details> panel cũ; admin dùng /api/admin/import-nav, user dùng /api/nav/draft
+#   web_body.html (+37 dòng): thay #manual-nav-panel <details> bằng #nav-input-modal overlay
+#   local_dev_server.py (+12 dòng):
+#     - _calc_portfolio(): dùng 120 ngày (trước 60), thêm t2_prediction + pnl_amount fields
+#     - get_nav_history: FIX _qs().get("limit","0") — trước đây ["0"])[0] → trả 1 char đầu
+#       của limit string khi limit có trong query ("365"[0]="3") → chart chỉ hiện 3 điểm!
+#       Harvey đã fix trong WIP, chưa commit.
+#   web.html: đã rebuild (Harvey chạy build_web.py sau khi sửa source) — consistent với WIP.
+# Trạng thái: WIP là 1 unit đồng bộ (js + body + built web.html), chờ Harvey commit.
+# Baseline: py_compile local_dev_server + miniapp_server OK. 367/367 tests pass (1.83s).
+# Điều kiện dừng: Hết P0+P1. Harvey uncommitted WIP → KHÔNG implement gì thêm để tránh conflict.
+# Việc cần Harvey:
+#   (1) Commit + push uncommitted WIP: web_js.js, web_body.html, web.html, local_dev_server.py
+#       (fix openNavModal modal, fix _qs limit bug, pnl_amount field, t2_prediction)
+#   (2) WEB-017 BLOCKED: cấp JWT tcinvest mới → backfill NAV bulk
+#   (3) WEB-014 P2: clarify backend field cần expose (nav_jump_anomaly)
+#   (4) local_dev_server.py _qs() bug: ["0"])[0] → "0" (đã fix trong WIP, cần commit sớm)
 
 ## Session (autonomous, scheduled) — 2026-08-06: WEB-103..104 bugfixes
 # Tình trạng đầu session: tất cả P0/P1 đã DONE. Tiếp tục từ session WEB-TEST.
